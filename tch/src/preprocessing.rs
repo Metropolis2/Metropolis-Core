@@ -1,0 +1,1257 @@
+use crate::contraction_hierarchies::{
+    EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay,
+};
+use crate::min_queue::MinPQ;
+use crate::node_data::NodeDataWithExtra;
+use crate::ops::{
+    HopLimitedDijkstra, ProfileDijkstra, ThinProfileIntervalDijkstra, TimeDependentDijkstra,
+};
+use crate::query::PointToPointQuery;
+use crate::search::DijkstraSearch;
+
+use anyhow::{anyhow, Context, Result};
+use fixedbitset::FixedBitSet;
+use hashbrown::hash_map::{Entry, HashMap};
+use hashbrown::HashSet;
+use object_pool::Pool;
+use ordered_float::OrderedFloat;
+use petgraph::graph::{node_index, DiGraph, EdgeReference, NodeIndex};
+use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
+use petgraph::Direction;
+use rayon::prelude::*;
+use std::cmp::Ordering;
+use std::collections::VecDeque;
+use ttf::{TTFNum, TTF};
+
+static mut CACHE_HIT: usize = 0;
+static mut CACHE_MISS: usize = 0;
+static mut CACHED_NO_WITNESS: usize = 0;
+static mut INTERVAL: usize = 0;
+static mut SAMPLE: usize = 0;
+static mut PROFILE: usize = 0;
+static mut NO_WITNESS: usize = 0;
+
+/// Structure that represents a set of parameters used when contracting a graph.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+pub struct ContractionParameters {
+    edge_quotient_weight: f64,
+    hierarchy_depth_weight: f64,
+    unpacked_edges_quotient_weight: f64,
+    complexity_quotient_weight: f64,
+    thin_profile_interval_hop_limit: u8,
+    num_threads: usize,
+}
+
+impl Default for ContractionParameters {
+    fn default() -> Self {
+        ContractionParameters::new(2.0, 1.0, 1.0, 2.0, 16, rayon::current_num_threads())
+    }
+}
+
+impl ContractionParameters {
+    pub fn new(
+        edge_quotient_weight: f64,
+        hierarchy_depth_weight: f64,
+        unpacked_edges_quotient_weight: f64,
+        complexity_quotient_weight: f64,
+        thin_profile_interval_hop_limit: u8,
+        num_threads: usize,
+    ) -> Self {
+        ContractionParameters {
+            edge_quotient_weight,
+            hierarchy_depth_weight,
+            unpacked_edges_quotient_weight,
+            complexity_quotient_weight,
+            thin_profile_interval_hop_limit,
+            num_threads,
+        }
+    }
+}
+
+/// Results from a witness search from node contraction.
+#[derive(Clone, Copy)]
+enum CachedResult {
+    /// A witness was found, i.e., there is a witness profile which guarantees that the shortcut is
+    /// not needed.
+    Witness,
+    /// No witness was found.
+    /// We store the complexity of the shortcut edge and the number of packed edges, for later use.
+    NoWitness(usize, usize),
+}
+
+/// A map that stores the result of a witness search for some shortcut edges when simulating the
+/// contraction of a node.
+type ContractionCacheEntry = HashMap<(NodeIndex, NodeIndex), CachedResult>;
+
+/// A vector that stores the results of the witness searches for nodes whose contraction was
+/// previously simulated.
+type ContractionCache = Vec<ContractionCacheEntry>;
+
+/// The shortcut edges resulting from a node contraction.
+type ContractionResults<T> = (NodeIndex, NodeIndex, ToContractEdge<T>);
+
+/// Structure for nodes in a [ContractionGraph].
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+pub struct ToContractNode {
+    id: NodeIndex,
+    /// Order of the node in the hierarchy.
+    /// Set to 0 if the order has not been determined yet.
+    order: usize,
+    /// Depth of the node.
+    /// A larger value implies that the node is close to nodes that are already contracted.
+    depth: usize,
+    /// Tentative cost of the node, that represents how "attractive" the node is to be contracted.
+    cost: OrderedFloat<f64>,
+}
+
+impl ToContractNode {
+    pub fn new(id: NodeIndex) -> Self {
+        ToContractNode {
+            id,
+            order: 0,
+            depth: 1,
+            cost: OrderedFloat(0.),
+        }
+    }
+
+    /// Create a new node with a known order.
+    pub fn from_order(id: NodeIndex, order: usize) -> Self {
+        ToContractNode {
+            id,
+            order,
+            depth: 1,
+            cost: OrderedFloat(0.),
+        }
+    }
+}
+
+/// Structure for edges in a [ContractionGraph].
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+pub struct ToContractEdge<T> {
+    /// Current metric of the edge.
+    ttf: TTF<T>,
+    /// Number of packed edge that a shortcut edge represents (1 if this is not a shortcut edge).
+    nb_packed: usize,
+    /// Type of the edge (Original or Shortcut).
+    class: HierarchyEdgeClass<T>,
+}
+
+impl<T> ToContractEdge<T> {
+    fn new(ttf: TTF<T>, nb_packed: usize, class: HierarchyEdgeClass<T>) -> Self {
+        ToContractEdge {
+            ttf,
+            nb_packed,
+            class,
+        }
+    }
+
+    /// Create a new original edge.
+    pub fn new_original(ttf: TTF<T>) -> Self {
+        ToContractEdge::new(ttf, 1, HierarchyEdgeClass::Original)
+    }
+
+    /// Create a new shortcut edge.
+    fn new_shortcut(ttf: TTF<T>, nb_packed: usize, pack: EdgePack<T>) -> Self {
+        ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::Shortcut(pack))
+    }
+}
+
+type ThinProfileIntervalDijkstraSearch<T> = DijkstraSearch<
+    NodeIndex,
+    NodeDataWithExtra<([T; 2], Option<[NodeIndex; 2]>), u8>,
+    MinPQ<NodeIndex, T>,
+>;
+
+type SampleDijkstraSearch<T> =
+    DijkstraSearch<NodeIndex, (T, Option<NodeIndex>), MinPQ<NodeIndex, T>>;
+
+type ProfileDijkstraSearch<T> =
+    DijkstraSearch<NodeIndex, (TTF<T>, Option<HashSet<NodeIndex>>), MinPQ<NodeIndex, T>>;
+
+struct AllocatedDijkstraData<T: PartialOrd> {
+    interval_search: ThinProfileIntervalDijkstraSearch<T>,
+    sample_search: SampleDijkstraSearch<T>,
+    profile_search: ProfileDijkstraSearch<T>,
+    hop_map: HashMap<NodeIndex, u8>,
+}
+
+impl<T: PartialOrd> Default for AllocatedDijkstraData<T> {
+    fn default() -> Self {
+        AllocatedDijkstraData {
+            interval_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            // NOTE: No predecessor needed here.
+            sample_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            // NOTE: No predecessor needed here.
+            profile_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            hop_map: HashMap::new(),
+        }
+    }
+}
+
+impl<T> AllocatedDijkstraData<T>
+where
+    T: Copy + PartialOrd,
+{
+    fn reset(&mut self) {
+        self.interval_search.reset();
+        self.sample_search.reset();
+        self.profile_search.reset();
+        self.hop_map.clear();
+    }
+}
+
+/// Temporary graph used to construct a [HierarchyOverlay].
+pub struct ContractionGraph<T: PartialOrd> {
+    graph: DiGraph<ToContractNode, ToContractEdge<T>>,
+    /// Parameters used during the contraction.
+    parameters: ContractionParameters,
+    /// Pre-allocated structures for the dijkstra runs.
+    pool: Pool<AllocatedDijkstraData<T>>,
+    new_ids: Vec<Option<NodeIndex>>,
+    order: Vec<usize>,
+    next_order: usize,
+    edges: Vec<(NodeIndex, NodeIndex, HierarchyEdge<T>)>,
+}
+
+impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
+    /// Create a new ContractionGraph from a graph of [ToContractNode] and [ToContractEdge].
+    pub fn new(
+        graph: DiGraph<ToContractNode, ToContractEdge<T>>,
+        parameters: ContractionParameters,
+    ) -> Self {
+        let pool = Pool::new(parameters.num_threads, Default::default);
+
+        let mut order = Vec::new();
+        order.resize(graph.node_count(), 0);
+
+        let mut new_ids = Vec::with_capacity(graph.node_count());
+        for i in 0..graph.node_count() {
+            new_ids.push(Some(node_index(i)));
+        }
+
+        ContractionGraph {
+            graph,
+            parameters,
+            pool,
+            new_ids,
+            order,
+            next_order: 1,
+            edges: Vec::new(),
+        }
+    }
+
+    /// Construct a [HierarchyOverlay] from the ContractionGraph, i.e., contract all the nodes in
+    /// the given hierarchy order.
+    pub fn construct(mut self) -> Result<HierarchyOverlay<T>> {
+        while self.graph.node_count() > 0 {
+            // Find the largest set of independent nodes than can be contracted in parallel.
+            // A node is contracted if its order is smaller than the order of all its neighbors.
+            let nodes_to_contract: HashSet<_> = self
+                .graph
+                .node_references()
+                .filter_map(|(node_id, weight)| {
+                    if self
+                        .graph
+                        .neighbors_undirected(node_id)
+                        .all(|n| self.graph[n].order > weight.order)
+                    {
+                        Some(weight.id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if nodes_to_contract.is_empty() {
+                let order: Vec<_> = self.graph.node_references().map(|(_, n)| n.order).collect();
+                return Err(anyhow!(
+                    "Invalid node order (it must be a total order): {:.50?}",
+                    order
+                ));
+            }
+            // Contract the new batch of nodes.
+            // We do not need a cache so with use an empty cache.
+            self.contract_nodes(&nodes_to_contract, &mut vec![])
+                .context("Failed to contract a new batch of nodes")?;
+            println!(
+                "{} remaining nodes to be contracted",
+                self.graph.node_count()
+            );
+            println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
+            unsafe {
+                println!("INTERVAL: {}", INTERVAL);
+                // println!("SAMPLE: {}", SAMPLE);
+                // println!("PROFILE: {}", PROFILE);
+                println!("SHARE: {:?}", NO_WITNESS as f64 / INTERVAL as f64);
+            }
+            self.build_remaining_graph(&nodes_to_contract);
+        }
+        Ok(self.into_hierarchy_overlay())
+    }
+
+    /// Order the nodes and construct a [HierarchyOverlay] from the ContractionGraph.
+    pub fn order(mut self) -> Result<HierarchyOverlay<T>> {
+        println!("Starting ordering");
+        // Initialize a ContractionCache.
+        let mut cache = ContractionCache::new();
+        cache.resize_with(self.graph.node_count(), HashMap::new);
+        // Compute initial tentative cost for all nodes.
+        println!("Computing initial costs");
+        let costs: Vec<(NodeIndex, OrderedFloat<f64>)> = cache
+            .par_iter_mut()
+            .enumerate()
+            .map_init(
+                || self.pool.pull(Default::default),
+                |alloc, (i, cache)| {
+                    let node_id = node_index(i);
+                    self.get_tentative_cost(node_id, cache, alloc)
+                        .map(|cost| (node_id, cost))
+                },
+            )
+            .collect::<Result<_>>()
+            .context("Failed to build the initial tentative costs")?;
+        for (node_id, cost) in costs.into_iter() {
+            self.graph[node_id].cost = cost;
+        }
+        // Main loop.
+        while self.graph.node_count() > 0 {
+            // Find the largest set of independent nodes than can be contracted in parallel.
+            println!("Finding a new set of nodes to contract");
+            let nodes_to_contract: HashSet<_> = self
+                .graph
+                .node_references()
+                .filter_map(|(node_id, node_weight)| {
+                    let cost = node_weight.cost;
+                    let cond = |n: NodeIndex, w: &ToContractNode| {
+                        (n <= node_id || w.cost >= cost) && (n >= node_id || w.cost > cost)
+                    };
+                    if self.check_2_hop_neighborhood(node_id, cond) {
+                        Some(node_weight.id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            // `nodes_to_contract` cannot be empty as there is at least one remaining node that
+            // should be selected.
+            println!(
+                "{} remaining nodes to be contracted",
+                self.graph.node_count()
+            );
+            println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
+            println!("Nb remaining edges: {}", self.graph.edge_count());
+            unsafe {
+                // println!("CACHE_HIT: {}", CACHE_HIT);
+                // println!("CACHE_MISS: {}", CACHE_MISS);
+                // println!("CACHED_NO_WITNESS: {}", CACHED_NO_WITNESS);
+                println!("INTERVAL: {}", INTERVAL);
+                // println!("SAMPLE: {}", SAMPLE);
+                // println!("PROFILE: {}", PROFILE);
+                println!("SHARE: {:?}", NO_WITNESS as f64 / INTERVAL as f64);
+            }
+            assert!(!nodes_to_contract.is_empty());
+            // Contract a new batch of nodes.
+            self.contract_nodes(&nodes_to_contract, &mut cache)
+                .context("Failed to contract a new batch of nodes")?;
+            for &node_id in nodes_to_contract.iter() {
+                // Clear the cache for this node as it is no longer needed.
+                cache[node_id.index()].clear();
+            }
+            // Update the depth of the neighbors of the contracted nodes.
+            let nodes_to_update = self.update_depths(&nodes_to_contract);
+            // Update the remaining graph.
+            self.build_remaining_graph(&nodes_to_contract);
+            // Update the tentative cost of the neighbors of the contracted nodes.
+            let new_costs: Vec<(NodeIndex, OrderedFloat<f64>)> = cache
+                .par_iter_mut()
+                .enumerate()
+                .map_init(
+                    || self.pool.pull(Default::default),
+                    |alloc, (i, cache)| {
+                        if nodes_to_update.contains(&node_index(i)) {
+                            let new_node_id = self.new_ids[i].unwrap();
+                            Some(
+                                self.get_tentative_cost(new_node_id, cache, alloc)
+                                    .map(|cost| (new_node_id, cost)),
+                            )
+                        } else {
+                            None
+                        }
+                    },
+                )
+                .flatten()
+                .collect::<Result<_>>()
+                .context("Failed to update the nodes' tentative costs")?;
+            for (node_id, cost) in new_costs.into_iter() {
+                self.graph[node_id].cost = cost;
+            }
+        }
+        Ok(self.into_hierarchy_overlay())
+    }
+
+    /// Update the depth of the neighbor nodes of the given nodes and return a vector with all
+    /// neighbor nodes that were updated.
+    fn update_depths(&mut self, nodes: &HashSet<NodeIndex>) -> HashSet<NodeIndex> {
+        let mut updated = HashSet::with_capacity(nodes.len() * 4);
+        for &old_node_id in nodes {
+            let new_node_id = self.new_ids[old_node_id.index()].unwrap();
+            let depth = self.graph[new_node_id].depth;
+            let mut neighbors = self.graph.neighbors_undirected(new_node_id).detach();
+            while let Some(neighbor) = neighbors.next_node(&self.graph) {
+                self.graph[neighbor].depth = std::cmp::max(depth + 1, self.graph[neighbor].depth);
+                updated.insert(self.graph[neighbor].id);
+            }
+        }
+        updated
+    }
+
+    /// Convert a successfully contracted [ContractionGraph] into a [HierarchyOverlay].
+    fn into_hierarchy_overlay(self) -> HierarchyOverlay<T> {
+        // Build the graph.
+        let graph: DiGraph<(), HierarchyEdge<T>> = DiGraph::<(), _>::from_edges(self.edges);
+        HierarchyOverlay::new_raw(graph, self.order)
+    }
+
+    /// Contract a batch of nodes in parallel.
+    fn contract_nodes(
+        &mut self,
+        nodes_to_contract: &HashSet<NodeIndex>,
+        cache: &mut ContractionCache,
+    ) -> Result<()> {
+        let contraction_results: Vec<_> = nodes_to_contract
+            .par_iter()
+            .map_init(
+                || self.pool.pull(Default::default),
+                |alloc, &old_node_id| {
+                    self.get_node_contraction(
+                        self.new_ids[old_node_id.index()].unwrap(),
+                        cache.get(old_node_id.index()),
+                        alloc,
+                    )
+                },
+            )
+            .flatten()
+            .collect::<Result<_>>()
+            .context("Failed to compute the node contractions")?;
+        self.apply_contraction(contraction_results, cache)
+            .context("Failed to apply the node contractions")?;
+        Ok(())
+    }
+
+    /// Apply a batch of [ContractionResults], i.e., create new shortcuts and merge existing
+    /// shortcuts.
+    fn apply_contraction(
+        &mut self,
+        contractions: Vec<ContractionResults<T>>,
+        cache: &mut ContractionCache,
+    ) -> Result<()> {
+        let mut merged_edges = HashSet::with_capacity(contractions.len());
+        let n = contractions.len();
+        for (source, target, shortcut) in contractions {
+            if let Some(existing_edge) = self.graph.find_edge(source, target) {
+                merged_edges.insert((self.graph[source].id, self.graph[target].id));
+                merge_edges(shortcut, &mut self.graph[existing_edge]).with_context(|| {
+                    format!(
+                        "Failed to merge a new shortcut edge with edge {:?}",
+                        existing_edge
+                    )
+                })?;
+            } else {
+                self.graph.add_edge(source, target, shortcut);
+            }
+        }
+        println!("New edges: {}", n - merged_edges.len());
+        // Remove from the cache all entries related to edges that where merged (the entry is no
+        // longer valid).
+        cache
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, node_cache)| {
+                node_cache.retain(|&(u, v), _| {
+                    !merged_edges.contains(&(u, node_index(i)))
+                        && !merged_edges.contains(&(node_index(i), v))
+                })
+            });
+        Ok(())
+    }
+
+    fn build_remaining_graph(&mut self, nodes_to_contract: &HashSet<NodeIndex>) {
+        let graph = std::mem::take(&mut self.graph);
+        let (nodes, edges) = graph.into_nodes_edges();
+        self.new_ids.fill(None);
+        let mut original_ids = HashMap::with_capacity(nodes_to_contract.len());
+        self.graph = DiGraph::with_capacity(nodes.len() - nodes_to_contract.len(), edges.len());
+        for (i, node) in nodes.into_iter().enumerate() {
+            original_ids.insert(node_index(i), node.weight.id);
+            if nodes_to_contract.contains(&node.weight.id) {
+                self.order[node.weight.id.index()] = self.next_order;
+                self.next_order += 1;
+                continue;
+            }
+            let old_id = node.weight.id;
+            let new_id = self.graph.add_node(node.weight);
+            self.new_ids[old_id.index()] = Some(new_id);
+        }
+        for edge in edges {
+            let &source_id = original_ids.get(&edge.source()).unwrap();
+            let &target_id = original_ids.get(&edge.target()).unwrap();
+            if nodes_to_contract.contains(&source_id) || nodes_to_contract.contains(&target_id) {
+                let dir = if nodes_to_contract.contains(&source_id) {
+                    HierarchyDirection::Upward
+                } else {
+                    HierarchyDirection::Downward
+                };
+                let hierarchy_edge = match edge.weight.class {
+                    HierarchyEdgeClass::Original => {
+                        HierarchyEdge::new_original(edge.weight.ttf, dir)
+                    }
+                    HierarchyEdgeClass::Shortcut(pack) => {
+                        HierarchyEdge::new_shortcut(edge.weight.ttf, dir, pack)
+                    }
+                };
+                self.edges.push((source_id, target_id, hierarchy_edge));
+            } else {
+                self.graph.add_edge(
+                    self.new_ids[source_id.index()].unwrap(),
+                    self.new_ids[target_id.index()].unwrap(),
+                    edge.weight,
+                );
+            }
+        }
+    }
+
+    /// Check if a condition is valid for all 2-hop neighbors of a given node.
+    fn check_2_hop_neighborhood<F>(&self, node: NodeIndex, condition: F) -> bool
+    where
+        F: Fn(NodeIndex, &ToContractNode) -> bool,
+    {
+        self.graph.neighbors_undirected(node).all(|n1| {
+            condition(n1, &self.graph[n1])
+                && self
+                    .graph
+                    .neighbors_undirected(n1)
+                    .all(|n2| condition(n2, &self.graph[n2]))
+        })
+    }
+
+    /// Compute the tentative cost of a node.
+    ///
+    /// The contraction cache of the node is updated at the same time.
+    fn get_tentative_cost(
+        &self,
+        node: NodeIndex,
+        contraction_cache: &mut ContractionCacheEntry,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<OrderedFloat<f64>> {
+        let simulated_contraction_results = self
+            .get_simulated_node_contraction(node, contraction_cache, alloc)
+            .with_context(|| format!("Failed to simulate node contraction for node {:?}", node))?;
+        let nb_edges_inserted = simulated_contraction_results.len();
+        // Count the number breakpoints and original edges that the new edges represent.
+        let (nb_breakpoints_inserted, nb_unpacked_inserted) = simulated_contraction_results
+            .iter()
+            .fold((0, 0), |tot, (complexity, nb_packed)| {
+                (tot.0 + complexity, tot.1 + nb_packed)
+            });
+        let (nb_edges_removed, nb_breakpoints_removed, nb_unpacked_removed) =
+            self.get_nb_removed(node);
+
+        // 1. Edge quotient.
+        let edge_quotient = nb_edges_inserted as f64 / std::cmp::max(1, nb_edges_removed) as f64;
+        // 2. Hierarchy depth.
+        let hierarchy_depth = self.graph[node].depth;
+        // 3. Unpacked edge quotient.
+        let unpacked_edges_quotient =
+            nb_unpacked_inserted as f64 / std::cmp::max(1, nb_unpacked_removed) as f64;
+        // 4. Complexity quotient.
+        let complexity_quotient =
+            nb_breakpoints_inserted as f64 / std::cmp::max(1, nb_breakpoints_removed) as f64;
+
+        let cost = OrderedFloat(
+            self.parameters.edge_quotient_weight * edge_quotient
+                + self.parameters.hierarchy_depth_weight * hierarchy_depth as f64
+                + self.parameters.unpacked_edges_quotient_weight * unpacked_edges_quotient
+                + self.parameters.complexity_quotient_weight * complexity_quotient,
+        );
+        if cost.is_nan() {
+            return Err(anyhow!(
+                "Invalid cost (edge quotient: {:?}, hierarchy depth: {:?}, unpacked edges quotient: {:?}, complexity quotient: {:?})",
+                edge_quotient, hierarchy_depth, unpacked_edges_quotient, complexity_quotient
+            ));
+        }
+        Ok(cost)
+    }
+
+    /// Returns the number of edges, unpacked edges and breakpoints removed when the given node is
+    /// contracted.
+    fn get_nb_removed(&self, node: NodeIndex) -> (usize, usize, usize) {
+        let sum = |tot: (usize, usize, usize), edge: EdgeReference<ToContractEdge<T>>| {
+            (
+                tot.0 + 1,
+                tot.1 + edge.weight().ttf.len(),
+                tot.2 + edge.weight().nb_packed,
+            )
+        };
+        let nb_out = self
+            .graph
+            .edges_directed(node, Direction::Outgoing)
+            .fold((0, 0, 0), sum);
+        let nb_in = self
+            .graph
+            .edges_directed(node, Direction::Incoming)
+            .fold((0, 0, 0), sum);
+        (nb_out.0 + nb_in.0, nb_out.1 + nb_in.1, nb_out.2 + nb_in.2)
+    }
+
+    /// Return the results of the simulated contraction of a node as a vector of tuples `(usize,
+    /// usize)` that represent the complexity and the number of packed original edges of the new
+    /// shortcut edges to insert.
+    fn get_simulated_node_contraction(
+        &self,
+        node: NodeIndex,
+        cache: &mut ContractionCacheEntry,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<Vec<(usize, usize)>> {
+        self.iter_remaining_edge_pairs(node)
+            .filter_map(|(in_edge, out_edge)| {
+                match self.get_simulated_edge_contraction(in_edge, out_edge, cache, alloc) {
+                    Ok(CachedResult::NoWitness(complexity, nb_packed)) => {
+                        Some(Ok((complexity, nb_packed)))
+                    }
+                    Err(e) => Some(Err(e).context("Failed to simulate edge contraction")),
+                    // Ignore the edge pairs for which a witness was found.
+                    Ok(_) => None,
+                }
+            })
+            .collect()
+    }
+
+    /// Return the results of a witness search to check whether a shortcut edge that represents
+    /// edges `in_edge` and `out_edge` is necessary.
+    fn get_simulated_edge_contraction(
+        &self,
+        in_edge: EdgeReference<ToContractEdge<T>>,
+        out_edge: EdgeReference<ToContractEdge<T>>,
+        cache: &mut ContractionCacheEntry,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<CachedResult> {
+        match cache.entry((
+            self.graph[in_edge.source()].id,
+            self.graph[out_edge.target()].id,
+        )) {
+            Entry::Occupied(e) => {
+                unsafe { CACHE_HIT += 1 };
+                if matches!(*e.get(), CachedResult::NoWitness(_, _)) {
+                    unsafe { CACHED_NO_WITNESS += 1 };
+                }
+                Ok(*e.get())
+            }
+            Entry::Vacant(e) => {
+                unsafe {
+                    CACHE_MISS += 1;
+                }
+                let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
+                if self
+                        .search_witness(
+                            in_edge.source(),
+                            out_edge.target(),
+                            &edge_score,
+                            alloc,
+                        )
+                        .with_context(|| format!(
+                            "Failed to search for a witness for score {:.50?}, from {:?} to {:?} when excluding {:?}",
+                            edge_score, in_edge.source(), out_edge.target(), in_edge.target()
+                        ))?
+                    {
+                        // Witness found.
+                        Ok(*e.insert(CachedResult::Witness))
+                    } else {
+                        unsafe { NO_WITNESS += 1 };
+                        // No witness was found, we add the shortcut edge.
+                        Ok(*e.insert(CachedResult::NoWitness(
+                            edge_score.len(),
+                            in_edge.weight().nb_packed + out_edge.weight().nb_packed,
+                        )))
+                    }
+            }
+        }
+    }
+
+    /// Return an iterator over all the pairs (in_edge, out_edge) of a node in the remaining graph.
+    fn iter_remaining_edge_pairs(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<
+        Item = (
+            EdgeReference<ToContractEdge<T>>,
+            EdgeReference<ToContractEdge<T>>,
+        ),
+    > {
+        self.graph
+            .edges_directed(node, Direction::Incoming)
+            .flat_map(move |in_edge| {
+                std::iter::repeat(in_edge)
+                    .zip(self.graph.edges_directed(node, Direction::Outgoing))
+                    .filter(|(in_edge, out_edge)| in_edge.source() != out_edge.target())
+            })
+    }
+
+    /// Return the new shortcut edges resulting from the contraction of a node.
+    fn get_node_contraction(
+        &self,
+        node: NodeIndex,
+        cache: Option<&HashMap<(NodeIndex, NodeIndex), CachedResult>>,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Vec<Result<ContractionResults<T>>> {
+        self.iter_remaining_edge_pairs(node)
+            .filter_map(|(in_edge, out_edge)| {
+                self.get_edge_contraction(in_edge, out_edge, cache, alloc)
+                    .transpose()
+            })
+            .collect()
+    }
+
+    /// Return the new shortcut edge (if needed) representing edges `in_edge` and `out_edge`.
+    fn get_edge_contraction<'b>(
+        &self,
+        in_edge: EdgeReference<'b, ToContractEdge<T>>,
+        out_edge: EdgeReference<'b, ToContractEdge<T>>,
+        cache: Option<&HashMap<(NodeIndex, NodeIndex), CachedResult>>,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<Option<ContractionResults<T>>> {
+        let mut is_cached = false;
+        match cache.and_then(|c| {
+            c.get(&(
+                self.graph[in_edge.source()].id,
+                self.graph[out_edge.target()].id,
+            ))
+        }) {
+            Some(CachedResult::Witness) => {
+                // The current contraction was already evaluated and a witness existed.
+                unsafe {
+                    CACHE_HIT += 1;
+                }
+                return Ok(None);
+            }
+            Some(CachedResult::NoWitness(_, _)) => {
+                // The current contraction was already evaluated and no witness was found.
+                unsafe {
+                    CACHE_HIT += 1;
+                    CACHED_NO_WITNESS += 1;
+                }
+                is_cached = true;
+            }
+            None => unsafe {
+                CACHE_MISS += 1;
+            },
+        }
+        let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
+        let no_witness = if !is_cached {
+            !self.search_witness(in_edge.source(),
+                    out_edge.target(),
+                    &edge_score,
+                    alloc,
+                ).with_context(|| format!(
+                    "Failed to search for a witness for score {:.50?}, from {:?} to {:?} when excluding {:?}",
+                    edge_score, in_edge.source(), out_edge.target(), in_edge.target()
+                ))?
+        } else {
+            false
+        };
+        if no_witness {
+            unsafe {
+                NO_WITNESS += 1;
+            }
+        }
+        if is_cached || no_witness {
+            let middle_node_original_id = self.graph[in_edge.target()].id;
+            let pack = vec![(T::zero(), Some(middle_node_original_id))];
+            // No witness was found, we add the shortcut edge.
+            let shortcut = ToContractEdge::new_shortcut(
+                edge_score,
+                in_edge.weight().nb_packed + out_edge.weight().nb_packed,
+                pack,
+            );
+            Ok(Some((in_edge.source(), out_edge.target(), shortcut)))
+        } else {
+            // A witness was found.
+            Ok(None)
+        }
+    }
+
+    /// Return `true` if a witness indicating that the shortcut is not needed was found.
+    fn search_witness(
+        &self,
+        from: NodeIndex,
+        to: NodeIndex,
+        edge_score: &TTF<T>,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<bool> {
+        alloc.reset();
+        // Run a thin profile interval query from the source to the target, excluding the node to
+        // be contracted.
+        unsafe {
+            INTERVAL += 1;
+        }
+        self.run_thin_profile_interval_query(from, to, None, alloc)
+            .context("Failed to run the thin profile interval search")?;
+        if let Some(interval) = alloc.interval_search.get_label(&to) {
+            if interval[1].approx_lt(&edge_score.get_min()) {
+                // No shortcut edge is needed.
+                return Ok(true);
+            }
+            // The two intervals overlap.
+            let corridor = self.get_profile_interval_corridor(to, &mut alloc.interval_search);
+            // Sample search.
+            unsafe {
+                SAMPLE += 1;
+            }
+            if let Some(departure_time) = edge_score.middle_departure_time() {
+                self.run_sample_search(from, to, departure_time, &corridor, alloc)
+                    .context("Failed to run the sample search")?;
+                if let Some(alt_arrival_time) = alloc.sample_search.get_label(&to) {
+                    if alt_arrival_time
+                        .approx_ge(&(departure_time + edge_score.eval(departure_time)))
+                    {
+                        // For the first departure time, it is faster to take the edge through the
+                        // contracted node so a shortcut is necessary.
+                        return Ok(false);
+                    }
+                } else {
+                    return Ok(false);
+                }
+            }
+            // Profile search.
+            unsafe {
+                PROFILE += 1;
+            }
+            self.run_profile_query(from, to, &corridor, alloc)
+                .context("Failed to run the profile search")?;
+            if let Some(score) = alloc.profile_search.get_label(&to) {
+                // There is a witness only if the score of the profile query is not larger than the
+                // edge score.
+                if score.get_max().approx_lt(&edge_score.get_min()) {
+                    return Ok(true);
+                }
+                let (_merged_ttf, descr) = score.merge(edge_score);
+                Ok(!descr.g_undercuts_strictly && descr.f_undercuts_strictly)
+            } else {
+                Ok(false)
+            }
+        } else {
+            // No path joining the two nodes: the shortcut is needed.
+            Ok(false)
+        }
+    }
+
+    /// Run a hop-limited thin profile interval search between `source` and `target`, excluding the
+    /// given node.
+    fn run_thin_profile_interval_query(
+        &self,
+        source: NodeIndex,
+        target: NodeIndex,
+        excluded_node: Option<NodeIndex>,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<()> {
+        let remaining_graph =
+            NodeFiltered::from_fn(&self.graph, |node_id| Some(node_id) != excluded_node);
+        let mut ops = HopLimitedDijkstra::new(
+            ThinProfileIntervalDijkstra::new_forward(&remaining_graph, |edge: EdgeReference<_>| {
+                &self.graph[edge.id()].ttf
+            }),
+            self.parameters.thin_profile_interval_hop_limit,
+        );
+        let query = PointToPointQuery::from_default(source, target);
+        alloc.interval_search.solve_query(&query, &mut ops)?;
+        Ok(())
+    }
+
+    /// Return the corridor resulting from a previous thin profile interval search.
+    ///
+    /// The corridor is represented by a [FixedBitSet] whose ones represent the indices of the
+    /// nodes that are part of the corridor.
+    fn get_profile_interval_corridor(
+        &self,
+        start: NodeIndex,
+        search: &mut ThinProfileIntervalDijkstraSearch<T>,
+    ) -> FixedBitSet {
+        let mut bs = self.graph.visit_map();
+        let mut stack = VecDeque::new();
+        stack.push_front(start);
+        while let Some(node) = stack.pop_front() {
+            if bs.visit(node) {
+                if let Some(p) = search.get_predecessor(&node) {
+                    stack.push_back(p[0]);
+                    stack.push_back(p[1]);
+                }
+            }
+        }
+        bs
+    }
+
+    /// Run a time-dependent search at a given departure time.
+    fn run_sample_search(
+        &self,
+        source: NodeIndex,
+        target: NodeIndex,
+        departure_time: T,
+        corridor: &FixedBitSet,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<()> {
+        let corridor_graph = NodeFiltered(&self.graph, corridor);
+        let mut ops = TimeDependentDijkstra::new(&corridor_graph, |edge: EdgeReference<_>| {
+            &self.graph[edge.id()].ttf
+        });
+        let query = PointToPointQuery::new(source, target, departure_time);
+        alloc.sample_search.solve_query(&query, &mut ops)?;
+        Ok(())
+    }
+
+    /// Run a profile search between `source` and `target`, using only the given corridor.
+    fn run_profile_query(
+        &self,
+        source: NodeIndex,
+        target: NodeIndex,
+        corridor: &FixedBitSet,
+        alloc: &mut AllocatedDijkstraData<T>,
+    ) -> Result<()> {
+        let corridor_graph = NodeFiltered(&self.graph, corridor);
+        // We do not use a hop-limit for profile search as the search is already limited by the
+        // corridor.
+        let mut ops = ProfileDijkstra::new_forward(&corridor_graph, |edge: EdgeReference<_>| {
+            &self.graph[edge.id()].ttf
+        });
+        let query = PointToPointQuery::from_default(source, target);
+        alloc.profile_search.solve_query(&query, &mut ops)?;
+        Ok(())
+    }
+}
+
+/// Merge a new shortcut edge with an existing (original or shortcut) edge.
+fn merge_edges<T: TTFNum>(
+    new_edge: ToContractEdge<T>,
+    old_edge: &mut ToContractEdge<T>,
+) -> Result<()> {
+    debug_assert!(matches!(new_edge.class, HierarchyEdgeClass::Shortcut(_)));
+    let relative_positioning = old_edge.ttf.analyze_relative_position(&new_edge.ttf);
+
+    if relative_positioning.len() == 1 {
+        if relative_positioning[0].1 == Ordering::Greater {
+            // The new edge is always below.
+            let old_nb_packed = old_edge.nb_packed;
+            *old_edge = new_edge;
+            old_edge.nb_packed = old_nb_packed;
+        }
+        return Ok(());
+    }
+
+    let new_middle_node = match new_edge.class {
+        // The new edge is always a shortcut with a single middle node.
+        HierarchyEdgeClass::Shortcut(pack) => {
+            debug_assert!(pack.len() == 1);
+            pack[0].1
+        }
+        _ => unreachable!(),
+    };
+
+    let merged_pack = match &old_edge.class {
+        HierarchyEdgeClass::Original => {
+            let mut merged_pack = Vec::with_capacity(relative_positioning.len());
+            for (t, pos) in relative_positioning {
+                match pos {
+                    Ordering::Less => {
+                        merged_pack.push((t, None));
+                    }
+                    Ordering::Greater => {
+                        merged_pack.push((t, new_middle_node));
+                    }
+                    Ordering::Equal => {
+                        unreachable!()
+                    }
+                }
+            }
+            merged_pack
+        }
+        HierarchyEdgeClass::Shortcut(old_pack) => {
+            let mut i = 0;
+            let mut j = 0;
+            let mut merged_pack =
+                Vec::with_capacity(old_pack.len() + 2 * relative_positioning.len());
+            while i < relative_positioning.len() && j < old_pack.len() {
+                if relative_positioning[i].0.approx_eq(&old_pack[j].0) {
+                    match relative_positioning[i].1 {
+                        Ordering::Less => {
+                            merged_pack.push((relative_positioning[i].0, old_pack[j].1));
+                        }
+                        Ordering::Greater => {
+                            merged_pack.push((relative_positioning[i].0, new_middle_node));
+                        }
+                        Ordering::Equal => {
+                            unreachable!()
+                        }
+                    }
+                    i += 1;
+                    j += 1;
+                } else if relative_positioning[i].0 < old_pack[j].0 {
+                    debug_assert!(j >= 1);
+                    match relative_positioning[i].1 {
+                        Ordering::Less => {
+                            merged_pack.push((relative_positioning[i].0, old_pack[j - 1].1));
+                        }
+                        Ordering::Greater => {
+                            merged_pack.push((relative_positioning[i].0, new_middle_node));
+                        }
+                        Ordering::Equal => {
+                            unreachable!()
+                        }
+                    }
+                    i += 1;
+                } else {
+                    debug_assert!(i >= 1);
+                    if relative_positioning[i - 1].1 == Ordering::Less {
+                        merged_pack.push(old_pack[j]);
+                    }
+                    j += 1;
+                }
+            }
+            if j < old_pack.len()
+                && relative_positioning[relative_positioning.len() - 1].1 == Ordering::Less
+            {
+                for &(t, middle_node) in old_pack[j..].iter() {
+                    merged_pack.push((t, middle_node));
+                }
+            }
+            if i < relative_positioning.len() {
+                for &(t, pos) in relative_positioning[i..].iter() {
+                    match pos {
+                        Ordering::Less => {
+                            merged_pack.push((t, old_pack[old_pack.len() - 1].1));
+                        }
+                        Ordering::Greater => {
+                            merged_pack.push((t, new_middle_node));
+                        }
+                        Ordering::Equal => {
+                            unreachable!()
+                        }
+                    }
+                }
+            }
+            merged_pack.shrink_to_fit();
+            merged_pack
+        }
+    };
+
+    let (merged_ttf, _) = old_edge.ttf.merge(&new_edge.ttf);
+
+    // NOTE: The number of packed edge is not exact, this is a lower bound.
+    *old_edge = ToContractEdge::new_shortcut(merged_ttf, old_edge.nb_packed, merged_pack);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_depth_test() {
+        // Graph is 0 -- 1 -- 2 -- 3.
+        // The initial depths are [0, 1, 2, 4].
+        let mut graph = DiGraph::<ToContractNode, ToContractEdge<f64>>::new();
+        let n0 = graph.add_node(ToContractNode {
+            id: node_index(0),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n1 = graph.add_node(ToContractNode {
+            id: node_index(1),
+            depth: 1,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n2 = graph.add_node(ToContractNode {
+            id: node_index(2),
+            depth: 2,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n3 = graph.add_node(ToContractNode {
+            id: node_index(3),
+            depth: 4,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n2, n3, ToContractEdge::new_original(TTF::default()));
+        let mut cg = ContractionGraph::new(graph, Default::default());
+        // We update the depths from node 2.
+        // New depths should be [0, 3, 2, 4],
+        let mut set = HashSet::new();
+        set.insert(node_index(2));
+        cg.update_depths(&set);
+        assert_eq!(cg.graph[node_index(0)].depth, 0);
+        assert_eq!(cg.graph[node_index(1)].depth, 3);
+        assert_eq!(cg.graph[node_index(2)].depth, 2);
+        assert_eq!(cg.graph[node_index(3)].depth, 4);
+    }
+
+    #[test]
+    fn check_2_hop_neighborhood_test() {
+        // Graph is 0 -- 1 -- 2 -- 3.
+        // The initial costs are [0., 1., 2., 0.].
+        let mut graph = DiGraph::<ToContractNode, ToContractEdge<f64>>::new();
+        let n0 = graph.add_node(ToContractNode {
+            id: node_index(0),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n1 = graph.add_node(ToContractNode {
+            id: node_index(1),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(1.),
+        });
+        let n2 = graph.add_node(ToContractNode {
+            id: node_index(2),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(2.),
+        });
+        let n3 = graph.add_node(ToContractNode {
+            id: node_index(3),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n2, n3, ToContractEdge::new_original(TTF::default()));
+        let cg = ContractionGraph::new(graph, Default::default());
+        // Check that all the 2-hop neighboors of node 0 have a cost > 0 (this is supposed to be
+        // true).
+        let node = node_index(0);
+        let cond = |n: NodeIndex, w: &ToContractNode| n == node || w.cost > OrderedFloat(0.);
+        assert!(cg.check_2_hop_neighborhood(node, cond));
+        // Check that all the 2-hop neighboors of node 0 have a cost < 2 (this is supposed to be
+        // false).
+        let cond = |_n: NodeIndex, w: &ToContractNode| w.cost < OrderedFloat(2.);
+        assert!(!cg.check_2_hop_neighborhood(node, cond));
+
+        // The condition is always true when there is no neighbor.
+        let mut graph = DiGraph::<ToContractNode, ToContractEdge<f64>>::new();
+        graph.add_node(ToContractNode {
+            id: node_index(0),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let cg = ContractionGraph::new(graph, Default::default());
+        assert!(cg.check_2_hop_neighborhood(node_index(0), |_, _| false));
+    }
+
+    #[test]
+    fn search_witness_test() {
+        // Graph is a 0 --> 1 --> 2, with weights [1, 2].
+        let mut graph = DiGraph::new();
+        let n0 = graph.add_node(ToContractNode {
+            id: node_index(0),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n1 = graph.add_node(ToContractNode {
+            id: node_index(1),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n2 = graph.add_node(ToContractNode {
+            id: node_index(2),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        // Graph weights are integers.
+        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::Constant(1.0f64)));
+        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::Constant(2.)));
+        let cg = ContractionGraph::new(graph, Default::default());
+        // The shortest path n0 -> n2 has weight 1 + 2 = 3 so there is a if and only if the cost of
+        // the edge to be contracted is smaller than 3.
+        assert!(cg
+            .search_witness(n0, n2, &TTF::Constant(4.), &mut Default::default())
+            .unwrap());
+        // Ties do not count as witnesses.
+        assert!(!cg
+            .search_witness(n0, n2, &TTF::Constant(3.), &mut Default::default())
+            .unwrap());
+        assert!(!cg
+            .search_witness(n0, n2, &TTF::Constant(2.), &mut Default::default())
+            .unwrap());
+    }
+
+    #[test]
+    fn iter_edge_pairs_test() {
+        // Graph is a + sign.
+        let mut graph = DiGraph::<ToContractNode, ToContractEdge<f64>>::new();
+        let n0 = graph.add_node(ToContractNode {
+            id: node_index(0),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n1 = graph.add_node(ToContractNode {
+            id: node_index(1),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n2 = graph.add_node(ToContractNode {
+            id: node_index(2),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n3 = graph.add_node(ToContractNode {
+            id: node_index(3),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        let n4 = graph.add_node(ToContractNode {
+            id: node_index(4),
+            depth: 0,
+            order: 0,
+            cost: OrderedFloat(0.),
+        });
+        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n1, n0, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n0, n2, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n2, n0, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n0, n3, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n3, n0, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n0, n4, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(n4, n0, ToContractEdge::new_original(TTF::default()));
+        let cg = ContractionGraph::new(graph, Default::default());
+        assert_eq!(cg.iter_remaining_edge_pairs(n0).count(), 12);
+        let pairs: HashSet<_> = cg
+            .iter_remaining_edge_pairs(n0)
+            .map(|(in_edge, out_edge)| (in_edge.source(), out_edge.target()))
+            .collect();
+        assert!(pairs.contains(&(n1, n2)));
+        assert!(pairs.contains(&(n1, n3)));
+        assert!(pairs.contains(&(n1, n4)));
+        assert!(pairs.contains(&(n2, n1)));
+        assert!(pairs.contains(&(n2, n3)));
+        assert!(pairs.contains(&(n2, n4)));
+        assert!(pairs.contains(&(n3, n1)));
+        assert!(pairs.contains(&(n3, n2)));
+        assert!(pairs.contains(&(n3, n4)));
+        assert!(pairs.contains(&(n4, n1)));
+        assert!(pairs.contains(&(n4, n2)));
+        assert!(pairs.contains(&(n4, n3)));
+    }
+}

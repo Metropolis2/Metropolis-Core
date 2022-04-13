@@ -1,0 +1,376 @@
+use crate::bidirectional_ops::{
+    BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
+};
+use crate::bidirectional_search::BidirectionalDijkstraSearch;
+use crate::bound::Bound;
+use crate::min_queue::{MinPQ, MinPriorityQueue};
+use crate::node_data::{
+    NodeData, ProfileData, ProfileIntervalDataWithExtra, ScalarData, ScalarDataWithExtra,
+};
+use crate::node_map::NodeMap;
+use crate::ops::TimeDependentDijkstra;
+use crate::query::{BidirectionalQueryRef, MultipleSourcesQuery};
+use crate::search::DijkstraSearch;
+
+use anyhow::{Context, Result};
+use either::Either;
+use hashbrown::hash_map::HashMap;
+use petgraph::graph::NodeIndex;
+use petgraph::visit::{EdgeFiltered, EdgeRef, IntoEdgesDirected};
+use ttf::{TTFNum, TTF};
+
+/// Return the metric resulting from a profile query.
+///
+/// Return `None` if no source and target can be linked.
+///
+/// # Example
+///
+/// ```
+/// use breakpoint_function::PWLFunction;
+/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch, NoPredecessor};
+/// use dijkstra::algo::profile_query;
+/// use dijkstra::bidirectional_ops::BidirectionalProfileDijkstra;
+/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use hashbrown::HashMap;
+/// use ordered_float::OrderedFloat;
+/// use petgraph::graph::{node_index, DiGraph, EdgeReference};
+/// use petgraph::visit::EdgeRef;
+/// use priority_queue::PriorityQueue;
+///
+/// let forw_search =
+///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let back_search =
+///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+/// let graph = DiGraph::<(), PWLFunction<OrderedFloat<f32>>>::from_edges(&[
+///     (
+///         0,
+///         1,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(1.)),
+///             (OrderedFloat(10.), OrderedFloat(1.)),
+///         ])
+///         .unwrap(),
+///     ),
+///     (
+///         1,
+///         2,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(2.)),
+///             (OrderedFloat(10.), OrderedFloat(2.)),
+///         ])
+///         .unwrap(),
+///     ),
+///     (
+///         0,
+///         2,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(4.)),
+///             (OrderedFloat(10.), OrderedFloat(0.)),
+///         ])
+///         .unwrap(),
+///     ),
+/// ]);
+/// let mut ops = BidirectionalProfileDijkstra::new(
+///     &graph,
+///     |e: EdgeReference<_>| &graph[e.id()],
+///     HashMap::new(),
+/// );
+/// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
+/// let label = profile_query(&mut search, &query, &mut ops);
+/// assert_eq!(
+///     label.unwrap(),
+///     Some(
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(3.)),
+///             (OrderedFloat(2.5), OrderedFloat(3.)),
+///             (OrderedFloat(10.), OrderedFloat(0.)),
+///         ])
+///         .unwrap()
+///     )
+/// );
+/// ```
+pub fn profile_query<'a, PQ1, PQ2, G1, G2, F1, F2, CM, Q, T>(
+    search: &mut BidirectionalDijkstraSearch<NodeIndex, ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
+    query: Q,
+    ops: &mut BidirectionalProfileDijkstra<G1, G2, F1, F2, T, CM>,
+) -> Result<Option<TTF<T>>>
+where
+    PQ1: MinPriorityQueue<Key = NodeIndex, Value = T>,
+    PQ2: MinPriorityQueue<Key = NodeIndex, Value = T>,
+    G1: IntoEdgesDirected<NodeId = NodeIndex>,
+    F1: Fn(G1::EdgeRef) -> &'a TTF<T>,
+    G2: IntoEdgesDirected<NodeId = NodeIndex>,
+    F2: Fn(G2::EdgeRef) -> &'a TTF<T>,
+    CM: NodeMap<Node = NodeIndex, Value = T>,
+    Q: BidirectionalQueryRef<Node = NodeIndex, Label = TTF<T>, RevLabel = TTF<T>>,
+    T: TTFNum + 'a,
+{
+    // Run the bidirectional profile search.
+    search
+        .solve_query(query, ops)
+        .context("Failed to solve query")?;
+    let candidates = ops.get_candidates();
+    if candidates.is_empty() {
+        // No candidate node -> the source and target cannot be linked.
+        return Ok(None);
+    }
+    // Store the lower bound of the candidate nodes in a priority queue, in increasing order.
+    let mut pq: MinPQ<Either<NodeIndex, usize>, T> =
+        MinPQ::with_capacity_and_default_hasher(candidates.len());
+    for (node, &lower_bound) in candidates.iter() {
+        MinPriorityQueue::push(&mut pq, Either::Left(node), lower_bound);
+    }
+    let mut i = 0;
+    // This HashMap is used to store the merged labels.
+    let mut labels = HashMap::with_capacity(candidates.len() - 1);
+    while pq.len() >= 2 {
+        // Merge the two next labels in the priority queue.
+        let label1 = match pq.pop().unwrap().0 {
+            Either::Left(n) => get_label_through(search, n),
+            Either::Right(i) => labels.remove(&i).unwrap(),
+        };
+        let label2 = match pq.pop().unwrap().0 {
+            Either::Left(n) => get_label_through(search, n),
+            Either::Right(i) => labels.remove(&i).unwrap(),
+        };
+        let merged_label = label1.merge(&label2).0;
+        // Push the merged label in the priority queue with key `i`.
+        MinPriorityQueue::push(&mut pq, Either::Right(i), merged_label.get_min());
+        labels.insert(i, merged_label);
+        i += 1;
+    }
+    // There is only one candidate left in the priority queue, we return it.
+    debug_assert_eq!(pq.len(), 1);
+    match pq.pop().unwrap().0 {
+        Either::Left(n) => Ok(Some(get_label_through(search, n))),
+        Either::Right(i) => Ok(Some(labels.remove(&i).unwrap())),
+    }
+}
+
+fn get_label_through<PQ1, PQ2, T>(
+    search: &mut BidirectionalDijkstraSearch<NodeIndex, ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
+    node: NodeIndex,
+) -> TTF<T>
+where
+    T: TTFNum,
+{
+    let flabel = search.get_forward_search().get_data(&node).unwrap().label();
+    let blabel = search
+        .get_backward_search()
+        .get_data(&node)
+        .unwrap()
+        .label();
+    flabel.link(blabel)
+}
+
+pub struct EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3> {
+    search: BidirectionalDijkstraSearch<NodeIndex, FData, BData, PQ1, PQ2>,
+    downward_search: DijkstraSearch<NodeIndex, DData, PQ3>,
+}
+
+impl<FData, BData, DData, PQ1, PQ2, PQ3>
+    EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3>
+{
+    pub fn new(
+        search: BidirectionalDijkstraSearch<NodeIndex, FData, BData, PQ1, PQ2>,
+        downward_search: DijkstraSearch<NodeIndex, DData, PQ3>,
+    ) -> Self {
+        EarliestArrivalAllocation {
+            search,
+            downward_search,
+        }
+    }
+}
+
+impl<FData, BData, DData, PQ1, PQ2, PQ3>
+    EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3>
+where
+    PQ1: MinPriorityQueue,
+    PQ2: MinPriorityQueue,
+    PQ3: MinPriorityQueue,
+{
+    pub fn reset(&mut self) {
+        self.search.reset();
+        self.downward_search.reset();
+    }
+}
+
+/// Return the arrival time and path resulting from a bidirectional earliest-arrival query.
+///
+/// Return `None` if the source and target cannot be linked.
+///
+/// This corresponds to Algorithm 4 in Batz et al. (2013)[^ref].
+///
+/// [^ref]: Batz, G. V., Geisberger, R., Sanders, P., & Vetter, C. (2013).
+///     Minimum time-dependent travel times with contraction hierarchies.
+///     _Journal of Experimental Algorithmics (JEA)_, _18_, 1-1.
+///
+/// # Example
+///
+/// ```
+/// use breakpoint_function::PWLFunction;
+/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use tch::algo::{EarliestArrivalAllocation, earliest_arrival_query};
+/// use tch::bidirectional_ops::BidirectionalTCHEA;
+/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use hashbrown::HashMap;
+/// use ordered_float::OrderedFloat;
+/// use petgraph::graph::{node_index, DiGraph, EdgeReference};
+/// use petgraph::visit::EdgeRef;
+/// use priority_queue::PriorityQueue;
+///
+/// let forw_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+/// let graph = DiGraph::<(), PWLFunction<OrderedFloat<f32>>>::from_edges(&[
+///     (
+///         0,
+///         1,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(1.)),
+///             (OrderedFloat(10.), OrderedFloat(1.)),
+///         ])
+///         .unwrap(),
+///     ),
+///     (
+///         1,
+///         2,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(2.)),
+///             (OrderedFloat(10.), OrderedFloat(2.)),
+///         ])
+///         .unwrap(),
+///     ),
+///     (
+///         0,
+///         2,
+///         PWLFunction::from_breakpoints(vec![
+///             (OrderedFloat(0.), OrderedFloat(4.)),
+///             (OrderedFloat(10.), OrderedFloat(0.)),
+///         ])
+///         .unwrap(),
+///     ),
+/// ]);
+/// let edge_label = |e: EdgeReference<_>| &graph[e.id()];
+/// let mut ops = BidirectionalTCHEA::new(
+///     &graph,
+///     edge_label,
+///     HashMap::new(),
+///     HashMap::new(),
+///     HashMap::new(),
+/// );
+/// let zero = OrderedFloat(0.);
+/// let query = BidirectionalPointToPointQuery::new(
+///     node_index(0),
+///     node_index(2),
+///     OrderedFloat(5.),
+///     [zero, zero]
+/// );
+/// let down_search =
+///     DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let mut alloc = EarliestArrivalAllocation::new(search, down_search);
+/// let results =
+///     earliest_arrival_query(&mut alloc, &query, &mut ops, &graph, edge_label);
+/// assert_eq!(
+///     results.unwrap(),
+///     Some((OrderedFloat(7.), vec![node_index(0), node_index(2)])),
+/// );
+/// ```
+pub fn earliest_arrival_query<'a, PQ1, PQ2, PQ3, G1, G2, G3, F1, F2, F3, CM, Q, T>(
+    alloc: &mut EarliestArrivalAllocation<
+        ScalarDataWithExtra<T>,
+        ProfileIntervalDataWithExtra<T>,
+        ScalarData<T>,
+        PQ1,
+        PQ2,
+        PQ3,
+    >,
+    query: Q,
+    ops: &mut BidirectionalTCHEA<G1, G2, F1, F2, T, T, CM>,
+    downward_graph: G3,
+    downward_edge_label: F3,
+) -> Result<Option<(T, Vec<NodeIndex>)>>
+where
+    PQ1: MinPriorityQueue<Key = NodeIndex, Value = T>,
+    PQ2: MinPriorityQueue<Key = NodeIndex, Value = T>,
+    PQ3: MinPriorityQueue<Key = NodeIndex, Value = T>,
+    G1: IntoEdgesDirected<NodeId = NodeIndex>,
+    F1: Fn(G1::EdgeRef) -> &'a TTF<T>,
+    G2: IntoEdgesDirected<NodeId = NodeIndex>,
+    F2: Fn(G2::EdgeRef) -> &'a TTF<T>,
+    G3: IntoEdgesDirected<NodeId = NodeIndex>,
+    F3: Fn(G3::EdgeRef) -> &'a TTF<T>,
+    CM: NodeMap<Node = NodeIndex, Value = (T, T)>,
+    Q: BidirectionalQueryRef<Node = NodeIndex, Label = T, RevLabel = [T; 2]>,
+    T: TTFNum + 'a,
+{
+    alloc.reset();
+    alloc
+        .search
+        .solve_query(query, ops)
+        .context("Failed to solve the bidirectional search")?;
+    let cone = EdgeFiltered::from_fn(downward_graph, |edge| {
+        alloc
+            .search
+            .get_backward_search()
+            .get_predecessor(&edge.source())
+            .map(|p| p.contains(&edge.target()))
+            .unwrap_or(false)
+    });
+    let mut downward_ops = TimeDependentDijkstra::new(&cone, downward_edge_label);
+    let bound = *ops.forward_ops().0.get_bound();
+    let downward_query = get_downward_query(bound, ops.get_candidates());
+    alloc
+        .downward_search
+        .solve_query(&downward_query, &mut downward_ops)
+        .context("Failed to solve the downward search")?;
+    let target = query.target().unwrap();
+    if let Some(&label) = alloc.downward_search.get_label(&target) {
+        let path = get_path(
+            target,
+            alloc.search.get_forward_search(),
+            &alloc.downward_search,
+        )
+        .context("Failed to compute the path")?;
+        Ok(Some((label, path)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_downward_query<T, CM>(bound: Bound<T>, candidates: &CM) -> MultipleSourcesQuery<NodeIndex, T>
+where
+    CM: NodeMap<Node = NodeIndex, Value = (T, T)>,
+    T: Copy + PartialOrd,
+{
+    let mut sources = Vec::with_capacity(candidates.len());
+    let mut labels = Vec::with_capacity(candidates.len());
+    for (candidate, &(min_bound, forw_score)) in candidates.iter() {
+        if !bound.is_smaller(min_bound) {
+            sources.push(candidate);
+            labels.push(forw_score);
+        }
+    }
+    MultipleSourcesQuery::new(sources, labels)
+}
+
+fn get_path<PQ1, PQ2, FData, DData>(
+    node: NodeIndex,
+    forward_search: &DijkstraSearch<NodeIndex, FData, PQ1>,
+    downward_search: &DijkstraSearch<NodeIndex, DData, PQ2>,
+) -> Result<Vec<NodeIndex>>
+where
+    FData: NodeData<Predecessor = NodeIndex>,
+    DData: NodeData<Predecessor = NodeIndex>,
+{
+    let down_path = downward_search
+        .get_path(&node)
+        .context("Failed to get downward path")?;
+    let meet_node = down_path[0];
+    let mut path = forward_search
+        .get_path(&meet_node)
+        .context("Failed to get upward path")?;
+    path.extend_from_slice(&down_path[1..]);
+    Ok(path)
+}
