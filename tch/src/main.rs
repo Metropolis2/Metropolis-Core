@@ -7,6 +7,7 @@ use priority_queue::PriorityQueue;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
+use std::io::BufReader;
 use std::path::Path;
 
 use tch::*;
@@ -17,39 +18,47 @@ pub fn main() -> Result<()> {
         .num_threads(8)
         .build_global()
         .unwrap();
-    let full = false;
-    let (graph, _node_map, edge_map) = read_network(full);
+    // let full = false;
+    // let (graph, _node_map, edge_map) = read_network(full);
     // New CH implementation.
-    println!("Reading link references.");
-    let link_refs = read_link_patterns(&edge_map, full);
-    println!("Done.");
-    println!("Reading traffic patterns.");
-    let traffic_patterns = read_traffic_patterns(&graph, &link_refs);
-    println!("Done.");
+    // println!("Reading link references.");
+    // let link_refs = read_link_patterns(&edge_map, full);
+    // println!("Done.");
+    // println!("Reading traffic patterns.");
+    // let traffic_patterns = read_traffic_patterns(&graph, &link_refs);
+    // println!("Done.");
     println!("Contracting graph.");
-    let parameters = ContractionParameters::default();
-    let ch = HierarchyOverlay::order(
-        &graph,
-        |e| traffic_patterns.get(&e).cloned().unwrap(),
-        parameters,
-    )?;
-    if false {
-        serde_json::to_writer(&File::create("node_order.json").unwrap(), &ch.get_order()).unwrap();
-    }
-    // let order = read_order();
-    let order = ch.get_order();
-    let parameters = ContractionParameters::default();
-    let ch = HierarchyOverlay::construct(
-        &graph,
-        |e| traffic_patterns.get(&e).cloned().unwrap(),
-        // |n| *order.get(&n).unwrap(),
-        |n| order[n.index()],
-        parameters,
-    )?;
+    // let parameters = ContractionParameters::default();
+    // let ch = HierarchyOverlay::order(
+    // &graph,
+    // |e| traffic_patterns.get(&e).cloned().unwrap(),
+    // // |e| TTF::Constant(traffic_patterns.get(&e).cloned().unwrap().eval(0.)),
+    // parameters,
+    // );
+    // let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay");
+    // let buffer = File::create(path).unwrap();
+    // bincode::serialize_into(buffer, &ch).unwrap();
+    // serde_json::to_writer(&File::create("node_order.json").unwrap(), &ch.get_order()).unwrap();
+    // let order = ch.get_order();
+    // let order = read_order2();
+    // let parameters = ContractionParameters::default();
+    // let ch = HierarchyOverlay::construct(
+    // &graph,
+    // |e| traffic_patterns.get(&e).cloned().unwrap(),
+    // |n| order[&n],
+    // parameters,
+    // );
+    let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay");
+    let file = File::open(path).expect("Unable to open file");
+    let reader = BufReader::new(file);
+    let ch: HierarchyOverlay<f64> =
+        bincode::deserialize_from(reader).expect("Unable to parse hierarchy overlay");
     println!("Done.");
-    if true {
+    if false {
         println!("Start");
-        let n = 100000;
+        let n = 10000;
+        let i = 0;
+        let dt = 6. * 3600.;
         let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let ea_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
@@ -57,18 +66,19 @@ pub fn main() -> Result<()> {
         let mut ea_alloc = algo::EarliestArrivalAllocation::new(ea_search, downward_search);
         let mut candidate_map = HashMap::new();
         let mut results = Vec::with_capacity(n);
-        for j in 0..n {
+        for j in 1..=n {
             if let Some((ta, _path)) = ch.earliest_arrival_query(
-                node_index(0),
+                node_index(i),
                 node_index(j),
-                0.0,
+                dt,
                 &mut ea_alloc,
                 &mut candidate_map,
             )? {
-                results.push(ta);
+                results.push(((i, j), ta));
             }
         }
         println!("End");
+        write_results(dt, results)?;
     }
     if true {
         println!("Start");
@@ -88,7 +98,7 @@ pub fn main() -> Result<()> {
                 &mut interval_search,
                 &mut profile_search,
                 &mut candidate_map,
-            )?;
+            );
             if label.is_none() {
                 println!("Invalid query, from node {} to node {}", 0, j,);
             }
@@ -99,22 +109,23 @@ pub fn main() -> Result<()> {
 }
 
 #[allow(dead_code)]
-fn write_results(tas: Vec<f64>) -> std::io::Result<()> {
+fn write_results(dt: f64, tas: Vec<((usize, usize), f64)>) -> std::io::Result<()> {
     let nb_queries = tas.len() as u32;
     let mut file = File::create("here.demands")?;
     file.write_all(b"demands\r\n")?;
     file.write_all(&nb_queries.to_ne_bytes())?;
-    for (i, ta) in tas.into_iter().enumerate() {
-        file.write_all(&0u32.to_ne_bytes())?;
-        file.write_all(&(i as u32).to_ne_bytes())?;
-        file.write_all(&0.0f64.to_ne_bytes())?;
-        file.write_all(&ta.to_ne_bytes())?;
+    for ((s, t), ta) in tas.into_iter() {
+        file.write_all(&(s as u32).to_ne_bytes())?;
+        file.write_all(&(t as u32).to_ne_bytes())?;
+        file.write_all(&(10. * dt).to_ne_bytes())?;
+        file.write_all(&(10. * ta).to_ne_bytes())?;
         file.write_all(&0u32.to_ne_bytes())?;
     }
     file.write_all(&118891828u32.to_ne_bytes())?;
     Ok(())
 }
 
+#[allow(dead_code)]
 fn read_geojson(path_str: &str) -> GeoJson {
     let path = Path::new(path_str);
     let display = path.display();
@@ -138,6 +149,7 @@ fn read_geojson(path_str: &str) -> GeoJson {
 type NodeMap = HashMap<u64, NodeIndex>;
 type EdgeMap = HashMap<(u64, String), EdgeIndex>;
 
+#[allow(dead_code)]
 fn process_nodes<E>(gj: GeoJson, graph: &mut DiGraph<u64, E>) -> NodeMap {
     let fc =
         FeatureCollection::try_from(gj).expect("Could not read node file as FeatureCollection.");
@@ -155,6 +167,7 @@ fn process_nodes<E>(gj: GeoJson, graph: &mut DiGraph<u64, E>) -> NodeMap {
     node_map
 }
 
+#[allow(dead_code)]
 fn process_edges(gj: GeoJson, graph: &mut DiGraph<u64, f64>, node_map: &NodeMap) -> EdgeMap {
     let mut edge_map = EdgeMap::new();
     let fc =
@@ -211,6 +224,7 @@ fn process_edges(gj: GeoJson, graph: &mut DiGraph<u64, f64>, node_map: &NodeMap)
     edge_map
 }
 
+#[allow(dead_code)]
 fn read_network(full: bool) -> (DiGraph<u64, f64>, NodeMap, EdgeMap) {
     println!("Reading nodes GeoJSON");
     let nodes: GeoJson;
@@ -242,6 +256,7 @@ fn read_network(full: bool) -> (DiGraph<u64, f64>, NodeMap, EdgeMap) {
     (graph, node_map, edge_map)
 }
 
+#[allow(dead_code)]
 fn read_traffic_patterns(
     graph: &DiGraph<u64, f64>,
     link_refs: &HashMap<EdgeIndex, u64>,
@@ -307,6 +322,7 @@ fn read_traffic_patterns(
     traffic_patterns
 }
 
+#[allow(dead_code)]
 fn read_link_patterns(edge_map: &EdgeMap, full: bool) -> HashMap<EdgeIndex, u64> {
     let mut link_patterns = HashMap::new();
 
@@ -382,4 +398,18 @@ fn read_order() -> HashMap<NodeIndex, usize> {
     }
 
     order
+}
+
+#[allow(dead_code)]
+fn read_order2() -> HashMap<NodeIndex, usize> {
+    let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/node_order.json");
+    let file = File::open(path).expect("Unable to open file");
+    let reader = BufReader::new(file);
+    let order: Vec<usize> =
+        serde_json::from_reader(reader).expect("Unable to parse simulation results");
+    let mut map = HashMap::with_capacity(order.len());
+    for (i, o) in order.into_iter().enumerate() {
+        map.insert(node_index(i), o);
+    }
+    map
 }

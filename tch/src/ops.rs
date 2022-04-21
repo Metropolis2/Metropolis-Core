@@ -1329,7 +1329,7 @@ mod tests {
         let mut ops = ProfileDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 
         let query = PointToPointQuery::from_default(node_index(0), node_index(4));
-        search.solve_query(&query, &mut ops).unwrap();
+        search.solve_query(&query, &mut ops);
 
         let ttf = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
             (0., 0.),
@@ -1389,7 +1389,7 @@ mod tests {
             ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 
         let query = PointToPointQuery::from_default(node_index(0), node_index(4));
-        search.solve_query(&query, &mut ops).unwrap();
+        search.solve_query(&query, &mut ops);
 
         assert_eq!(search.get_label(&node_index(4)), Some(&[0., 10.]));
     }

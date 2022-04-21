@@ -46,7 +46,7 @@ fn euler_mascheroni<V: Float>() -> Result<V> {
 /// assert_eq!(callback(), 0.8);
 /// ```
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Debug, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub struct LogitModel<V> {
     /// Uniform random number between 0.0 and 1.0 for inversion sampling.
     u: V,

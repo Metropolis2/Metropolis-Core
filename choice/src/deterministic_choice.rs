@@ -19,7 +19,7 @@ use std::fmt;
 /// assert_eq!(model.get_choice(&[0., 0., -1.]).unwrap(), (0, 0.));
 /// ```
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Debug, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub struct DeterministicChoiceModel<V> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
     u: V,

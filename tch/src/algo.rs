@@ -91,10 +91,10 @@ use ttf::{TTFNum, TTF};
 /// );
 /// ```
 pub fn profile_query<'a, PQ1, PQ2, G1, G2, F1, F2, CM, Q, T>(
-    search: &mut BidirectionalDijkstraSearch<NodeIndex, ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
+    search: &mut BidirectionalDijkstraSearch<ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
     query: Q,
     ops: &mut BidirectionalProfileDijkstra<G1, G2, F1, F2, T, CM>,
-) -> Result<Option<TTF<T>>>
+) -> Option<TTF<T>>
 where
     PQ1: MinPriorityQueue<Key = NodeIndex, Value = T>,
     PQ2: MinPriorityQueue<Key = NodeIndex, Value = T>,
@@ -107,13 +107,11 @@ where
     T: TTFNum + 'a,
 {
     // Run the bidirectional profile search.
-    search
-        .solve_query(query, ops)
-        .context("Failed to solve query")?;
+    search.solve_query(query, ops);
     let candidates = ops.get_candidates();
     if candidates.is_empty() {
         // No candidate node -> the source and target cannot be linked.
-        return Ok(None);
+        return None;
     }
     // Store the lower bound of the candidate nodes in a priority queue, in increasing order.
     let mut pq: MinPQ<Either<NodeIndex, usize>, T> =
@@ -143,13 +141,13 @@ where
     // There is only one candidate left in the priority queue, we return it.
     debug_assert_eq!(pq.len(), 1);
     match pq.pop().unwrap().0 {
-        Either::Left(n) => Ok(Some(get_label_through(search, n))),
-        Either::Right(i) => Ok(Some(labels.remove(&i).unwrap())),
+        Either::Left(n) => Some(get_label_through(search, n)),
+        Either::Right(i) => Some(labels.remove(&i).unwrap()),
     }
 }
 
 fn get_label_through<PQ1, PQ2, T>(
-    search: &mut BidirectionalDijkstraSearch<NodeIndex, ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
+    search: &mut BidirectionalDijkstraSearch<ProfileData<T>, ProfileData<T>, PQ1, PQ2>,
     node: NodeIndex,
 ) -> TTF<T>
 where
@@ -165,16 +163,16 @@ where
 }
 
 pub struct EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3> {
-    search: BidirectionalDijkstraSearch<NodeIndex, FData, BData, PQ1, PQ2>,
-    downward_search: DijkstraSearch<NodeIndex, DData, PQ3>,
+    search: BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>,
+    downward_search: DijkstraSearch<DData, PQ3>,
 }
 
 impl<FData, BData, DData, PQ1, PQ2, PQ3>
     EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3>
 {
     pub fn new(
-        search: BidirectionalDijkstraSearch<NodeIndex, FData, BData, PQ1, PQ2>,
-        downward_search: DijkstraSearch<NodeIndex, DData, PQ3>,
+        search: BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>,
+        downward_search: DijkstraSearch<DData, PQ3>,
     ) -> Self {
         EarliestArrivalAllocation {
             search,
@@ -306,10 +304,7 @@ where
     T: TTFNum + 'a,
 {
     alloc.reset();
-    alloc
-        .search
-        .solve_query(query, ops)
-        .context("Failed to solve the bidirectional search")?;
+    alloc.search.solve_query(query, ops);
     let cone = EdgeFiltered::from_fn(downward_graph, |edge| {
         alloc
             .search
@@ -319,13 +314,12 @@ where
             .unwrap_or(false)
     });
     let mut downward_ops = TimeDependentDijkstra::new(&cone, downward_edge_label);
+    let target = query.target().unwrap();
     let bound = *ops.forward_ops().0.get_bound();
-    let downward_query = get_downward_query(bound, ops.get_candidates());
+    let downward_query = get_downward_query(target, bound, ops.get_candidates());
     alloc
         .downward_search
-        .solve_query(&downward_query, &mut downward_ops)
-        .context("Failed to solve the downward search")?;
-    let target = query.target().unwrap();
+        .solve_query(&downward_query, &mut downward_ops);
     if let Some(&label) = alloc.downward_search.get_label(&target) {
         let path = get_path(
             target,
@@ -339,7 +333,11 @@ where
     }
 }
 
-fn get_downward_query<T, CM>(bound: Bound<T>, candidates: &CM) -> MultipleSourcesQuery<NodeIndex, T>
+fn get_downward_query<T, CM>(
+    target: NodeIndex,
+    bound: Bound<T>,
+    candidates: &CM,
+) -> MultipleSourcesQuery<NodeIndex, T>
 where
     CM: NodeMap<Node = NodeIndex, Value = (T, T)>,
     T: Copy + PartialOrd,
@@ -352,13 +350,13 @@ where
             labels.push(forw_score);
         }
     }
-    MultipleSourcesQuery::new(sources, labels)
+    MultipleSourcesQuery::with_target(target, sources, labels)
 }
 
 fn get_path<PQ1, PQ2, FData, DData>(
     node: NodeIndex,
-    forward_search: &DijkstraSearch<NodeIndex, FData, PQ1>,
-    downward_search: &DijkstraSearch<NodeIndex, DData, PQ2>,
+    forward_search: &DijkstraSearch<FData, PQ1>,
+    downward_search: &DijkstraSearch<DData, PQ2>,
 ) -> Result<Vec<NodeIndex>>
 where
     FData: NodeData<Predecessor = NodeIndex>,

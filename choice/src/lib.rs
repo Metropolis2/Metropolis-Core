@@ -41,7 +41,7 @@ pub type ContinuousChoiceCallback<'a, T> = Box<dyn FnOnce() -> T + 'a>;
 
 /// A choice model between a continuous number of ordered alternatives.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Debug, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub enum ContinuousChoiceModel<T> {
     /// Always choose the same alternative.
     Constant(T),

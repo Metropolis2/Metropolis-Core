@@ -158,7 +158,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         mut edge_cost: F,
         node_order: G,
         parameters: ContractionParameters,
-    ) -> Result<HierarchyOverlay<T>>
+    ) -> HierarchyOverlay<T>
     where
         F: FnMut(EdgeIndex) -> TTF<T>,
         G: Fn(NodeIndex) -> usize,
@@ -168,9 +168,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
             |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id)),
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
-        contraction
-            .construct()
-            .context("Failed to construct a HierarchyOverlay from a node order")
+        contraction.construct()
     }
 
     /// Order the nodes and construct a HierarchyOverlay from a weighted graph.
@@ -178,7 +176,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         graph: &DiGraph<N, E>,
         mut edge_cost: F,
         parameters: ContractionParameters,
-    ) -> Result<HierarchyOverlay<T>>
+    ) -> HierarchyOverlay<T>
     where
         F: FnMut(EdgeIndex) -> TTF<T>,
     {
@@ -187,9 +185,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
             |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id)),
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
-        contraction
-            .order()
-            .context("Failed to order the nodes and construct a HierarchyOverlay")
+        contraction.order()
     }
 
     /// Return the unpacked version of a path, i.e., return the path as a vector of *original*
@@ -297,16 +293,15 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         )
         .context("Failed to run the TCHEA query")?
         {
-            Ok(Some((
-                arrival_time,
-                self.unpack_path(&packed_path, departure_time)
-                    .with_context(|| {
-                        format!(
-                            "Failed to unpack path {:?} with departure time {:?}",
-                            packed_path, departure_time
-                        )
-                    })?,
-            )))
+            let unpacked_path = self
+                .unpack_path(&packed_path, departure_time)
+                .with_context(|| {
+                    format!(
+                        "Failed to unpack path {:?} with departure time {:?}",
+                        packed_path, departure_time
+                    )
+                })?;
+            Ok(Some((arrival_time, unpacked_path)))
         } else {
             Ok(None)
         }
@@ -324,21 +319,14 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         source: NodeIndex,
         target: NodeIndex,
         interval_search: &mut BidirectionalDijkstraSearch<
-            NodeIndex,
             ProfileIntervalDataWithExtra<T>,
             ProfileIntervalDataWithExtra<T>,
             PQ1,
             PQ2,
         >,
-        profile_search: &mut BidirectionalDijkstraSearch<
-            NodeIndex,
-            ProfileData<T>,
-            ProfileData<T>,
-            PQ3,
-            PQ4,
-        >,
+        profile_search: &mut BidirectionalDijkstraSearch<ProfileData<T>, ProfileData<T>, PQ3, PQ4>,
         mut candidate_map: &mut CM,
-    ) -> Result<Option<TTF<T>>>
+    ) -> Option<TTF<T>>
     where
         PQ1: MinPriorityQueue<Key = NodeIndex, Value = T>,
         PQ2: MinPriorityQueue<Key = NodeIndex, Value = T>,
@@ -359,9 +347,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
             edge_label,
             &mut candidate_map,
         );
-        interval_search
-            .solve_query(&query, &mut ops)
-            .context("Failed to run the profile interval search query")?;
+        interval_search.solve_query(&query, &mut ops);
         let bound = *ops.forward_ops().0.get_bound().get().unwrap();
         let forw_cone = self.get_cone(
             ops.get_candidates(),
@@ -388,7 +374,6 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
             candidate_map,
         );
         profile_query(profile_search, &query, &mut ops)
-            .context("Failed to run the profile search query")
     }
 
     fn get_cone<CM, D>(

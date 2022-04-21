@@ -73,7 +73,7 @@ impl<T: TTFNum> PwlTTF<T> {
                     // Do not try to add the same point again.
                     return;
                 }
-                let new_x = last_point.x.max(&p.x) + T::margin();
+                let new_x = last_point.x.max(&p.x) + T::small_margin();
                 last_point.x = last_point.x.min(&p.x);
                 debug_assert!(last_point.x < new_x);
                 self.points.push(Point { x: new_x, y: p.y });
@@ -238,13 +238,22 @@ impl<T: TTFNum> PwlTTF<T> {
         }
     }
 
-    pub fn add(&mut self, c: T) {
+    #[must_use]
+    pub fn add(&self, c: T) -> Self {
         debug_assert!(!self.is_empty());
-        self.min = Some(self.get_min() + c);
-        self.max = Some(self.get_max() + c);
-        for p in self.points.iter_mut() {
-            p.y = p.y + c;
-        }
+        let mut ttf = Self::with_capacity(self.period, self.len());
+        ttf.min = Some(self.get_min() + c);
+        ttf.max = Some(self.get_max() + c);
+        ttf.points = self
+            .points
+            .iter()
+            .map(|p| Point { x: p.x, y: p.y + c })
+            .collect();
+        // We do not need to update the buckets because they are not affected by the addition of a
+        // constant.
+        ttf.buckets = self.buckets.clone();
+        ttf.bucket_shift = self.bucket_shift;
+        ttf
     }
 
     #[allow(dead_code)]
@@ -277,6 +286,7 @@ impl<T: TTFNum> PwlTTF<T> {
         true
     }
 
+    #[allow(dead_code)]
     fn dbg_check_min(&self, f: &Self, g: &Self) -> bool {
         let mut x_values = Vec::with_capacity(f.len() + g.len() + self.len());
         for &Point { x, y: _ } in g.iter() {
@@ -557,7 +567,7 @@ pub fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDes
     debug_assert!(!h.is_empty());
     h.points.shrink_to_fit();
     h.setup_buckets();
-    debug_assert!(h.dbg_check_min(f, g));
+    // debug_assert!(h.dbg_check_min(f, g));
     (h, descr)
 }
 

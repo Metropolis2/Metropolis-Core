@@ -81,11 +81,7 @@ impl<T: TTFNum> TTF<T> {
     pub fn link(&self, other: &Self) -> Self {
         match (self, other) {
             (Self::Piecewise(f), Self::Piecewise(g)) => Self::Piecewise(pwl::link(f, g)),
-            (Self::Piecewise(f), Self::Constant(c)) => {
-                let mut h = f.clone();
-                h.add(*c);
-                Self::Piecewise(h)
-            }
+            (Self::Piecewise(f), Self::Constant(c)) => Self::Piecewise(f.add(*c)),
             (Self::Constant(c), Self::Piecewise(g)) => Self::Piecewise(pwl::link_cst_before(g, *c)),
             (Self::Constant(a), Self::Constant(b)) => Self::Constant(*a + *b),
         }
@@ -163,6 +159,14 @@ impl<T: TTFNum> TTF<T> {
                 };
                 vec![(T::zero(), pos)]
             }
+        }
+    }
+
+    #[must_use]
+    pub fn add(&self, c: T) -> Self {
+        match self {
+            Self::Piecewise(pwl_ttf) => TTF::Piecewise(pwl_ttf.add(c)),
+            Self::Constant(c0) => TTF::Constant(*c0 + c),
         }
     }
 }

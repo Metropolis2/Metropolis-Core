@@ -471,86 +471,6 @@ pub type TcheaFData<G1, F1, T> =
 pub type TcheaBData<G2, F2, T> =
     NodeDataWithExtra<<ProfileIntervalDijkstra<G2, F2, T> as DijkstraOps>::Data, Option<T>>;
 
-impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalTCHEA<G1, G2, F1, F2, T, T, CM>
-where
-    G1: GraphBase<NodeId = N> + IntoEdgesDirected,
-    F1: Fn(G1::EdgeRef) -> &'a TTF<T>,
-    G2: GraphBase<NodeId = N> + IntoEdgesDirected,
-    F2: Fn(G2::EdgeRef) -> &'a TTF<T>,
-    T: TTFNum + 'a,
-    N: IndexType,
-    CM: NodeMap<Node = N, Value = (T, T)>,
-{
-    fn propagate_stalling_forward(
-        &mut self,
-        node: N,
-        value: T,
-        data: &mut HashMap<N, TcheaFData<G1, F1, T>>,
-    ) {
-        let mut queue = VecDeque::new();
-        queue.push_front((node, value));
-        while let Some((current, stall_value)) = queue.pop_front() {
-            for edge in self.forw_ops.edges_from(current) {
-                let next = self.forw_ops.get_next_node(edge);
-                if let Some(next_data) = data.get_mut(&next) {
-                    let tt = self.forw_ops.0.get_ttf(edge).eval(stall_value);
-                    let next_stalled = stall_value + tt;
-                    if *next_data.label() <= next_stalled {
-                        continue;
-                    }
-                    match next_data.extra {
-                        Some(ref mut old_stalled) => {
-                            if next_stalled < *old_stalled {
-                                *old_stalled = next_stalled;
-                            } else {
-                                continue;
-                            }
-                        }
-                        None => {
-                            next_data.extra = Some(next_stalled);
-                        }
-                    }
-                    queue.push_back((next, next_stalled));
-                }
-            }
-        }
-    }
-
-    fn propagate_stalling_backward(
-        &mut self,
-        node: N,
-        value: T,
-        data: &mut HashMap<N, TcheaBData<G2, F2, T>>,
-    ) {
-        let mut queue = VecDeque::new();
-        queue.push_front((node, value));
-        while let Some((current, stall_value)) = queue.pop_front() {
-            for edge in self.back_ops.edges_from(current) {
-                let next = self.back_ops.get_next_node(edge);
-                if let Some(next_data) = data.get_mut(&next) {
-                    let next_stalled = stall_value + self.back_ops.0.get_ttf(edge).get_max();
-                    if next_data.label()[0] <= next_stalled {
-                        continue;
-                    }
-                    match next_data.extra {
-                        Some(ref mut old_stalled) => {
-                            if next_stalled < *old_stalled {
-                                *old_stalled = next_stalled;
-                            } else {
-                                continue;
-                            }
-                        }
-                        None => {
-                            next_data.extra = Some(next_stalled);
-                        }
-                    }
-                    queue.push_back((next, next_stalled));
-                }
-            }
-        }
-    }
-}
-
 impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalDijkstraOps
     for BidirectionalTCHEA<G1, G2, F1, F2, T, T, CM>
 where
@@ -616,7 +536,7 @@ where
         back_data: &mut HashMap<N, <Self::BOps as DijkstraOps>::Data>,
     ) -> bool {
         if let Some(key) = forw_key {
-            let node_data = forw_data.get(&node).unwrap();
+            let node_data = forw_data.get_mut(&node).unwrap();
             if node_data.extra.map(|t| t < key).unwrap_or(false) {
                 // The node is already stalled with a smaller value.
                 return true;
@@ -625,11 +545,10 @@ where
                 if let Some(prev_data) = forw_data.get(&self.back_ops.get_next_node(edge)) {
                     let tt = self.back_ops.0.get_ttf(edge).eval(*prev_data.label());
                     let arrival_time = *prev_data.label() + tt;
-                    if arrival_time < key {
+                    if arrival_time.approx_lt(&key) {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
                         forw_data.get_mut(&node).unwrap().extra = Some(arrival_time);
-                        self.propagate_stalling_forward(node, arrival_time, forw_data);
                         return true;
                     }
                 }
@@ -645,11 +564,10 @@ where
                 if let Some(prev_data) = back_data.get(&self.forw_ops.get_next_node(edge)) {
                     let upper_bound =
                         prev_data.label()[1] + self.forw_ops.0.get_ttf(edge).get_max();
-                    if upper_bound < key {
+                    if upper_bound.approx_lt(&key) {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
                         back_data.get_mut(&node).unwrap().extra = Some(upper_bound);
-                        self.propagate_stalling_backward(node, upper_bound, back_data);
                         return true;
                     }
                 }
@@ -1216,9 +1134,9 @@ mod tests {
         let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
         // Graph with two disconnected edges.
         let graph = DiGraph::<(), ()>::from_edges(&[(0, 1), (2, 3)]);
-        let mut ops = ScalarBidirectionalDijkstra::new(&graph, |_| 1.0);
+        let mut ops = ScalarBidirectionalDijkstra::new(&graph, |_| 1.0f64);
         let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(3));
-        search.solve_query(&query, &mut ops).unwrap();
+        search.solve_query(&query, &mut ops);
         assert_eq!(ops.get_score(), None);
         assert_eq!(ops.get_meeting_node(), None);
     }

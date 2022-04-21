@@ -54,7 +54,7 @@ fn profile_interval_test() {
     });
     let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
     let query = query::SingleSourceQuery::from_default(node_index(0));
-    search.solve_query(&query, &mut ops).unwrap();
+    search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30 (last departure is 85).
@@ -81,7 +81,7 @@ fn profile_interval_test() {
     // The upper bound for node n + 1 is 30 so the query stops when the next key is larger than 30.
     // The node 4 should not have been explored.
     let query = query::PointToPointQuery::from_default(node_index(0), node_index(n + 1));
-    search.solve_query(&query, &mut ops).unwrap();
+    search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
     assert_eq!(label, Some(&[25., 30.]));
     let label = search.get_label(&node_index(4));
@@ -111,7 +111,7 @@ fn thin_profile_interval_test() {
     });
     let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
     let query = query::SingleSourceQuery::from_default(node_index(0));
-    search.solve_query(&query, &mut ops).unwrap();
+    search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30 (last departure is 85).
@@ -129,20 +129,24 @@ fn hop_limit_test() {
     let n = 10;
     let graph = get_grid_network(n);
 
-    let scalar_ops = ScalarDijkstra::new_forward(&graph, |_| 1i32);
+    let scalar_ops = ScalarDijkstra::new_forward(&graph, |_| 1.0f32);
     let mut ops = ops::HopLimitedDijkstra::new(scalar_ops, 2);
     let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let query = query::SingleSourceQuery::new(node_index(0), 0);
-    search.solve_query(&query, &mut ops).unwrap();
+    let query = query::SingleSourceQuery::new(node_index(0), 0.);
+    search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
-    assert_eq!(label, Some(&2));
+    assert_eq!(label, Some(&2.));
     // Node 3 exceed the hop limit of 2.
     let label = search.get_label(&node_index(3));
-    assert_eq!(label, Some(&3));
+    assert_eq!(label, Some(&3.));
     // With unitary weights, the labels never exceed the hop limit (2).
     assert_eq!(
-        search.node_map().values().map(|v| v.label()).max(),
-        Some(&3)
+        search
+            .node_map()
+            .values()
+            .map(|v| v.label())
+            .max_by(|a, b| a.partial_cmp(b).unwrap()),
+        Some(&3.)
     );
 }
 
@@ -175,7 +179,7 @@ fn tchea_test() {
     let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
     let query =
         query::BidirectionalPointToPointQuery::new(node_index(0), node_index(n + 1), 45., [0., 0.]);
-    search.solve_query(&query, &mut ops).unwrap();
+    search.solve_query(&query, &mut ops);
     let candidates = ops.get_candidates();
     // The fastest path go through node n so it should definitely be in the map of candidates with
     // lower bound 45 + 15 * 2 = 75 and arrival at 45 + 15 = 60.
@@ -212,7 +216,7 @@ fn scalar_contraction_hierarchies_test() {
 
     let parameters = ContractionParameters::default();
 
-    let ch = HierarchyOverlay::order(&graph, |_| cst_tt.clone(), parameters).unwrap();
+    let ch = HierarchyOverlay::order(&graph, |_| cst_tt.clone(), parameters);
     println!("Order: {:?}", ch.get_order());
 
     let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
@@ -268,7 +272,6 @@ fn scalar_contraction_hierarchies_test() {
                     &mut profile_search,
                     &mut candidate_map2,
                 )
-                .unwrap()
                 .unwrap();
             assert_eq!(ttf.get_min(), tt as f64);
             assert_eq!(ttf.get_max(), tt as f64);
@@ -284,8 +287,7 @@ fn scalar_contraction_hierarchies_test() {
         |_| cst_tt.clone(),
         |node_id| order[node_id.index()],
         parameters,
-    )
-    .unwrap();
+    );
 
     for n0 in 0..(n * n - 1) {
         for n1 in 0..(n * n - 1) {
@@ -325,7 +327,6 @@ fn scalar_contraction_hierarchies_test() {
                     &mut profile_search,
                     &mut candidate_map2,
                 )
-                .unwrap()
                 .unwrap();
             assert_eq!(ttf.get_min(), tt as f64);
             assert_eq!(ttf.get_max(), tt as f64);
@@ -359,8 +360,7 @@ fn contraction_hierarchies_test() {
             }
         },
         parameters,
-    )
-    .unwrap();
+    );
     println!("Order: {:?}", ch.get_order());
     println!("Nb. nodes: {}", ch.node_count());
     println!("Nb. edges: {}", ch.edge_count());
@@ -442,26 +442,22 @@ fn contraction_hierarchies_test() {
     let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
     let mut candidate_map2 = HashMap::new();
 
-    let label = ch
-        .profile_query(
-            node_index(0),
-            node_index(1),
-            &mut profile_interval_search,
-            &mut profile_search,
-            &mut candidate_map2,
-        )
-        .unwrap();
+    let label = ch.profile_query(
+        node_index(0),
+        node_index(1),
+        &mut profile_interval_search,
+        &mut profile_search,
+        &mut candidate_map2,
+    );
     assert_eq!(label, Some(cst_tt.clone()));
 
-    let label = ch
-        .profile_query(
-            node_index(0),
-            node_index(n + 1),
-            &mut profile_interval_search,
-            &mut profile_search,
-            &mut candidate_map2,
-        )
-        .unwrap();
+    let label = ch.profile_query(
+        node_index(0),
+        node_index(n + 1),
+        &mut profile_interval_search,
+        &mut profile_search,
+        &mut candidate_map2,
+    );
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30.
     // - Go through node (0, 1), with travel time profile ([0, 5000, 10000], [25, 35, 25]).
@@ -490,8 +486,7 @@ fn contraction_hierarchies_test() {
         },
         |node_id| order[node_id.index()],
         parameters,
-    )
-    .unwrap();
+    );
 
     // assert_eq!(ch.edge_count(), ch2.edge_count());
 
@@ -557,15 +552,13 @@ fn contraction_hierarchies_test() {
     assert_eq!(path.len(), 2 * (n - 1));
     assert_ne!(path[0], edge_index(0));
 
-    let label = ch2
-        .profile_query(
-            node_index(0),
-            node_index(n + 1),
-            &mut profile_interval_search,
-            &mut profile_search,
-            &mut candidate_map2,
-        )
-        .unwrap();
+    let label = ch2.profile_query(
+        node_index(0),
+        node_index(n + 1),
+        &mut profile_interval_search,
+        &mut profile_search,
+        &mut candidate_map2,
+    );
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30.
     // - Go through node (0, 1), with travel time profile ([0, 5000, 10000], [25, 35, 25]).

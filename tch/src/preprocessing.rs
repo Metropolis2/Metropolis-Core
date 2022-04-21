@@ -9,7 +9,6 @@ use crate::ops::{
 use crate::query::PointToPointQuery;
 use crate::search::DijkstraSearch;
 
-use anyhow::{anyhow, Context, Result};
 use fixedbitset::FixedBitSet;
 use hashbrown::hash_map::{Entry, HashMap};
 use hashbrown::HashSet;
@@ -22,14 +21,6 @@ use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use ttf::{TTFNum, TTF};
-
-static mut CACHE_HIT: usize = 0;
-static mut CACHE_MISS: usize = 0;
-static mut CACHED_NO_WITNESS: usize = 0;
-static mut INTERVAL: usize = 0;
-static mut SAMPLE: usize = 0;
-static mut PROFILE: usize = 0;
-static mut NO_WITNESS: usize = 0;
 
 /// Structure that represents a set of parameters used when contracting a graph.
 #[derive(Clone, Debug)]
@@ -159,17 +150,13 @@ impl<T> ToContractEdge<T> {
     }
 }
 
-type ThinProfileIntervalDijkstraSearch<T> = DijkstraSearch<
-    NodeIndex,
-    NodeDataWithExtra<([T; 2], Option<[NodeIndex; 2]>), u8>,
-    MinPQ<NodeIndex, T>,
->;
+type ThinProfileIntervalDijkstraSearch<T> =
+    DijkstraSearch<NodeDataWithExtra<([T; 2], Option<[NodeIndex; 2]>), u8>, MinPQ<NodeIndex, T>>;
 
-type SampleDijkstraSearch<T> =
-    DijkstraSearch<NodeIndex, (T, Option<NodeIndex>), MinPQ<NodeIndex, T>>;
+type SampleDijkstraSearch<T> = DijkstraSearch<(T, Option<NodeIndex>), MinPQ<NodeIndex, T>>;
 
 type ProfileDijkstraSearch<T> =
-    DijkstraSearch<NodeIndex, (TTF<T>, Option<HashSet<NodeIndex>>), MinPQ<NodeIndex, T>>;
+    DijkstraSearch<(TTF<T>, Option<HashSet<NodeIndex>>), MinPQ<NodeIndex, T>>;
 
 struct AllocatedDijkstraData<T: PartialOrd> {
     interval_search: ThinProfileIntervalDijkstraSearch<T>,
@@ -216,7 +203,7 @@ pub struct ContractionGraph<T: PartialOrd> {
     edges: Vec<(NodeIndex, NodeIndex, HierarchyEdge<T>)>,
 }
 
-impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
+impl<T: TTFNum + Sync + Send> ContractionGraph<T> {
     /// Create a new ContractionGraph from a graph of [ToContractNode] and [ToContractEdge].
     pub fn new(
         graph: DiGraph<ToContractNode, ToContractEdge<T>>,
@@ -245,7 +232,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
 
     /// Construct a [HierarchyOverlay] from the ContractionGraph, i.e., contract all the nodes in
     /// the given hierarchy order.
-    pub fn construct(mut self) -> Result<HierarchyOverlay<T>> {
+    pub fn construct(mut self) -> HierarchyOverlay<T> {
         while self.graph.node_count() > 0 {
             // Find the largest set of independent nodes than can be contracted in parallel.
             // A node is contracted if its order is smaller than the order of all its neighbors.
@@ -266,33 +253,26 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 .collect();
             if nodes_to_contract.is_empty() {
                 let order: Vec<_> = self.graph.node_references().map(|(_, n)| n.order).collect();
-                return Err(anyhow!(
+                panic!(
                     "Invalid node order (it must be a total order): {:.50?}",
                     order
-                ));
+                );
             }
             // Contract the new batch of nodes.
             // We do not need a cache so with use an empty cache.
-            self.contract_nodes(&nodes_to_contract, &mut vec![])
-                .context("Failed to contract a new batch of nodes")?;
+            self.contract_nodes(&nodes_to_contract, &mut vec![]);
             println!(
                 "{} remaining nodes to be contracted",
                 self.graph.node_count()
             );
             println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
-            unsafe {
-                println!("INTERVAL: {}", INTERVAL);
-                // println!("SAMPLE: {}", SAMPLE);
-                // println!("PROFILE: {}", PROFILE);
-                println!("SHARE: {:?}", NO_WITNESS as f64 / INTERVAL as f64);
-            }
             self.build_remaining_graph(&nodes_to_contract);
         }
-        Ok(self.into_hierarchy_overlay())
+        self.into_hierarchy_overlay()
     }
 
     /// Order the nodes and construct a [HierarchyOverlay] from the ContractionGraph.
-    pub fn order(mut self) -> Result<HierarchyOverlay<T>> {
+    pub fn order(mut self) -> HierarchyOverlay<T> {
         println!("Starting ordering");
         // Initialize a ContractionCache.
         let mut cache = ContractionCache::new();
@@ -306,19 +286,17 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 || self.pool.pull(Default::default),
                 |alloc, (i, cache)| {
                     let node_id = node_index(i);
-                    self.get_tentative_cost(node_id, cache, alloc)
-                        .map(|cost| (node_id, cost))
+                    let cost = self.get_tentative_cost(node_id, cache, alloc);
+                    (node_id, cost)
                 },
             )
-            .collect::<Result<_>>()
-            .context("Failed to build the initial tentative costs")?;
+            .collect();
         for (node_id, cost) in costs.into_iter() {
             self.graph[node_id].cost = cost;
         }
         // Main loop.
         while self.graph.node_count() > 0 {
             // Find the largest set of independent nodes than can be contracted in parallel.
-            println!("Finding a new set of nodes to contract");
             let nodes_to_contract: HashSet<_> = self
                 .graph
                 .node_references()
@@ -341,20 +319,9 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 self.graph.node_count()
             );
             println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
-            println!("Nb remaining edges: {}", self.graph.edge_count());
-            unsafe {
-                // println!("CACHE_HIT: {}", CACHE_HIT);
-                // println!("CACHE_MISS: {}", CACHE_MISS);
-                // println!("CACHED_NO_WITNESS: {}", CACHED_NO_WITNESS);
-                println!("INTERVAL: {}", INTERVAL);
-                // println!("SAMPLE: {}", SAMPLE);
-                // println!("PROFILE: {}", PROFILE);
-                println!("SHARE: {:?}", NO_WITNESS as f64 / INTERVAL as f64);
-            }
             assert!(!nodes_to_contract.is_empty());
             // Contract a new batch of nodes.
-            self.contract_nodes(&nodes_to_contract, &mut cache)
-                .context("Failed to contract a new batch of nodes")?;
+            self.contract_nodes(&nodes_to_contract, &mut cache);
             for &node_id in nodes_to_contract.iter() {
                 // Clear the cache for this node as it is no longer needed.
                 cache[node_id.index()].clear();
@@ -372,23 +339,20 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                     |alloc, (i, cache)| {
                         if nodes_to_update.contains(&node_index(i)) {
                             let new_node_id = self.new_ids[i].unwrap();
-                            Some(
-                                self.get_tentative_cost(new_node_id, cache, alloc)
-                                    .map(|cost| (new_node_id, cost)),
-                            )
+                            let cost = self.get_tentative_cost(new_node_id, cache, alloc);
+                            Some((new_node_id, cost))
                         } else {
                             None
                         }
                     },
                 )
                 .flatten()
-                .collect::<Result<_>>()
-                .context("Failed to update the nodes' tentative costs")?;
+                .collect();
             for (node_id, cost) in new_costs.into_iter() {
                 self.graph[node_id].cost = cost;
             }
         }
-        Ok(self.into_hierarchy_overlay())
+        self.into_hierarchy_overlay()
     }
 
     /// Update the depth of the neighbor nodes of the given nodes and return a vector with all
@@ -419,7 +383,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         &mut self,
         nodes_to_contract: &HashSet<NodeIndex>,
         cache: &mut ContractionCache,
-    ) -> Result<()> {
+    ) {
         let contraction_results: Vec<_> = nodes_to_contract
             .par_iter()
             .map_init(
@@ -433,11 +397,8 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 },
             )
             .flatten()
-            .collect::<Result<_>>()
-            .context("Failed to compute the node contractions")?;
-        self.apply_contraction(contraction_results, cache)
-            .context("Failed to apply the node contractions")?;
-        Ok(())
+            .collect();
+        self.apply_contraction(contraction_results, cache);
     }
 
     /// Apply a batch of [ContractionResults], i.e., create new shortcuts and merge existing
@@ -446,23 +407,16 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         &mut self,
         contractions: Vec<ContractionResults<T>>,
         cache: &mut ContractionCache,
-    ) -> Result<()> {
+    ) {
         let mut merged_edges = HashSet::with_capacity(contractions.len());
-        let n = contractions.len();
         for (source, target, shortcut) in contractions {
             if let Some(existing_edge) = self.graph.find_edge(source, target) {
                 merged_edges.insert((self.graph[source].id, self.graph[target].id));
-                merge_edges(shortcut, &mut self.graph[existing_edge]).with_context(|| {
-                    format!(
-                        "Failed to merge a new shortcut edge with edge {:?}",
-                        existing_edge
-                    )
-                })?;
+                merge_edges(shortcut, &mut self.graph[existing_edge]);
             } else {
                 self.graph.add_edge(source, target, shortcut);
             }
         }
-        println!("New edges: {}", n - merged_edges.len());
         // Remove from the cache all entries related to edges that where merged (the entry is no
         // longer valid).
         cache
@@ -474,7 +428,6 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                         && !merged_edges.contains(&(node_index(i), v))
                 })
             });
-        Ok(())
     }
 
     fn build_remaining_graph(&mut self, nodes_to_contract: &HashSet<NodeIndex>) {
@@ -544,10 +497,9 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         node: NodeIndex,
         contraction_cache: &mut ContractionCacheEntry,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<OrderedFloat<f64>> {
-        let simulated_contraction_results = self
-            .get_simulated_node_contraction(node, contraction_cache, alloc)
-            .with_context(|| format!("Failed to simulate node contraction for node {:?}", node))?;
+    ) -> OrderedFloat<f64> {
+        let simulated_contraction_results =
+            self.get_simulated_node_contraction(node, contraction_cache, alloc);
         let nb_edges_inserted = simulated_contraction_results.len();
         // Count the number breakpoints and original edges that the new edges represent.
         let (nb_breakpoints_inserted, nb_unpacked_inserted) = simulated_contraction_results
@@ -575,13 +527,15 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 + self.parameters.unpacked_edges_quotient_weight * unpacked_edges_quotient
                 + self.parameters.complexity_quotient_weight * complexity_quotient,
         );
-        if cost.is_nan() {
-            return Err(anyhow!(
-                "Invalid cost (edge quotient: {:?}, hierarchy depth: {:?}, unpacked edges quotient: {:?}, complexity quotient: {:?})",
-                edge_quotient, hierarchy_depth, unpacked_edges_quotient, complexity_quotient
-            ));
-        }
-        Ok(cost)
+        debug_assert!(
+            cost.is_finite(),
+            "Invalid cost (quotient: {:?}, depth: {:?}, unpacked quotient: {:?}, complexity: {:?})",
+            edge_quotient,
+            hierarchy_depth,
+            unpacked_edges_quotient,
+            complexity_quotient
+        );
+        cost
     }
 
     /// Returns the number of edges, unpacked edges and breakpoints removed when the given node is
@@ -613,16 +567,13 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         node: NodeIndex,
         cache: &mut ContractionCacheEntry,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<Vec<(usize, usize)>> {
+    ) -> Vec<(usize, usize)> {
         self.iter_remaining_edge_pairs(node)
             .filter_map(|(in_edge, out_edge)| {
                 match self.get_simulated_edge_contraction(in_edge, out_edge, cache, alloc) {
-                    Ok(CachedResult::NoWitness(complexity, nb_packed)) => {
-                        Some(Ok((complexity, nb_packed)))
-                    }
-                    Err(e) => Some(Err(e).context("Failed to simulate edge contraction")),
+                    CachedResult::NoWitness(complexity, nb_packed) => Some((complexity, nb_packed)),
                     // Ignore the edge pairs for which a witness was found.
-                    Ok(_) => None,
+                    _ => None,
                 }
             })
             .collect()
@@ -636,45 +587,24 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         out_edge: EdgeReference<ToContractEdge<T>>,
         cache: &mut ContractionCacheEntry,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<CachedResult> {
+    ) -> CachedResult {
         match cache.entry((
             self.graph[in_edge.source()].id,
             self.graph[out_edge.target()].id,
         )) {
-            Entry::Occupied(e) => {
-                unsafe { CACHE_HIT += 1 };
-                if matches!(*e.get(), CachedResult::NoWitness(_, _)) {
-                    unsafe { CACHED_NO_WITNESS += 1 };
-                }
-                Ok(*e.get())
-            }
+            Entry::Occupied(e) => *e.get(),
             Entry::Vacant(e) => {
-                unsafe {
-                    CACHE_MISS += 1;
-                }
                 let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
-                if self
-                        .search_witness(
-                            in_edge.source(),
-                            out_edge.target(),
-                            &edge_score,
-                            alloc,
-                        )
-                        .with_context(|| format!(
-                            "Failed to search for a witness for score {:.50?}, from {:?} to {:?} when excluding {:?}",
-                            edge_score, in_edge.source(), out_edge.target(), in_edge.target()
-                        ))?
-                    {
-                        // Witness found.
-                        Ok(*e.insert(CachedResult::Witness))
-                    } else {
-                        unsafe { NO_WITNESS += 1 };
-                        // No witness was found, we add the shortcut edge.
-                        Ok(*e.insert(CachedResult::NoWitness(
-                            edge_score.len(),
-                            in_edge.weight().nb_packed + out_edge.weight().nb_packed,
-                        )))
-                    }
+                if self.search_witness(in_edge.source(), out_edge.target(), &edge_score, alloc) {
+                    // Witness found.
+                    *e.insert(CachedResult::Witness)
+                } else {
+                    // No witness was found, we add the shortcut edge.
+                    *e.insert(CachedResult::NoWitness(
+                        edge_score.len(),
+                        in_edge.weight().nb_packed + out_edge.weight().nb_packed,
+                    ))
+                }
             }
         }
     }
@@ -704,11 +634,10 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         node: NodeIndex,
         cache: Option<&HashMap<(NodeIndex, NodeIndex), CachedResult>>,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Vec<Result<ContractionResults<T>>> {
+    ) -> Vec<ContractionResults<T>> {
         self.iter_remaining_edge_pairs(node)
             .filter_map(|(in_edge, out_edge)| {
                 self.get_edge_contraction(in_edge, out_edge, cache, alloc)
-                    .transpose()
             })
             .collect()
     }
@@ -720,7 +649,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         out_edge: EdgeReference<'b, ToContractEdge<T>>,
         cache: Option<&HashMap<(NodeIndex, NodeIndex), CachedResult>>,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<Option<ContractionResults<T>>> {
+    ) -> Option<ContractionResults<T>> {
         let mut is_cached = false;
         match cache.and_then(|c| {
             c.get(&(
@@ -730,41 +659,20 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         }) {
             Some(CachedResult::Witness) => {
                 // The current contraction was already evaluated and a witness existed.
-                unsafe {
-                    CACHE_HIT += 1;
-                }
-                return Ok(None);
+                return None;
             }
             Some(CachedResult::NoWitness(_, _)) => {
                 // The current contraction was already evaluated and no witness was found.
-                unsafe {
-                    CACHE_HIT += 1;
-                    CACHED_NO_WITNESS += 1;
-                }
                 is_cached = true;
             }
-            None => unsafe {
-                CACHE_MISS += 1;
-            },
+            None => (),
         }
         let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
         let no_witness = if !is_cached {
-            !self.search_witness(in_edge.source(),
-                    out_edge.target(),
-                    &edge_score,
-                    alloc,
-                ).with_context(|| format!(
-                    "Failed to search for a witness for score {:.50?}, from {:?} to {:?} when excluding {:?}",
-                    edge_score, in_edge.source(), out_edge.target(), in_edge.target()
-                ))?
+            !self.search_witness(in_edge.source(), out_edge.target(), &edge_score, alloc)
         } else {
             false
         };
-        if no_witness {
-            unsafe {
-                NO_WITNESS += 1;
-            }
-        }
         if is_cached || no_witness {
             let middle_node_original_id = self.graph[in_edge.target()].id;
             let pack = vec![(T::zero(), Some(middle_node_original_id))];
@@ -774,10 +682,10 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
                 in_edge.weight().nb_packed + out_edge.weight().nb_packed,
                 pack,
             );
-            Ok(Some((in_edge.source(), out_edge.target(), shortcut)))
+            Some((in_edge.source(), out_edge.target(), shortcut))
         } else {
             // A witness was found.
-            Ok(None)
+            None
         }
     }
 
@@ -788,61 +696,49 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         to: NodeIndex,
         edge_score: &TTF<T>,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<bool> {
+    ) -> bool {
         alloc.reset();
         // Run a thin profile interval query from the source to the target, excluding the node to
         // be contracted.
-        unsafe {
-            INTERVAL += 1;
-        }
-        self.run_thin_profile_interval_query(from, to, None, alloc)
-            .context("Failed to run the thin profile interval search")?;
+        self.run_thin_profile_interval_query(from, to, None, alloc);
         if let Some(interval) = alloc.interval_search.get_label(&to) {
             if interval[1].approx_lt(&edge_score.get_min()) {
                 // No shortcut edge is needed.
-                return Ok(true);
+                return true;
             }
             // The two intervals overlap.
             let corridor = self.get_profile_interval_corridor(to, &mut alloc.interval_search);
             // Sample search.
-            unsafe {
-                SAMPLE += 1;
-            }
             if let Some(departure_time) = edge_score.middle_departure_time() {
-                self.run_sample_search(from, to, departure_time, &corridor, alloc)
-                    .context("Failed to run the sample search")?;
+                self.run_sample_search(from, to, departure_time, &corridor, alloc);
                 if let Some(alt_arrival_time) = alloc.sample_search.get_label(&to) {
                     if alt_arrival_time
                         .approx_ge(&(departure_time + edge_score.eval(departure_time)))
                     {
                         // For the first departure time, it is faster to take the edge through the
                         // contracted node so a shortcut is necessary.
-                        return Ok(false);
+                        return false;
                     }
                 } else {
-                    return Ok(false);
+                    return false;
                 }
             }
             // Profile search.
-            unsafe {
-                PROFILE += 1;
-            }
-            self.run_profile_query(from, to, &corridor, alloc)
-                .context("Failed to run the profile search")?;
+            self.run_profile_query(from, to, &corridor, alloc);
             if let Some(score) = alloc.profile_search.get_label(&to) {
                 // There is a witness only if the score of the profile query is not larger than the
                 // edge score.
                 if score.get_max().approx_lt(&edge_score.get_min()) {
-                    return Ok(true);
+                    return true;
                 }
-                let (_merged_ttf, descr) = score.merge(edge_score);
-                Ok(!descr.g_undercuts_strictly && descr.f_undercuts_strictly)
+                let (_merged_ttf, descr) = score.add(T::large_margin()).merge(edge_score);
+                !descr.g_undercuts_strictly && descr.f_undercuts_strictly
             } else {
-                Ok(false)
+                false
             }
         } else {
             // No path joining the two nodes: the shortcut is needed.
-            Ok(false)
+            false
         }
     }
 
@@ -854,7 +750,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         target: NodeIndex,
         excluded_node: Option<NodeIndex>,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<()> {
+    ) {
         let remaining_graph =
             NodeFiltered::from_fn(&self.graph, |node_id| Some(node_id) != excluded_node);
         let mut ops = HopLimitedDijkstra::new(
@@ -864,8 +760,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
             self.parameters.thin_profile_interval_hop_limit,
         );
         let query = PointToPointQuery::from_default(source, target);
-        alloc.interval_search.solve_query(&query, &mut ops)?;
-        Ok(())
+        alloc.interval_search.solve_query(&query, &mut ops);
     }
 
     /// Return the corridor resulting from a previous thin profile interval search.
@@ -899,14 +794,13 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         departure_time: T,
         corridor: &FixedBitSet,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<()> {
+    ) {
         let corridor_graph = NodeFiltered(&self.graph, corridor);
         let mut ops = TimeDependentDijkstra::new(&corridor_graph, |edge: EdgeReference<_>| {
             &self.graph[edge.id()].ttf
         });
         let query = PointToPointQuery::new(source, target, departure_time);
-        alloc.sample_search.solve_query(&query, &mut ops)?;
-        Ok(())
+        alloc.sample_search.solve_query(&query, &mut ops);
     }
 
     /// Run a profile search between `source` and `target`, using only the given corridor.
@@ -916,7 +810,7 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
         target: NodeIndex,
         corridor: &FixedBitSet,
         alloc: &mut AllocatedDijkstraData<T>,
-    ) -> Result<()> {
+    ) {
         let corridor_graph = NodeFiltered(&self.graph, corridor);
         // We do not use a hop-limit for profile search as the search is already limited by the
         // corridor.
@@ -924,16 +818,12 @@ impl<T: TTFNum + Sync + Send + serde::Serialize> ContractionGraph<T> {
             &self.graph[edge.id()].ttf
         });
         let query = PointToPointQuery::from_default(source, target);
-        alloc.profile_search.solve_query(&query, &mut ops)?;
-        Ok(())
+        alloc.profile_search.solve_query(&query, &mut ops);
     }
 }
 
 /// Merge a new shortcut edge with an existing (original or shortcut) edge.
-fn merge_edges<T: TTFNum>(
-    new_edge: ToContractEdge<T>,
-    old_edge: &mut ToContractEdge<T>,
-) -> Result<()> {
+fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContractEdge<T>) {
     debug_assert!(matches!(new_edge.class, HierarchyEdgeClass::Shortcut(_)));
     let relative_positioning = old_edge.ttf.analyze_relative_position(&new_edge.ttf);
 
@@ -944,7 +834,7 @@ fn merge_edges<T: TTFNum>(
             *old_edge = new_edge;
             old_edge.nb_packed = old_nb_packed;
         }
-        return Ok(());
+        return;
     }
 
     let new_middle_node = match new_edge.class {
@@ -1045,9 +935,9 @@ fn merge_edges<T: TTFNum>(
 
     let (merged_ttf, _) = old_edge.ttf.merge(&new_edge.ttf);
 
-    // NOTE: The number of packed edge is not exact, this is a lower bound.
+    // NOTE: The number of packed edge is not exact, this is a lower bound (the same thing is done
+    // in KaTCH.
     *old_edge = ToContractEdge::new_shortcut(merged_ttf, old_edge.nb_packed, merged_pack);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1181,16 +1071,10 @@ mod tests {
         let cg = ContractionGraph::new(graph, Default::default());
         // The shortest path n0 -> n2 has weight 1 + 2 = 3 so there is a if and only if the cost of
         // the edge to be contracted is smaller than 3.
-        assert!(cg
-            .search_witness(n0, n2, &TTF::Constant(4.), &mut Default::default())
-            .unwrap());
+        assert!(cg.search_witness(n0, n2, &TTF::Constant(4.), &mut Default::default()));
         // Ties do not count as witnesses.
-        assert!(!cg
-            .search_witness(n0, n2, &TTF::Constant(3.), &mut Default::default())
-            .unwrap());
-        assert!(!cg
-            .search_witness(n0, n2, &TTF::Constant(2.), &mut Default::default())
-            .unwrap());
+        assert!(!cg.search_witness(n0, n2, &TTF::Constant(3.), &mut Default::default()));
+        assert!(!cg.search_witness(n0, n2, &TTF::Constant(2.), &mut Default::default()));
     }
 
     #[test]

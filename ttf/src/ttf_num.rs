@@ -1,10 +1,11 @@
 use num_traits::Signed;
 
-const MARGIN32: f32 = 1e-1;
+const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
 
 pub trait TTFNum: Copy + Default + Signed + PartialOrd + std::fmt::Debug {
-    fn margin() -> Self;
+    fn small_margin() -> Self;
+    fn large_margin() -> Self;
     fn approx_eq(&self, other: &Self) -> bool;
     fn approx_ne(&self, other: &Self) -> bool {
         !self.approx_eq(other)
@@ -40,8 +41,11 @@ pub trait TTFNum: Copy + Default + Signed + PartialOrd + std::fmt::Debug {
 }
 
 impl TTFNum for f32 {
-    fn margin() -> Self {
+    fn small_margin() -> Self {
         MARGIN32
+    }
+    fn large_margin() -> Self {
+        100. * MARGIN32
     }
     fn approx_eq(&self, other: &Self) -> bool {
         (self - other).abs() < MARGIN32
@@ -61,8 +65,11 @@ impl TTFNum for f32 {
 }
 
 impl TTFNum for f64 {
-    fn margin() -> Self {
+    fn small_margin() -> Self {
         MARGIN64
+    }
+    fn large_margin() -> Self {
+        100. * MARGIN64
     }
     fn approx_eq(&self, other: &Self) -> bool {
         (self - other).abs() < MARGIN64

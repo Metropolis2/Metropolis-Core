@@ -6,61 +6,59 @@ use crate::query::*;
 use crate::search::DijkstraSearch;
 
 use anyhow::{Context, Result};
-use petgraph::{graph::IndexType, Direction};
+use petgraph::{graph::NodeIndex, Direction};
 
 /// A data structure that can be used to run bidirectional Dijkstra's algorithms.
 ///
 /// The structure holds a forward and a backward [DijkstraSearch].
-pub struct BidirectionalDijkstraSearch<N, FData, BData, PQ1, PQ2> {
-    forward_search: DijkstraSearch<N, FData, PQ1>,
-    backward_search: DijkstraSearch<N, BData, PQ2>,
+pub struct BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2> {
+    forward_search: DijkstraSearch<FData, PQ1>,
+    backward_search: DijkstraSearch<BData, PQ2>,
     current_direction: Direction,
 }
 
-impl<N, FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<N, FData, BData, PQ1, PQ2> {
+impl<FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2> {
     /// Initialize a new BidirectionalDijkstraSearch from a forward and a backward
     /// [DijkstraSearch].
     pub fn new(
-        forward_search: DijkstraSearch<N, FData, PQ1>,
-        backward_search: DijkstraSearch<N, BData, PQ2>,
+        forward_search: DijkstraSearch<FData, PQ1>,
+        backward_search: DijkstraSearch<BData, PQ2>,
     ) -> Self {
         BidirectionalDijkstraSearch {
             forward_search,
             backward_search,
-            current_direction: Direction::Outgoing,
+            current_direction: Direction::Incoming,
         }
     }
 
     /// Return a reference to the [DijkstraSearch] for the forward direction.
-    pub fn get_forward_search(&self) -> &DijkstraSearch<N, FData, PQ1> {
+    pub fn get_forward_search(&self) -> &DijkstraSearch<FData, PQ1> {
         &self.forward_search
     }
 
     /// Return a reference to the [DijkstraSearch] for the backward direction.
-    pub fn get_backward_search(&self) -> &DijkstraSearch<N, BData, PQ2> {
+    pub fn get_backward_search(&self) -> &DijkstraSearch<BData, PQ2> {
         &self.backward_search
     }
 }
 
-impl<N, FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<N, FData, BData, PQ1, PQ2>
+impl<FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>
 where
     PQ1: MinPriorityQueue,
     PQ2: MinPriorityQueue,
-    N: IndexType,
 {
     /// Reset all data structures of the BidirectionalDijkstraSearch.
     pub fn reset(&mut self) {
         self.forward_search.reset();
         self.backward_search.reset();
-        self.current_direction = Direction::Outgoing;
+        self.current_direction = Direction::Incoming;
     }
 }
 
-impl<PQ1, PQ2, N, FData, BData, FKey, BKey> BidirectionalDijkstraSearch<N, FData, BData, PQ1, PQ2>
+impl<PQ1, PQ2, FData, BData, FKey, BKey> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>
 where
-    PQ1: MinPriorityQueue<Key = N, Value = FKey>,
-    PQ2: MinPriorityQueue<Key = N, Value = BKey>,
-    N: IndexType,
+    PQ1: MinPriorityQueue<Key = NodeIndex, Value = FKey>,
+    PQ2: MinPriorityQueue<Key = NodeIndex, Value = BKey>,
     FKey: Copy,
     BKey: Copy,
 {
@@ -68,8 +66,8 @@ where
     /// [BidirectionalDijkstraOps].
     pub fn init_query<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
-        Q: BidirectionalQueryRef<Node = N, Label = FLabel, RevLabel = BLabel>,
-        O: BidirectionalDijkstraOps<Node = N>,
+        Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
+        O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
         FData: NodeData<Label = FLabel>,
@@ -93,18 +91,17 @@ where
     /// - The Key type must coincide, for both the forward and backward search.
     /// - The Label type must coincide, for both the forward and backward search.
     /// - The Predecessor type must coincide, for both the forward and backward search.
-    pub fn solve_query<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O) -> Result<()>
+    pub fn solve_query<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
-        Q: BidirectionalQueryRef<Node = N, Label = FLabel, RevLabel = BLabel>,
-        O: BidirectionalDijkstraOps<Node = N>,
+        Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
+        O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
         FData: NodeData<Label = FLabel>,
         BData: NodeData<Label = BLabel>,
     {
         self.init_query(query, ops);
-        self.solve(query, ops)?;
-        Ok(())
+        self.solve(query, ops);
     }
 
     /// Switch the direction of the search.
@@ -127,10 +124,10 @@ where
     }
 
     /// Find the next node that needs to be settled and settle it.
-    pub fn next<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O) -> Result<()>
+    pub fn next<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
-        Q: BidirectionalQueryRef<Node = N, Label = FLabel, RevLabel = BLabel>,
-        O: BidirectionalDijkstraOps<Node = N>,
+        Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
+        O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
         FData: NodeData<Label = FLabel>,
@@ -147,7 +144,7 @@ where
                         self.forward_search.node_map_mut(),
                         self.backward_search.node_map_mut(),
                     ) {
-                        return Ok(());
+                        return;
                     }
                     if let Some(back_label) = self.backward_search.get_data(&node) {
                         // The backward search has already visited this node.
@@ -161,12 +158,11 @@ where
                             query,
                         ) {
                             self.empty_queues();
-                            return Ok(());
+                            return;
                         }
                     }
                     self.forward_search
-                        .settle_node(node, key, query, ops.forward_ops())
-                        .with_context(|| format!("Failed to settle node {:?}", node))?;
+                        .settle_node(node, key, query, ops.forward_ops());
                 }
             }
             Direction::Incoming => {
@@ -178,7 +174,7 @@ where
                         self.forward_search.node_map_mut(),
                         self.backward_search.node_map_mut(),
                     ) {
-                        return Ok(());
+                        return;
                     }
                     if let Some(forw_label) = self.forward_search.get_data(&node) {
                         // The forward search has already visited this node.
@@ -192,32 +188,33 @@ where
                             query,
                         ) {
                             self.empty_queues();
-                            return Ok(());
+                            return;
                         }
                     }
-                    self.backward_search
-                        .settle_node(node, key, query.reverse(), ops.backward_ops())
-                        .with_context(|| format!("Failed to settle node {:?}", node))?;
+                    self.backward_search.settle_node(
+                        node,
+                        key,
+                        query.reverse(),
+                        ops.backward_ops(),
+                    );
                 }
             }
         }
-        Ok(())
     }
 
     /// Solve a query by settling nodes until the priority queues for both directions are empty.
-    pub fn solve<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O) -> Result<()>
+    pub fn solve<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
-        Q: BidirectionalQueryRef<Node = N, Label = FLabel, RevLabel = BLabel>,
-        O: BidirectionalDijkstraOps<Node = N>,
+        Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
+        O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
         FData: NodeData<Label = FLabel>,
         BData: NodeData<Label = BLabel>,
     {
         while !self.forward_search.is_empty() || !self.backward_search.is_empty() {
-            self.next(query, ops)?;
+            self.next(query, ops);
         }
-        Ok(())
     }
 
     /// Emtpy the priority queue of both the forward and backward search.
@@ -227,11 +224,10 @@ where
     }
 }
 
-impl<PQ1, PQ2, FData, BData, N> BidirectionalDijkstraSearch<N, FData, BData, PQ1, PQ2>
+impl<PQ1, PQ2, FData, BData> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>
 where
-    N: IndexType,
-    FData: NodeData<Predecessor = N>,
-    BData: NodeData<Predecessor = N>,
+    FData: NodeData<Predecessor = NodeIndex>,
+    BData: NodeData<Predecessor = NodeIndex>,
 {
     /// Return a path from a source to a target of the current query, given the meeting node of the
     /// forward and backward search.
@@ -239,7 +235,7 @@ where
     /// The path returned is valid only if the predecessor maps of the forward and backward
     /// searches are filled correctly and if the given meeting node is effectively a valid meeting
     /// node.
-    pub fn get_path(&self, meeting_node: N) -> Result<Vec<N>> {
+    pub fn get_path(&self, meeting_node: NodeIndex) -> Result<Vec<NodeIndex>> {
         // Forward path from a source of the forward search to the meeting node.
         let mut path = self
             .forward_search

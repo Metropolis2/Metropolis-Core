@@ -150,6 +150,7 @@ impl<N: Copy, L: Clone> Query for PointToPointQuery<N, L> {
 pub struct MultipleSourcesQuery<N, L> {
     sources: Vec<N>,
     labels: Vec<L>,
+    target: Option<N>,
 }
 
 impl<N, L> MultipleSourcesQuery<N, L> {
@@ -158,7 +159,24 @@ impl<N, L> MultipleSourcesQuery<N, L> {
     /// To get the label of a given source node, the query cycles over the labels so the number of
     /// labels can be smaller or larger than the number of source nodes.
     pub fn new(sources: Vec<N>, labels: Vec<L>) -> Self {
-        MultipleSourcesQuery { sources, labels }
+        MultipleSourcesQuery {
+            sources,
+            labels,
+            target: None,
+        }
+    }
+
+    /// Create a new [MultipleSourcesQuery] from a vector of source nodes, their initial labels and
+    /// a target node.
+    ///
+    /// To get the label of a given source node, the query cycles over the labels so the number of
+    /// labels can be smaller or larger than the number of source nodes.
+    pub fn with_target(target: N, sources: Vec<N>, labels: Vec<L>) -> Self {
+        MultipleSourcesQuery {
+            sources,
+            labels,
+            target: Some(target),
+        }
     }
 }
 
@@ -177,7 +195,7 @@ impl<N: Copy, L: Clone> Query for MultipleSourcesQuery<N, L> {
         Box::new(self.sources.iter().copied())
     }
     fn target(&self) -> Option<N> {
-        None
+        self.target
     }
     fn sources_with_labels<'a>(&'a self) -> Box<dyn Iterator<Item = (N, L)> + 'a> {
         // If there are less labels than nodes, we cycle over the labels.
