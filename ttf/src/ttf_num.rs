@@ -1,11 +1,13 @@
-use num_traits::Signed;
+use num_traits::{Float, FromPrimitive};
 
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
 
-pub trait TTFNum: Copy + Default + Signed + PartialOrd + std::fmt::Debug {
+pub trait TTFNum: Copy + Default + Float + FromPrimitive + PartialOrd + std::fmt::Debug {
     fn small_margin() -> Self;
     fn large_margin() -> Self;
+    #[must_use]
+    fn average(&self, other: &Self) -> Self;
     fn approx_eq(&self, other: &Self) -> bool;
     fn approx_ne(&self, other: &Self) -> bool {
         !self.approx_eq(other)
@@ -35,9 +37,6 @@ pub trait TTFNum: Copy + Default + Signed + PartialOrd + std::fmt::Debug {
             *other
         }
     }
-    #[must_use]
-    fn average(&self, other: &Self) -> Self;
-    fn to_usize(&self) -> usize;
 }
 
 impl TTFNum for f32 {
@@ -59,9 +58,6 @@ impl TTFNum for f32 {
     fn average(&self, other: &Self) -> Self {
         (self + other) / 2.0
     }
-    fn to_usize(&self) -> usize {
-        *self as usize
-    }
 }
 
 impl TTFNum for f64 {
@@ -82,9 +78,6 @@ impl TTFNum for f64 {
     }
     fn average(&self, other: &Self) -> Self {
         (self + other) / 2.0
-    }
-    fn to_usize(&self) -> usize {
-        *self as usize
     }
 }
 

@@ -4,21 +4,26 @@ use crate::bidirectional_ops::{
     BidirectionalTCHProfileInterval,
 };
 use crate::bidirectional_search::BidirectionalDijkstraSearch;
-use crate::min_queue::MinPriorityQueue;
+use crate::min_queue::{MinPQ, MinPriorityQueue};
 use crate::node_data::{
-    NodeData, ProfileData, ProfileIntervalDataWithExtra, ScalarData, ScalarDataWithExtra,
+    NodeData, ProfileData, ProfileIntervalData, ProfileIntervalDataWithExtra, ScalarData,
 };
 use crate::node_map::NodeMap;
+use crate::ops::{ProfileDijkstra, ProfileIntervalDijkstra};
 use crate::preprocessing::{
     ContractionGraph, ContractionParameters, ToContractEdge, ToContractNode,
 };
-use crate::query::BidirectionalPointToPointQuery;
+use crate::query::{BidirectionalPointToPointQuery, SingleSourceQuery};
+use crate::search::DijkstraSearch;
 
 use anyhow::{anyhow, Context, Result};
 use fixedbitset::FixedBitSet;
 use hashbrown::{HashMap, HashSet};
+use object_pool::Pool;
 use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
+use petgraph::Direction;
+use rayon::prelude::*;
 use std::collections::VecDeque;
 use ttf::{TTFNum, TTF};
 
@@ -254,8 +259,8 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         target: NodeIndex,
         departure_time: T,
         alloc: &mut EarliestArrivalAllocation<
-            ScalarDataWithExtra<T>,
-            ProfileIntervalDataWithExtra<T>,
+            ScalarData<T>,
+            ProfileIntervalData<T>,
             ScalarData<T>,
             PQ1,
             PQ2,
@@ -389,6 +394,7 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         // TODO: The cone returned is too large as it contains edges whose both endpoints are in
         // the fixedbitset, even though the edges do not appear in the predecessor map.
         // We should use a EdgeFiltered instead.
+        // Maybe build a hash table of successors?
         let mut bs = FixedBitSet::with_capacity(self.graph.node_count());
         let mut stack = VecDeque::new();
         for (candidate, &lb) in candidates.iter() {
@@ -407,4 +413,165 @@ impl<'a, T: TTFNum + Send + Sync + serde::Serialize> HierarchyOverlay<T> {
         }
         bs
     }
+
+    pub fn get_search_spaces(&self, nodes: &[NodeIndex]) -> SearchSpaces<T> {
+        let pool = Pool::new(rayon::current_num_threads(), Default::default);
+        nodes
+            .par_iter()
+            .map_init(
+                || pool.pull(Default::default),
+                |alloc, &node_id| {
+                    let forward_search_space =
+                        self.get_search_space_from(node_id, Direction::Outgoing, alloc);
+                    let backward_search_space =
+                        self.get_search_space_from(node_id, Direction::Incoming, alloc);
+                    (node_id, (forward_search_space, backward_search_space))
+                },
+            )
+            .collect()
+    }
+
+    fn get_search_space_from(
+        &self,
+        node: NodeIndex,
+        direction: Direction,
+        alloc: &mut AllocatedSearchSpaceData<T>,
+    ) -> SearchSpace<T> {
+        alloc.interval_search.reset();
+        alloc.profile_search.reset();
+        let interval_query = SingleSourceQuery::from_default(node);
+        let profile_query = SingleSourceQuery::from_default(node);
+        let edge_label = |e: EdgeReference<_>| &self.graph[e.id()].ttf;
+        match direction {
+            Direction::Outgoing => {
+                let graph = self.get_upward_graph();
+                let mut ops =
+                    ProfileIntervalDijkstra::new_forward_with_stall_on_demand(&graph, edge_label);
+                alloc.interval_search.solve_query(&interval_query, &mut ops);
+                let cone = EdgeFiltered::from_fn(&graph, |edge| {
+                    alloc
+                        .interval_search
+                        .get_predecessor(&edge.target())
+                        .map(|p| p.contains(&edge.source()))
+                        .unwrap_or(false)
+                });
+                let mut ops = ProfileDijkstra::new_forward(&cone, edge_label);
+                alloc.profile_search.solve_query(&profile_query, &mut ops);
+            }
+            Direction::Incoming => {
+                let graph = self.get_downward_graph();
+                let mut ops =
+                    ProfileIntervalDijkstra::new_backward_with_stall_on_demand(&graph, edge_label);
+                alloc.interval_search.solve_query(&interval_query, &mut ops);
+                let cone = EdgeFiltered::from_fn(&graph, |edge| {
+                    alloc
+                        .interval_search
+                        .get_predecessor(&edge.source())
+                        .map(|p| p.contains(&edge.target()))
+                        .unwrap_or(false)
+                });
+                let mut ops = ProfileDijkstra::new_backward(&cone, edge_label);
+                alloc.profile_search.solve_query(&profile_query, &mut ops);
+            }
+        }
+        let map = std::mem::take(alloc.profile_search.node_map_mut());
+        println!(
+            "Node {}, direction {:?}: {}",
+            node.index(),
+            direction,
+            map.len()
+        );
+        map.into_iter().map(|(k, d)| (k, d.0)).collect()
+    }
+
+    pub fn intersect_profile_query(
+        &self,
+        source: NodeIndex,
+        target: NodeIndex,
+        search_spaces: &SearchSpaces<T>,
+    ) -> Result<Option<TTF<T>>> {
+        if source == target {
+            return Ok(Some(Default::default()));
+        }
+        if let (Some(source_space), Some(target_space)) = (
+            search_spaces.get(&source).map(|(fs, _bs)| fs),
+            search_spaces.get(&target).map(|(_fs, bs)| bs),
+        ) {
+            let candidates = find_candidates(source_space, target_space);
+            if candidates.is_empty() {
+                return Ok(None);
+            }
+            let bounds: Vec<(T, T)> = candidates
+                .iter()
+                .map(|n| {
+                    // We know that both `source_space` and `target_space` contain key `n`, otherwise
+                    // `n` would not be a candidate.
+                    let source_ttf = &source_space[n];
+                    let target_ttf = &target_space[n];
+                    (
+                        source_ttf.get_min() + target_ttf.get_min(),
+                        source_ttf.get_max() + target_ttf.get_max(),
+                    )
+                })
+                .collect();
+            // Minimum upper bounds over all the candidates.
+            let mut upper_bound = bounds
+                .iter()
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .map(|(_lb, ub)| *ub)
+                .unwrap();
+            // Candidate with the minimum lower bound.
+            let min_candidate = candidates
+                .iter()
+                .zip(bounds.iter())
+                .min_by(|(_n0, a), (_n1, b)| a.0.partial_cmp(&b.0).unwrap())
+                .map(|(n, _b)| n)
+                .unwrap();
+            let mut min_ttf = source_space[min_candidate].link(&target_space[min_candidate]);
+            upper_bound = upper_bound.min(min_ttf.get_max());
+            for candidate in candidates.iter().filter(|n| *n != min_candidate) {
+                let source_ttf = &source_space[candidate];
+                let target_ttf = &target_space[candidate];
+                if (source_ttf.get_min() + target_ttf.get_min()).approx_ge(&upper_bound) {
+                    continue;
+                }
+                let ttf = source_ttf.link(target_ttf);
+                min_ttf = min_ttf.merge(&ttf).0;
+                upper_bound = upper_bound.min(min_ttf.get_max());
+            }
+            Ok(Some(min_ttf))
+        } else if !search_spaces.contains_key(&source) {
+            Err(anyhow!("No search space for node {:?}", source))
+        } else {
+            Err(anyhow!("No search space for node {:?}", target))
+        }
+    }
+}
+
+#[derive(Default)]
+struct AllocatedSearchSpaceData<T: PartialOrd + TTFNum> {
+    interval_search: DijkstraSearch<ProfileIntervalData<T>, MinPQ<NodeIndex, T>>,
+    profile_search: DijkstraSearch<ProfileData<T>, MinPQ<NodeIndex, T>>,
+}
+
+type SearchSpace<T> = HashMap<NodeIndex, TTF<T>>;
+
+type SearchSpaces<T> = HashMap<NodeIndex, (SearchSpace<T>, SearchSpace<T>)>;
+
+fn find_candidates<T>(forw_space: &SearchSpace<T>, back_space: &SearchSpace<T>) -> Vec<NodeIndex> {
+    let (smaller, larger) = if forw_space.len() <= back_space.len() {
+        (forw_space, back_space)
+    } else {
+        (back_space, forw_space)
+    };
+    smaller
+        .keys()
+        .filter_map(|n| {
+            if larger.contains_key(n) {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect()
 }

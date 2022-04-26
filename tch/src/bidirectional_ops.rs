@@ -423,8 +423,8 @@ where
 /// assert_eq!(candidates.get(&node_index(2)), Some(&(OrderedFloat(3.), OrderedFloat(3.))));
 /// ```
 pub struct BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> {
-    forw_ops: BoundedDijkstra<TimeDependentDijkstra<G1, F1, B0>>,
-    back_ops: BoundedDijkstra<ProfileIntervalDijkstra<G2, F2, B1>>,
+    forw_ops: TimeDependentDijkstra<G1, F1, B0>,
+    back_ops: ProfileIntervalDijkstra<G2, F2, B1>,
     candidates: CM,
 }
 
@@ -447,8 +447,8 @@ impl<G1, G2, F1, F2, B0, B1, CM> BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> 
         edge_label2: F2,
         candidates: CM,
     ) -> Self {
-        let forw_ops = BoundedDijkstra(TimeDependentDijkstra::new(graph1, edge_label1));
-        let back_ops = BoundedDijkstra(ProfileIntervalDijkstra::new_backward(graph2, edge_label2));
+        let forw_ops = TimeDependentDijkstra::new(graph1, edge_label1);
+        let back_ops = ProfileIntervalDijkstra::new_backward(graph2, edge_label2);
         BidirectionalTCHEA {
             forw_ops,
             back_ops,
@@ -466,10 +466,8 @@ impl<G1, G2, F1, F2, B0, B1, CM> BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> 
     }
 }
 
-pub type TcheaFData<G1, F1, T> =
-    NodeDataWithExtra<<TimeDependentDijkstra<G1, F1, T> as DijkstraOps>::Data, Option<T>>;
-pub type TcheaBData<G2, F2, T> =
-    NodeDataWithExtra<<ProfileIntervalDijkstra<G2, F2, T> as DijkstraOps>::Data, Option<T>>;
+pub type TcheaFData<G1, F1, T> = <TimeDependentDijkstra<G1, F1, T> as DijkstraOps>::Data;
+pub type TcheaBData<G2, F2, T> = <ProfileIntervalDijkstra<G2, F2, T> as DijkstraOps>::Data;
 
 impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalDijkstraOps
     for BidirectionalTCHEA<G1, G2, F1, F2, T, T, CM>
@@ -483,8 +481,8 @@ where
     CM: NodeMap<Node = N, Value = (T, T)>,
 {
     type Node = N;
-    type FOps = BoundedDijkstra<TimeDependentDijkstra<G1, F1, T>>;
-    type BOps = BoundedDijkstra<ProfileIntervalDijkstra<G2, F2, T>>;
+    type FOps = TimeDependentDijkstra<G1, F1, T>;
+    type BOps = ProfileIntervalDijkstra<G2, F2, T>;
     fn forward_ops(&mut self) -> &mut Self::FOps {
         &mut self.forw_ops
     }
@@ -509,16 +507,15 @@ where
         let forw_label = forw_data.label();
         let back_label = back_data.label();
         let earliest_ta = *forw_label + back_label[1];
-        self.forw_ops.0.update_bound(earliest_ta);
+        self.forw_ops.update_bound(earliest_ta);
         let dep_time = query
             .sources_with_labels()
             .min_by(|t0, t1| t0.partial_cmp(t1).unwrap())
             .unwrap()
             .1;
-        self.back_ops.0.update_bound(earliest_ta - dep_time);
+        self.back_ops.update_bound(earliest_ta - dep_time);
         if !self
             .forw_ops
-            .0
             .get_bound()
             .is_smaller(*forw_label + back_label[0])
         {
@@ -536,38 +533,25 @@ where
         back_data: &mut HashMap<N, <Self::BOps as DijkstraOps>::Data>,
     ) -> bool {
         if let Some(key) = forw_key {
-            let node_data = forw_data.get_mut(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
-                // The node is already stalled with a smaller value.
-                return true;
-            }
             for edge in self.back_ops.edges_from(node) {
                 if let Some(prev_data) = forw_data.get(&self.back_ops.get_next_node(edge)) {
-                    let tt = self.back_ops.0.get_ttf(edge).eval(*prev_data.label());
+                    let tt = self.back_ops.get_ttf(edge).eval(*prev_data.label());
                     let arrival_time = *prev_data.label() + tt;
                     if arrival_time.approx_lt(&key) {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
-                        forw_data.get_mut(&node).unwrap().extra = Some(arrival_time);
                         return true;
                     }
                 }
             }
             false
         } else if let Some(key) = back_key {
-            let node_data = back_data.get(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
-                // The node is already stalled with a smaller value.
-                return true;
-            }
             for edge in self.forw_ops.edges_from(node) {
                 if let Some(prev_data) = back_data.get(&self.forw_ops.get_next_node(edge)) {
-                    let upper_bound =
-                        prev_data.label()[1] + self.forw_ops.0.get_ttf(edge).get_max();
+                    let upper_bound = prev_data.label()[1] + self.forw_ops.get_ttf(edge).get_max();
                     if upper_bound.approx_lt(&key) {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
-                        back_data.get_mut(&node).unwrap().extra = Some(upper_bound);
                         return true;
                     }
                 }
@@ -656,8 +640,8 @@ where
 /// assert_eq!(candidates.get(&node_index(2)), Some(&OrderedFloat(0.)));
 /// ```
 pub struct BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
-    forw_ops: BoundedDijkstra<ProfileDijkstra<G1, F1, B>>,
-    back_ops: BoundedDijkstra<ProfileDijkstra<G2, F2, B>>,
+    forw_ops: ProfileDijkstra<G1, F1, B>,
+    back_ops: ProfileDijkstra<G2, F2, B>,
     candidates: CM,
 }
 
@@ -680,8 +664,8 @@ impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
         edge_label2: F2,
         candidates: CM,
     ) -> Self {
-        let forw_ops = BoundedDijkstra(ProfileDijkstra::new_forward(graph1, edge_label1));
-        let back_ops = BoundedDijkstra(ProfileDijkstra::new_backward(graph2, edge_label2));
+        let forw_ops = ProfileDijkstra::new_forward(graph1, edge_label1);
+        let back_ops = ProfileDijkstra::new_backward(graph2, edge_label2);
         BidirectionalTCHProfile {
             forw_ops,
             back_ops,
@@ -698,88 +682,6 @@ impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
     }
 }
 
-type TCHProfileData<G, F, T> =
-    NodeDataWithExtra<<ProfileDijkstra<G, F, T> as DijkstraOps>::Data, Option<T>>;
-
-impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalTCHProfile<G1, G2, F1, F2, T, CM>
-where
-    G1: GraphBase<NodeId = N> + IntoEdgesDirected,
-    F1: Fn(G1::EdgeRef) -> &'a TTF<T>,
-    G2: GraphBase<NodeId = N> + IntoEdgesDirected,
-    F2: Fn(G2::EdgeRef) -> &'a TTF<T>,
-    T: TTFNum + 'a,
-    N: IndexType,
-    CM: NodeMap<Node = N, Value = T>,
-{
-    fn propagate_stalling_forward(
-        &mut self,
-        node: N,
-        value: T,
-        data: &mut HashMap<N, TCHProfileData<G1, F1, T>>,
-    ) {
-        let mut queue = VecDeque::new();
-        queue.push_front((node, value));
-        while let Some((current, current_stalled)) = queue.pop_front() {
-            for edge in self.forw_ops.edges_from(current) {
-                let next = self.forw_ops.get_next_node(edge);
-                if let Some(next_data) = data.get_mut(&next) {
-                    let next_stalled = current_stalled + self.forw_ops.0.get_ttf(edge).get_max();
-                    if next_data.label().get_max() <= next_stalled {
-                        continue;
-                    }
-                    match next_data.extra {
-                        Some(ref mut old_stalled) => {
-                            if next_stalled < *old_stalled {
-                                *old_stalled = next_stalled;
-                            } else {
-                                continue;
-                            }
-                        }
-                        None => {
-                            next_data.extra = Some(next_stalled);
-                        }
-                    }
-                    queue.push_back((next, next_stalled));
-                }
-            }
-        }
-    }
-
-    fn propagate_stalling_backward(
-        &mut self,
-        node: N,
-        value: T,
-        data: &mut HashMap<N, TCHProfileData<G2, F2, T>>,
-    ) {
-        let mut queue = VecDeque::new();
-        queue.push_front((node, value));
-        while let Some((current, current_stalled)) = queue.pop_front() {
-            for edge in self.back_ops.edges_from(current) {
-                let next = self.back_ops.get_next_node(edge);
-                if let Some(next_data) = data.get_mut(&next) {
-                    let next_stalled = current_stalled + self.back_ops.0.get_ttf(edge).get_max();
-                    if next_data.label().get_max() <= next_stalled {
-                        continue;
-                    }
-                    match next_data.extra {
-                        Some(ref mut old_stalled) => {
-                            if next_stalled < *old_stalled {
-                                *old_stalled = next_stalled;
-                            } else {
-                                continue;
-                            }
-                        }
-                        None => {
-                            next_data.extra = Some(next_stalled);
-                        }
-                    }
-                    queue.push_back((next, next_stalled));
-                }
-            }
-        }
-    }
-}
-
 impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalDijkstraOps
     for BidirectionalTCHProfile<G1, G2, F1, F2, T, CM>
 where
@@ -792,8 +694,8 @@ where
     CM: NodeMap<Node = N, Value = T>,
 {
     type Node = N;
-    type FOps = BoundedDijkstra<ProfileDijkstra<G1, F1, T>>;
-    type BOps = BoundedDijkstra<ProfileDijkstra<G2, F2, T>>;
+    type FOps = ProfileDijkstra<G1, F1, T>;
+    type BOps = ProfileDijkstra<G2, F2, T>;
     fn forward_ops(&mut self) -> &mut Self::FOps {
         &mut self.forw_ops
     }
@@ -813,66 +715,14 @@ where
         // (i.e., when the travel time for the forward and backward search is equal to their upper
         // bound).
         let upper_bound = forw_data.label().get_max() + back_data.label().get_max();
-        self.forw_ops.0.update_bound(upper_bound);
-        self.back_ops.0.update_bound(upper_bound);
+        self.forw_ops.update_bound(upper_bound);
+        self.back_ops.update_bound(upper_bound);
         // Add a candidate if its lower bound is better than the best upper bound found so far.
         let lower_bound = forw_data.label().get_min() + back_data.label().get_min();
-        if !self.forw_ops.0.get_bound().is_smaller(lower_bound) {
+        if !self.forw_ops.get_bound().is_smaller(lower_bound) {
             self.candidates.insert(node, lower_bound);
         }
         false
-    }
-    fn can_be_stalled(
-        &mut self,
-        node: N,
-        forw_key: Option<T>,
-        back_key: Option<T>,
-        forw_data: &mut HashMap<N, <Self::FOps as DijkstraOps>::Data>,
-        back_data: &mut HashMap<N, <Self::BOps as DijkstraOps>::Data>,
-    ) -> bool {
-        if let Some(key) = forw_key {
-            let node_data = forw_data.get(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
-                // The node is already stalled with a smaller value.
-                return true;
-            }
-            for edge in self.back_ops.edges_from(node) {
-                if let Some(prev_data) = forw_data.get(&self.back_ops.get_next_node(edge)) {
-                    let upper_bound =
-                        prev_data.label().get_max() + self.back_ops.0.get_ttf(edge).get_max();
-                    if upper_bound < key {
-                        // The node can be stalled because the ttf for the current node is
-                        // dominated by the ttf when going through the current edge.
-                        forw_data.get_mut(&node).unwrap().extra = Some(upper_bound);
-                        self.propagate_stalling_forward(node, upper_bound, forw_data);
-                        return true;
-                    }
-                }
-            }
-            false
-        } else if let Some(key) = back_key {
-            let node_data = back_data.get(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
-                // The node is already stalled with a smaller value.
-                return true;
-            }
-            for edge in self.forw_ops.edges_from(node) {
-                if let Some(prev_data) = back_data.get(&self.forw_ops.get_next_node(edge)) {
-                    let upper_bound =
-                        prev_data.label().get_max() + self.forw_ops.0.get_ttf(edge).get_max();
-                    if upper_bound < key {
-                        // The node can be stalled because the ttf for the current node is
-                        // dominated by the ttf when going through the current edge.
-                        back_data.get_mut(&node).unwrap().extra = Some(upper_bound);
-                        self.propagate_stalling_backward(node, upper_bound, back_data);
-                        return true;
-                    }
-                }
-            }
-            false
-        } else {
-            panic!("One and only one of `forw_key` and `back_key` must be not `None`")
-        }
     }
 }
 

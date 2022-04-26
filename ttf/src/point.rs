@@ -123,8 +123,8 @@ pub fn intersection_point<T: TTFNum>(
 /// given by the equation `y = c`.
 #[inline]
 pub fn intersection_point_horizontal<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: T) -> Point<T> {
-    debug_assert!(a.y.min(&b.y).approx_le(&c));
-    debug_assert!(a.y.max(&b.y).approx_ge(&c));
+    debug_assert!(a.y.min(b.y).approx_le(&c));
+    debug_assert!(a.y.max(b.y).approx_ge(&c));
 
     let p = &Point { x: a.x, y: c };
     let q = &Point { x: b.x, y: c };
@@ -139,8 +139,8 @@ pub fn intersection_point_horizontal<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: T
         debug_assert!(intersect(a, b, p, q));
         let result = intersection_point(a, b, p, q);
         debug_assert!(c.approx_eq(&result.y));
-        debug_assert!(a.y.min(&b.y).approx_le(&result.y));
-        debug_assert!(a.y.max(&b.y).approx_ge(&result.y));
+        debug_assert!(a.y.min(b.y).approx_le(&result.y));
+        debug_assert!(a.y.max(b.y).approx_ge(&result.y));
         result
     }
 }

@@ -51,8 +51,16 @@ impl<T: TTFNum> PwlTTF<T> {
         }
     }
 
-    fn iter(&self) -> impl Iterator<Item = &Point<T>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Point<T>> {
         self.points.iter()
+    }
+
+    pub fn iter_x(&self) -> impl Iterator<Item = &T> {
+        self.iter().map(|p| &p.x)
+    }
+
+    pub fn iter_y(&self) -> impl Iterator<Item = &T> {
+        self.iter().map(|p| &p.y)
     }
 
     fn double_iter(&self) -> impl Iterator<Item = (&Point<T>, &Point<T>)> {
@@ -73,8 +81,8 @@ impl<T: TTFNum> PwlTTF<T> {
                     // Do not try to add the same point again.
                     return;
                 }
-                let new_x = last_point.x.max(&p.x) + T::small_margin();
-                last_point.x = last_point.x.min(&p.x);
+                let new_x = last_point.x.max(p.x) + T::small_margin();
+                last_point.x = last_point.x.min(p.x);
                 debug_assert!(last_point.x < new_x);
                 self.points.push(Point { x: new_x, y: p.y });
                 return;
@@ -129,9 +137,7 @@ impl<T: TTFNum> PwlTTF<T> {
     pub fn get_min(&self) -> T {
         debug_assert!(self.min.is_some());
         debug_assert!(self.min.unwrap().approx_eq(
-            &self
-                .iter()
-                .map(|&p| p.y)
+            self.iter_y()
                 .min_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap()
         ));
@@ -141,9 +147,7 @@ impl<T: TTFNum> PwlTTF<T> {
     pub fn get_max(&self) -> T {
         debug_assert!(self.max.is_some());
         debug_assert!(self.max.unwrap().approx_eq(
-            &self
-                .iter()
-                .map(|&p| p.y)
+            self.iter_y()
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap()
         ));
@@ -161,7 +165,10 @@ impl<T: TTFNum> PwlTTF<T> {
 
     fn get_bucket(&self, x: T) -> usize {
         debug_assert!(x >= self.period[0]);
-        let bucket = x.to_usize() >> self.bucket_shift;
+        let bucket = x
+            .to_usize()
+            .unwrap_or_else(|| panic!("Value cannot be represented as usize: {:?}", x))
+            >> self.bucket_shift;
         if bucket > 0 {
             bucket - 1
         } else {
@@ -202,7 +209,7 @@ impl<T: TTFNum> PwlTTF<T> {
         let index = self.buckets[bucket];
         debug_assert!(index < self.len());
         debug_assert!(index == 0 || self[index - 1].x.approx_le(&x));
-        for i in self.buckets[bucket]..self.len() {
+        for i in index..self.len() {
             if self[i].x >= x {
                 debug_assert!(i == 0 || self[i - 1].x < x);
                 return i;
@@ -212,8 +219,60 @@ impl<T: TTFNum> PwlTTF<T> {
         self.len()
     }
 
+    /// Return the index `i` such that `z_i = x_i + y_i >= z` and `z_i-1 = x_i-1 + y_i-1 < z`.
+    fn first_index_with_z_ge(&self, z: T) -> usize {
+        debug_assert!(!self.is_empty());
+        debug_assert!(
+            z >= self.period[0] + self.points[0].y
+                && z <= self.period[1] + self.points[self.len() - 1].y
+        );
+        // `x_min` is such that `x_min <= x*` where `x* + f(x*) = z`.
+        let x_min = z - self.get_max();
+        // `index` is a lower bound to the index that we search.
+        let index = if x_min >= self.period[0] {
+            let bucket = self.get_bucket(x_min);
+            self.buckets[bucket]
+        } else {
+            0
+        };
+        debug_assert!(index < self.len());
+        debug_assert!(index == 0 || (self[index - 1].x + self[index - 1].y).approx_le(&z));
+        for i in index..self.len() {
+            if self[i].x + self[i].y >= z {
+                debug_assert!(i == 0 || self[i - 1].x + self[i - 1].y < z);
+                return i;
+            }
+        }
+        debug_assert!(self[self.len() - 1].x + self[self.len() - 1].y < z);
+        self.len()
+    }
+
+    pub fn x_at_z(&self, z: T) -> T {
+        let i = self.first_index_with_z_ge(z);
+        let x = if i == 0 {
+            self[0].x
+        } else if i == self.len() {
+            panic!(
+                "Value {:?} is greater than last arrival time ({:?})",
+                z,
+                self[self.len() - 1].x + self[self.len() - 1].y
+            );
+        } else {
+            inv_linear_interp(self[i - 1], self[i], z)
+        };
+        debug_assert!((x + self.eval(x)).approx_eq(&z));
+        x
+    }
+
     fn setup_buckets(&mut self) {
-        let period_len = (self.period[1] - self.period[0]).to_usize();
+        let period_len = (self.period[1] - self.period[0])
+            .to_usize()
+            .unwrap_or_else(|| {
+                panic!(
+                    "Value cannot be represented as usize: {:?}",
+                    self.period[1] - self.period[0]
+                )
+            });
         self.bucket_shift = std::mem::size_of::<usize>() * 8 - 1;
         let n = period_len * BUCKET_SIZE / self.len();
         // Compute the position of the most significant bit of n.
@@ -259,13 +318,13 @@ impl<T: TTFNum> PwlTTF<T> {
     #[allow(dead_code)]
     fn dbg_check_link(&self, f: &Self, g: &Self) -> bool {
         let mut x_values = Vec::with_capacity(f.len() + g.len() + self.len());
-        for &Point { x, y: _ } in g.iter() {
+        for &x in g.iter_x() {
             x_values.push(x);
         }
-        for &Point { x, y: _ } in f.iter() {
+        for &x in f.iter_x() {
             x_values.push(x);
         }
-        for &Point { x, y: _ } in self.iter() {
+        for &x in self.iter_x() {
             x_values.push(x);
         }
 
@@ -289,26 +348,26 @@ impl<T: TTFNum> PwlTTF<T> {
     #[allow(dead_code)]
     fn dbg_check_min(&self, f: &Self, g: &Self) -> bool {
         let mut x_values = Vec::with_capacity(f.len() + g.len() + self.len());
-        for &Point { x, y: _ } in g.iter() {
+        for &x in g.iter_x() {
             x_values.push(x);
         }
-        for &Point { x, y: _ } in f.iter() {
+        for &x in f.iter_x() {
             x_values.push(x);
         }
-        for &Point { x, y: _ } in self.iter() {
+        for &x in self.iter_x() {
             x_values.push(x);
         }
 
         for x in x_values {
             let result = self.eval(x);
-            let expected_result = f.eval(x).min(&g.eval(x));
+            let expected_result = f.eval(x).min(g.eval(x));
             debug_assert!(
                 result.approx_eq(&expected_result),
                 "h(x) = {:?} != min(f(x), g(x)) = min({:?}, {:?}) = {:?}",
                 self.eval(x),
                 f.eval(x),
                 g.eval(x),
-                f.eval(x).min(&g.eval(x))
+                f.eval(x).min(g.eval(x))
             );
         }
 
@@ -441,7 +500,7 @@ pub fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDes
     debug_assert_eq!(g[0].x, h.period[0]);
     h.append_point(Point {
         x: h.period[0],
-        y: f[0].y.min(&g[0].y),
+        y: f[0].y.min(g[0].y),
     });
 
     let mut i = 1;
@@ -599,7 +658,7 @@ pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescript
     debug_assert_eq!(f[0].x, h.period[0]);
     h.append_point(Point {
         x: h.period[0],
-        y: f[0].y.min(&c),
+        y: f[0].y.min(c),
     });
 
     for i in 1..f.len() {
@@ -694,7 +753,7 @@ pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec
             } else if rotation(&g[j - 1], &f[i - 1], &g[j]) == Rotation::Colinear
                 && rotation(&f[i - 1], &g[j - 1], &f[i]) == Rotation::Colinear
             {
-                f[i - 1].x.max(&g[j - 1].x)
+                f[i - 1].x.max(g[j - 1].x)
             } else if rotation(&g[j - 1], &f[i - 1], &g[j]) == Rotation::Colinear {
                 f[i - 1].x
             } else if rotation(&f[i - 1], &g[j - 1], &f[i]) == Rotation::Colinear {

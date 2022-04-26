@@ -4,9 +4,7 @@ use crate::bidirectional_ops::{
 use crate::bidirectional_search::BidirectionalDijkstraSearch;
 use crate::bound::Bound;
 use crate::min_queue::{MinPQ, MinPriorityQueue};
-use crate::node_data::{
-    NodeData, ProfileData, ProfileIntervalDataWithExtra, ScalarData, ScalarDataWithExtra,
-};
+use crate::node_data::{NodeData, ProfileData, ProfileIntervalData, ScalarData};
 use crate::node_map::NodeMap;
 use crate::ops::TimeDependentDijkstra;
 use crate::query::{BidirectionalQueryRef, MultipleSourcesQuery};
@@ -277,8 +275,8 @@ where
 /// ```
 pub fn earliest_arrival_query<'a, PQ1, PQ2, PQ3, G1, G2, G3, F1, F2, F3, CM, Q, T>(
     alloc: &mut EarliestArrivalAllocation<
-        ScalarDataWithExtra<T>,
-        ProfileIntervalDataWithExtra<T>,
+        ScalarData<T>,
+        ProfileIntervalData<T>,
         ScalarData<T>,
         PQ1,
         PQ2,
@@ -315,7 +313,7 @@ where
     });
     let mut downward_ops = TimeDependentDijkstra::new(&cone, downward_edge_label);
     let target = query.target().unwrap();
-    let bound = *ops.forward_ops().0.get_bound();
+    let bound = *ops.forward_ops().get_bound();
     let downward_query = get_downward_query(target, bound, ops.get_candidates());
     alloc
         .downward_search

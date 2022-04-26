@@ -54,9 +54,27 @@ pub fn main() -> Result<()> {
     let ch: HierarchyOverlay<f64> =
         bincode::deserialize_from(reader).expect("Unable to parse hierarchy overlay");
     println!("Done.");
+    if true {
+        println!("Computing search spaces");
+        let n = 50;
+        let nodes: Vec<_> = (0..n).into_iter().map(node_index).collect();
+        let search_spaces = ch.get_search_spaces(&nodes);
+        println!("Done");
+        println!("Computing profile queries");
+        for i in 0..n {
+            for j in 0..n {
+                let label =
+                    ch.intersect_profile_query(node_index(i), node_index(j), &search_spaces)?;
+                if label.is_none() {
+                    println!("Invalid query, from node {} to node {}", i, j,);
+                }
+            }
+        }
+        println!("Done");
+    }
     if false {
         println!("Start");
-        let n = 10000;
+        let n = 100000;
         let i = 0;
         let dt = 6. * 3600.;
         let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
@@ -80,7 +98,7 @@ pub fn main() -> Result<()> {
         println!("End");
         write_results(dt, results)?;
     }
-    if true {
+    if false {
         println!("Start");
         let n = 1000;
         let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());

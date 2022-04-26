@@ -4,7 +4,7 @@ use crate::bound::Bound;
 use crate::node_data::{NodeData, NodeDataWithExtra};
 use crate::query::Query;
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use petgraph::graph::IndexType;
 use petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use petgraph::Direction;
@@ -68,7 +68,12 @@ pub trait DijkstraOps {
     ) {
     }
     /// Return `true` if a node can be skipped.
-    fn skip_node(&self, _node: Self::Node, _node_data: &Self::Data) -> bool {
+    fn skip_node<D: NodeData<Label = <Self::Data as NodeData>::Label>>(
+        &self,
+        _node: Self::Node,
+        _node_data: &Self::Data,
+        _data: &HashMap<Self::Node, D>,
+    ) -> bool {
         false
     }
     /// Return `true` if the Dijkstra search can stop just before the given node is being settled,
@@ -705,47 +710,79 @@ pub struct ProfileIntervalDijkstra<G, F, T> {
     edge_label: F,
     direction: Direction,
     bound: Bound<T>,
+    stalling: bool,
 }
 
 impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
     /// Initialize a new ProfileIntervalDijkstra instance of a given direction.
-    fn new(graph: G, edge_label: F, direction: Direction) -> Self {
+    fn new(graph: G, edge_label: F, direction: Direction, stalling: bool) -> Self {
         ProfileIntervalDijkstra {
             graph,
             edge_label,
             direction,
             bound: Bound::new(),
+            stalling,
         }
     }
 
     /// Initialize a new ProfileIntervalDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing)
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, false)
     }
 
     /// Initialize a new ProfileIntervalDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming)
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, false)
     }
 
     /// Initialize a new ProfileIntervalDijkstra instance of a given direction with a bound.
-    fn new_with_bound(graph: G, edge_label: F, direction: Direction, bound: T) -> Self {
+    fn new_with_bound(
+        graph: G,
+        edge_label: F,
+        direction: Direction,
+        bound: T,
+        stalling: bool,
+    ) -> Self {
         ProfileIntervalDijkstra {
             graph,
             edge_label,
             direction,
             bound: Bound::from_value(bound),
+            stalling,
         }
     }
 
     /// Initialize a new ProfileIntervalDijkstra instance for a forward search with a bound.
     pub fn new_forward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
-        ProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Outgoing, bound)
+        ProfileIntervalDijkstra::new_with_bound(
+            graph,
+            edge_label,
+            Direction::Outgoing,
+            bound,
+            false,
+        )
     }
 
     /// Initialize a new ProfileIntervalDijkstra instance for a backward search with a bound.
     pub fn new_backward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
-        ProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Incoming, bound)
+        ProfileIntervalDijkstra::new_with_bound(
+            graph,
+            edge_label,
+            Direction::Incoming,
+            bound,
+            false,
+        )
+    }
+
+    /// Initialize a new ProfileIntervalDijkstra instance for a forward search with stall-on-demand.
+    pub fn new_forward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, true)
+    }
+
+    /// Initialize a new ProfileIntervalDijkstra instance for a backward search with
+    /// stall-on-demand.
+    pub fn new_backward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, true)
     }
 
     /// Return a reference to the current bound of the ops.
@@ -757,6 +794,37 @@ impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
 impl<G, F, T: Copy + PartialOrd> ProfileIntervalDijkstra<G, F, T> {
     pub fn update_bound(&mut self, value: T) {
         self.bound.update(value);
+    }
+}
+
+impl<'a, G, F, T> ProfileIntervalDijkstra<G, F, T>
+where
+    G: IntoEdgesDirected,
+    F: Fn(G::EdgeRef) -> &'a TTF<T>,
+    T: TTFNum + 'a,
+    G::NodeId: Eq + Hash,
+{
+    fn can_be_stalled<D: NodeData<Label = [T; 2]>>(
+        &self,
+        node: G::NodeId,
+        node_data: &([T; 2], Option<HashSet<G::NodeId>>),
+        data: &HashMap<G::NodeId, D>,
+    ) -> bool {
+        for edge in self.graph.edges_directed(node, self.direction.opposite()) {
+            let other_node = match self.direction {
+                Direction::Outgoing => edge.source(),
+                Direction::Incoming => edge.target(),
+            };
+            if let Some(prev_data) = data.get(&other_node) {
+                let upper_bound = prev_data.label()[1] + (self.edge_label)(edge).get_max();
+                if upper_bound.approx_lt(&node_data.label()[0]) {
+                    // The node can be stalled because the arrival time at the current node
+                    // can be improved by going through the current edge.
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -870,6 +938,14 @@ where
         if query.target() == Some(v) {
             self.bound.update(v_data.0[1]);
         }
+    }
+    fn skip_node<D: NodeData<Label = [T; 2]>>(
+        &self,
+        node: G::NodeId,
+        node_data: &Self::Data,
+        data: &HashMap<G::NodeId, D>,
+    ) -> bool {
+        !self.stalling || self.can_be_stalled(node, node_data, data)
     }
 }
 
@@ -1201,8 +1277,13 @@ where
         }
         (self.ops).is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
     }
-    fn skip_node(&self, node: Self::Node, data: &NodeDataWithExtra<O::Data, u8>) -> bool {
-        data.extra > self.hop_limit || (self.ops).skip_node(node, &data.data)
+    fn skip_node<D: NodeData<Label = <O::Data as NodeData>::Label>>(
+        &self,
+        node: Self::Node,
+        node_data: &NodeDataWithExtra<O::Data, u8>,
+        data: &HashMap<Self::Node, D>,
+    ) -> bool {
+        node_data.extra > self.hop_limit || (self.ops).skip_node(node, &node_data.data, data)
     }
 }
 
@@ -1265,8 +1346,13 @@ where
     ) {
         (self.0).is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
     }
-    fn skip_node(&self, node: Self::Node, data: &Self::Data) -> bool {
-        (self.0).skip_node(node, &data.data)
+    fn skip_node<D: NodeData<Label = <Self::Data as NodeData>::Label>>(
+        &self,
+        node: Self::Node,
+        node_data: &Self::Data,
+        data: &HashMap<Self::Node, D>,
+    ) -> bool {
+        (self.0).skip_node(node, &node_data.data, data)
     }
 }
 

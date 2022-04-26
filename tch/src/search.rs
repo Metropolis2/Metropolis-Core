@@ -143,7 +143,7 @@ where
         // We want to access data for `node` without borrowing `self.data` so we remove the data
         // from the HashMap.
         let node_data = self.data.remove(&node).unwrap();
-        if ops.skip_node(node, &node_data) {
+        if ops.skip_node(node, &node_data, &self.data) {
             debug_assert!(!self.data.contains_key(&node));
             self.data.insert(node, node_data);
             return;

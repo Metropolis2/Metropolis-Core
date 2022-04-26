@@ -77,6 +77,13 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    pub fn departure_time_with_arrival(&self, z: T) -> T {
+        match self {
+            Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
+            Self::Constant(c) => z - *c,
+        }
+    }
+
     #[must_use]
     pub fn link(&self, other: &Self) -> Self {
         match (self, other) {
@@ -135,7 +142,7 @@ impl<T: TTFNum> TTF<T> {
                     f_undercuts_strictly: a.approx_lt(&b),
                     g_undercuts_strictly: b.approx_lt(&a),
                 };
-                (Self::Constant(a.min(&b)), descr)
+                (Self::Constant(a.min(b)), descr)
             }
         }
     }
