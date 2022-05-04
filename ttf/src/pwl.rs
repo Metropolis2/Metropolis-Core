@@ -22,22 +22,32 @@ impl<T: TTFNum> PwlTTF<T> {
     pub fn from_x_and_y(x: Vec<T>, y: Vec<T>) -> Self {
         assert_eq!(x.len(), y.len());
         let period = [x[0], x[x.len() - 1]];
-        let mut ttf = Self::with_capacity(period, x.len());
-        for (x, y) in x.into_iter().zip(y.into_iter()) {
+        Self::from_iterator(x.into_iter().zip(y.into_iter()), period)
+    }
+
+    pub fn from_breakpoints(points: Vec<(T, T)>) -> Self {
+        let period = [points[0].0, points[points.len() - 1].0];
+        Self::from_iterator(points.into_iter(), period)
+    }
+
+    pub fn from_iterator(iter: impl Iterator<Item = (T, T)>, period: [T; 2]) -> Self {
+        let mut ttf = PwlTTF::new(period);
+        for (x, y) in iter {
             ttf.append_point(Point { x, y });
         }
         ttf.setup_buckets();
         ttf
     }
 
-    pub fn from_breakpoints(points: Vec<(T, T)>) -> Self {
-        let period = [points[0].0, points[points.len() - 1].0];
-        let mut ttf = Self::with_capacity(period, points.len());
-        for (x, y) in points.into_iter() {
-            ttf.append_point(Point { x, y });
+    fn new(period: [T; 2]) -> Self {
+        PwlTTF {
+            points: Vec::new(),
+            min: None,
+            max: None,
+            period,
+            buckets: Vec::with_capacity(BUCKET_SIZE),
+            bucket_shift: 0,
         }
-        ttf.setup_buckets();
-        ttf
     }
 
     fn with_capacity(period: [T; 2], capacity: usize) -> Self {
@@ -49,6 +59,10 @@ impl<T: TTFNum> PwlTTF<T> {
             buckets: Vec::with_capacity(BUCKET_SIZE),
             bucket_shift: 0,
         }
+    }
+
+    pub fn period(&self) -> &[T; 2] {
+        &self.period
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Point<T>> {
@@ -63,7 +77,7 @@ impl<T: TTFNum> PwlTTF<T> {
         self.iter().map(|p| &p.y)
     }
 
-    fn double_iter(&self) -> impl Iterator<Item = (&Point<T>, &Point<T>)> {
+    pub fn double_iter(&self) -> impl Iterator<Item = (&Point<T>, &Point<T>)> {
         self.points.iter().zip(self.points[1..].iter())
     }
 
@@ -106,9 +120,14 @@ impl<T: TTFNum> PwlTTF<T> {
     }
 
     fn update_min_max(&mut self, y: T) {
-        if self.min.is_none() || y < self.min.unwrap() {
+        if self.min.is_none() {
+            assert!(self.max.is_none());
             self.min = Some(y);
-        } else if self.max.is_none() || y > self.max.unwrap() {
+            self.max = Some(y);
+        }
+        if y < self.min.unwrap() {
+            self.min = Some(y);
+        } else if y > self.max.unwrap() {
             self.max = Some(y);
         }
     }
@@ -299,20 +318,58 @@ impl<T: TTFNum> PwlTTF<T> {
 
     #[must_use]
     pub fn add(&self, c: T) -> Self {
+        self.apply(|y| y + c)
+    }
+
+    #[must_use]
+    pub fn apply<F: Fn(T) -> T>(&self, func: F) -> Self {
         debug_assert!(!self.is_empty());
         let mut ttf = Self::with_capacity(self.period, self.len());
-        ttf.min = Some(self.get_min() + c);
-        ttf.max = Some(self.get_max() + c);
+        ttf.min = Some(func(self.get_min()));
+        ttf.max = Some(func(self.get_max()));
         ttf.points = self
             .points
             .iter()
-            .map(|p| Point { x: p.x, y: p.y + c })
+            .map(|p| Point {
+                x: p.x,
+                y: func(p.y),
+            })
             .collect();
-        // We do not need to update the buckets because they are not affected by the addition of a
-        // constant.
+        // We do not need to update the buckets because the `x` values did not change.
         ttf.buckets = self.buckets.clone();
         ttf.bucket_shift = self.bucket_shift;
         ttf
+    }
+
+    /// Simplify the PWL function using Reumann-Witkam simplification.
+    pub fn approximate(&mut self, error: T) {
+        if self.len() <= 2 {
+            return;
+        }
+        let mut current_segment = [self[0], self[1]];
+        let mut ids_to_keep = Vec::with_capacity(self.len());
+        ids_to_keep.push(0);
+        for (current_id, (p0, p1)) in self.double_iter().enumerate().skip(1) {
+            if !segment_contains(current_segment, error, p1) {
+                ids_to_keep.push(current_id);
+                // Update the segment.
+                current_segment = [*p0, *p1];
+            }
+        }
+        // Always keep the last point.
+        ids_to_keep.push(self.len() - 1);
+        if ids_to_keep.len() == self.len() {
+            return;
+        }
+        self.min = None;
+        self.max = None;
+        let mut new_points = Vec::with_capacity(ids_to_keep.len());
+        for &id in ids_to_keep.iter() {
+            new_points.push(self[id]);
+            self.update_min_max(self[id].y);
+        }
+        self.points = new_points;
+        self.setup_buckets();
     }
 
     #[allow(dead_code)]
@@ -901,6 +958,79 @@ pub fn analyze_relative_position_to_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> Vec<(
     debug_assert_eq!(results[0].0, f.period[0]);
 
     results
+}
+
+fn segment_contains<T: TTFNum>(segment: [Point<T>; 2], error: T, p: &Point<T>) -> bool {
+    // Coefficient of the segment.
+    let b = (segment[1].y - segment[0].y) / (segment[1].x - segment[0].x);
+    // Value of Y at origin for the segment.
+    let a = segment[0].y - b * segment[0].x;
+    let dist = (p.y - b * p.x - a).abs();
+    dist <= error
+}
+
+pub fn apply<T: TTFNum, F: Fn(T, T) -> T>(f: &PwlTTF<T>, g: &PwlTTF<T>, func: F) -> PwlTTF<T> {
+    debug_assert!(!f.is_empty());
+    debug_assert!(!g.is_empty());
+    debug_assert_eq!(f.period, g.period);
+
+    let mut h = PwlTTF::with_capacity(f.period, f.len() + g.len());
+
+    debug_assert_eq!(f[0].x, h.period[0]);
+    debug_assert_eq!(g[0].x, h.period[0]);
+    h.append_point(Point {
+        x: h.period[0],
+        y: func(f[0].y, g[0].y),
+    });
+
+    let mut i = 1;
+    let mut j = 1;
+
+    while i < f.len() && j < g.len() {
+        if f[i].x.approx_eq(&g[j].x) {
+            h.append_point(Point {
+                x: f[i].x,
+                y: func(f[i].y, g[j].y),
+            });
+            i += 1;
+            j += 1;
+        } else if f[i].x < g[j].x {
+            h.append_point(Point {
+                x: f[i].x,
+                y: func(f[i].y, g.eval(f[i].x)),
+            });
+            i += 1;
+        } else {
+            h.append_point(Point {
+                x: g[j].x,
+                y: func(f.eval(g[j].x), g[j].y),
+            });
+            j += 1;
+        }
+    }
+
+    let last_y_from_other = if i < f.len() {
+        g[g.len() - 1].y
+    } else {
+        f[f.len() - 1].y
+    };
+    for i in i..f.len() {
+        h.append_point(Point {
+            x: f[i].x,
+            y: func(f[i].y, last_y_from_other),
+        });
+    }
+    for j in j..g.len() {
+        h.append_point(Point {
+            x: g[j].x,
+            y: func(last_y_from_other, g[j].y),
+        });
+    }
+
+    debug_assert!(!h.is_empty());
+    h.points.shrink_to_fit();
+    h.setup_buckets();
+    h
 }
 
 #[cfg(test)]

@@ -9,74 +9,105 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::Path;
+use std::time::Instant;
 
 use tch::*;
 use ttf::{PwlTTF, TTF};
+
+#[allow(dead_code)]
+enum Input {
+    Ordering,
+    Construction,
+    Import,
+}
 
 pub fn main() -> Result<()> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(8)
         .build_global()
         .unwrap();
-    // let full = false;
-    // let (graph, _node_map, edge_map) = read_network(full);
+    let full = false;
+    let (graph, _node_map, edge_map) = read_network(full);
     // New CH implementation.
-    // println!("Reading link references.");
-    // let link_refs = read_link_patterns(&edge_map, full);
-    // println!("Done.");
-    // println!("Reading traffic patterns.");
-    // let traffic_patterns = read_traffic_patterns(&graph, &link_refs);
-    // println!("Done.");
-    println!("Contracting graph.");
-    // let parameters = ContractionParameters::default();
-    // let ch = HierarchyOverlay::order(
-    // &graph,
-    // |e| traffic_patterns.get(&e).cloned().unwrap(),
-    // // |e| TTF::Constant(traffic_patterns.get(&e).cloned().unwrap().eval(0.)),
-    // parameters,
-    // );
-    // let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay");
-    // let buffer = File::create(path).unwrap();
-    // bincode::serialize_into(buffer, &ch).unwrap();
-    // serde_json::to_writer(&File::create("node_order.json").unwrap(), &ch.get_order()).unwrap();
-    // let order = ch.get_order();
-    // let order = read_order2();
-    // let parameters = ContractionParameters::default();
-    // let ch = HierarchyOverlay::construct(
-    // &graph,
-    // |e| traffic_patterns.get(&e).cloned().unwrap(),
-    // |n| order[&n],
-    // parameters,
-    // );
-    let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay");
-    let file = File::open(path).expect("Unable to open file");
-    let reader = BufReader::new(file);
-    let ch: HierarchyOverlay<f64> =
-        bincode::deserialize_from(reader).expect("Unable to parse hierarchy overlay");
+    println!("Reading link references.");
+    let link_refs = read_link_patterns(&edge_map, full);
     println!("Done.");
-    if true {
-        println!("Computing search spaces");
-        let n = 50;
-        let nodes: Vec<_> = (0..n).into_iter().map(node_index).collect();
-        let search_spaces = ch.get_search_spaces(&nodes);
-        println!("Done");
-        println!("Computing profile queries");
-        for i in 0..n {
-            for j in 0..n {
-                let label =
-                    ch.intersect_profile_query(node_index(i), node_index(j), &search_spaces)?;
-                if label.is_none() {
-                    println!("Invalid query, from node {} to node {}", i, j,);
-                }
+    println!("Reading traffic patterns.");
+    let traffic_patterns = read_traffic_patterns(&graph, &link_refs);
+    println!("Done.");
+
+    let input = Input::Import;
+
+    let now = Instant::now();
+    let ch: HierarchyOverlay<f64> = match input {
+        Input::Ordering => {
+            println!("Ordering.");
+            let parameters = ContractionParameters::default();
+            let ch = HierarchyOverlay::order(
+                &graph,
+                // |e| traffic_patterns.get(&e).cloned().unwrap(),
+                |e| TTF::Constant(traffic_patterns.get(&e).cloned().unwrap().eval(0.)),
+                parameters,
+            );
+            println!("Time taken for ordering: {}ms.", now.elapsed().as_millis());
+            if false {
+                // Save node order and CH.
+                let path =
+                    Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay.bin");
+                let buffer = File::create(path).unwrap();
+                bincode::serialize_into(buffer, &ch).unwrap();
+                serde_json::to_writer(&File::create("node_order.json").unwrap(), &ch.get_order())
+                    .unwrap();
             }
+            ch
         }
-        println!("Done");
-    }
+        Input::Construction => {
+            println!("Construction.");
+            let order = read_order_from("/home/ljavaudin/GitRepositories/metrolib/node_order.json");
+            let parameters = ContractionParameters::default();
+            let ch = HierarchyOverlay::construct(
+                &graph,
+                |e| traffic_patterns.get(&e).cloned().unwrap(),
+                // |e| TTF::Constant(traffic_patterns.get(&e).cloned().unwrap().eval(0.)),
+                |n| order[&n],
+                parameters,
+            );
+            println!(
+                "Time taken for construction: {}ms.",
+                now.elapsed().as_millis()
+            );
+            ch
+        }
+        Input::Import => {
+            let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay.bin");
+            let file = File::open(path).expect("Unable to open file");
+            let reader = BufReader::new(file);
+            bincode::deserialize_from(reader).expect("Unable to parse hierarchy overlay")
+        }
+    };
+
+    println!("Number of breakpoints: {}", ch.complexity());
+    let approx_ch = if true {
+        let now = Instant::now();
+        let mut approx_ch = ch.clone();
+        println!("Approximating TTFs");
+        approx_ch.approximate(10.0);
+        println!(
+            "Time taken for approximation: {}ms.",
+            now.elapsed().as_millis()
+        );
+        println!("Number of breakpoints: {}", approx_ch.complexity());
+        approx_ch
+    } else {
+        panic!();
+    };
+
     if false {
-        println!("Start");
-        let n = 100000;
-        let i = 0;
-        let dt = 6. * 3600.;
+        let n = 100;
+        println!("Running {} EA queries", n * n);
+        let now = Instant::now();
+        let step = 1000;
+        let dt = 8. * 3600.;
         let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let ea_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
@@ -84,23 +115,50 @@ pub fn main() -> Result<()> {
         let mut ea_alloc = algo::EarliestArrivalAllocation::new(ea_search, downward_search);
         let mut candidate_map = HashMap::new();
         let mut results = Vec::with_capacity(n);
-        for j in 1..=n {
-            if let Some((ta, _path)) = ch.earliest_arrival_query(
-                node_index(i),
-                node_index(j),
-                dt,
-                &mut ea_alloc,
-                &mut candidate_map,
-            )? {
-                results.push(((i, j), ta));
+        // let mut abs_errors = Vec::new();
+        // let mut rel_errors = Vec::new();
+        for i in 0..n {
+            println!("{i}");
+            for j in 0..n {
+                if let Some((ta, _path)) = approx_ch.earliest_arrival_query(
+                    node_index(i * step),
+                    node_index(j * step),
+                    dt,
+                    &mut ea_alloc,
+                    &mut candidate_map,
+                )? {
+                    // let (true_ta, _path) = ch
+                    // .earliest_arrival_query(
+                    // node_index(i * step),
+                    // node_index(j * step),
+                    // dt,
+                    // &mut ea_alloc,
+                    // &mut candidate_map,
+                    // )?
+                    // .unwrap();
+                    // let (tt, true_tt) = (ta - dt, true_ta - dt);
+                    // abs_errors.push((tt - true_tt).abs());
+                    // let rel_e = (tt - true_tt).abs() / true_tt;
+                    // rel_errors.push(if !rel_e.is_nan() { rel_e } else { 0.0 });
+                    results.push(((i * step, j * step), ta));
+                }
             }
         }
-        println!("End");
-        write_results(dt, results)?;
+        // print_mean_max_errors(abs_errors, rel_errors);
+        println!(
+            "Time taken per query: {}μs.",
+            now.elapsed().as_micros() / (n * n) as u128
+        );
+        if false {
+            write_results(dt, results)?;
+        }
     }
+
     if false {
-        println!("Start");
-        let n = 1000;
+        let n = 20;
+        println!("Running {} profile queries", n * n);
+        let now = Instant::now();
+        let step = 5000;
         let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let mut interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
@@ -108,22 +166,155 @@ pub fn main() -> Result<()> {
         let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
         let mut candidate_map = HashMap::new();
-        for j in 0..n {
-            println!("{j}");
-            let label = ch.profile_query(
-                node_index(0),
-                node_index(j),
-                &mut interval_search,
-                &mut profile_search,
-                &mut candidate_map,
-            );
-            if label.is_none() {
-                println!("Invalid query, from node {} to node {}", 0, j,);
+        // let mut abs_errors = Vec::new();
+        // let mut rel_errors = Vec::new();
+        for i in 0..n {
+            println!("{i}");
+            for j in 0..n {
+                let approx_label = approx_ch.profile_query(
+                    node_index(i * step),
+                    node_index(j * step),
+                    &mut interval_search,
+                    &mut profile_search,
+                    &mut candidate_map,
+                );
+                // let true_label = ch.profile_query(
+                // node_index(i * step),
+                // node_index(j * step),
+                // &mut interval_search,
+                // &mut profile_search,
+                // &mut candidate_map,
+                // );
+                if approx_label.is_none() {
+                    println!("Invalid query, from node {} to node {}", i * step, j * step,);
+                    // } else {
+                    // let (abs_e, rel_e) =
+                    // get_abs_and_rel_error(approx_label.unwrap(), true_label.unwrap());
+                    // abs_errors.push(abs_e);
+                    // rel_errors.push(rel_e);
+                }
             }
         }
+        // print_mean_max_errors(abs_errors, rel_errors);
+        println!(
+            "Time taken per query: {}μs.",
+            now.elapsed().as_micros() / (n * n) as u128
+        );
         println!("End");
     }
+
+    if false {
+        let n = 1000;
+        let step = 100;
+        let nodes: Vec<_> = (0..n).into_iter().map(|i| node_index(i * step)).collect();
+        let now = Instant::now();
+        println!("Computing search spaces for {n} nodes");
+        let mut search_spaces = approx_ch.get_search_spaces(&nodes, &nodes);
+        println!("Time taken: {}ms.", now.elapsed().as_millis());
+        let now = Instant::now();
+        println!("Approximating TTFs for search spaces");
+        search_spaces.approximate(10.0);
+        println!(
+            "Time taken for approximation: {}ms.",
+            now.elapsed().as_millis()
+        );
+        // let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        // let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        // let mut interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+        // let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        // let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        // let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+        // let mut candidate_map = HashMap::new();
+        // let mut abs_errors = Vec::new();
+        // let mut rel_errors = Vec::new();
+        let m = 10;
+        println!("Computing {} profile queries", n * n / (m * m));
+        for i in 0..(n / m) {
+            println!("{i}");
+            for j in 0..(n / m) {
+                let approx_label = algo::intersect_profile_query(
+                    node_index(i * step),
+                    node_index(j * step),
+                    &search_spaces,
+                )?;
+                if approx_label.is_none() {
+                    println!("Invalid query from {} to {}", i * step, j * step);
+                }
+                // let true_label = ch
+                // .profile_query(
+                // node_index(i * step),
+                // node_index(j * step),
+                // &mut interval_search,
+                // &mut profile_search,
+                // &mut candidate_map,
+                // )
+                // .unwrap();
+                // let (abs_e, rel_e) = get_abs_and_rel_error(approx_label, true_label);
+                // abs_errors.push(abs_e);
+                // rel_errors.push(rel_e);
+            }
+        }
+        // print_mean_max_errors(abs_errors, rel_errors);
+        println!(
+            "Time taken per query: {}μs.",
+            now.elapsed().as_micros() / ((n * n) / (m * m)) as u128
+        );
+    }
+
     Ok(())
+}
+
+#[allow(dead_code)]
+fn get_abs_and_rel_error<T: ttf::TTFNum>(ttf1: TTF<T>, ttf2: TTF<T>) -> (T, T) {
+    let m1 = match &ttf1 {
+        TTF::Piecewise(pwl_ttf1) => pwl_ttf1
+            .iter()
+            .map(|p| (p.y - ttf2.eval(p.x)).abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap(),
+        TTF::Constant(c1) => (*c1 - ttf2.eval(T::zero())).abs(),
+    };
+    let m2 = match &ttf2 {
+        TTF::Piecewise(pwl_ttf2) => pwl_ttf2
+            .iter()
+            .map(|p| (p.y - ttf1.eval(p.x)).abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap(),
+        TTF::Constant(c2) => (*c2 - ttf1.eval(T::zero())).abs(),
+    };
+    let m = m1.max(m2);
+    let rel_error = if ttf2.get_max() > T::zero() {
+        m / ttf2.get_max()
+    } else {
+        T::zero()
+    };
+    (m, rel_error)
+}
+
+#[allow(dead_code)]
+fn print_mean_max_errors(abs_errors: Vec<f64>, rel_errors: Vec<f64>) {
+    println!(
+        "Mean absolute error: {}",
+        abs_errors.iter().sum::<f64>() / abs_errors.len() as f64
+    );
+    println!(
+        "Max absolute error: {}",
+        abs_errors
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    );
+    println!(
+        "Mean relative error: {}",
+        rel_errors.iter().sum::<f64>() / abs_errors.len() as f64
+    );
+    println!(
+        "Max relative error: {}",
+        rel_errors
+            .iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    );
 }
 
 #[allow(dead_code)]
@@ -313,10 +504,12 @@ fn read_traffic_patterns(
     }
 
     let mut n = 0;
+    let mut nb_constants = 0;
     for edge in graph.edge_references() {
         if let Some(pattern_id) = link_refs.get(&edge.id()) {
             if let Some(speed) = speeds.get(pattern_id) {
                 let ttf = if speed.iter().all(|&s| s == speed[0]) {
+                    nb_constants += 1;
                     let tt = 3.6 * edge.weight() / speed[0];
                     TTF::Constant(tt as f64)
                 } else {
@@ -336,6 +529,10 @@ fn read_traffic_patterns(
     }
     println!("Initial number of breakpoints: {}", 96 * graph.edge_count());
     println!("Final number of breakpoints: {}", n);
+    println!(
+        "Share of edges with a constant TTF: {}",
+        nb_constants as f64 / graph.edge_count() as f64
+    );
 
     traffic_patterns
 }
@@ -419,12 +616,11 @@ fn read_order() -> HashMap<NodeIndex, usize> {
 }
 
 #[allow(dead_code)]
-fn read_order2() -> HashMap<NodeIndex, usize> {
-    let path = Path::new("/home/ljavaudin/GitRepositories/metrolib/node_order.json");
+fn read_order_from(filename: &str) -> HashMap<NodeIndex, usize> {
+    let path = Path::new(filename);
     let file = File::open(path).expect("Unable to open file");
     let reader = BufReader::new(file);
-    let order: Vec<usize> =
-        serde_json::from_reader(reader).expect("Unable to parse simulation results");
+    let order: Vec<usize> = serde_json::from_reader(reader).expect("Unable to parse node ordering");
     let mut map = HashMap::with_capacity(order.len());
     for (i, o) in order.into_iter().enumerate() {
         map.insert(node_index(i), o);

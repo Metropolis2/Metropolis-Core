@@ -3,7 +3,9 @@ use num_traits::{Float, FromPrimitive};
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
 
-pub trait TTFNum: Copy + Default + Float + FromPrimitive + PartialOrd + std::fmt::Debug {
+pub trait TTFNum:
+    Float + FromPrimitive + Default + PartialOrd + Send + Sync + std::fmt::Debug
+{
     fn small_margin() -> Self;
     fn large_margin() -> Self;
     #[must_use]

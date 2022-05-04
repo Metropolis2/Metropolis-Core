@@ -1,0 +1,24 @@
+[package]
+name = "simulation"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+choice = { path = "../choice/", features = ["serde-1"] }
+ttf = { path = "../ttf/", features = ["serde-1"] }
+tch = { path = "../tch/", features = ["serde-1"] }
+anyhow = "1.0"
+clap = { version = "3.1", features = ["derive"] }
+hashbrown = { version = "0.12", features = ["rayon"] }
+itertools = "0.10"
+num-traits = "0.2"
+object-pool = "0.5"
+petgraph = "0.6"
+rand = "0.8"
+rand_xorshift = "0.3"
+rayon = "1.5"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"

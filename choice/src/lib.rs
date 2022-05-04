@@ -4,10 +4,12 @@ mod logit;
 pub use self::deterministic_choice::DeterministicChoiceModel;
 pub use self::logit::LogitModel;
 
-use anyhow::{anyhow, Context, Result};
-use breakpoint_function::{EvaluableFunction, PWLFunction};
-use num_traits::Float;
-use std::fmt;
+use anyhow::Result;
+use ttf::{PwlTTF, TTFNum};
+
+#[cfg(feature = "serde-1")]
+#[macro_use]
+extern crate serde_derive;
 
 /// A choice model between a finite number of alternatives.
 #[derive(Clone, Debug)]
@@ -21,10 +23,7 @@ pub enum ChoiceModel<V> {
     First,
 }
 
-impl<V> ChoiceModel<V>
-where
-    V: Float + fmt::Debug,
-{
+impl<V: TTFNum> ChoiceModel<V> {
     /// Return the index of the chosen alternative and the expected utility of the choice, given
     /// the vector of values of the alternatives.
     pub fn get_choice(&self, values: &[V]) -> Result<(usize, V)> {
@@ -49,28 +48,14 @@ pub enum ContinuousChoiceModel<T> {
     Logit(LogitModel<T>),
 }
 
-impl<T> ContinuousChoiceModel<T>
-where
-    T: Float + fmt::Debug,
-{
+impl<T: TTFNum> ContinuousChoiceModel<T> {
     /// Return the expected payoff of the choice and a [ContinuousChoiceCallback] that gives the
     /// chosen continuous alternative, given a [PWLFunction] that yields the payoff value
     /// for any possible alternative.
-    pub fn get_choice<'a>(
-        &'a self,
-        func: &'a PWLFunction<T>,
-    ) -> Result<(ContinuousChoiceCallback<'a, T>, T)> {
+    pub fn get_choice(&self, func: PwlTTF<T>) -> Result<(ContinuousChoiceCallback<T>, T)> {
         match self {
             Self::Logit(model) => model.get_continuous_choice(func),
-            Self::Constant(x) => {
-                if let Some(payoff) = func.y_at_x(*x).with_context(|| {
-                    format!("Failed to evaluate {:?} for function {:?}", x, func)
-                })? {
-                    Ok((Box::new(move || *x), payoff))
-                } else {
-                    Err(anyhow!("Invalid value for constant choice: {:?}", x))
-                }
-            }
+            Self::Constant(x) => Ok((Box::new(move || *x), func.eval(*x))),
         }
     }
 }

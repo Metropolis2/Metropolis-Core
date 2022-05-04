@@ -203,7 +203,7 @@ pub struct ContractionGraph<T: PartialOrd> {
     edges: Vec<(NodeIndex, NodeIndex, HierarchyEdge<T>)>,
 }
 
-impl<T: TTFNum + Sync + Send> ContractionGraph<T> {
+impl<T: TTFNum> ContractionGraph<T> {
     /// Create a new ContractionGraph from a graph of [ToContractNode] and [ToContractEdge].
     pub fn new(
         graph: DiGraph<ToContractNode, ToContractEdge<T>>,

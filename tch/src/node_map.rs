@@ -43,7 +43,7 @@ where
         self.get_mut(node)
     }
     fn insert(&mut self, node: N, value: V) {
-        self.insert(node, value);
+        HashMap::insert(self, node, value);
     }
     fn len(&self) -> usize {
         self.len()

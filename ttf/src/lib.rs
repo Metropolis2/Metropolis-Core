@@ -176,4 +176,27 @@ impl<T: TTFNum> TTF<T> {
             Self::Constant(c0) => TTF::Constant(*c0 + c),
         }
     }
+
+    pub fn approximate(&mut self, error: T) {
+        if let Self::Piecewise(pwl_ttf) = self {
+            pwl_ttf.approximate(error);
+        }
+    }
+
+    #[must_use]
+    pub fn apply<F>(&self, other: &Self, func: F) -> Self
+    where
+        F: Fn(T, T) -> T,
+    {
+        match (self, other) {
+            (Self::Piecewise(f), Self::Piecewise(g)) => Self::Piecewise(pwl::apply(f, g, func)),
+            (Self::Piecewise(f), &Self::Constant(c)) => {
+                Self::Piecewise(f.apply(|f_y| func(f_y, c)))
+            }
+            (&Self::Constant(c), Self::Piecewise(g)) => {
+                Self::Piecewise(g.apply(|g_y| func(c, g_y)))
+            }
+            (&Self::Constant(a), &Self::Constant(b)) => Self::Constant(func(a, b)),
+        }
+    }
 }

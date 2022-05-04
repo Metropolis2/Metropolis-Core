@@ -1,14 +1,12 @@
 use super::ContinuousChoiceCallback;
 
 use anyhow::{anyhow, Context, Result};
-use breakpoint_function::PWLFunction;
-use num_traits::{clamp, Float};
-use std::fmt;
+use ttf::{PwlTTF, TTFNum};
 
 const EULER_MASCHERONI: f64 = 0.5772156649;
 
 /// Return Euler's constant in the desired type.
-fn euler_mascheroni<V: Float>() -> Result<V> {
+fn euler_mascheroni<V: TTFNum>() -> Result<V> {
     V::from(EULER_MASCHERONI)
         .ok_or_else(|| anyhow!("Cannot convert {:?} to Float", EULER_MASCHERONI))
 }
@@ -54,7 +52,7 @@ pub struct LogitModel<V> {
     mu: V,
 }
 
-impl<V: Float + fmt::Debug> LogitModel<V> {
+impl<V: TTFNum> LogitModel<V> {
     /// Initialize a Logit model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
@@ -172,7 +170,7 @@ impl<V: Float + fmt::Debug> LogitModel<V> {
                 - y0 / theta
         };
         // Force the bounds if overflow or underflow occured.
-        clamp(x, x0, x1)
+        x.max(x0).min(x1)
     }
 
     /// Return the expected payoff of the choice and a [ContinuousChoiceCallback] that gives the
@@ -185,13 +183,13 @@ impl<V: Float + fmt::Debug> LogitModel<V> {
     ///
     /// - The breakpoint upper bound is infinite.
     /// - Euler's constant is not a valid value for the Float type.
-    pub fn get_continuous_choice<'a>(
-        &'a self,
-        func: &'a PWLFunction<V>,
-    ) -> Result<(ContinuousChoiceCallback<'a, V>, V)> {
+    pub fn get_continuous_choice(
+        &self,
+        func: PwlTTF<V>,
+    ) -> Result<(ContinuousChoiceCallback<V>, V)> {
         // To prevent overflow, we force the values to be non-positive when computing the
         // probabilities (the expected payoff is not affected).
-        let max_value = func.get_upper_bound();
+        let max_value = func.get_max();
         if !max_value.is_finite() {
             return Err(anyhow!("Found a non-finite payoff for function {:?}", func));
         }
@@ -199,9 +197,9 @@ impl<V: Float + fmt::Debug> LogitModel<V> {
         // Compute each part G_i of the cumulative distribution function, for 1 <= i <= M.
         // G_i is defined as the integral, from x_i to x_i+1, of exp(y(tau) / mu) d tau.
         let cum_probs_parts: Vec<V> = func
-            .iter_segments()
-            .map(|(&(x0, y0), &(x1, y1))| {
-                self.get_cum_func_value((x0, y0 - max_value), (x1, y1 - max_value))
+            .double_iter()
+            .map(|(p0, p1)| {
+                self.get_cum_func_value((p0.x, p0.y - max_value), (p1.x, p1.y - max_value))
             })
             .collect();
         // Compute the integral from x_1 to x_M+1 (i.e., the sum of the values G_i).
@@ -211,10 +209,10 @@ impl<V: Float + fmt::Debug> LogitModel<V> {
             // are very large.
             // We try to use a discrete choice instead (this make sense if the slopes are indeed
             // very large).
-            let (x_id, exp_payoff) = self
+            let (id, exp_payoff) = self
                 .get_choice(&func.iter_y().cloned().collect::<Vec<_>>())
                 .context("Failed to compute a deterministic choice from the y values")?;
-            return Ok((Box::new(move || func.x_at_id(x_id)), exp_payoff));
+            return Ok((Box::new(move || func[id].x), exp_payoff));
         }
         // Compute the expected payoff using the log-sum formula.
         // Do not forget to add back the maximum value that was substracted.
@@ -235,8 +233,8 @@ impl<V: Float + fmt::Debug> LogitModel<V> {
                 .find(|(_, cum_prob)| *cum_prob > threshold)
                 .unwrap();
             self.get_chosen_x(
-                (func.x_at_id(k), func.y_at_id(k) - max_value),
-                (func.x_at_id(k + 1), func.y_at_id(k + 1) - max_value),
+                (func[k].x, func[k].y - max_value),
+                (func[k + 1].x, func[k + 1].y - max_value),
                 cum_probs_parts[k] - (cum_prob - threshold),
             )
         };

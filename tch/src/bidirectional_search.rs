@@ -11,10 +11,27 @@ use petgraph::{graph::NodeIndex, Direction};
 /// A data structure that can be used to run bidirectional Dijkstra's algorithms.
 ///
 /// The structure holds a forward and a backward [DijkstraSearch].
+#[derive(Clone, Debug)]
 pub struct BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2> {
     forward_search: DijkstraSearch<FData, PQ1>,
     backward_search: DijkstraSearch<BData, PQ2>,
     current_direction: Direction,
+}
+
+impl<FData, BData, PQ1, PQ2> Default for BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>
+where
+    FData: Default,
+    BData: Default,
+    PQ1: Default,
+    PQ2: Default,
+{
+    fn default() -> Self {
+        BidirectionalDijkstraSearch {
+            forward_search: Default::default(),
+            backward_search: Default::default(),
+            current_direction: Direction::Incoming,
+        }
+    }
 }
 
 impl<FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2> {

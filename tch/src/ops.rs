@@ -58,7 +58,7 @@ pub trait DijkstraOps {
     ) -> Option<Self::Key>;
     /// Perform operations immediately after a node has been relaxed, given its predecessor, its
     /// label and the query.
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         _u: Self::Node,
         _v: Self::Node,
@@ -608,7 +608,7 @@ where
         // (i.e., the minimum upper bound over the TTF of all targets).
         self.bound.is_smaller(key)
     }
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         _u: G::NodeId,
         v: G::NodeId,
@@ -926,7 +926,7 @@ where
         // (i.e., the minimum upper bound over the TTF of all targets).
         self.bound.is_smaller(key)
     }
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         _u: G::NodeId,
         v: G::NodeId,
@@ -945,7 +945,7 @@ where
         node_data: &Self::Data,
         data: &HashMap<G::NodeId, D>,
     ) -> bool {
-        !self.stalling || self.can_be_stalled(node, node_data, data)
+        self.stalling && self.can_be_stalled(node, node_data, data)
     }
 }
 
@@ -1149,7 +1149,7 @@ where
         // (i.e., the minimum upper bound over the TTF of all targets).
         self.bound.is_smaller(key)
     }
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         _u: G::NodeId,
         v: G::NodeId,
@@ -1260,7 +1260,7 @@ where
     fn stop(&self, node: Self::Node, key: Self::Key, query: impl Query<Node = Self::Node>) -> bool {
         (self.ops).stop(node, key, query)
     }
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         u: Self::Node,
         v: Self::Node,
@@ -1275,7 +1275,7 @@ where
         } else {
             v_data.extra = std::cmp::min(v_data.extra, nb_hop);
         }
-        (self.ops).is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
+        (self.ops).node_is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
     }
     fn skip_node<D: NodeData<Label = <O::Data as NodeData>::Label>>(
         &self,
@@ -1336,7 +1336,7 @@ where
     fn stop(&self, node: Self::Node, key: Self::Key, query: impl Query<Node = Self::Node>) -> bool {
         (self.0).stop(node, key, query)
     }
-    fn is_relaxed(
+    fn node_is_relaxed(
         &mut self,
         u: Self::Node,
         v: Self::Node,
@@ -1344,7 +1344,7 @@ where
         v_data: &mut Self::Data,
         query: impl Query<Node = Self::Node>,
     ) {
-        (self.0).is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
+        (self.0).node_is_relaxed(u, v, &u_data.data, &mut v_data.data, query)
     }
     fn skip_node<D: NodeData<Label = <Self::Data as NodeData>::Label>>(
         &self,

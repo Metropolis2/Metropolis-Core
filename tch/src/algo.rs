@@ -3,6 +3,7 @@ use crate::bidirectional_ops::{
 };
 use crate::bidirectional_search::BidirectionalDijkstraSearch;
 use crate::bound::Bound;
+use crate::contraction_hierarchies::{SearchSpace, SearchSpaces};
 use crate::min_queue::{MinPQ, MinPriorityQueue};
 use crate::node_data::{NodeData, ProfileData, ProfileIntervalData, ScalarData};
 use crate::node_map::NodeMap;
@@ -10,7 +11,7 @@ use crate::ops::TimeDependentDijkstra;
 use crate::query::{BidirectionalQueryRef, MultipleSourcesQuery};
 use crate::search::DijkstraSearch;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use either::Either;
 use hashbrown::hash_map::HashMap;
 use petgraph::graph::NodeIndex;
@@ -160,6 +161,7 @@ where
     flabel.link(blabel)
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3> {
     search: BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>,
     downward_search: DijkstraSearch<DData, PQ3>,
@@ -369,4 +371,86 @@ where
         .context("Failed to get upward path")?;
     path.extend_from_slice(&down_path[1..]);
     Ok(path)
+}
+
+pub fn intersect_profile_query<T: TTFNum>(
+    source: NodeIndex,
+    target: NodeIndex,
+    search_spaces: &SearchSpaces<T>,
+) -> Result<Option<TTF<T>>> {
+    if source == target {
+        return Ok(Some(Default::default()));
+    }
+    if let (Some(source_space), Some(target_space)) = (
+        search_spaces.get_forward_search_space(&source),
+        search_spaces.get_backward_search_space(&target),
+    ) {
+        let candidates = find_candidates(source_space, target_space);
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        let bounds: Vec<(T, T)> = candidates
+            .iter()
+            .map(|n| {
+                // We know that both `source_space` and `target_space` contain key `n`, otherwise
+                // `n` would not be a candidate.
+                let source_ttf = &source_space[n];
+                let target_ttf = &target_space[n];
+                (
+                    source_ttf.get_min() + target_ttf.get_min(),
+                    source_ttf.get_max() + target_ttf.get_max(),
+                )
+            })
+            .collect();
+        // Minimum upper bounds over all the candidates.
+        let mut upper_bound = bounds
+            .iter()
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .map(|(_lb, ub)| *ub)
+            .unwrap();
+        // Candidate with the minimum lower bound.
+        let min_candidate = candidates
+            .iter()
+            .zip(bounds.iter())
+            .min_by(|(_n0, a), (_n1, b)| a.0.partial_cmp(&b.0).unwrap())
+            .map(|(n, _b)| n)
+            .unwrap();
+        let mut min_ttf = source_space[min_candidate].link(&target_space[min_candidate]);
+        upper_bound = upper_bound.min(min_ttf.get_max());
+        for candidate in candidates.iter().filter(|n| *n != min_candidate) {
+            let source_ttf = &source_space[candidate];
+            let target_ttf = &target_space[candidate];
+            if (source_ttf.get_min() + target_ttf.get_min()).approx_ge(&upper_bound) {
+                continue;
+            }
+            let ttf = source_ttf.link(target_ttf);
+            min_ttf = min_ttf.merge(&ttf).0;
+            upper_bound = upper_bound.min(min_ttf.get_max());
+        }
+        Ok(Some(min_ttf))
+    } else {
+        Err(anyhow!(
+            "No search space for node {:?} or {:?}",
+            source,
+            target
+        ))
+    }
+}
+
+fn find_candidates<T>(forw_space: &SearchSpace<T>, back_space: &SearchSpace<T>) -> Vec<NodeIndex> {
+    let (smaller, larger) = if forw_space.len() <= back_space.len() {
+        (forw_space, back_space)
+    } else {
+        (back_space, forw_space)
+    };
+    smaller
+        .keys()
+        .filter_map(|n| {
+            if larger.contains_key(n) {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect()
 }

@@ -17,8 +17,19 @@ mod search;
 
 pub use bidirectional_search::BidirectionalDijkstraSearch;
 pub use contraction_hierarchies::{
-    HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay,
+    HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, SearchSpaces,
 };
 pub use node_map::VecMap;
 pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
+
+use petgraph::graph::NodeIndex;
+
+pub type DefaultEarliestArrivalAllocation<T> = algo::EarliestArrivalAllocation<
+    node_data::ScalarData<T>,
+    node_data::ProfileIntervalData<T>,
+    node_data::ScalarData<T>,
+    min_queue::MinPQ<NodeIndex, T>,
+    min_queue::MinPQ<NodeIndex, T>,
+    min_queue::MinPQ<NodeIndex, T>,
+>;

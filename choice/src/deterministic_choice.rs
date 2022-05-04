@@ -1,8 +1,7 @@
 use std::cmp::Ordering;
 
 use anyhow::{anyhow, Result};
-use num_traits::Float;
-use std::fmt;
+use ttf::TTFNum;
 
 /// A deterministic choice model between a finite number of alternatives.
 ///
@@ -25,7 +24,7 @@ pub struct DeterministicChoiceModel<V> {
     u: V,
 }
 
-impl<V: Float + fmt::Debug> DeterministicChoiceModel<V> {
+impl<V: TTFNum> DeterministicChoiceModel<V> {
     /// Initialize a new deterministic choice model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.

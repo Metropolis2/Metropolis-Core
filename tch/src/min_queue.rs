@@ -26,7 +26,7 @@ pub trait MinPriorityQueue {
     }
 }
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct ImplOrd<T>(T);
 
 impl<T: PartialEq> Eq for ImplOrd<T> {}
@@ -34,7 +34,7 @@ impl<T: PartialEq> Eq for ImplOrd<T> {}
 #[allow(clippy::derive_ord_xor_partial_ord)]
 impl<T: PartialOrd> Ord for ImplOrd<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        self.partial_cmp(other).expect("Invalid comparison")
     }
 }
 
