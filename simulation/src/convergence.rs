@@ -18,11 +18,7 @@ impl<T: TTFNum> ConvergenceCriterion<T> {
         prev_results: Option<&AgentResults<T>>,
     ) -> bool {
         match self {
-            Self::MaxIteration(max_iter) => {
-                println!("Iteration: {}", iteration_counter);
-                println!("Max iterations: {}", max_iter);
-                *max_iter <= iteration_counter
-            }
+            Self::MaxIteration(max_iter) => *max_iter <= iteration_counter,
             Self::DepartureTime(threshold, default) => {
                 if let Some(prev_results) = prev_results {
                     let mean_dep_time_shift = results
@@ -39,7 +35,6 @@ impl<T: TTFNum> ConvergenceCriterion<T> {
                         })
                         .fold(T::zero(), |acc, x| acc + x)
                         / T::from_usize(results.len()).unwrap();
-                    println!("Mean dep-time shift: {mean_dep_time_shift:?}");
                     mean_dep_time_shift <= *threshold
                 } else {
                     false

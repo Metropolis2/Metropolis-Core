@@ -1,4 +1,4 @@
-use super::{AgentResults, AggregateResults};
+use super::{AgentResults, AggregateResults, IterationResults};
 use crate::convergence::ConvergenceCriterion;
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
@@ -96,6 +96,20 @@ impl<T: serde::Serialize> Parameters<T> {
         Ok(serde_json::to_writer(
             &File::create(&filename)?,
             &aggregate_results,
+        )?)
+    }
+
+    pub fn save_iteration_results(
+        &self,
+        iteration_results: IterationResults<T>,
+        output_dir: &Path,
+    ) -> Result<()> {
+        let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
+            .iter()
+            .collect();
+        Ok(serde_json::to_writer(
+            &File::create(&filename)?,
+            &iteration_results,
         )?)
     }
 }

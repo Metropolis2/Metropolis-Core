@@ -82,8 +82,7 @@ impl<T: TTFNum> PwlTTF<T> {
     }
 
     fn append_point(&mut self, p: Point<T>) {
-        debug_assert!(p.y >= T::zero());
-        debug_assert!(self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x));
+        debug_assert!(self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),);
         debug_assert!(!self.is_empty() || p.x == self.period[0]);
         debug_assert!(p.x >= self.period[0]);
         debug_assert!(p.x <= self.period[1]);
@@ -184,10 +183,12 @@ impl<T: TTFNum> PwlTTF<T> {
 
     fn get_bucket(&self, x: T) -> usize {
         debug_assert!(x >= self.period[0]);
-        let bucket = x
-            .to_usize()
-            .unwrap_or_else(|| panic!("Value cannot be represented as usize: {:?}", x))
-            >> self.bucket_shift;
+        let bucket = (x - self.period[0]).to_usize().unwrap_or_else(|| {
+            panic!(
+                "Value cannot be represented as usize: {:?}",
+                x - self.period[0]
+            )
+        }) >> self.bucket_shift;
         if bucket > 0 {
             bucket - 1
         } else {
@@ -223,7 +224,8 @@ impl<T: TTFNum> PwlTTF<T> {
 
     fn first_index_with_x_ge(&self, x: T) -> usize {
         debug_assert!(!self.is_empty());
-        debug_assert!(x >= self.period[0] && x <= self.period[1]);
+        debug_assert!(x >= self.period[0], "{:?} < {:?}", x, self.period[0]);
+        debug_assert!(x <= self.period[1], "{:?} > {:?}", x, self.period[1]);
         let bucket = self.get_bucket(x);
         let index = self.buckets[bucket];
         debug_assert!(index < self.len());
@@ -279,7 +281,12 @@ impl<T: TTFNum> PwlTTF<T> {
         } else {
             inv_linear_interp(self[i - 1], self[i], z)
         };
-        debug_assert!((x + self.eval(x)).approx_eq(&z));
+        debug_assert!(
+            x + self.eval(x) - z < T::large_margin(),
+            "{:?} != {:?}",
+            x + self.eval(x),
+            z
+        );
         x
     }
 
@@ -460,9 +467,16 @@ pub fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     debug_assert!(f.is_fifo());
     debug_assert_eq!(f.period, g.period);
     debug_assert!(f[0].x.approx_eq(&g[0].x));
+    debug_assert!(f.get_min() >= T::zero());
+    debug_assert!(g.get_min() >= T::zero());
 
     let mut h = PwlTTF::with_capacity(f.period, f.len() + g.len());
-    let mut i = g.first_index_with_x_ge(f.eval(T::zero()));
+    let f_first_ta = f.period[0] + f.eval(f.period[0]);
+    let mut i = if f_first_ta <= g.period[1] {
+        g.first_index_with_x_ge(f_first_ta)
+    } else {
+        g.len()
+    };
     let mut j = 0;
 
     while i < g.len() && j < f.len() {
@@ -503,7 +517,7 @@ pub fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     debug_assert!(!g.is_empty());
 
     let mut h = PwlTTF::with_capacity(g.period, g.len());
-    let i = g.first_index_with_x_ge(c);
+    let i = g.first_index_with_x_ge(g.period[0] + c);
 
     if i == g.len() {
         // g ends before first g.period[0] + c.
@@ -741,14 +755,17 @@ pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescript
     (h, descr)
 }
 
-pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec<(T, Ordering)> {
+pub fn analyze_relative_position<T: TTFNum>(
+    f: &PwlTTF<T>,
+    g: &PwlTTF<T>,
+) -> Vec<(Option<T>, Ordering)> {
     debug_assert_eq!(f.period, g.period);
 
     if f.get_max().approx_le(&g.get_min()) {
-        return vec![(f.period[0], Ordering::Less)];
+        return vec![(None, Ordering::Less)];
     }
     if g.get_max().approx_le(&f.get_min()) {
-        return vec![(g.period[0], Ordering::Greater)];
+        return vec![(None, Ordering::Greater)];
     }
 
     let mut results = Vec::with_capacity(f.len() + g.len());
@@ -764,7 +781,7 @@ pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec
         Ordering::Greater
     };
     if rel_pos != Ordering::Equal {
-        results.push((f.period[0], rel_pos));
+        results.push((Some(f.period[0]), rel_pos));
     }
 
     while i < f.len() && j < g.len() {
@@ -822,9 +839,9 @@ pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec
             debug_assert!(x <= f.period[1]);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((f.period[0], rel_pos));
+                results.push((Some(f.period[0]), rel_pos));
             } else {
-                results.push((x, rel_pos));
+                results.push((Some(x), rel_pos));
             }
         }
 
@@ -858,12 +875,12 @@ pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((f.period[0], rel_pos));
+                results.push((Some(f.period[0]), rel_pos));
             } else {
-                results.push((x, rel_pos));
+                results.push((Some(x), rel_pos));
             }
         }
     }
@@ -884,31 +901,34 @@ pub fn analyze_relative_position<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> Vec
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((f.period[0], rel_pos));
+                results.push((Some(f.period[0]), rel_pos));
             } else {
-                results.push((x, rel_pos));
+                results.push((Some(x), rel_pos));
             }
         }
     }
 
     if results.is_empty() {
-        results.push((f.period[0], Ordering::Less));
+        results.push((Some(f.period[0]), Ordering::Less));
     }
 
-    debug_assert_eq!(results[0].0, f.period[0]);
+    debug_assert_eq!(results[0].0, Some(f.period[0]));
 
     results
 }
 
-pub fn analyze_relative_position_to_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> Vec<(T, Ordering)> {
+pub fn analyze_relative_position_to_cst<T: TTFNum>(
+    f: &PwlTTF<T>,
+    c: T,
+) -> Vec<(Option<T>, Ordering)> {
     if f.get_max().approx_le(&c) {
-        return vec![(f.period[0], Ordering::Less)];
+        return vec![(None, Ordering::Less)];
     }
     if c.approx_le(&f.get_min()) {
-        return vec![(f.period[0], Ordering::Greater)];
+        return vec![(None, Ordering::Greater)];
     }
 
     let mut results = Vec::with_capacity(2 * f.len());
@@ -921,7 +941,7 @@ pub fn analyze_relative_position_to_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> Vec<(
         Ordering::Greater
     };
     if rel_pos != Ordering::Equal {
-        results.push((f.period[0], rel_pos));
+        results.push((Some(f.period[0]), rel_pos));
     }
 
     for i in 0..f.len() {
@@ -941,21 +961,21 @@ pub fn analyze_relative_position_to_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> Vec<(
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((f.period[0], rel_pos));
+                results.push((Some(f.period[0]), rel_pos));
             } else {
-                results.push((x, rel_pos));
+                results.push((Some(x), rel_pos));
             }
         }
     }
 
     if results.is_empty() {
-        results.push((f.period[0], Ordering::Greater));
+        results.push((Some(f.period[0]), Ordering::Greater));
     }
 
-    debug_assert_eq!(results[0].0, f.period[0]);
+    debug_assert_eq!(results[0].0, Some(f.period[0]));
 
     results
 }

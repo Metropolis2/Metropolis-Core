@@ -12,6 +12,7 @@ use parameters::Parameters;
 use preprocess::PreprocessingData;
 
 use anyhow::Result;
+use log::info;
 use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
@@ -56,8 +57,8 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let mut prev_agent_results = None;
         let mut iteration_counter: u64 = 0;
         loop {
-            println!("Starting iteration");
-            println!("Computing skims");
+            info!("Starting iteration {}", iteration_counter);
+            info!("Computing skims");
             let skims = self.network.compute_skims(
                 &weights,
                 &preprocess_data.network,
@@ -75,17 +76,18 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 iteration_counter,
                 output_dir,
             )?;
-            println!("Checking convergence");
+            info!("Checking convergence");
             if self.parameters.has_converged(
                 iteration_counter,
                 iteration_results.agent_results(),
                 prev_agent_results.as_ref(),
             ) {
+                self.parameters
+                    .save_iteration_results(iteration_results, output_dir)?;
                 break;
             }
-            println!("Iteration done");
             iteration_counter += 1;
-            println!("Computing weights");
+            info!("Computing weights");
             (weights, prev_agent_results) = (
                 iteration_results.weights,
                 Some(iteration_results.agent_results),
@@ -114,12 +116,12 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         previous_results_opt: Option<&AgentResults<T>>,
         iteration_counter: u64,
     ) -> Result<IterationResults<T>> {
-        println!("Running pre-day model");
+        info!("Running pre-day model");
         let pre_day_results =
             self.run_pre_day_model(&skims, previous_results_opt, iteration_counter)?;
-        println!("Running within-day model");
+        info!("Running within-day model");
         let (sim_weights, within_day_results) = self.run_within_day_model(pre_day_results, &skims);
-        println!("Running day-to-day model");
+        info!("Running day-to-day model");
         let new_weights = self.run_day_to_day_model(weights, &sim_weights, iteration_counter);
         Ok(IterationResults::new(within_day_results, new_weights))
     }

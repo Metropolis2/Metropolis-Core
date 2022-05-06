@@ -45,7 +45,14 @@ pub enum HierarchyDirection {
 ///
 /// A tuple `(t, None)` indicates that, starting at time `t`, the fastest path from the source to
 /// the target of the shortcut edge takes the shortcut edge as an original edge.
-pub type EdgePack<T> = Vec<(T, Option<NodeIndex>)>;
+pub type EdgePack<T> = Vec<(Option<T>, Packed)>;
+
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+pub enum Packed {
+    IntermediateNode(NodeIndex),
+    OriginalEdge(EdgeIndex),
+}
 
 /// Indicate the type of a [HierarchyEdge].
 ///
@@ -54,7 +61,7 @@ pub type EdgePack<T> = Vec<(T, Option<NodeIndex>)>;
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub enum HierarchyEdgeClass<T> {
-    Original,
+    Original(EdgeIndex),
     Shortcut(EdgePack<T>),
 }
 
@@ -68,11 +75,11 @@ pub struct HierarchyEdge<T> {
 }
 
 impl<T> HierarchyEdge<T> {
-    pub fn new_original(ttf: TTF<T>, direction: HierarchyDirection) -> Self {
+    pub fn new_original(ttf: TTF<T>, direction: HierarchyDirection, id: EdgeIndex) -> Self {
         HierarchyEdge {
             ttf,
             direction,
-            class: HierarchyEdgeClass::Original,
+            class: HierarchyEdgeClass::Original(id),
         }
     }
 
@@ -170,7 +177,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     {
         let construct_graph = graph.map(
             |node_id, _| ToContractNode::from_order(node_id, node_order(node_id)),
-            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id)),
+            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id), edge_id),
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
         contraction.construct()
@@ -187,7 +194,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     {
         let construct_graph = graph.map(
             |node_id, _| ToContractNode::new(node_id),
-            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id)),
+            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id), edge_id),
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
         contraction.order()
@@ -231,23 +238,31 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     ) -> Result<()> {
         if let Some(edge) = self.graph.find_edge(source, target) {
             match &self.graph[edge].class {
-                HierarchyEdgeClass::Original => {
-                    path.push(edge);
+                &HierarchyEdgeClass::Original(id) => {
+                    path.push(id);
                     *current_time = *current_time + self.graph[edge].ttf.eval(*current_time);
                 }
                 HierarchyEdgeClass::Shortcut(pack) => {
-                    let pack_id = match pack
-                        .binary_search_by(|(t, _)| t.partial_cmp(current_time).unwrap())
-                    {
-                        Ok(i) => i,
-                        Err(i) => i - 1,
-                    };
-                    if let Some(inter_point) = pack[pack_id].1 {
-                        self.unpack_edge(source, inter_point, current_time, path)?;
-                        self.unpack_edge(inter_point, target, current_time, path)?;
+                    let pack_id = if pack.len() == 1 {
+                        0
                     } else {
-                        path.push(edge);
-                        *current_time = *current_time + self.graph[edge].ttf.eval(*current_time);
+                        match pack.binary_search_by(|(t, _)| {
+                            t.unwrap().partial_cmp(current_time).unwrap()
+                        }) {
+                            Ok(i) => i,
+                            Err(i) => i - 1,
+                        }
+                    };
+                    match pack[pack_id].1 {
+                        Packed::IntermediateNode(inter_node) => {
+                            self.unpack_edge(source, inter_node, current_time, path)?;
+                            self.unpack_edge(inter_node, target, current_time, path)?;
+                        }
+                        Packed::OriginalEdge(id) => {
+                            path.push(id);
+                            *current_time =
+                                *current_time + self.graph[edge].ttf.eval(*current_time);
+                        }
                     }
                 }
             }

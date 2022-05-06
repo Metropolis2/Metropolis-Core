@@ -312,7 +312,7 @@ pub struct Utility<T>(pub T);
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ValueOfTime<T>(pub T);
 
-/// Representation of a length, expressed in meters..
+/// Representation of a length, expressed in meters.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Length<T>(pub T);
 

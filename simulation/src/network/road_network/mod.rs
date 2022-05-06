@@ -38,9 +38,9 @@ impl RoadNode {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-pub enum SpeedDensityFunction<T> {
+pub enum SpeedDensityFunction {
     FreeFlow,
-    Bottleneck(Outflow<T>),
+    Bottleneck,
 }
 
 fn default_outflow<T: TTFNum>() -> T {
@@ -54,7 +54,7 @@ pub struct RoadEdge<T> {
     base_speed: Speed<T>,
     length: Length<T>,
     lanes: u8,
-    speed_density: SpeedDensityFunction<T>,
+    speed_density: SpeedDensityFunction,
     #[serde(default = "default_outflow")]
     /// Maximum outflow of vehicle on the edge, in length of vehicle per second per lane.
     bottleneck_outflow: Outflow<T>,
@@ -70,7 +70,7 @@ impl<T: TTFNum> RoadEdge<T> {
         base_speed: Speed<T>,
         length: Length<T>,
         lanes: u8,
-        speed_density: SpeedDensityFunction<T>,
+        speed_density: SpeedDensityFunction,
         bottleneck_outflow: Outflow<T>,
         param1: Option<T>,
         param2: Option<T>,
@@ -93,7 +93,11 @@ impl<T: TTFNum> RoadEdge<T> {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
         match self.speed_density {
             SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
-            SpeedDensityFunction::Bottleneck(outflow) => {
+            SpeedDensityFunction::Bottleneck => {
+                let outflow = Outflow(
+                    self.param1
+                        .expect("Param1 cannot be null for Bottleneck speed-density function"),
+                );
                 // WARNING: The formula below is incorrect when there are vehicles with different
                 // speeds.
                 if occupied_length <= outflow * (self.total_length() / vehicle_speed) {
@@ -235,6 +239,7 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RoadNetworkParameters<T> {
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
+    #[serde(default)]
     pub contraction: ContractionParameters,
     /// Approximation bound used to simplify the edges' TTFs after the HierarchyOverlay is built.
     pub edge_approx_bound: Time<T>,

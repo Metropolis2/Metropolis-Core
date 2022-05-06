@@ -147,7 +147,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    pub fn analyze_relative_position(&self, other: &Self) -> Vec<(T, Ordering)> {
+    pub fn analyze_relative_position(&self, other: &Self) -> Vec<(Option<T>, Ordering)> {
         match (self, other) {
             (Self::Piecewise(f), Self::Piecewise(g)) => pwl::analyze_relative_position(f, g),
             (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
@@ -164,7 +164,7 @@ impl<T: TTFNum> TTF<T> {
                 } else {
                     Ordering::Less
                 };
-                vec![(T::zero(), pos)]
+                vec![(None, pos)]
             }
         }
     }

@@ -11,8 +11,10 @@ ttf = { path = "../ttf/", features = ["serde-1"] }
 tch = { path = "../tch/", features = ["serde-1"] }
 anyhow = "1.0"
 clap = { version = "3.1", features = ["derive"] }
+env_logger = "0.9"
 hashbrown = { version = "0.12", features = ["rayon"] }
 itertools = "0.10"
+log = "0.4"
 num-traits = "0.2"
 object-pool = "0.5"
 petgraph = "0.6"

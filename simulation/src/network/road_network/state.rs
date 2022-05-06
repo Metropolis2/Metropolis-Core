@@ -273,6 +273,11 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
+            debug_assert!(departure_times.is_empty() || *departure_times.last().unwrap() < dt);
+            debug_assert!(
+                departure_times.is_empty()
+                    || *departure_times.last().unwrap() + *travel_times.last().unwrap() <= dt + tt
+            );
             departure_times.push(dt);
             travel_times.push(tt);
             last_ta_opt = Some(dt + tt);
@@ -301,6 +306,10 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
                 if tt.approx_ne(&ff_tt) {
                     is_constant = false;
                 }
+                debug_assert!(
+                    *departure_times.last().unwrap() + *travel_times.last().unwrap()
+                        <= edge_entry_time + tt
+                );
                 departure_times.push(edge_entry_time);
                 travel_times.push(tt);
                 last_ta_opt = Some(edge_entry_time + tt);
@@ -325,6 +334,11 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
+            debug_assert!(*departure_times.last().unwrap() < period.end());
+            debug_assert!(
+                *departure_times.last().unwrap() + *travel_times.last().unwrap()
+                    <= period.end() + tt
+            );
             departure_times.push(period.end());
             travel_times.push(tt);
         }

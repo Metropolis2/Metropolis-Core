@@ -21,6 +21,8 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    env_logger::init();
+
     // Read input file.
     let file = fs::File::open(args.input).expect("Unable to open input file");
     let reader = BufReader::new(file);
@@ -32,5 +34,9 @@ fn main() -> Result<()> {
         fs::create_dir(output_dir)?;
     }
 
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(8)
+        .build_global()
+        .unwrap();
     sim.run(output_dir)
 }

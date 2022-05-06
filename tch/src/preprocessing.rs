@@ -1,5 +1,5 @@
 use crate::contraction_hierarchies::{
-    EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay,
+    EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, Packed,
 };
 use crate::min_queue::MinPQ;
 use crate::node_data::NodeDataWithExtra;
@@ -12,9 +12,10 @@ use crate::search::DijkstraSearch;
 use fixedbitset::FixedBitSet;
 use hashbrown::hash_map::{Entry, HashMap};
 use hashbrown::HashSet;
+use log::debug;
 use object_pool::Pool;
 use ordered_float::OrderedFloat;
-use petgraph::graph::{node_index, DiGraph, EdgeReference, NodeIndex};
+use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
 use petgraph::Direction;
 use rayon::prelude::*;
@@ -140,8 +141,8 @@ impl<T> ToContractEdge<T> {
     }
 
     /// Create a new original edge.
-    pub fn new_original(ttf: TTF<T>) -> Self {
-        ToContractEdge::new(ttf, 1, HierarchyEdgeClass::Original)
+    pub fn new_original(ttf: TTF<T>, id: EdgeIndex) -> Self {
+        ToContractEdge::new(ttf, 1, HierarchyEdgeClass::Original(id))
     }
 
     /// Create a new shortcut edge.
@@ -261,11 +262,11 @@ impl<T: TTFNum> ContractionGraph<T> {
             // Contract the new batch of nodes.
             // We do not need a cache so with use an empty cache.
             self.contract_nodes(&nodes_to_contract, &mut vec![]);
-            println!(
+            debug!(
                 "{} remaining nodes to be contracted",
                 self.graph.node_count()
             );
-            println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
+            debug!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
             self.build_remaining_graph(&nodes_to_contract);
         }
         self.into_hierarchy_overlay()
@@ -273,12 +274,12 @@ impl<T: TTFNum> ContractionGraph<T> {
 
     /// Order the nodes and construct a [HierarchyOverlay] from the ContractionGraph.
     pub fn order(mut self) -> HierarchyOverlay<T> {
-        println!("Starting ordering");
+        debug!("Starting ordering");
         // Initialize a ContractionCache.
         let mut cache = ContractionCache::new();
         cache.resize_with(self.graph.node_count(), HashMap::new);
         // Compute initial tentative cost for all nodes.
-        println!("Computing initial costs");
+        debug!("Computing initial costs");
         let costs: Vec<(NodeIndex, OrderedFloat<f64>)> = cache
             .par_iter_mut()
             .enumerate()
@@ -314,11 +315,11 @@ impl<T: TTFNum> ContractionGraph<T> {
                 .collect();
             // `nodes_to_contract` cannot be empty as there is at least one remaining node that
             // should be selected.
-            println!(
+            debug!(
                 "{} remaining nodes to be contracted",
                 self.graph.node_count()
             );
-            println!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
+            debug!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
             assert!(!nodes_to_contract.is_empty());
             // Contract a new batch of nodes.
             self.contract_nodes(&nodes_to_contract, &mut cache);
@@ -457,8 +458,8 @@ impl<T: TTFNum> ContractionGraph<T> {
                     HierarchyDirection::Downward
                 };
                 let hierarchy_edge = match edge.weight.class {
-                    HierarchyEdgeClass::Original => {
-                        HierarchyEdge::new_original(edge.weight.ttf, dir)
+                    HierarchyEdgeClass::Original(id) => {
+                        HierarchyEdge::new_original(edge.weight.ttf, dir, id)
                     }
                     HierarchyEdgeClass::Shortcut(pack) => {
                         HierarchyEdge::new_shortcut(edge.weight.ttf, dir, pack)
@@ -675,7 +676,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         };
         if is_cached || no_witness {
             let middle_node_original_id = self.graph[in_edge.target()].id;
-            let pack = vec![(T::zero(), Some(middle_node_original_id))];
+            let pack = vec![(None, Packed::IntermediateNode(middle_node_original_id))];
             // No witness was found, we add the shortcut edge.
             let shortcut = ToContractEdge::new_shortcut(
                 edge_score,
@@ -847,12 +848,12 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
     };
 
     let merged_pack = match &old_edge.class {
-        HierarchyEdgeClass::Original => {
+        &HierarchyEdgeClass::Original(id) => {
             let mut merged_pack = Vec::with_capacity(relative_positioning.len());
             for (t, pos) in relative_positioning {
                 match pos {
                     Ordering::Less => {
-                        merged_pack.push((t, None));
+                        merged_pack.push((t, Packed::OriginalEdge(id)));
                     }
                     Ordering::Greater => {
                         merged_pack.push((t, new_middle_node));
@@ -870,7 +871,12 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
             let mut merged_pack =
                 Vec::with_capacity(old_pack.len() + 2 * relative_positioning.len());
             while i < relative_positioning.len() && j < old_pack.len() {
-                if relative_positioning[i].0.approx_eq(&old_pack[j].0) {
+                let old_pack_t = if j == 0 && old_pack.len() == 1 {
+                    relative_positioning[0].0.unwrap()
+                } else {
+                    old_pack[j].0.unwrap()
+                };
+                if relative_positioning[i].0.unwrap().approx_eq(&old_pack_t) {
                     match relative_positioning[i].1 {
                         Ordering::Less => {
                             merged_pack.push((relative_positioning[i].0, old_pack[j].1));
@@ -884,7 +890,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
                     }
                     i += 1;
                     j += 1;
-                } else if relative_positioning[i].0 < old_pack[j].0 {
+                } else if relative_positioning[i].0.unwrap() < old_pack_t {
                     debug_assert!(j >= 1);
                     match relative_positioning[i].1 {
                         Ordering::Less => {
@@ -943,6 +949,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
 #[cfg(test)]
 mod tests {
     use super::*;
+    use petgraph::graph::edge_index;
 
     #[test]
     fn update_depth_test() {
@@ -973,9 +980,21 @@ mod tests {
             order: 0,
             cost: OrderedFloat(0.),
         });
-        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n2, n3, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(
+            n0,
+            n1,
+            ToContractEdge::new_original(TTF::default(), edge_index(0)),
+        );
+        graph.add_edge(
+            n1,
+            n2,
+            ToContractEdge::new_original(TTF::default(), edge_index(1)),
+        );
+        graph.add_edge(
+            n2,
+            n3,
+            ToContractEdge::new_original(TTF::default(), edge_index(2)),
+        );
         let mut cg = ContractionGraph::new(graph, Default::default());
         // We update the depths from node 2.
         // New depths should be [0, 3, 2, 4],
@@ -1017,9 +1036,21 @@ mod tests {
             order: 0,
             cost: OrderedFloat(0.),
         });
-        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n2, n3, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(
+            n0,
+            n1,
+            ToContractEdge::new_original(TTF::default(), edge_index(0)),
+        );
+        graph.add_edge(
+            n1,
+            n2,
+            ToContractEdge::new_original(TTF::default(), edge_index(1)),
+        );
+        graph.add_edge(
+            n2,
+            n3,
+            ToContractEdge::new_original(TTF::default(), edge_index(2)),
+        );
         let cg = ContractionGraph::new(graph, Default::default());
         // Check that all the 2-hop neighboors of node 0 have a cost > 0 (this is supposed to be
         // true).
@@ -1066,8 +1097,16 @@ mod tests {
             cost: OrderedFloat(0.),
         });
         // Graph weights are integers.
-        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::Constant(1.0f64)));
-        graph.add_edge(n1, n2, ToContractEdge::new_original(TTF::Constant(2.)));
+        graph.add_edge(
+            n0,
+            n1,
+            ToContractEdge::new_original(TTF::Constant(1.0f64), edge_index(0)),
+        );
+        graph.add_edge(
+            n1,
+            n2,
+            ToContractEdge::new_original(TTF::Constant(2.), edge_index(1)),
+        );
         let cg = ContractionGraph::new(graph, Default::default());
         // The shortest path n0 -> n2 has weight 1 + 2 = 3 so there is a if and only if the cost of
         // the edge to be contracted is smaller than 3.
@@ -1111,14 +1150,46 @@ mod tests {
             order: 0,
             cost: OrderedFloat(0.),
         });
-        graph.add_edge(n0, n1, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n1, n0, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n0, n2, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n2, n0, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n0, n3, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n3, n0, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n0, n4, ToContractEdge::new_original(TTF::default()));
-        graph.add_edge(n4, n0, ToContractEdge::new_original(TTF::default()));
+        graph.add_edge(
+            n0,
+            n1,
+            ToContractEdge::new_original(TTF::default(), edge_index(0)),
+        );
+        graph.add_edge(
+            n1,
+            n0,
+            ToContractEdge::new_original(TTF::default(), edge_index(1)),
+        );
+        graph.add_edge(
+            n0,
+            n2,
+            ToContractEdge::new_original(TTF::default(), edge_index(2)),
+        );
+        graph.add_edge(
+            n2,
+            n0,
+            ToContractEdge::new_original(TTF::default(), edge_index(3)),
+        );
+        graph.add_edge(
+            n0,
+            n3,
+            ToContractEdge::new_original(TTF::default(), edge_index(4)),
+        );
+        graph.add_edge(
+            n3,
+            n0,
+            ToContractEdge::new_original(TTF::default(), edge_index(5)),
+        );
+        graph.add_edge(
+            n0,
+            n4,
+            ToContractEdge::new_original(TTF::default(), edge_index(6)),
+        );
+        graph.add_edge(
+            n4,
+            n0,
+            ToContractEdge::new_original(TTF::default(), edge_index(7)),
+        );
         let cg = ContractionGraph::new(graph, Default::default());
         assert_eq!(cg.iter_remaining_edge_pairs(n0).count(), 12);
         let pairs: HashSet<_> = cg

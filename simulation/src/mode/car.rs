@@ -160,7 +160,13 @@ impl<T: TTFNum> CarAlternative<T> {
                         departure_time,
                         &mut alloc.car_alloc.ea_alloc,
                     )? {
-                        debug_assert!(arrival_time.approx_eq(&ttf.eval(departure_time)));
+                        // debug_assert!(
+                        // arrival_time - (departure_time + ttf.eval(departure_time))
+                        // < Time::large_margin(),
+                        // "{:?} != {:?}",
+                        // arrival_time,
+                        // departure_time + ttf.eval(departure_time)
+                        // );
                         Ok(PreDayChoices::Car(CarChoices::new(
                             departure_time,
                             arrival_time,
