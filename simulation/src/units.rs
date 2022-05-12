@@ -421,8 +421,8 @@ impl<T: TTFNum> Distribution<T> {
     pub fn from_iterator(iter: impl Iterator<Item = T>) -> Option<Distribution<T>> {
         let mut sum = T::zero();
         let mut sum_squared = T::zero();
-        let mut min = T::min_value();
-        let mut max = T::max_value();
+        let mut min = T::max_value();
+        let mut max = T::min_value();
         let mut count = 0;
         for value in iter {
             sum = sum + value;

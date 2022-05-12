@@ -538,7 +538,7 @@ pub fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
             // Add first point.
             let p0 = Point {
                 x: h.period[0],
-                y: c + g.eval(c),
+                y: c + g.eval(h.period[0] + c),
             };
             h.append_point(p0);
         }

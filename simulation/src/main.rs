@@ -34,9 +34,5 @@ fn main() -> Result<()> {
         fs::create_dir(output_dir)?;
     }
 
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
-        .build_global()
-        .unwrap();
     sim.run(output_dir)
 }
