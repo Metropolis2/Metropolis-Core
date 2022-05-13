@@ -88,12 +88,15 @@ impl<T: TTFNum> CarAlternative<T> {
         exp_skims: &'b NetworkSkim<T>,
         schedule_utility: &ScheduleUtility<T>,
     ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
-        let my_skims = &exp_skims.get_road_network().ok_or_else(|| {
+        let rn_skims = &exp_skims.get_road_network().ok_or_else(|| {
             anyhow!(
                 "Cannot make pre-day choice for car when there is no skims for the road network"
             )
-        })?[self.vehicle];
-        if let Some(ttf) = my_skims.profile_query(self.origin, self.destination)? {
+        })?;
+        let agent_skims = rn_skims[self.vehicle]
+            .as_ref()
+            .ok_or_else(|| anyhow!("No skims were computed for the vehicle of the agent"))?;
+        if let Some(ttf) = agent_skims.profile_query(self.origin, self.destination)? {
             let new_breakpoints = schedule_utility.get_breakpoints(ttf);
             let breakpoints = match ttf {
                 TTF::Constant(c) => {
@@ -154,7 +157,7 @@ impl<T: TTFNum> CarAlternative<T> {
             let mode_callback =
                 move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
                     let departure_time = Time(time_callback());
-                    if let Some((arrival_time, route)) = my_skims.earliest_arrival_query(
+                    if let Some((arrival_time, route)) = agent_skims.earliest_arrival_query(
                         self.origin,
                         self.destination,
                         departure_time,

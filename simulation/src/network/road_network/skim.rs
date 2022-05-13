@@ -11,10 +11,10 @@ use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle] of a [RoadNetwork].
-pub struct RoadNetworkSkims<T>(pub Vec<RoadNetworkSkim<T>>);
+pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
 
 impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
-    type Output = RoadNetworkSkim<T>;
+    type Output = Option<RoadNetworkSkim<T>>;
     fn index(&self, index: VehicleIndex) -> &Self::Output {
         &self.0[index.index()]
     }

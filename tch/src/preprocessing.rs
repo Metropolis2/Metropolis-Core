@@ -545,7 +545,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         let sum = |tot: (usize, usize, usize), edge: EdgeReference<ToContractEdge<T>>| {
             (
                 tot.0 + 1,
-                tot.1 + edge.weight().ttf.len(),
+                tot.1 + edge.weight().ttf.complexity(),
                 tot.2 + edge.weight().nb_packed,
             )
         };
@@ -602,7 +602,7 @@ impl<T: TTFNum> ContractionGraph<T> {
                 } else {
                     // No witness was found, we add the shortcut edge.
                     *e.insert(CachedResult::NoWitness(
-                        edge_score.len(),
+                        edge_score.complexity(),
                         in_edge.weight().nb_packed + out_edge.weight().nb_packed,
                     ))
                 }

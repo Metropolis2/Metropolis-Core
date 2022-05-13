@@ -159,11 +159,11 @@ impl<T: TTFNum> NetworkWeights<T> {
     }
 
     #[must_use]
-    pub fn genetic_average(&self, other: &NetworkWeights<T>, exponent: i32) -> NetworkWeights<T> {
+    pub fn genetic_average(&self, other: &NetworkWeights<T>, a: T, b: T) -> NetworkWeights<T> {
         let rn_weights = if let (Some(self_rn_weights), Some(other_rn_weights)) =
             (&self.road_network, &other.road_network)
         {
-            Some(self_rn_weights.genetic_average(other_rn_weights, exponent))
+            Some(self_rn_weights.genetic_average(other_rn_weights, a, b))
         } else {
             None
         };

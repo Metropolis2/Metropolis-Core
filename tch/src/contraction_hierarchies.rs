@@ -201,7 +201,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     }
 
     pub fn complexity(&self) -> usize {
-        self.graph.edge_weights().map(|e| e.ttf.len()).sum()
+        self.graph.edge_weights().map(|e| e.ttf.complexity()).sum()
     }
 
     pub fn approximate(&mut self, error: T) {

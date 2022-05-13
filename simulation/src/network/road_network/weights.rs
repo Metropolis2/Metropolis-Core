@@ -8,8 +8,12 @@ use ttf::{TTFNum, TTF};
 
 /// Structure to store the travel-time functions of each edge of a [RoadNetwork], for each
 /// [Vehicle].
+///
+/// The outer vector has the same length as the number of vehicles of the associated [RoadNetwork].
+/// The inner vectors have all the same length (i.e., the RoadNetworkWeights represent a matrix)
+/// which is equal to the number of edges of the associated [RoadNetwork].
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RoadNetworkWeights<T>(pub Vec<Vec<TTF<Time<T>>>>);
+pub struct RoadNetworkWeights<T>(Vec<Vec<TTF<Time<T>>>>);
 
 impl<T> RoadNetworkWeights<T> {
     /// Initialize a new RoadNetworkWeights instance with enough capacity for the given number of
@@ -20,17 +24,24 @@ impl<T> RoadNetworkWeights<T> {
         RoadNetworkWeights(vehicle_weights)
     }
 
+    /// Return the shape of the RoadNetworkWeights, i.e., a tuple with the number of vehicles and
+    /// the number of edges.
     pub fn shape(&self) -> (usize, usize) {
-        let nb_vehicles = self.0.len();
-        if nb_vehicles == 0 {
-            (0, 0)
-        } else {
-            (nb_vehicles, self.0[0].len())
+        match self.0.len() {
+            0 => (0, 0),
+            nb_vehicles => (nb_vehicles, self.0[0].len()),
         }
     }
 }
 
 impl<T: TTFNum> RoadNetworkWeights<T> {
+    /// Return the average between two RoadNetworkWeights, using the given coefficient.
+    ///
+    /// For each vehicle `v` and edge `e`, the weight of the new RoadNetworkWeights is `w_ve = a *
+    /// w1_ve + (1 - a) * w2_ve`, where `a` is the coefficient, `w1_ve` is the weight of `self` and
+    /// `w2_ve` is the weight of `other`.
+    ///
+    /// **Panics** if the two RoadNetworkWeights do not have the same shape.
     #[must_use]
     pub fn average(&self, other: &Self, coefficient: T) -> Self {
         assert_eq!(
@@ -42,16 +53,23 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
         let mut new_weights = RoadNetworkWeights::with_capacity(nb_vehicles, nb_edges);
         for (i, (self_weights, other_weights)) in self.0.iter().zip(other.0.iter()).enumerate() {
             for (self_ttf, other_ttf) in self_weights.iter().zip(other_weights.iter()) {
-                new_weights.0[i].push(self_ttf.apply(other_ttf, |a, b| {
-                    Time(coefficient * a.0 + (T::one() - coefficient) * b.0)
+                new_weights.0[i].push(self_ttf.apply(other_ttf, |w1, w2| {
+                    Time(coefficient * w1.0 + (T::one() - coefficient) * w2.0)
                 }));
             }
         }
         new_weights
     }
 
+    /// Return the genetic average between two RoadNetworkWeights, using the given exponents.
+    ///
+    /// For each vehicle `v` and edge `e`, the weight of the new RoadNetworkWeights is `w_ve =
+    /// (w1_ve^a + w2_ve^b)^(1/(a+b))`, where `a` and `b` are the exponents, `w1_ve` is the weight
+    /// of `self` and `w2_ve` is the weight of `other`.
+    ///
+    /// **Panics** if the two RoadNetworkWeights do not have the same shape.
     #[must_use]
-    pub fn genetic_average(&self, other: &Self, exponent: i32) -> Self {
+    pub fn genetic_average(&self, other: &Self, a: T, b: T) -> Self {
         assert_eq!(
             self.shape(),
             other.shape(),
@@ -59,14 +77,10 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
         );
         let (nb_vehicles, nb_edges) = self.shape();
         let mut new_weights = RoadNetworkWeights::with_capacity(nb_vehicles, nb_edges);
-        let exponent = T::from_i32(exponent).unwrap();
         for (i, (self_weights, other_weights)) in self.0.iter().zip(other.0.iter()).enumerate() {
             for (self_ttf, other_ttf) in self_weights.iter().zip(other_weights.iter()) {
-                new_weights.0[i].push(self_ttf.apply(other_ttf, |a, b| {
-                    Time(
-                        a.0.powf(exponent / (T::one() + exponent))
-                            * b.0.powf(T::one() / (T::one() + exponent)),
-                    )
+                new_weights.0[i].push(self_ttf.apply(other_ttf, |w1, w2| {
+                    Time(w1.0.powf(a / (a + b)) * w2.0.powf(b / (a + b)))
                 }));
             }
         }

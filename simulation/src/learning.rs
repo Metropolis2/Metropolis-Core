@@ -25,7 +25,11 @@ impl<T: TTFNum> LearningModel<T> {
                 let coef = T::from(v).unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", v));
                 old_weights.average(new_weights, coef)
             }
-            Self::Genetic => old_weights.genetic_average(new_weights, iteration_counter as i32),
+            Self::Genetic => {
+                let exponent = T::from(iteration_counter as i32)
+                    .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
+                old_weights.genetic_average(new_weights, exponent, T::one())
+            }
         }
     }
 }

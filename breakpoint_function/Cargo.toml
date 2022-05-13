@@ -1,14 +1,16 @@
 [package]
-name = "ttf"
+name = "breakpoint_function"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-either = "1.6"
+anyhow = "1.0"
 num-traits = "0.2"
-ordered-float = "2.10"
+float_next_after = "0.1"
+itertools = "0.10"
 serde = { version = "1.0", optional = true }
 serde_derive = { version = "1.0", optional = true }
+ordered-float = "2.10"
 
 [features]
 serde-1 = ["serde", "serde_derive"]

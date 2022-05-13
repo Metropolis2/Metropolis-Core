@@ -2,6 +2,7 @@ use crate::point::*;
 use crate::ttf_num::TTFNum;
 use crate::UndercutDescriptor;
 
+use either::Either;
 use std::cmp::Ordering;
 use std::ops;
 
@@ -14,7 +15,9 @@ pub struct PwlTTF<T> {
     min: Option<T>,
     max: Option<T>,
     period: [T; 2],
+    #[cfg_attr(feature = "serde-1", serde(skip_serializing))]
     buckets: Vec<usize>,
+    #[cfg_attr(feature = "serde-1", serde(skip_serializing))]
     bucket_shift: usize,
 }
 
@@ -923,12 +926,12 @@ pub fn analyze_relative_position<T: TTFNum>(
 pub fn analyze_relative_position_to_cst<T: TTFNum>(
     f: &PwlTTF<T>,
     c: T,
-) -> Vec<(Option<T>, Ordering)> {
+) -> Either<Ordering, Vec<(T, Ordering)>> {
     if f.get_max().approx_le(&c) {
-        return vec![(None, Ordering::Less)];
+        return Either::Left(Ordering::Less);
     }
     if c.approx_le(&f.get_min()) {
-        return vec![(None, Ordering::Greater)];
+        return Either::Left(Ordering::Greater);
     }
 
     let mut results = Vec::with_capacity(2 * f.len());
@@ -941,7 +944,7 @@ pub fn analyze_relative_position_to_cst<T: TTFNum>(
         Ordering::Greater
     };
     if rel_pos != Ordering::Equal {
-        results.push((Some(f.period[0]), rel_pos));
+        results.push((f.period[0], rel_pos));
     }
 
     for i in 0..f.len() {
@@ -961,23 +964,23 @@ pub fn analyze_relative_position_to_cst<T: TTFNum>(
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((Some(f.period[0]), rel_pos));
+                results.push((f.period[0], rel_pos));
             } else {
-                results.push((Some(x), rel_pos));
+                results.push((x, rel_pos));
             }
         }
     }
 
     if results.is_empty() {
-        results.push((Some(f.period[0]), Ordering::Greater));
+        results.push((f.period[0], Ordering::Greater));
     }
 
-    debug_assert_eq!(results[0].0, Some(f.period[0]));
+    debug_assert_eq!(results[0].0, f.period[0]);
 
-    results
+    Either::Right(results)
 }
 
 fn segment_contains<T: TTFNum>(segment: [Point<T>; 2], error: T, p: &Point<T>) -> bool {

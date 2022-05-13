@@ -195,6 +195,10 @@ impl<T: TTFNum> RoadNetwork<T> {
     ) -> Result<RoadNetworkSkims<T>> {
         let mut skims = Vec::with_capacity(self.vehicles.len());
         for (vehicle_id, _vehicle) in self.iter_vehicles() {
+            if preprocess_data[vehicle_id].is_empty() {
+                // No one is using this vehicle so there is no need to compute the skims.
+                skims.push(None);
+            }
             // TODO: In some cases, it might be faster to re-use the same order from one iteration
             // to another.
             let mut hierarchy = HierarchyOverlay::order(
@@ -208,7 +212,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             skim.compute_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
             skim.approximate_search_spaces(parameters.space_approx_bound);
             skim.pre_compute_profile_queries(&od_pairs.pairs)?;
-            skims.push(skim);
+            skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))
     }
@@ -275,4 +279,10 @@ pub struct ODPairs {
     unique_origins: HashSet<NodeIndex>,
     unique_destinations: HashSet<NodeIndex>,
     pairs: HashMap<NodeIndex, HashSet<NodeIndex>>,
+}
+
+impl ODPairs {
+    fn is_empty(&self) -> bool {
+        self.unique_origins.is_empty() && self.unique_destinations.is_empty()
+    }
 }

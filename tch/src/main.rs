@@ -520,7 +520,7 @@ fn read_traffic_patterns(
                     TTF::Piecewise(PwlTTF::from_x_and_y(departure_times.clone(), travel_times))
                     // TTF::Constant(travel_times[0])
                 };
-                n += ttf.len();
+                n += ttf.complexity();
                 traffic_patterns.insert(edge.id(), ttf);
             }
         } else {

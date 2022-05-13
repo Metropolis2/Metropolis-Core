@@ -9,8 +9,14 @@ mod ttf_num;
 pub use pwl::PwlTTF;
 pub use ttf_num::TTFNum;
 
+use either::Either;
 use std::cmp::Ordering;
 
+/// Descriptor used when merging two TTFs `f` and `g`.
+///
+/// If `f_undercuts_strictly` is `true`, it means that there exists `x` such that `f(x) < g(x)`.
+///
+/// If `g_undercuts_strictly` is `true`, it means that there exists `x` such that `g(x) < f(x)`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UndercutDescriptor {
     pub f_undercuts_strictly: bool,
@@ -18,6 +24,7 @@ pub struct UndercutDescriptor {
 }
 
 impl UndercutDescriptor {
+    /// Reverse the role of `f` and `g` in the descriptor.
     fn reverse(mut self) -> Self {
         std::mem::swap(
             &mut self.f_undercuts_strictly,
@@ -27,6 +34,9 @@ impl UndercutDescriptor {
     }
 }
 
+/// A travel-time function (TTF) that can be either constant or piecewise-linear.
+///
+/// If the function is piecewise-linear, it is represented using a [PwlTTF].
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub enum TTF<T> {
@@ -41,6 +51,8 @@ impl<T: TTFNum> Default for TTF<T> {
 }
 
 impl<T: TTFNum> TTF<T> {
+    /// Return the minimum travel time observed over the departure-time period, i.e., return `min_x
+    /// f(x)`.
     pub fn get_min(&self) -> T {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.get_min(),
@@ -48,6 +60,8 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Return the maximum travel time observed over the departure-time period, i.e., return `max_x
+    /// f(x)`.
     pub fn get_max(&self) -> T {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.get_max(),
@@ -55,14 +69,20 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
+    /// Return the complexity of the TTF.
+    ///
+    /// - Return 0 if the TTF is a constant.
+    /// - Return the number of breakpoints if the TTF is piecewise-linear.
+    pub fn complexity(&self) -> usize {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.len(),
             Self::Constant(_) => 0,
         }
     }
 
+    /// Return the departure time at the middle of the departure-time period of the TTF.
+    ///
+    /// If the TTF is constant, the departure-time period is unknown so `None` is returned instead.
     pub fn middle_departure_time(&self) -> Option<T> {
         match self {
             Self::Piecewise(pwl_ttf) => Some(pwl_ttf.middle_departure_time()),
@@ -70,6 +90,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Return the travel time at the given departure time.
     pub fn eval(&self, x: T) -> T {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.eval(x),
@@ -77,6 +98,15 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Return the departure time `x` such that `f(x) = z`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ttf::TTF;
+    /// let ttf = TTF::Constant(1.0f64);
+    /// assert_eq!(ttf.departure_time_with_arrival(3.0), 2.0);
+    /// ```
     pub fn departure_time_with_arrival(&self, z: T) -> T {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
@@ -84,6 +114,18 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Link the TTF with another TTF.
+    ///
+    /// The link operation returns the TTF `h` such that `h(x) = f(x) + g(f(x))`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ttf::TTF;
+    /// let f = TTF::Constant(1.0f64);
+    /// let g = TTF::Constant(2.0f64);
+    /// assert_eq!(f.link(&g), TTF::Constant(3.0));
+    /// ```
     #[must_use]
     pub fn link(&self, other: &Self) -> Self {
         match (self, other) {
@@ -94,6 +136,24 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Merge the TTF with another TTF.
+    ///
+    /// The merge operation returns the TTF `h` such that `h(x) = min(f(x), g(x))`.
+    /// It also returns an [UndercutDescriptor] that describes if `f` is strictly below `g` and if
+    /// `g` is strictly below `f` at some point.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ttf::TTF;
+    /// let f = TTF::Constant(1.0f64);
+    /// let g = TTF::Constant(2.0f64);
+    /// let descr = UndercutDescriptor {
+    ///     f_undercuts_strictly: false,
+    ///     g_undercuts_strictly: true,
+    /// }
+    /// assert_eq!(f.merge(&g), (g, descr));
+    /// ```
     #[must_use]
     pub fn merge(&self, other: &Self) -> (Self, UndercutDescriptor) {
         match (self, other) {
@@ -102,40 +162,22 @@ impl<T: TTFNum> TTF<T> {
                 (Self::Piecewise(h), descr)
             }
             (Self::Piecewise(f), &Self::Constant(c)) => {
-                let mut descr = UndercutDescriptor::default();
-                if c.approx_lt(&f.get_min()) {
-                    descr.g_undercuts_strictly = true;
-                    (Self::Constant(c), descr)
-                } else if f.get_max().approx_lt(&c) {
-                    descr.f_undercuts_strictly = true;
-                    (Self::Piecewise(f.clone()), descr)
+                let (h, descr) = pwl::merge_cst(f, c);
+                let h = if h.is_cst() {
+                    Self::Constant(h.get_cst_value())
                 } else {
-                    let (h, descr) = pwl::merge_cst(f, c);
-                    let h = if h.is_cst() {
-                        Self::Constant(h.get_cst_value())
-                    } else {
-                        Self::Piecewise(h)
-                    };
-                    (h, descr)
-                }
+                    Self::Piecewise(h)
+                };
+                (h, descr)
             }
             (&Self::Constant(c), Self::Piecewise(g)) => {
-                let mut descr = UndercutDescriptor::default();
-                if c.approx_lt(&g.get_min()) {
-                    descr.f_undercuts_strictly = true;
-                    (Self::Constant(c), descr)
-                } else if g.get_max().approx_lt(&c) {
-                    descr.g_undercuts_strictly = true;
-                    (Self::Piecewise(g.clone()), descr)
+                let (h, rev_descr) = pwl::merge_cst(g, c);
+                let h = if h.is_cst() {
+                    Self::Constant(h.get_cst_value())
                 } else {
-                    let (h, rev_descr) = pwl::merge_cst(g, c);
-                    let h = if h.is_cst() {
-                        Self::Constant(h.get_cst_value())
-                    } else {
-                        Self::Piecewise(h)
-                    };
-                    (h, rev_descr.reverse())
-                }
+                    Self::Piecewise(h)
+                };
+                (h, rev_descr.reverse())
             }
             (&Self::Constant(a), &Self::Constant(b)) => {
                 let descr = UndercutDescriptor {
@@ -147,7 +189,15 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    pub fn analyze_relative_position(&self, other: &Self) -> Vec<(Option<T>, Ordering)> {
+    /// Simulate the merge operation between two TTFs `f` and `g` and check where `f` is below `g`
+    /// and where `g` is below `f`.
+    ///
+    /// Return either
+    /// - an `Ordering` implying that `f` is always below `g` or `g` is always below `f`.
+    /// - a vector of tuples `(T, Ordering)`, where a value `(t, ord)` means that, starting from
+    ///   departure time `t`, the ordering between `f` and `g` is `ord`.
+    ///   The vector is ordered by increasing departure times.
+    pub fn analyze_relative_position(&self, other: &Self) -> Either<Ordering, Vec<(T, Ordering)>> {
         match (self, other) {
             (Self::Piecewise(f), Self::Piecewise(g)) => pwl::analyze_relative_position(f, g),
             (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
@@ -159,12 +209,12 @@ impl<T: TTFNum> TTF<T> {
                 pos
             }
             (&Self::Constant(a), &Self::Constant(b)) => {
-                let pos = if b.approx_lt(&a) {
+                let pos = if b < a {
                     Ordering::Greater
                 } else {
                     Ordering::Less
                 };
-                vec![(None, pos)]
+                Either::Left(pos)
             }
         }
     }
