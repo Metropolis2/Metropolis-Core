@@ -83,7 +83,7 @@ impl<T: TTFNum> Parameters<T> {
 impl<T: serde::Serialize> Parameters<T> {
     pub fn save_aggregate_results(
         &self,
-        aggregate_results: AggregateResults<T>,
+        aggregate_results: &AggregateResults<T>,
         iteration_counter: u64,
         output_dir: &Path,
     ) -> Result<()> {

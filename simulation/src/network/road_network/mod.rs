@@ -13,6 +13,7 @@ use weights::RoadNetworkWeights;
 
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
+use log::debug;
 use num_traits::Zero;
 use petgraph::graph::{DiGraph, EdgeIndex, Neighbors, NodeIndex};
 use petgraph::Direction;
@@ -38,9 +39,9 @@ impl RoadNode {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-pub enum SpeedDensityFunction {
+pub enum SpeedDensityFunction<T> {
     FreeFlow,
-    Bottleneck,
+    Bottleneck(Outflow<T>),
 }
 
 fn default_outflow<T: TTFNum>() -> T {
@@ -54,27 +55,20 @@ pub struct RoadEdge<T> {
     base_speed: Speed<T>,
     length: Length<T>,
     lanes: u8,
-    speed_density: SpeedDensityFunction,
+    speed_density: SpeedDensityFunction<T>,
     #[serde(default = "default_outflow")]
     /// Maximum outflow of vehicle on the edge, in length of vehicle per second per lane.
     bottleneck_outflow: Outflow<T>,
-    param1: Option<T>,
-    param2: Option<T>,
-    param3: Option<T>,
 }
 
 impl<T: TTFNum> RoadEdge<T> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: usize,
         base_speed: Speed<T>,
         length: Length<T>,
         lanes: u8,
-        speed_density: SpeedDensityFunction,
+        speed_density: SpeedDensityFunction<T>,
         bottleneck_outflow: Outflow<T>,
-        param1: Option<T>,
-        param2: Option<T>,
-        param3: Option<T>,
     ) -> Self {
         RoadEdge {
             id,
@@ -83,9 +77,6 @@ impl<T: TTFNum> RoadEdge<T> {
             lanes,
             speed_density,
             bottleneck_outflow,
-            param1,
-            param2,
-            param3,
         }
     }
 
@@ -93,11 +84,7 @@ impl<T: TTFNum> RoadEdge<T> {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
         match self.speed_density {
             SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
-            SpeedDensityFunction::Bottleneck => {
-                let outflow = Outflow(
-                    self.param1
-                        .expect("Param1 cannot be null for Bottleneck speed-density function"),
-                );
+            SpeedDensityFunction::Bottleneck(outflow) => {
                 // WARNING: The formula below is incorrect when there are vehicles with different
                 // speeds.
                 if occupied_length <= outflow * (self.total_length() / vehicle_speed) {
@@ -199,6 +186,8 @@ impl<T: TTFNum> RoadNetwork<T> {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
             }
+            let nb_breakpoints: usize = weights[vehicle_id].iter().map(|w| w.complexity()).sum();
+            debug!("Total number of breakpoints: {nb_breakpoints}");
             // TODO: In some cases, it might be faster to re-use the same order from one iteration
             // to another.
             let mut hierarchy = HierarchyOverlay::order(

@@ -45,7 +45,7 @@ pub enum HierarchyDirection {
 ///
 /// A tuple `(t, None)` indicates that, starting at time `t`, the fastest path from the source to
 /// the target of the shortcut edge takes the shortcut edge as an original edge.
-pub type EdgePack<T> = Vec<(Option<T>, Packed)>;
+pub type EdgePack<T> = Vec<(T, Packed)>;
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
@@ -62,7 +62,8 @@ pub enum Packed {
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub enum HierarchyEdgeClass<T> {
     Original(EdgeIndex),
-    Shortcut(EdgePack<T>),
+    ShortcutThrough(NodeIndex),
+    PackedShortcut(EdgePack<T>),
 }
 
 /// Structure for edges in a [HierarchyOverlay].
@@ -83,11 +84,23 @@ impl<T> HierarchyEdge<T> {
         }
     }
 
-    pub fn new_shortcut(ttf: TTF<T>, direction: HierarchyDirection, pack: EdgePack<T>) -> Self {
+    pub fn new_shortcut(
+        ttf: TTF<T>,
+        direction: HierarchyDirection,
+        intermediate_node: NodeIndex,
+    ) -> Self {
         HierarchyEdge {
             ttf,
             direction,
-            class: HierarchyEdgeClass::Shortcut(pack),
+            class: HierarchyEdgeClass::ShortcutThrough(intermediate_node),
+        }
+    }
+
+    pub fn new_packed(ttf: TTF<T>, direction: HierarchyDirection, pack: EdgePack<T>) -> Self {
+        HierarchyEdge {
+            ttf,
+            direction,
+            class: HierarchyEdgeClass::PackedShortcut(pack),
         }
     }
 }
@@ -242,16 +255,17 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                     path.push(id);
                     *current_time = *current_time + self.graph[edge].ttf.eval(*current_time);
                 }
-                HierarchyEdgeClass::Shortcut(pack) => {
-                    let pack_id = if pack.len() == 1 {
-                        0
-                    } else {
-                        match pack.binary_search_by(|(t, _)| {
-                            t.unwrap().partial_cmp(current_time).unwrap()
-                        }) {
-                            Ok(i) => i,
-                            Err(i) => i - 1,
-                        }
+                &HierarchyEdgeClass::ShortcutThrough(inter_node) => {
+                    self.unpack_edge(source, inter_node, current_time, path)?;
+                    self.unpack_edge(inter_node, target, current_time, path)?;
+                }
+                HierarchyEdgeClass::PackedShortcut(pack) => {
+                    assert!(*current_time >= pack[0].0);
+                    let pack_id = match pack
+                        .binary_search_by(|(t, _)| t.partial_cmp(current_time).unwrap())
+                    {
+                        Ok(i) => i,
+                        Err(i) => i - 1,
                     };
                     match pack[pack_id].1 {
                         Packed::IntermediateNode(inter_node) => {

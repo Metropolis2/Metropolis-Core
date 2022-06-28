@@ -169,8 +169,8 @@ pub enum ModeResults<T> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum AggregateModeResults<T> {
+pub struct AggregateModeResults<T> {
     // AggregateCarResults is boxed to reduce the size of the enum.
-    Car(Box<AggregateCarResults<T>>),
-    Constant(usize),
+    pub car: AggregateCarResults<T>,
+    pub constant: usize,
 }

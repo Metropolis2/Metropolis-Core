@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ttf = { path = "../ttf" }
 anyhow = "1.0"
+log = "0.4"
 serde = { version = "1.0", optional = true }
 serde_derive = { version = "1.0", optional = true }
 

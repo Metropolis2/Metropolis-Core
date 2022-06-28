@@ -22,21 +22,28 @@ pub struct PwlTTF<T> {
 }
 
 impl<T: TTFNum> PwlTTF<T> {
-    pub fn from_x_and_y(x: Vec<T>, y: Vec<T>) -> Self {
+    pub fn from_x_and_y(x: Vec<T>, y: Vec<T>, force_fifo: bool) -> Self {
         assert_eq!(x.len(), y.len());
         let period = [x[0], x[x.len() - 1]];
-        Self::from_iterator(x.into_iter().zip(y.into_iter()), period)
+        Self::from_iterator(x.into_iter().zip(y.into_iter()), period, force_fifo)
     }
 
-    pub fn from_breakpoints(points: Vec<(T, T)>) -> Self {
+    pub fn from_breakpoints(points: Vec<(T, T)>, force_fifo: bool) -> Self {
         let period = [points[0].0, points[points.len() - 1].0];
-        Self::from_iterator(points.into_iter(), period)
+        Self::from_iterator(points.into_iter(), period, force_fifo)
     }
 
-    pub fn from_iterator(iter: impl Iterator<Item = (T, T)>, period: [T; 2]) -> Self {
+    pub fn from_iterator(
+        iter: impl Iterator<Item = (T, T)>,
+        period: [T; 2],
+        force_fifo: bool,
+    ) -> Self {
         let mut ttf = PwlTTF::new(period);
         for (x, y) in iter {
             ttf.append_point(Point { x, y });
+        }
+        if force_fifo {
+            ttf.ensure_fifo();
         }
         ttf.setup_buckets();
         ttf
@@ -85,7 +92,12 @@ impl<T: TTFNum> PwlTTF<T> {
     }
 
     fn append_point(&mut self, p: Point<T>) {
-        debug_assert!(self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),);
+        debug_assert!(
+            self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),
+            "{:?} > {:?}",
+            self.points.last().unwrap().x,
+            p.x
+        );
         debug_assert!(!self.is_empty() || p.x == self.period[0]);
         debug_assert!(p.x >= self.period[0]);
         debug_assert!(p.x <= self.period[1]);
@@ -134,9 +146,18 @@ impl<T: TTFNum> PwlTTF<T> {
         }
     }
 
+    fn ensure_fifo(&mut self) {
+        for i in 1..self.len() {
+            if self[i].x + self[i].y < self[i - 1].x + self[i - 1].y {
+                self[i].y = self[i - 1].x + self[i - 1].y - self[i].x;
+            }
+        }
+    }
+
     fn is_fifo(&self) -> bool {
         for (p, q) in self.double_iter() {
             if (q.x + q.y).approx_lt(&(p.x + p.y)) {
+                println!("{:?}", self);
                 return false;
             }
         }
@@ -188,7 +209,9 @@ impl<T: TTFNum> PwlTTF<T> {
         debug_assert!(x >= self.period[0]);
         let bucket = (x - self.period[0]).to_usize().unwrap_or_else(|| {
             panic!(
-                "Value cannot be represented as usize: {:?}",
+                "Value cannot be represented as usize: {:?} - {:?} = {:?}",
+                x,
+                self.period[0],
                 x - self.period[0]
             )
         }) >> self.bucket_shift;
@@ -244,12 +267,16 @@ impl<T: TTFNum> PwlTTF<T> {
     }
 
     /// Return the index `i` such that `z_i = x_i + y_i >= z` and `z_i-1 = x_i-1 + y_i-1 < z`.
-    fn first_index_with_z_ge(&self, z: T) -> usize {
+    ///
+    /// Return `None` if such an index does not exist.
+    fn first_index_with_z_ge(&self, z: T) -> Option<usize> {
         debug_assert!(!self.is_empty());
-        debug_assert!(
-            z >= self.period[0] + self.points[0].y
-                && z <= self.period[1] + self.points[self.len() - 1].y
-        );
+        if z < self.period[0] + self.points[0].y {
+            return None;
+        }
+        if z > self.period[1] + self.points[self.len() - 1].y {
+            return None;
+        }
         // `x_min` is such that `x_min <= x*` where `x* + f(x*) = z`.
         let x_min = z - self.get_max();
         // `index` is a lower bound to the index that we search.
@@ -264,23 +291,29 @@ impl<T: TTFNum> PwlTTF<T> {
         for i in index..self.len() {
             if self[i].x + self[i].y >= z {
                 debug_assert!(i == 0 || self[i - 1].x + self[i - 1].y < z);
-                return i;
+                return Some(i);
             }
         }
         debug_assert!(self[self.len() - 1].x + self[self.len() - 1].y < z);
-        self.len()
+        Some(self.len())
     }
 
-    pub fn x_at_z(&self, z: T) -> T {
-        let i = self.first_index_with_z_ge(z);
+    pub fn x_at_z(&self, z: T) -> Option<T> {
+        let i = self.first_index_with_z_ge(z)?;
         let x = if i == 0 {
             self[0].x
         } else if i == self.len() {
-            panic!(
-                "Value {:?} is greater than last arrival time ({:?})",
-                z,
-                self[self.len() - 1].x + self[self.len() - 1].y
-            );
+            // Maximum possible z is the value of z when x is equal to the end of the period.
+            let max_z = self.period[1] + self[self.len() - 1].y;
+            if z <= max_z {
+                // After the last x breakpoint, the y is constant and equal to the last value of y.
+                z - self[self.len() - 1].y
+            } else {
+                panic!(
+                    "Value {:?} is greater than last arrival time ({:?})",
+                    z, max_z
+                );
+            }
         } else {
             inv_linear_interp(self[i - 1], self[i], z)
         };
@@ -290,7 +323,7 @@ impl<T: TTFNum> PwlTTF<T> {
             x + self.eval(x),
             z
         );
-        x
+        Some(x)
     }
 
     fn setup_buckets(&mut self) {
@@ -380,6 +413,7 @@ impl<T: TTFNum> PwlTTF<T> {
         }
         self.points = new_points;
         self.setup_buckets();
+        debug_assert!(self.is_fifo());
     }
 
     #[allow(dead_code)]
@@ -450,6 +484,13 @@ impl<T> ops::Index<usize> for PwlTTF<T> {
     }
 }
 
+impl<T> ops::IndexMut<usize> for PwlTTF<T> {
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
+        let n = self.points.len();
+        &mut self.points[std::cmp::min(i, n - 1)]
+    }
+}
+
 fn linear_interp<T: TTFNum>(p: Point<T>, q: Point<T>, x: T) -> T {
     debug_assert!(p.x.approx_le(&x));
     debug_assert!(x.approx_le(&q.x));
@@ -512,6 +553,7 @@ pub fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     }
     h.points.shrink_to_fit();
     h.setup_buckets();
+    debug_assert!(h.is_fifo());
     // debug_assert!(h.dbg_check_link(f, g));
     h
 }
@@ -550,6 +592,7 @@ pub fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
 
     h.points.shrink_to_fit();
     h.setup_buckets();
+    debug_assert!(h.is_fifo());
     h
 }
 
@@ -664,43 +707,47 @@ pub fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDes
     } else {
         f[f.len() - 1].y
     };
+    let mut is_first = true;
     for i in i..f.len() {
         if f[i].y.approx_eq(&last_y_from_other) {
             h.append_point(f[i]);
         } else if f[i].y < last_y_from_other {
-            if f[i - 1].y > last_y_from_other {
+            if !is_first && f[i - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
                 h.append_point(p);
             }
             descr.f_undercuts_strictly = true;
             h.append_point(f[i]);
-        } else if f[i - 1].y < last_y_from_other {
+        } else if !is_first && f[i - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
             descr.g_undercuts_strictly = true;
             h.append_point(p);
         }
+        is_first = false;
     }
     for j in j..g.len() {
         if g[j].y.approx_eq(&last_y_from_other) {
             h.append_point(g[j]);
         } else if g[j].y < last_y_from_other {
-            if g[j - 1].y > last_y_from_other {
+            if !is_first && g[j - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
                 h.append_point(p);
             }
             descr.g_undercuts_strictly = true;
             h.append_point(g[j]);
-        } else if g[j - 1].y < last_y_from_other {
+        } else if !is_first && g[j - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
             descr.f_undercuts_strictly = true;
             h.append_point(p);
         }
+        is_first = false;
     }
 
     debug_assert!(!h.is_empty());
     h.points.shrink_to_fit();
     h.setup_buckets();
     // debug_assert!(h.dbg_check_min(f, g));
+    debug_assert!(h.is_fifo());
     (h, descr)
 }
 
@@ -726,6 +773,7 @@ pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescript
         h.append_point(p);
         h.points.shrink_to_fit();
         h.setup_buckets();
+        debug_assert!(h.is_fifo());
         return (h, descr);
     }
 
@@ -755,20 +803,21 @@ pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescript
     debug_assert!(!h.is_empty());
     h.points.shrink_to_fit();
     h.setup_buckets();
+    debug_assert!(h.is_fifo());
     (h, descr)
 }
 
 pub fn analyze_relative_position<T: TTFNum>(
     f: &PwlTTF<T>,
     g: &PwlTTF<T>,
-) -> Vec<(Option<T>, Ordering)> {
+) -> Either<Ordering, Vec<(T, Ordering)>> {
     debug_assert_eq!(f.period, g.period);
 
     if f.get_max().approx_le(&g.get_min()) {
-        return vec![(None, Ordering::Less)];
+        return Either::Left(Ordering::Less);
     }
     if g.get_max().approx_le(&f.get_min()) {
-        return vec![(None, Ordering::Greater)];
+        return Either::Left(Ordering::Greater);
     }
 
     let mut results = Vec::with_capacity(f.len() + g.len());
@@ -784,7 +833,7 @@ pub fn analyze_relative_position<T: TTFNum>(
         Ordering::Greater
     };
     if rel_pos != Ordering::Equal {
-        results.push((Some(f.period[0]), rel_pos));
+        results.push((f.period[0], rel_pos));
     }
 
     while i < f.len() && j < g.len() {
@@ -842,9 +891,9 @@ pub fn analyze_relative_position<T: TTFNum>(
             debug_assert!(x <= f.period[1]);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((Some(f.period[0]), rel_pos));
+                results.push((f.period[0], rel_pos));
             } else {
-                results.push((Some(x), rel_pos));
+                results.push((x, rel_pos));
             }
         }
 
@@ -878,12 +927,12 @@ pub fn analyze_relative_position<T: TTFNum>(
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((Some(f.period[0]), rel_pos));
+                results.push((f.period[0], rel_pos));
             } else {
-                results.push((Some(x), rel_pos));
+                results.push((x, rel_pos));
             }
         }
     }
@@ -904,23 +953,23 @@ pub fn analyze_relative_position<T: TTFNum>(
             };
             debug_assert!(x >= f.period[0]);
             debug_assert!(x <= f.period[1]);
-            debug_assert!(results.is_empty() || results.last().unwrap().0.unwrap() < x);
+            debug_assert!(results.is_empty() || results.last().unwrap().0 < x);
             if results.is_empty() {
                 // f and g were equal at the beginning of the period.
-                results.push((Some(f.period[0]), rel_pos));
+                results.push((f.period[0], rel_pos));
             } else {
-                results.push((Some(x), rel_pos));
+                results.push((x, rel_pos));
             }
         }
     }
 
     if results.is_empty() {
-        results.push((Some(f.period[0]), Ordering::Less));
+        results.push((f.period[0], Ordering::Less));
     }
 
-    debug_assert_eq!(results[0].0, Some(f.period[0]));
+    debug_assert_eq!(results[0].0, f.period[0]);
 
-    results
+    Either::Right(results)
 }
 
 pub fn analyze_relative_position_to_cst<T: TTFNum>(
@@ -1053,6 +1102,7 @@ pub fn apply<T: TTFNum, F: Fn(T, T) -> T>(f: &PwlTTF<T>, g: &PwlTTF<T>, func: F)
     debug_assert!(!h.is_empty());
     h.points.shrink_to_fit();
     h.setup_buckets();
+    debug_assert!(h.is_fifo());
     h
 }
 

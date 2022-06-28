@@ -9,10 +9,12 @@ use crate::ops::{
 use crate::query::PointToPointQuery;
 use crate::search::DijkstraSearch;
 
+use either::Either;
 use fixedbitset::FixedBitSet;
 use hashbrown::hash_map::{Entry, HashMap};
 use hashbrown::HashSet;
-use log::debug;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, log_enabled, Level};
 use object_pool::Pool;
 use ordered_float::OrderedFloat;
 use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
@@ -146,8 +148,13 @@ impl<T> ToContractEdge<T> {
     }
 
     /// Create a new shortcut edge.
-    fn new_shortcut(ttf: TTF<T>, nb_packed: usize, pack: EdgePack<T>) -> Self {
-        ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::Shortcut(pack))
+    fn new_shortcut(ttf: TTF<T>, nb_packed: usize, node: NodeIndex) -> Self {
+        ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::ShortcutThrough(node))
+    }
+
+    /// Create a new shortcut edge.
+    fn new_packed(ttf: TTF<T>, nb_packed: usize, pack: EdgePack<T>) -> Self {
+        ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::PackedShortcut(pack))
     }
 }
 
@@ -296,6 +303,16 @@ impl<T: TTFNum> ContractionGraph<T> {
             self.graph[node_id].cost = cost;
         }
         // Main loop.
+        let bp = if log_enabled!(Level::Debug) {
+            ProgressBar::new(self.graph.node_count() as u64).with_message("Contracting graph")
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_bar} {msg} ETA: {eta}")
+                .progress_chars("█░"),
+        );
         while self.graph.node_count() > 0 {
             // Find the largest set of independent nodes than can be contracted in parallel.
             let nodes_to_contract: HashSet<_> = self
@@ -315,11 +332,6 @@ impl<T: TTFNum> ContractionGraph<T> {
                 .collect();
             // `nodes_to_contract` cannot be empty as there is at least one remaining node that
             // should be selected.
-            debug!(
-                "{} remaining nodes to be contracted",
-                self.graph.node_count()
-            );
-            debug!("Nb edges: {}", self.edges.len() + self.graph.edge_count());
             assert!(!nodes_to_contract.is_empty());
             // Contract a new batch of nodes.
             self.contract_nodes(&nodes_to_contract, &mut cache);
@@ -352,7 +364,9 @@ impl<T: TTFNum> ContractionGraph<T> {
             for (node_id, cost) in new_costs.into_iter() {
                 self.graph[node_id].cost = cost;
             }
+            bp.inc(nodes_to_contract.len() as u64);
         }
+        bp.finish();
         self.into_hierarchy_overlay()
     }
 
@@ -461,8 +475,11 @@ impl<T: TTFNum> ContractionGraph<T> {
                     HierarchyEdgeClass::Original(id) => {
                         HierarchyEdge::new_original(edge.weight.ttf, dir, id)
                     }
-                    HierarchyEdgeClass::Shortcut(pack) => {
-                        HierarchyEdge::new_shortcut(edge.weight.ttf, dir, pack)
+                    HierarchyEdgeClass::ShortcutThrough(node) => {
+                        HierarchyEdge::new_shortcut(edge.weight.ttf, dir, node)
+                    }
+                    HierarchyEdgeClass::PackedShortcut(pack) => {
+                        HierarchyEdge::new_packed(edge.weight.ttf, dir, pack)
                     }
                 };
                 self.edges.push((source_id, target_id, hierarchy_edge));
@@ -676,12 +693,11 @@ impl<T: TTFNum> ContractionGraph<T> {
         };
         if is_cached || no_witness {
             let middle_node_original_id = self.graph[in_edge.target()].id;
-            let pack = vec![(None, Packed::IntermediateNode(middle_node_original_id))];
             // No witness was found, we add the shortcut edge.
             let shortcut = ToContractEdge::new_shortcut(
                 edge_score,
                 in_edge.weight().nb_packed + out_edge.weight().nb_packed,
-                pack,
+                middle_node_original_id,
             );
             Some((in_edge.source(), out_edge.target(), shortcut))
         } else {
@@ -825,11 +841,14 @@ impl<T: TTFNum> ContractionGraph<T> {
 
 /// Merge a new shortcut edge with an existing (original or shortcut) edge.
 fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContractEdge<T>) {
-    debug_assert!(matches!(new_edge.class, HierarchyEdgeClass::Shortcut(_)));
+    debug_assert!(matches!(
+        new_edge.class,
+        HierarchyEdgeClass::ShortcutThrough(_)
+    ));
     let relative_positioning = old_edge.ttf.analyze_relative_position(&new_edge.ttf);
 
-    if relative_positioning.len() == 1 {
-        if relative_positioning[0].1 == Ordering::Greater {
+    if let Either::Left(ord) = relative_positioning {
+        if ord == Ordering::Greater {
             // The new edge is always below.
             let old_nb_packed = old_edge.nb_packed;
             *old_edge = new_edge;
@@ -838,12 +857,11 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
         return;
     }
 
+    let relative_positioning = relative_positioning.unwrap_right();
+
     let new_middle_node = match new_edge.class {
         // The new edge is always a shortcut with a single middle node.
-        HierarchyEdgeClass::Shortcut(pack) => {
-            debug_assert!(pack.len() == 1);
-            pack[0].1
-        }
+        HierarchyEdgeClass::ShortcutThrough(node) => Packed::IntermediateNode(node),
         _ => unreachable!(),
     };
 
@@ -865,18 +883,35 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
             }
             merged_pack
         }
-        HierarchyEdgeClass::Shortcut(old_pack) => {
+        &HierarchyEdgeClass::ShortcutThrough(node) => {
+            let mut merged_pack = Vec::with_capacity(relative_positioning.len());
+            for (t, pos) in relative_positioning {
+                match pos {
+                    Ordering::Less => {
+                        merged_pack.push((t, Packed::IntermediateNode(node)));
+                    }
+                    Ordering::Greater => {
+                        merged_pack.push((t, new_middle_node));
+                    }
+                    Ordering::Equal => {
+                        unreachable!()
+                    }
+                }
+            }
+            merged_pack
+        }
+        HierarchyEdgeClass::PackedShortcut(old_pack) => {
             let mut i = 0;
             let mut j = 0;
             let mut merged_pack =
                 Vec::with_capacity(old_pack.len() + 2 * relative_positioning.len());
             while i < relative_positioning.len() && j < old_pack.len() {
                 let old_pack_t = if j == 0 && old_pack.len() == 1 {
-                    relative_positioning[0].0.unwrap()
+                    relative_positioning[0].0
                 } else {
-                    old_pack[j].0.unwrap()
+                    old_pack[j].0
                 };
-                if relative_positioning[i].0.unwrap().approx_eq(&old_pack_t) {
+                if relative_positioning[i].0.approx_eq(&old_pack_t) {
                     match relative_positioning[i].1 {
                         Ordering::Less => {
                             merged_pack.push((relative_positioning[i].0, old_pack[j].1));
@@ -890,7 +925,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
                     }
                     i += 1;
                     j += 1;
-                } else if relative_positioning[i].0.unwrap() < old_pack_t {
+                } else if relative_positioning[i].0 < old_pack_t {
                     debug_assert!(j >= 1);
                     match relative_positioning[i].1 {
                         Ordering::Less => {
@@ -943,7 +978,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
 
     // NOTE: The number of packed edge is not exact, this is a lower bound (the same thing is done
     // in KaTCH.
-    *old_edge = ToContractEdge::new_shortcut(merged_ttf, old_edge.nb_packed, merged_pack);
+    *old_edge = ToContractEdge::new_packed(merged_ttf, old_edge.nb_packed, merged_pack);
 }
 
 #[cfg(test)]

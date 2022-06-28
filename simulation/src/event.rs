@@ -15,7 +15,7 @@ pub trait Event<T>: Debug {
         state: &mut NetworkState<T>,
         result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
-    );
+    ) -> bool;
     fn get_time(&self) -> Time<T>;
     fn get_agent_index(&self) -> Option<AgentIndex> {
         None

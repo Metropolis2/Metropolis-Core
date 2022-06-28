@@ -1,6 +1,8 @@
+use chrono::NaiveTime;
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fmt;
 use std::num::FpCategory;
 use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use ttf::TTFNum;
@@ -303,26 +305,66 @@ macro_rules! impl_ttf_on_unit(
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Time<T>(pub T);
 
+impl<T: TTFNum> fmt::Display for Time<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let t = NaiveTime::from_num_seconds_from_midnight(
+            self.0.round().to_u32().ok_or(fmt::Error)?,
+            0,
+        );
+        write!(f, "{}", t.format("%H:%M:%S"))
+    }
+}
+
 /// Representation of a utility (or monetary) amount.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Utility<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for Utility<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Representation of a value of time, i.e., a utility amount per time unit, expressed in utility
 /// unit per second.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ValueOfTime<T>(pub T);
 
+impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} utility/s", self.0)
+    }
+}
+
 /// Representation of a length, expressed in meters.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Length<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for Length<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} m", self.0)
+    }
+}
 
 /// Representation of a speed, expressed in meters per second.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Speed<T>(pub T);
 
+impl<T: TTFNum> fmt::Display for Speed<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} m/s", self.0)
+    }
+}
+
 /// Representation of a flow of vehicle, in meters per second.
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Outflow<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for Outflow<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} m/s", self.0)
+    }
+}
 
 impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow);
 
@@ -411,10 +453,10 @@ impl<T: Copy + PartialOrd> Interval<T> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Distribution<T> {
-    mean: T,
-    std: T,
-    min: T,
-    max: T,
+    pub mean: T,
+    pub std: T,
+    pub min: T,
+    pub max: T,
 }
 
 impl<T: TTFNum> Distribution<T> {

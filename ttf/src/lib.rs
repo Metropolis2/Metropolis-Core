@@ -100,6 +100,8 @@ impl<T: TTFNum> TTF<T> {
 
     /// Return the departure time `x` such that `f(x) = z`.
     ///
+    /// Return None if it is not possible to arrive at `z`.
+    ///
     /// # Example
     ///
     /// ```
@@ -107,10 +109,10 @@ impl<T: TTFNum> TTF<T> {
     /// let ttf = TTF::Constant(1.0f64);
     /// assert_eq!(ttf.departure_time_with_arrival(3.0), 2.0);
     /// ```
-    pub fn departure_time_with_arrival(&self, z: T) -> T {
+    pub fn departure_time_with_arrival(&self, z: T) -> Option<T> {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
-            Self::Constant(c) => z - *c,
+            Self::Constant(c) => Some(z - *c),
         }
     }
 
@@ -203,8 +205,10 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
             (&Self::Constant(c), Self::Piecewise(g)) => {
                 let mut pos = pwl::analyze_relative_position_to_cst(g, c);
-                for (_x, ord) in pos.iter_mut() {
-                    *ord = ord.reverse();
+                if let Either::Right(ref mut values) = pos {
+                    for (_x, ord) in values.iter_mut() {
+                        *ord = ord.reverse();
+                    }
                 }
                 pos
             }

@@ -20,6 +20,8 @@ use ttf::TTFNum;
 /// - A [ScheduleUtility] model describing his/her schedule preferences.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Agent<T> {
+    #[serde(default)]
+    pub id: usize,
     /// Modes accessible to the agent.
     modes: Vec<Mode<T>>,
     /// Choice model used for mode choice.
@@ -31,11 +33,13 @@ pub struct Agent<T> {
 impl<T> Agent<T> {
     /// Create a new agent with the specified modes, mode-choice model and schedule utility.
     pub fn new(
+        id: usize,
         modes: Vec<Mode<T>>,
         mode_choice: ChoiceModel<Utility<T>>,
         schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         Agent {
+            id,
             modes,
             mode_choice,
             schedule_utility,

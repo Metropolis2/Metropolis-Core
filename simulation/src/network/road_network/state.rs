@@ -7,6 +7,7 @@ use crate::mode::car::VehicleEvent;
 use crate::simulation::AgentResult;
 use crate::units::{Interval, Length, Time};
 
+use log::warn;
 use num_traits::{ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use serde_derive::{Deserialize, Serialize};
@@ -15,6 +16,8 @@ use std::collections::VecDeque;
 use std::iter;
 use std::ops::{Index, IndexMut};
 use ttf::{PwlTTF, TTFNum, TTF};
+
+const NB_BREAKPOINTS_WARNING: usize = 10000;
 
 #[allow(dead_code)]
 pub struct RoadNodeState<'a> {
@@ -247,9 +250,12 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
         let mut length_iter = self
             .road
             .iter()
-            .skip_while(|(_, &dt)| period.start() >= dt)
             .take_while(|(_, &dt)| dt <= period.end())
             .peekable();
+        assert!(length_iter
+            .peek()
+            .map(|(_, &dt)| dt >= period.start())
+            .unwrap_or(true));
         let mut bottleneck_iter = self.bottleneck.iter().peekable();
         let mut last_ta_opt = None;
         let ff_tt = self.reference.get_free_flow_travel_time(vehicle);
@@ -273,11 +279,8 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
-            debug_assert!(departure_times.is_empty() || *departure_times.last().unwrap() < dt);
-            debug_assert!(
-                departure_times.is_empty()
-                    || *departure_times.last().unwrap() + *travel_times.last().unwrap() <= dt + tt
-            );
+            assert!(departure_times.is_empty() || *departure_times.last().unwrap() < dt);
+            assert!(last_ta_opt.is_none() || last_ta_opt.unwrap() <= dt + tt);
             departure_times.push(dt);
             travel_times.push(tt);
             last_ta_opt = Some(dt + tt);
@@ -302,14 +305,11 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
                         tt = last_ta - edge_entry_time;
                     }
                 }
-                debug_assert!(edge_entry_time > *departure_times.last().unwrap());
+                assert!(edge_entry_time > *departure_times.last().unwrap());
                 if tt.approx_ne(&ff_tt) {
                     is_constant = false;
                 }
-                debug_assert!(
-                    *departure_times.last().unwrap() + *travel_times.last().unwrap()
-                        <= edge_entry_time + tt
-                );
+                assert!(last_ta_opt.unwrap() <= edge_entry_time + tt);
                 departure_times.push(edge_entry_time);
                 travel_times.push(tt);
                 last_ta_opt = Some(edge_entry_time + tt);
@@ -334,18 +334,15 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
-            debug_assert!(*departure_times.last().unwrap() < period.end());
-            debug_assert!(
-                *departure_times.last().unwrap() + *travel_times.last().unwrap()
-                    <= period.end() + tt
-            );
+            assert!(*departure_times.last().unwrap() < period.end());
+            assert!(last_ta_opt.unwrap() <= period.end() + tt);
             departure_times.push(period.end());
             travel_times.push(tt);
         }
         if is_constant {
             TTF::Constant(ff_tt)
         } else {
-            TTF::Piecewise(PwlTTF::from_x_and_y(departure_times, travel_times))
+            TTF::Piecewise(PwlTTF::from_x_and_y(departure_times, travel_times, true))
         }
     }
 
@@ -429,6 +426,9 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
                     .weight()
                     .get_travel_time_function(vehicle, period);
                 simplification.simplify(&mut ttf);
+                if ttf.complexity() > NB_BREAKPOINTS_WARNING {
+                    warn!("The TTF for edge has {} breakpoints", ttf.complexity());
+                }
                 vehicle_weights.push(ttf);
             }
         }
@@ -496,7 +496,7 @@ impl<T: TTFNum> WeightSimplification<T> {
                         }
                     }
                     breakpoints.push((end, pwl_ttf.eval(end)));
-                    *pwl_ttf = PwlTTF::from_breakpoints(breakpoints);
+                    *pwl_ttf = PwlTTF::from_breakpoints(breakpoints, true);
                 }
             }
         }
@@ -522,7 +522,7 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
         state: &mut NetworkState<T>,
         _result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
-    ) {
+    ) -> bool {
         let road_network_state = state.get_mut_road_network().unwrap();
         let edge_state = &mut road_network_state[self.edge];
         if let Some((mut vehicle_event, vehicle, entry_time)) = edge_state.bottleneck.pop() {
@@ -543,6 +543,7 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
             // Record that, at the current time, waiting time is null.
             edge_state.bottleneck.record(self.at_time, self.at_time);
         }
+        false
     }
     fn get_time(&self) -> Time<T> {
         self.at_time

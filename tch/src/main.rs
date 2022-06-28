@@ -517,7 +517,11 @@ fn read_traffic_patterns(
                         .iter()
                         .map(|s| (3.6 * edge.weight() / s) as f64)
                         .collect();
-                    TTF::Piecewise(PwlTTF::from_x_and_y(departure_times.clone(), travel_times))
+                    TTF::Piecewise(PwlTTF::from_x_and_y(
+                        departure_times.clone(),
+                        travel_times,
+                        true,
+                    ))
                     // TTF::Constant(travel_times[0])
                 };
                 n += ttf.complexity();

@@ -102,38 +102,50 @@ impl<T: TTFNum> CarAlternative<T> {
                 TTF::Constant(c) => {
                     let mut breakpoints = Vec::with_capacity(2 + new_breakpoints.len());
                     breakpoints.push((self.departure_time_period[0], *c));
-                    breakpoints.extend(new_breakpoints.into_iter());
+                    breakpoints.extend(
+                        new_breakpoints
+                            .into_iter()
+                            .skip_while(|&(dt, _)| dt <= self.departure_time_period[0])
+                            .take_while(|&(dt, _)| dt <= self.departure_time_period[1]),
+                    );
                     breakpoints.push((self.departure_time_period[1], *c));
                     breakpoints
                 }
                 TTF::Piecewise(pwl_ttf) => {
                     let mut breakpoints =
                         Vec::with_capacity(pwl_ttf.len() + new_breakpoints.len() + 1);
-                    let mut ttf_iter = pwl_ttf.iter().peekable();
                     let &[first, last] = pwl_ttf.period();
-                    for (dt, tt) in new_breakpoints.into_iter() {
-                        if dt < first {
-                            continue;
+                    if new_breakpoints.is_empty() {
+                        for point in pwl_ttf.iter() {
+                            breakpoints.push((point.x, point.y));
                         }
-                        if dt > last {
-                            break;
-                        }
-                        while let Some(point) = ttf_iter.peek() {
-                            if point.x.approx_eq(&dt) {
+                    } else {
+                        let mut ttf_iter = pwl_ttf.iter().peekable();
+                        for (dt, tt) in new_breakpoints.into_iter() {
+                            while let Some(point) = ttf_iter.peek() {
+                                if point.x.approx_eq(&dt) {
+                                    ttf_iter.next();
+                                    continue;
+                                }
+                                if point.x > dt {
+                                    break;
+                                }
+                                breakpoints.push((point.x, point.y));
                                 ttf_iter.next();
+                            }
+                            if dt < first {
                                 continue;
                             }
-                            if point.x > dt {
+                            if dt > last {
                                 break;
                             }
-                            breakpoints.push((point.x, point.y));
-                            ttf_iter.next();
+                            breakpoints.push((dt, tt));
                         }
-                        breakpoints.push((dt, tt));
                     }
-                    if breakpoints.last().unwrap().1.approx_ne(&last) {
+                    debug_assert!(!breakpoints.is_empty());
+                    if breakpoints.last().unwrap().0.approx_ne(&last) {
                         // Add a breakpoint for the last period.
-                        debug_assert!(breakpoints.last().unwrap().1 < last);
+                        debug_assert!(breakpoints.last().unwrap().0 < last,);
                         breakpoints.push((last, pwl_ttf.eval(last)));
                     }
                     breakpoints
@@ -151,6 +163,7 @@ impl<T: TTFNum> CarAlternative<T> {
                     self.departure_time_period[0].0,
                     self.departure_time_period[1].0,
                 ],
+                false,
             );
             let (time_callback, expected_utility) =
                 self.departure_time_model.get_choice(utilities)?;
@@ -163,6 +176,11 @@ impl<T: TTFNum> CarAlternative<T> {
                         departure_time,
                         &mut alloc.car_alloc.ea_alloc,
                     )? {
+                        if cfg!(debug_assertions) {
+                            use hashbrown::HashSet;
+                            let n = route.iter().collect::<HashSet<_>>().len();
+                            assert_eq!(n, route.len(), "Invalid route: {:?}", route);
+                        }
                         // debug_assert!(
                         // arrival_time - (departure_time + ttf.eval(departure_time))
                         // < Time::large_margin(),
@@ -379,19 +397,19 @@ impl<T: TTFNum> CarResults<T> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AggregateCarResults<T> {
-    count: usize,
-    congestion: T,
-    departure_times: Distribution<Time<T>>,
-    arrival_times: Distribution<Time<T>>,
-    road_times: Distribution<Time<T>>,
-    bottleneck_times: Distribution<Time<T>>,
-    pending_times: Distribution<Time<T>>,
-    travel_times: Distribution<Time<T>>,
-    free_flow_travel_times: Distribution<Time<T>>,
-    lengths: Distribution<Length<T>>,
-    edge_counts: Distribution<T>,
-    utilities: Distribution<Utility<T>>,
-    exp_travel_time_diff: Distribution<Time<T>>,
+    pub count: usize,
+    pub congestion: T,
+    pub departure_times: Distribution<Time<T>>,
+    pub arrival_times: Distribution<Time<T>>,
+    pub road_times: Distribution<Time<T>>,
+    pub bottleneck_times: Distribution<Time<T>>,
+    pub pending_times: Distribution<Time<T>>,
+    pub travel_times: Distribution<Time<T>>,
+    pub free_flow_travel_times: Distribution<Time<T>>,
+    pub lengths: Distribution<Length<T>>,
+    pub edge_counts: Distribution<T>,
+    pub utilities: Distribution<Utility<T>>,
+    pub exp_travel_time_diff: Distribution<T>,
 }
 
 impl<T: TTFNum + 'static> AggregateCarResults<T> {
@@ -482,9 +500,9 @@ impl<T: TTFNum + 'static> AggregateCarResults<T> {
                 let exp_tt = car_choices.get_expected_travel_time();
                 let tt = car_results.total_travel_time();
                 if exp_tt > Time::zero() {
-                    (exp_tt - tt).abs() / exp_tt
+                    (exp_tt - tt).abs().0 / exp_tt.0
                 } else {
-                    Time::zero()
+                    T::zero()
                 }
             } else {
                 panic!("Invalid within-day result");
@@ -599,7 +617,7 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
         state: &mut NetworkState<T>,
         result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
-    ) {
+    ) -> bool {
         let road_network_state = state
             .get_mut_road_network()
             .expect("Got a vehicle event but there is no road network state.");
@@ -616,6 +634,7 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                 self.edge = Some(self.get_next_edge(choices).expect("Cannot start route."));
                 self.event_type = VehicleEventType::EntersEdge;
                 events.push(self);
+                false
             }
             VehicleEventType::EntersEdge => {
                 let vehicle_index = choices.vehicle_index();
@@ -627,6 +646,7 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                     self.event_type = VehicleEventType::EntersBottleneck;
                     events.push(self);
                 }
+                false
             }
             VehicleEventType::EntersBottleneck => {
                 let vehicle_index = choices.vehicle_index();
@@ -637,6 +657,7 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                 {
                     events.push(bottleneck_event);
                 }
+                false
             }
             VehicleEventType::ExitsEdge => {
                 if road_network_state
@@ -647,7 +668,7 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                     // The vehicle has reached its destination.
                     self.event_type = VehicleEventType::ReachesDestination;
                     events.push(self);
-                    return;
+                    return false;
                 }
                 self.edge = Some(
                     self.get_next_edge(choices)
@@ -655,8 +676,9 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                 );
                 self.event_type = VehicleEventType::EntersEdge;
                 events.push(self);
+                false
             }
-            VehicleEventType::ReachesDestination => (),
+            VehicleEventType::ReachesDestination => true,
         }
     }
 

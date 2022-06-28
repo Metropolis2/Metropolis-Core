@@ -12,15 +12,18 @@ use parameters::Parameters;
 use preprocess::PreprocessingData;
 
 use anyhow::Result;
-use log::info;
+use askama::Template;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, info, log_enabled, Level};
 use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_derive::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::Write;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ttf::TTFNum;
 
 /// An abstract representation of an area to be simulated.
@@ -55,7 +58,8 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let preprocess_data = self.preprocess();
         let mut weights = init_weights;
         let mut prev_agent_results = None;
-        let mut iteration_counter: u64 = 0;
+        let mut iteration_counter: u64 = 1;
+        let mut sim_results = SimulationResults::new();
         loop {
             info!("Starting iteration {}", iteration_counter);
             info!("Computing skims");
@@ -72,18 +76,24 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             )?;
             let aggregate_results = self.compute_aggregate_results(&iteration_results);
             self.parameters.save_aggregate_results(
-                aggregate_results,
+                &aggregate_results,
                 iteration_counter,
                 output_dir,
             )?;
+            sim_results.push_iteration(aggregate_results);
             info!("Checking convergence");
             if self.parameters.has_converged(
                 iteration_counter,
                 iteration_results.agent_results(),
                 prev_agent_results.as_ref(),
             ) {
+                info!("Convergence reached");
+                sim_results.last_iteration = Some(iteration_results);
+                info!("Writing report");
+                write_report(&sim_results, output_dir)?;
+                info!("Saving detailed results");
                 self.parameters
-                    .save_iteration_results(iteration_results, output_dir)?;
+                    .save_iteration_results(sim_results.last_iteration.unwrap(), output_dir)?;
                 break;
             }
             iteration_counter += 1;
@@ -116,13 +126,13 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         previous_results_opt: Option<&AgentResults<T>>,
         iteration_counter: u64,
     ) -> Result<IterationResults<T>> {
-        info!("Running pre-day model");
         let pre_day_results =
             self.run_pre_day_model(&skims, previous_results_opt, iteration_counter)?;
         info!("Running within-day model");
         let (sim_weights, within_day_results) = self.run_within_day_model(pre_day_results, &skims);
         info!("Running day-to-day model");
         let new_weights = self.run_day_to_day_model(weights, &sim_weights, iteration_counter);
+        crate::show_stats();
         Ok(IterationResults::new(within_day_results, new_weights))
     }
 
@@ -139,6 +149,16 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         iteration_counter: u64,
     ) -> Result<PreDayResults<T>> {
         let pool = Pool::new(rayon::current_num_threads(), Default::default);
+        let bp = if log_enabled!(Level::Info) {
+            ProgressBar::new(self.agents.len() as u64).with_message("Running pre-day model")
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_bar} {msg} ETA: {eta}")
+                .progress_chars("█░"),
+        );
         let results = if let Some(previous_results) = previous_results_opt {
             let updates = self.get_update_vector(iteration_counter);
             (&self.agents, previous_results.deref(), updates)
@@ -146,6 +166,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .map_init(
                     || pool.pull(Default::default),
                     |alloc, (agent, prev_agent_result, update)| {
+                        bp.inc(1);
                         agent.make_pre_day_choice(
                             exp_skims,
                             Some(prev_agent_result.pre_day_results()),
@@ -161,10 +182,14 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .par_iter()
                 .map_init(
                     || pool.pull(Default::default),
-                    |alloc, agent| agent.make_pre_day_choice(exp_skims, None, true, alloc),
+                    |alloc, agent| {
+                        bp.inc(1);
+                        agent.make_pre_day_choice(exp_skims, None, true, alloc)
+                    },
                 )
                 .collect::<Result<Vec<_>, _>>()?
         };
+        bp.finish();
         Ok(PreDayResults(results))
     }
 
@@ -173,18 +198,35 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         pre_day_results: PreDayResults<T>,
         skims: &NetworkSkim<T>,
     ) -> (NetworkWeights<T>, AgentResults<T>) {
+        debug!("Initializing variables");
         let mut state = self.network.get_blank_state();
         let mut results = self.init_agent_results(pre_day_results);
         let mut events = results.get_event_queue();
+        let bp = if log_enabled!(Level::Info) {
+            ProgressBar::new(events.len() as u64).with_message("Executing events")
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{wide_bar} {msg} ETA: {eta}")
+                .progress_chars("█░"),
+        );
         while let Some(event) = events.pop() {
             let result = event.get_agent_index().map(|id| &mut results[id]);
-            event.execute(skims, &mut state, result, &mut events);
+            let agent_has_arrived = event.execute(skims, &mut state, result, &mut events);
+            if agent_has_arrived {
+                bp.inc(1);
+            }
         }
+        bp.finish();
         // Drop the events queue (it is empty) so that it no longer borrows the results.
         drop(events);
         // Compute network weights.
+        debug!("Computing network weights");
         let weights = state.get_weights(&self.parameters);
         // Compute agent utilities.
+        debug!("Computing agent utilities");
         for (i, r) in results.iter_mut().enumerate() {
             let chosen_mode = r.pre_day_results().get_mode_index();
             r.compute_utility(
@@ -210,7 +252,8 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             results
                 .iter_agent_results()
                 .map(|(_agent_id, r)| r.pre_day_results().get_expected_utility()),
-        );
+        )
+        .unwrap();
         let mut car_entries = Vec::with_capacity(self.agents.len());
         let mut cst_entries = Vec::with_capacity(self.agents.len());
         for (agent_id, agent_result) in results.iter_agent_results() {
@@ -235,10 +278,10 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .get_road_network()
                 .expect("Found car results but no road network"),
         );
-        let mode_results = vec![
-            AggregateModeResults::Car(Box::new(car_results)),
-            AggregateModeResults::Constant(cst_entries.len()),
-        ];
+        let mode_results = AggregateModeResults {
+            car: car_results,
+            constant: cst_entries.len(),
+        };
         AggregateResults {
             surplus,
             mode_results,
@@ -247,8 +290,8 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 
     fn init_agent_results(&self, pre_day_results: PreDayResults<T>) -> AgentResults<T> {
         let mut results = AgentResults::with_capacity(pre_day_results.len());
-        for pre_day_result in pre_day_results.into_iter() {
-            results.push(pre_day_result.into_agent_result());
+        for (agent, pre_day_result) in self.agents.iter().zip(pre_day_results.into_iter()) {
+            results.push(pre_day_result.into_agent_result(agent.id));
         }
         results
     }
@@ -269,10 +312,36 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     }
 }
 
+#[derive(Template, Default)]
+#[template(path = "report.html")]
+struct SimulationResults<T: TTFNum> {
+    pub iterations: Vec<AggregateResults<T>>,
+    pub last_iteration: Option<IterationResults<T>>,
+}
+
+impl<T: TTFNum> SimulationResults<T> {
+    fn new() -> Self {
+        SimulationResults::default()
+    }
+
+    fn push_iteration(&mut self, iteration: AggregateResults<T>) {
+        self.iterations.push(iteration);
+    }
+}
+
+fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path) -> Result<()> {
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "report.html"]
+        .iter()
+        .collect();
+    let mut file = File::create(&filename)?;
+    file.write_all(results.render().unwrap().as_bytes())?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AggregateResults<T> {
-    surplus: Option<Distribution<Utility<T>>>,
-    mode_results: Vec<AggregateModeResults<T>>,
+    surplus: Distribution<Utility<T>>,
+    mode_results: AggregateModeResults<T>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -341,9 +410,9 @@ impl<T: Copy> PreDayResult<T> {
 }
 
 impl<T: TTFNum + 'static> PreDayResult<T> {
-    fn into_agent_result(self) -> AgentResult<T> {
+    fn into_agent_result(self, agent_id: usize) -> AgentResult<T> {
         let mode_results = self.choices.init_mode_results();
-        AgentResult::new(self, mode_results)
+        AgentResult::new(agent_id, self, mode_results)
     }
 
     pub fn get_event(&self, agent: AgentIndex) -> Option<Box<dyn Event<T>>> {
@@ -379,6 +448,7 @@ impl<T> Deref for PreDayResults<T> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentResult<T> {
+    id: usize,
     utility: Option<Utility<T>>,
     departure_time: Option<Time<T>>,
     arrival_time: Option<Time<T>>,
@@ -387,8 +457,9 @@ pub struct AgentResult<T> {
 }
 
 impl<T> AgentResult<T> {
-    pub fn new(pre_day_results: PreDayResult<T>, mode_results: ModeResults<T>) -> Self {
+    pub fn new(id: usize, pre_day_results: PreDayResult<T>, mode_results: ModeResults<T>) -> Self {
         AgentResult {
+            id,
             utility: None,
             departure_time: None,
             arrival_time: None,
@@ -415,6 +486,10 @@ impl<T> AgentResult<T> {
 
     pub fn set_arrival_time(&mut self, arrival_time: Time<T>) {
         self.arrival_time = Some(arrival_time);
+    }
+
+    pub fn has_arrived(&self) -> bool {
+        self.arrival_time.is_some()
     }
 }
 

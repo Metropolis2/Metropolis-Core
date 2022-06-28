@@ -141,6 +141,8 @@ pub fn intersection_point_horizontal<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: T
         debug_assert!(c.approx_eq(&result.y));
         debug_assert!(a.y.min(b.y).approx_le(&result.y));
         debug_assert!(a.y.max(b.y).approx_ge(&result.y));
+        debug_assert!(a.x.min(b.x).approx_le(&result.x));
+        debug_assert!(a.x.max(b.x).approx_ge(&result.x));
         result
     }
 }

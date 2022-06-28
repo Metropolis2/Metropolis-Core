@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use log::info;
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
@@ -24,6 +25,7 @@ fn main() -> Result<()> {
     env_logger::init();
 
     // Read input file.
+    info!("Reading input file");
     let file = fs::File::open(args.input).expect("Unable to open input file");
     let reader = BufReader::new(file);
     let sim: Simulation<f64> = serde_json::from_reader(reader).expect("Unable to parse simulation");

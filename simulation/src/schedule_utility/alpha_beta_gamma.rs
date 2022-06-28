@@ -53,12 +53,12 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     /// Return the point (departure time, travel time) such that arrival time is equal to `t_star`
     /// (for desired arrival time) or such that departure time is equal to `t_star` (for desired
     /// departure time).
-    fn get_kink_at(&self, t_star: Time<T>, ttf: &TTF<Time<T>>) -> (Time<T>, Time<T>) {
+    fn get_kink_at(&self, t_star: Time<T>, ttf: &TTF<Time<T>>) -> Option<(Time<T>, Time<T>)> {
         if self.desired_arrival {
-            let dt = ttf.departure_time_with_arrival(t_star);
-            (dt, t_star - dt)
+            ttf.departure_time_with_arrival(t_star)
+                .map(|dt| (dt, t_star - dt))
         } else {
-            (t_star, ttf.eval(t_star))
+            Some((t_star, ttf.eval(t_star)))
         }
     }
 
@@ -69,9 +69,13 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     /// departure time is equal to desired departure time.
     pub fn get_breakpoints(&self, ttf: &TTF<Time<T>>) -> Vec<(Time<T>, Time<T>)> {
         let mut breakpoints = Vec::with_capacity(2);
-        breakpoints.push(self.get_kink_at(self.t_star_low, ttf));
+        if let Some(kink) = self.get_kink_at(self.t_star_low, ttf) {
+            breakpoints.push(kink);
+        }
         if self.t_star_low != self.t_star_high {
-            breakpoints.push(self.get_kink_at(self.t_star_high, ttf));
+            if let Some(kink) = self.get_kink_at(self.t_star_high, ttf) {
+                breakpoints.push(kink);
+            }
         }
         breakpoints
     }
