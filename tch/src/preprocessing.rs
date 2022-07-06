@@ -124,6 +124,7 @@ impl ToContractNode {
 /// Structure for edges in a [ContractionGraph].
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
 pub struct ToContractEdge<T> {
     /// Current metric of the edge.
     ttf: TTF<T>,
@@ -303,14 +304,15 @@ impl<T: TTFNum> ContractionGraph<T> {
             self.graph[node_id].cost = cost;
         }
         // Main loop.
+        debug!("Contracting graph");
         let bp = if log_enabled!(Level::Debug) {
-            ProgressBar::new(self.graph.node_count() as u64).with_message("Contracting graph")
+            ProgressBar::new(self.graph.node_count() as u64)
         } else {
             ProgressBar::hidden()
         };
         bp.set_style(
             ProgressStyle::default_bar()
-                .template("{wide_bar} {msg} ETA: {eta}")
+                .template("{bar:60} ETA: {eta}")
                 .progress_chars("█░"),
         );
         while self.graph.node_count() > 0 {
@@ -366,7 +368,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             }
             bp.inc(nodes_to_contract.len() as u64);
         }
-        bp.finish();
+        bp.finish_and_clear();
         self.into_hierarchy_overlay()
     }
 

@@ -11,6 +11,7 @@ use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle] of a [RoadNetwork].
+#[derive(Clone, Default, Debug)]
 pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
 
 impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
@@ -24,6 +25,7 @@ type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
+#[derive(Clone, Default, Debug)]
 pub struct RoadNetworkSkim<T> {
     hierarchy_overlay: HierarchyOverlay<Time<T>>,
     search_spaces: Option<SearchSpaces<Time<T>>>,

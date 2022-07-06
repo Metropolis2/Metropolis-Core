@@ -3,7 +3,7 @@ pub mod preprocess;
 
 use crate::agent::{agent_index, Agent, AgentIndex};
 use crate::event::{Event, EventQueue};
-use crate::mode::car::AggregateCarResults;
+use crate::mode::road::AggregateRoadResults;
 use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
 use crate::network::{Network, NetworkSkim, NetworkWeights};
 use crate::schedule_utility::ScheduleUtility;
@@ -11,7 +11,7 @@ use crate::units::{Distribution, Time, Utility};
 use parameters::Parameters;
 use preprocess::PreprocessingData;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use askama::Template;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, log_enabled, Level};
@@ -21,7 +21,7 @@ use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufReader, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 use ttf::TTFNum;
@@ -33,7 +33,7 @@ use ttf::TTFNum;
 /// - A representation of the [Network], where trips can take place.
 /// - A [Parameters] instance.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum + Deserialize<'de>"))]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct Simulation<T> {
     agents: Vec<Agent<T>>,
     network: Network<T>,
@@ -61,7 +61,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let mut iteration_counter: u64 = 1;
         let mut sim_results = SimulationResults::new();
         loop {
-            info!("Starting iteration {}", iteration_counter);
+            info!("===== Iteration {} =====", iteration_counter);
             info!("Computing skims");
             let skims = self.network.compute_skims(
                 &weights,
@@ -74,23 +74,24 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 prev_agent_results.as_ref(),
                 iteration_counter,
             )?;
-            let aggregate_results = self.compute_aggregate_results(&iteration_results);
+            let aggregate_results =
+                self.compute_aggregate_results(&iteration_results, prev_agent_results.as_ref());
             self.parameters.save_aggregate_results(
                 &aggregate_results,
                 iteration_counter,
                 output_dir,
             )?;
             sim_results.push_iteration(aggregate_results);
-            info!("Checking convergence");
-            if self.parameters.has_converged(
+            info!("Checking stopping rules");
+            if self.parameters.stop(
                 iteration_counter,
                 iteration_results.agent_results(),
                 prev_agent_results.as_ref(),
             ) {
-                info!("Convergence reached");
+                info!("Stopping simulation");
                 sim_results.last_iteration = Some(iteration_results);
                 info!("Writing report");
-                write_report(&sim_results, output_dir)?;
+                self.write_report(&sim_results, output_dir)?;
                 info!("Saving detailed results");
                 self.parameters
                     .save_iteration_results(sim_results.last_iteration.unwrap(), output_dir)?;
@@ -149,14 +150,15 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         iteration_counter: u64,
     ) -> Result<PreDayResults<T>> {
         let pool = Pool::new(rayon::current_num_threads(), Default::default);
+        info!("Running pre-day model");
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(self.agents.len() as u64).with_message("Running pre-day model")
+            ProgressBar::new(self.agents.len() as u64)
         } else {
             ProgressBar::hidden()
         };
         bp.set_style(
             ProgressStyle::default_bar()
-                .template("{wide_bar} {msg} ETA: {eta}")
+                .template("{bar:60} ETA: {eta}")
                 .progress_chars("█░"),
         );
         let results = if let Some(previous_results) = previous_results_opt {
@@ -189,7 +191,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 )
                 .collect::<Result<Vec<_>, _>>()?
         };
-        bp.finish();
+        bp.finish_and_clear();
         Ok(PreDayResults(results))
     }
 
@@ -202,24 +204,29 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let mut state = self.network.get_blank_state();
         let mut results = self.init_agent_results(pre_day_results);
         let mut events = results.get_event_queue();
+        info!("Executing events");
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(events.len() as u64).with_message("Executing events")
+            ProgressBar::new(events.len() as u64)
         } else {
             ProgressBar::hidden()
         };
         bp.set_style(
             ProgressStyle::default_bar()
-                .template("{wide_bar} {msg} ETA: {eta}")
+                .template("{bar:60} ETA: {eta}")
                 .progress_chars("█░"),
         );
         while let Some(event) = events.pop() {
-            let result = event.get_agent_index().map(|id| &mut results[id]);
-            let agent_has_arrived = event.execute(skims, &mut state, result, &mut events);
-            if agent_has_arrived {
-                bp.inc(1);
+            if let Some(result) = event.get_agent_index().map(|id| &mut results[id]) {
+                // The event is associated to an agent.
+                event.execute(skims, &mut state, Some(result), &mut events);
+                if result.has_arrived() {
+                    bp.inc(1);
+                }
+            } else {
+                event.execute(skims, &mut state, None, &mut events);
             }
         }
-        bp.finish();
+        bp.finish_and_clear();
         // Drop the events queue (it is empty) so that it no longer borrows the results.
         drop(events);
         // Compute network weights.
@@ -247,39 +254,48 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             .learn(old_weights, weights, iteration_counter)
     }
 
-    pub fn compute_aggregate_results(&self, results: &IterationResults<T>) -> AggregateResults<T> {
+    pub fn compute_aggregate_results(
+        &self,
+        results: &IterationResults<T>,
+        prev_agent_results_opt: Option<&AgentResults<T>>,
+    ) -> AggregateResults<T> {
         let surplus = Distribution::from_iterator(
             results
                 .iter_agent_results()
                 .map(|(_agent_id, r)| r.pre_day_results().get_expected_utility()),
         )
         .unwrap();
-        let mut car_entries = Vec::with_capacity(self.agents.len());
+        let mut road_entries = Vec::with_capacity(self.agents.len());
         let mut cst_entries = Vec::with_capacity(self.agents.len());
-        for (agent_id, agent_result) in results.iter_agent_results() {
-            let mode_id = agent_result.pre_day_results().get_mode_index();
-            match self.agents[agent_id.index()][mode_id] {
-                Mode::Car(_) => car_entries.push(agent_result),
-                Mode::Constant(_) => cst_entries.push(agent_result),
+        if let Some(prev_agent_results) = prev_agent_results_opt {
+            for ((agent_id, agent_result), prev_agent_result) in
+                results.iter_agent_results().zip(prev_agent_results.iter())
+            {
+                let mode_id = agent_result.pre_day_results().get_mode_index();
+                match &self.agents[agent_id.index()][mode_id] {
+                    Mode::Road(road_mode) => {
+                        road_entries.push((road_mode, agent_result, Some(prev_agent_result)))
+                    }
+                    Mode::Constant(_) => cst_entries.push(agent_result),
+                }
+            }
+        } else {
+            for (agent_id, agent_result) in results.iter_agent_results() {
+                let mode_id = agent_result.pre_day_results().get_mode_index();
+                match &self.agents[agent_id.index()][mode_id] {
+                    Mode::Road(road_mode) => road_entries.push((road_mode, agent_result, None)),
+                    Mode::Constant(_) => cst_entries.push(agent_result),
+                }
             }
         }
-        let car_results = AggregateCarResults::from_agent_results(
-            results
-                .iter_agent_results()
-                .filter_map(|(agent_id, agent_result)| {
-                    let mode_id = agent_result.pre_day_results().get_mode_index();
-                    match &self.agents[agent_id.index()][mode_id] {
-                        Mode::Car((_, car_mode)) => Some((car_mode, agent_result)),
-                        _ => None,
-                    }
-                })
-                .collect(),
+        let road_results = AggregateRoadResults::from_agent_results(
+            road_entries,
             self.network
                 .get_road_network()
-                .expect("Found car results but no road network"),
+                .expect("Found RoadResults but no road network"),
         );
         let mode_results = AggregateModeResults {
-            car: car_results,
+            road: road_results,
             constant: cst_entries.len(),
         };
         AggregateResults {
@@ -310,11 +326,45 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         updates.shuffle(&mut rng);
         updates
     }
+
+    pub fn write_report(&self, results: &SimulationResults<T>, output_dir: &Path) -> Result<()> {
+        let report_results = self.build_report(results)?;
+        let filename: PathBuf = [output_dir.to_str().unwrap(), "report.html"]
+            .iter()
+            .collect();
+        let mut file = File::create(&filename)?;
+        file.write_all(report_results.render().unwrap().as_bytes())?;
+        Ok(())
+    }
+
+    fn build_report(&self, results: &SimulationResults<T>) -> Result<ReportResults<T>> {
+        if let Some(last_iteration) = &results.last_iteration {
+            let mut road_departure_times = Vec::with_capacity(self.agents.len());
+            for (agent_id, agent_result) in last_iteration.iter_agent_results() {
+                let mode_id = agent_result.pre_day_results().get_mode_index();
+                match &self.agents[agent_id.index()][mode_id] {
+                    Mode::Road(_) => {
+                        road_departure_times.push(agent_result.departure_time().unwrap());
+                    }
+                    Mode::Constant(_) => (),
+                }
+            }
+
+            let last_iteration = IterationStatistics {
+                road_departure_times,
+            };
+            Ok(ReportResults {
+                iterations: results.iterations.clone(),
+                last_iteration,
+            })
+        } else {
+            Err(anyhow!("Cannot build report without last iteration"))
+        }
+    }
 }
 
-#[derive(Template, Default)]
-#[template(path = "report.html")]
-struct SimulationResults<T: TTFNum> {
+#[derive(Clone, Debug, Default)]
+pub struct SimulationResults<T> {
     pub iterations: Vec<AggregateResults<T>>,
     pub last_iteration: Option<IterationResults<T>>,
 }
@@ -329,22 +379,59 @@ impl<T: TTFNum> SimulationResults<T> {
     }
 }
 
-fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path) -> Result<()> {
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "report.html"]
+pub fn read_output<T: TTFNum>(output_dir: &Path) -> SimulationResults<T> {
+    let mut iterations = Vec::new();
+    let mut iteration_counter = 1;
+    loop {
+        let filename: PathBuf = [
+            output_dir.to_str().unwrap(),
+            &format!("iteration{iteration_counter}.json"),
+        ]
         .iter()
         .collect();
-    let mut file = File::create(&filename)?;
-    file.write_all(results.render().unwrap().as_bytes())?;
-    Ok(())
+        if let Ok(file) = File::open(filename) {
+            let reader = BufReader::new(file);
+            let it = serde_json::from_reader(reader).expect("Unable to parse AggregateResults");
+            iterations.push(it);
+        } else {
+            break;
+        }
+        iteration_counter += 1;
+    }
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
+        .iter()
+        .collect();
+    let last_iteration = if let Ok(file) = File::open(filename) {
+        let reader = BufReader::new(file);
+        Some(serde_json::from_reader(reader).expect("Unable to parse IterationResults"))
+    } else {
+        None
+    };
+    SimulationResults {
+        iterations,
+        last_iteration,
+    }
 }
 
-#[derive(Debug, Clone, Serialize)]
+struct IterationStatistics<T> {
+    road_departure_times: Vec<Time<T>>,
+}
+
+#[derive(Template)]
+#[template(path = "report.html")]
+struct ReportResults<T: TTFNum> {
+    pub iterations: Vec<AggregateResults<T>>,
+    pub last_iteration: IterationStatistics<T>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateResults<T> {
     surplus: Distribution<Utility<T>>,
     mode_results: AggregateModeResults<T>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct IterationResults<T> {
     agent_results: AgentResults<T>,
     weights: NetworkWeights<T>,
@@ -378,7 +465,7 @@ impl<T> IterationResults<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct PreDayResult<T> {
     mode: ModeIndex,
     expected_utility: Utility<T>,
@@ -446,7 +533,7 @@ impl<T> Deref for PreDayResults<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AgentResult<T> {
     id: usize,
     utility: Option<Utility<T>>,
@@ -518,7 +605,7 @@ impl<T: TTFNum> AgentResult<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct AgentResults<T>(Vec<AgentResult<T>>);
 
 impl<T> AgentResults<T> {

@@ -1,6 +1,5 @@
 use fixedbitset::FixedBitSet;
 use petgraph::graph::IndexType;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
@@ -25,35 +24,6 @@ pub trait NodeMap {
         self.len() == 0
     }
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Self::Node, &Self::Value)> + 'a>;
-}
-
-impl<N, V> NodeMap for HashMap<N, V>
-where
-    N: Copy + Eq + Hash,
-{
-    type Node = N;
-    type Value = V;
-    fn reset(&mut self) {
-        self.clear();
-    }
-    fn get_value(&self, node: &N) -> Option<&V> {
-        self.get(node)
-    }
-    fn get_mut_value(&mut self, node: &N) -> Option<&mut V> {
-        self.get_mut(node)
-    }
-    fn insert(&mut self, node: N, value: V) {
-        HashMap::insert(self, node, value);
-    }
-    fn len(&self) -> usize {
-        self.len()
-    }
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &V)> + 'a> {
-        Box::new(self.iter().map(|(n, v)| (*n, v)))
-    }
 }
 
 impl<N, V> NodeMap for hashbrown::HashMap<N, V>

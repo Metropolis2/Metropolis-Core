@@ -1,8 +1,9 @@
+//! Everything related to agents.
 use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
 use crate::network::NetworkSkim;
 use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::PreDayResult;
-use crate::units::Utility;
+use crate::units::NoUnit;
 
 use anyhow::{anyhow, Result};
 use choice::ChoiceModel;
@@ -25,7 +26,7 @@ pub struct Agent<T> {
     /// Modes accessible to the agent.
     modes: Vec<Mode<T>>,
     /// Choice model used for mode choice.
-    mode_choice: ChoiceModel<Utility<T>>,
+    mode_choice: ChoiceModel<NoUnit<T>>,
     /// Schedule-utility preferences.
     schedule_utility: ScheduleUtility<T>,
 }
@@ -35,7 +36,7 @@ impl<T> Agent<T> {
     pub fn new(
         id: usize,
         modes: Vec<Mode<T>>,
-        mode_choice: ChoiceModel<Utility<T>>,
+        mode_choice: ChoiceModel<NoUnit<T>>,
         schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         Agent {
@@ -52,7 +53,7 @@ impl<T> Agent<T> {
     }
 
     /// Return the choice model of the agent for the mode choice.
-    pub fn mode_choice(&self) -> &ChoiceModel<Utility<T>> {
+    pub fn mode_choice(&self) -> &ChoiceModel<NoUnit<T>> {
         &self.mode_choice
     }
 
@@ -133,4 +134,63 @@ impl AgentIndex {
 /// Short version of `AgentIndex::new`.
 pub fn agent_index(index: usize) -> AgentIndex {
     AgentIndex::new(index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mode::mode_index;
+    use crate::mode::PreDayChoices;
+    use crate::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
+    use crate::units::{Time, Utility, ValueOfTime};
+    use choice::DeterministicChoiceModel;
+
+    fn get_agent() -> Agent<f64> {
+        let modes = vec![Mode::Constant(Utility(10.))];
+        let choice_model =
+            ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)).unwrap());
+        let schedule_utility = ScheduleUtility::AlphaBetaGamma(AlphaBetaGammaModel::new(
+            Time(8. * 60. * 60.),
+            Time(8. * 60. * 60.),
+            ValueOfTime(5.),
+            ValueOfTime(20.),
+            true,
+        ));
+        Agent::new(1, modes, choice_model, schedule_utility)
+    }
+
+    #[test]
+    fn make_pre_day_choice_test() {
+        let mut agent = get_agent();
+        assert!(agent
+            .make_pre_day_choice(&Default::default(), None, false, &mut Default::default())
+            .is_err());
+
+        let result = agent
+            .make_pre_day_choice(&Default::default(), None, true, &mut Default::default())
+            .unwrap();
+        assert_eq!(result.get_mode_index(), mode_index(0));
+        assert_eq!(result.get_expected_utility(), Utility(10.));
+        assert_eq!(result.get_choices(), &PreDayChoices::None);
+
+        assert_eq!(
+            agent
+                .make_pre_day_choice(
+                    &Default::default(),
+                    Some(&result),
+                    false,
+                    &mut Default::default()
+                )
+                .unwrap(),
+            result
+        );
+
+        agent.modes.push(Mode::Constant(Utility(15.)));
+        let result = agent
+            .make_pre_day_choice(&Default::default(), None, true, &mut Default::default())
+            .unwrap();
+        assert_eq!(result.get_mode_index(), mode_index(1));
+        assert_eq!(result.get_expected_utility(), Utility(15.));
+        assert_eq!(result.get_choices(), &PreDayChoices::None);
+    }
 }

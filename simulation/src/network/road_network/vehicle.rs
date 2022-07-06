@@ -105,26 +105,26 @@ mod tests {
     #[test]
     fn speed_function_test() {
         let base = SpeedFunction::Base;
-        assert_eq!(base.get_speed(Speed::new(0.0)), Speed::new(0.0));
-        assert_eq!(base.get_speed(Speed::new(130.0)), Speed::new(130.0));
-        assert_eq!(base.get_speed(Speed::new(50.0)), Speed::new(50.0));
-        assert_eq!(base.get_speed(Speed::new(70.0)), Speed::new(70.0));
+        assert_eq!(base.get_speed(Speed(0.0)), Speed(0.0));
+        assert_eq!(base.get_speed(Speed(130.0)), Speed(130.0));
+        assert_eq!(base.get_speed(Speed(50.0)), Speed(50.0));
+        assert_eq!(base.get_speed(Speed(70.0)), Speed(70.0));
 
         let mult = SpeedFunction::Multiplicator(0.9);
-        assert_eq!(mult.get_speed(Speed::new(0.0)), Speed::new(0.0));
-        assert_eq!(mult.get_speed(Speed::new(130.0)), Speed::new(130.0 * 0.9));
-        assert_eq!(mult.get_speed(Speed::new(50.0)), Speed::new(50.0 * 0.9));
-        assert_eq!(mult.get_speed(Speed::new(70.0)), Speed::new(70.0 * 0.9));
+        assert_eq!(mult.get_speed(Speed(0.0)), Speed(0.0));
+        assert_eq!(mult.get_speed(Speed(130.0)), Speed(130.0 * 0.9));
+        assert_eq!(mult.get_speed(Speed(50.0)), Speed(50.0 * 0.9));
+        assert_eq!(mult.get_speed(Speed(70.0)), Speed(70.0 * 0.9));
 
         let func = SpeedFunction::Piecewise(vec![
-            (Speed::new(0.0), Speed::new(0.0)),
-            (Speed::new(50.0), Speed::new(50.0)),
-            (Speed::new(90.0), Speed::new(80.0)),
-            (Speed::new(130.0), Speed::new(110.0)),
+            (Speed(0.0), Speed(0.0)),
+            (Speed(50.0), Speed(50.0)),
+            (Speed(90.0), Speed(80.0)),
+            (Speed(130.0), Speed(110.0)),
         ]);
-        assert_eq!(func.get_speed(Speed::new(0.0)), Speed::new(0.0));
-        assert_eq!(func.get_speed(Speed::new(130.0)), Speed::new(110.0));
-        assert_eq!(func.get_speed(Speed::new(50.0)), Speed::new(50.0));
-        assert_eq!(func.get_speed(Speed::new(70.0)), Speed::new(65.0));
+        assert_eq!(func.get_speed(Speed(0.0)), Speed(0.0));
+        assert_eq!(func.get_speed(Speed(130.0)), Speed(110.0));
+        assert_eq!(func.get_speed(Speed(50.0)), Speed(50.0));
+        assert_eq!(func.get_speed(Speed(70.0)), Speed(65.0));
     }
 }

@@ -1,47 +1,78 @@
+//! Day-to-day learning models.
 use crate::network::NetworkWeights;
 
 use anyhow::{anyhow, Result};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
+/// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
+/// `x_t` and an update value `y`.
+/// value.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum LearningModel<T> {
+    /// See [ExponentialLearningModel].
     Exponential(ExponentialLearningModel<T>),
+    /// `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
     Linear,
+    /// `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
     Genetic,
+    /// `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where `w = t^(1/2)`
+    Quadratic,
 }
 
 impl<T: TTFNum> LearningModel<T> {
+    /// Return the new [NetworkWeights] given the old values, the update values and the iteration
+    /// counter.
+    ///
+    /// **Panics** if the iteration counter cannot be converted to `T`.
     pub fn learn(
         &self,
         old_weights: &NetworkWeights<T>,
-        new_weights: &NetworkWeights<T>,
+        update_weights: &NetworkWeights<T>,
         iteration_counter: u64,
     ) -> NetworkWeights<T> {
         match self {
-            Self::Exponential(model) => model.learn(old_weights, new_weights, iteration_counter),
+            Self::Exponential(model) => model.learn(old_weights, update_weights, iteration_counter),
             Self::Linear => {
-                let v = iteration_counter as f64 / (iteration_counter + 1) as f64;
-                let coef = T::from(v).unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", v));
-                old_weights.average(new_weights, coef)
+                let t = T::from(iteration_counter)
+                    .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
+                let coef = t / (t + T::one());
+                old_weights.average(update_weights, coef)
             }
             Self::Genetic => {
-                let exponent = T::from(iteration_counter as i32)
+                let t = T::from(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
-                old_weights.genetic_average(new_weights, exponent, T::one())
+                old_weights.genetic_average(update_weights, t, T::one())
+            }
+            Self::Quadratic => {
+                let t = T::from(iteration_counter)
+                    .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
+                let coef = t.sqrt() / (t.sqrt() + T::one());
+                old_weights.average(update_weights, coef)
             }
         }
     }
 }
 
+/// An exponential learning model.
+///
+/// The average value at iteration `T`, `x_T`, is a mean of the update values `y_t` at each
+/// iteration `t`, where the coefficient of the update value `y_t` is
+/// `(1 - alpha) * alpha^(T - t) / (1 - alpha^T)`.
+///
+/// When `T` is large, the exponential learning model is such that
+/// `x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}`
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct ExponentialLearningModel<T> {
-    /// Weight of the past value, between 0.0 and 1.0.
+    /// Weight of the old value, between 0 and 1.
     alpha: T,
 }
 
 impl<T: TTFNum> ExponentialLearningModel<T> {
+    /// Create a new exponential learning model.
+    ///
+    /// Return an error if the `alpha` value is not between 0 and 1.
     pub fn new(alpha: T) -> Result<Self> {
         if !(T::zero()..=T::one()).contains(&alpha) {
             Err(anyhow!(
@@ -53,20 +84,108 @@ impl<T: TTFNum> ExponentialLearningModel<T> {
         }
     }
 
+    /// Return the new [NetworkWeights] given the old values, the update values and the iteration
+    /// counter.
     pub fn learn(
         &self,
         old_weights: &NetworkWeights<T>,
-        new_weights: &NetworkWeights<T>,
+        update_weights: &NetworkWeights<T>,
         iteration_counter: u64,
     ) -> NetworkWeights<T> {
         // Use the formula to correct the weight of the first value.
-        let coef_new = if self.alpha == T::zero() {
+        let coef_update = if self.alpha == T::zero() {
             T::one()
         } else if self.alpha == T::one() {
             T::zero()
         } else {
             (T::one() - self.alpha) / (T::one() - self.alpha.powi(iteration_counter as i32 + 1))
         };
-        old_weights.average(new_weights, T::one() - coef_new)
+        old_weights.average(update_weights, T::one() - coef_update)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::road_network::vehicle::vehicle_index;
+    use crate::network::road_network::weights::RoadNetworkWeights;
+    use crate::units::Time;
+    use ttf::TTF;
+
+    fn get_weigths(v: f64) -> NetworkWeights<f64> {
+        let mut rn = RoadNetworkWeights::with_capacity(1, 1);
+        rn[vehicle_index(0)].push(TTF::Constant(Time(v)));
+        NetworkWeights::new(Some(rn))
+    }
+
+    #[test]
+    fn linear_learning_test() {
+        let old_weights = get_weigths(10.);
+        let update_weights = get_weigths(20.);
+        let model = LearningModel::Linear;
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 0),
+            get_weigths(20.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 1),
+            get_weigths(15.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 4),
+            get_weigths(12.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 9),
+            get_weigths(11.)
+        );
+    }
+
+    #[test]
+    fn quadratic_learning_test() {
+        let old_weights = get_weigths(10.);
+        let update_weights = get_weigths(20.);
+        let model = LearningModel::Quadratic;
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 0),
+            get_weigths(20.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 1),
+            get_weigths(15.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 16),
+            get_weigths(12.)
+        );
+        assert_eq!(
+            model.learn(&old_weights, &update_weights, 81),
+            get_weigths(11.)
+        );
+    }
+
+    #[test]
+    fn exponential_learning_test() {
+        let w1 = get_weigths(10.);
+        let w2 = get_weigths(20.);
+        let w3 = get_weigths(30.);
+        let exp_model = ExponentialLearningModel::new(0.8).unwrap();
+        let model = LearningModel::Exponential(exp_model);
+        assert_eq!(model.learn(&w1, &w2, 0), get_weigths(20.));
+        let x2 = model.learn(&w1, &w2, 1);
+        if let TTF::Constant(v) = x2.get_road_network().unwrap()[vehicle_index(0)][0] {
+            let expected = Time((20. + 0.8 * 10.) * 0.2 / (1. - 0.8f64.powi(2)));
+            assert!(v.approx_eq(&expected), "{:?} != {:?}", v, expected);
+        } else {
+            panic!("Invalid road network weight: {:?}", x2.get_road_network());
+        }
+        let x3 = model.learn(&x2, &w3, 2);
+        if let TTF::Constant(v) = x3.get_road_network().unwrap()[vehicle_index(0)][0] {
+            let expected =
+                Time((30. + 0.8 * 20. + 0.8f64.powi(2) * 10.) * 0.2 / (1. - 0.8f64.powi(3)));
+            assert!(v.approx_eq(&expected), "{:?} != {:?}", v, expected);
+        } else {
+            panic!("Invalid road network weight: {:?}", x3.get_road_network());
+        }
     }
 }

@@ -1,4 +1,4 @@
-//! Trait and structs use to represent Dijkstra algorithms.
+//! Trait and structs used to represent Dijkstra algorithms.
 
 use crate::bound::Bound;
 use crate::node_data::{NodeData, NodeDataWithExtra};

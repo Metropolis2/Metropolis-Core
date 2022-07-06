@@ -7,3 +7,6 @@ members = [
     "tch",
     "ttf",
 ]
+
+[profile.release]
+lto = false

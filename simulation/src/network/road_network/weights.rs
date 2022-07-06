@@ -12,7 +12,8 @@ use ttf::{TTFNum, TTF};
 /// The outer vector has the same length as the number of vehicles of the associated [RoadNetwork].
 /// The inner vectors have all the same length (i.e., the RoadNetworkWeights represent a matrix)
 /// which is equal to the number of edges of the associated [RoadNetwork].
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct RoadNetworkWeights<T>(Vec<Vec<TTF<Time<T>>>>);
 
 impl<T> RoadNetworkWeights<T> {

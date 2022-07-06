@@ -1,71 +1,244 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <!-- Required meta tags -->
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<head>
+		<!-- Required meta tags -->
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-        <!-- Bootstrap CSS -->
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+		<!-- Bootstrap CSS -->
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 
-        <title>METROPOLIS 2 Simulation Report</title>
-    </head>
-    <body>
-        <h1>METROPOLIS 2 Simulation Report</h1>
+		<style>
+.table-sticky-head {
+	overflow: auto;
+	height: 600px;
+}
 
-        <h2>Convergence</h2>
+.table-sticky-head tr.first th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	box-shadow: inset 1px 1px #000, 0 1px #000;
+}
 
-        <table class="table table-striped table-bordered table-hover table-sm table-responsive">
-            <thead class="thead-light">
-                <tr>
-                    <th scope="col" rowspan="2" class="text-center">Iteration</th>
-                    <th scope="col" rowspan="2" class="text-center">Surplus</th>
-                    <th scope="col" colspan="13" class="text-center">Car</th>
-                    <th scope="col" class="text-center">Constant</th>
-                </tr>
-                <tr>
-                    <th scope="col" class="text-center">Count</th>
-                    <th scope="col" class="text-center">Congestion</th>
-                    <th scope="col" class="text-center">Mean departure time</th>
-                    <th scope="col" class="text-center">Mean arrival time</th>
-                    <th scope="col" class="text-center">Mean road time</th>
-                    <th scope="col" class="text-center">Mean bottleneck time</th>
-                    <th scope="col" class="text-center">Mean pending time</th>
-                    <th scope="col" class="text-center">Mean travel time</th>
-                    <th scope="col" class="text-center">Mean free-flow travel time</th>
-                    <th scope="col" class="text-center">Mean distance (m)</th>
-                    <th scope="col" class="text-center">Mean edge count</th>
-                    <th scope="col" class="text-center">Mean travel utility</th>
-                    <th scope="col" class="text-center">EXPECT</th>
-                    <th scope="col" class="text-center">Count</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for it in iterations %}
-                <tr>
-                    <td scope="row" class="text-center">{{ loop.index }}</td>
-                    <td class="text-center">{{ "{:.4}"|format(it.surplus.mean.0) }}</td>
-                    <td class="text-center">{{ it.mode_results.car.count }}</td>
-                    <td class="text-center">{{ "{:.4}"|format(it.mode_results.car.congestion) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.departure_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.arrival_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.road_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.bottleneck_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.pending_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.travel_times.mean) }}</td>
-                    <td class="text-center">{{ "{}"|format(it.mode_results.car.free_flow_travel_times.mean) }}</td>
-                    <td class="text-center">{{ "{:.0}"|format(it.mode_results.car.lengths.mean.0) }}</td>
-                    <td class="text-center">{{ "{:.2}"|format(it.mode_results.car.edge_counts.mean) }}</td>
-                    <td class="text-center">{{ "{:.4}"|format(it.mode_results.car.utilities.mean.0) }}</td>
-                    <td class="text-center">{{ "{:.4}"|format(it.mode_results.car.exp_travel_time_diff.mean) }}</td>
-                    <td class="text-center">{{ it.mode_results.constant }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+.table-sticky-head tr.second th {
+	position: sticky;
+	z-index: 1;
+	box-shadow: inset 1px 1px #000, 0 1px #000;
+}
+		</style>
 
-        <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
-    </body>
+		<title>METROPOLIS 2 Simulation Report</title>
+	</head>
+	<body>
+		<h1>METROPOLIS 2 Simulation Report</h1>
+
+		<h2>Convergence</h2>
+
+		<div class="table-responsive table-sticky-head">
+			<table class="table table-striped table-bordered table-hover table-sm">
+				<thead class="thead-light">
+					<tr class="first">
+						<th scope="col" rowspan="2" class="text-center">Iteration</th>
+						<th scope="col" rowspan="2" class="text-center">Surplus</th>
+						<th scope="col" colspan="14" class="text-center">Road</th>
+						<th scope="col" class="text-center">Constant</th>
+					</tr>
+					<tr class="second">
+						<th scope="col" class="text-center">Count</th>
+						<th scope="col" class="text-center">Congestion</th>
+						<th scope="col" class="text-center">Mean departure time</th>
+						<th scope="col" class="text-center">Mean arrival time</th>
+						<th scope="col" class="text-center">Mean road time</th>
+						<th scope="col" class="text-center">Mean bottleneck time</th>
+						<th scope="col" class="text-center">Mean pending time</th>
+						<th scope="col" class="text-center">Mean travel time</th>
+						<th scope="col" class="text-center">Mean free-flow travel time</th>
+						<th scope="col" class="text-center">Mean distance (m)</th>
+						<th scope="col" class="text-center">Mean edge count</th>
+						<th scope="col" class="text-center">Mean travel utility</th>
+						<th scope="col" class="text-center">EXPECT</th>
+						<th scope="col" class="text-center">Mean departure-time shift</th>
+						<th scope="col" class="text-center">Count</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for it in iterations %}
+					<tr>
+						<td scope="row" class="text-center">{{ loop.index }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean.0) }}</td>
+						<td class="text-center">{{ it.mode_results.road.count }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.congestion.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.departure_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.arrival_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.road_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.bottleneck_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.pending_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.travel_times.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.route_free_flow_travel_times.mean) }}</td>
+						<td class="text-center">{{ "{:.0}"|format(it.mode_results.road.lengths.mean.0) }}</td>
+						<td class="text-center">{{ "{:.2}"|format(it.mode_results.road.edge_counts.mean) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.utilities.mean.0) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.exp_travel_time_diff.mean) }}</td>
+						{% match it.mode_results.road.dep_time_shift %}
+						{% when Some with (distr) %}
+						<td class="text-center">{{ "{}"|format(distr.mean) }}</td>
+						{% when None %}
+						<td class="text-center">N/A</td>
+						{% endmatch %}
+						<td class="text-center">{{ it.mode_results.constant }}</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+
+		<ul class="nav nav-tabs">
+			<li class="nav-item">
+				<a class="nav-link active" id="surplus-tab" data-toggle="tab" href="#surplus" role="tab">Surplus</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="road_count-tab" data-toggle="tab" href="#road_count" role="tab">Road Count</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="road_congestion-tab" data-toggle="tab" href="#road_congestion" role="tab">Road Congestion</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="road_mean_departure_time-tab" data-toggle="tab" href="#road_mean_departure_time" role="tab">Road Mean Departure Time</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="road_expect-tab" data-toggle="tab" href="#road_expect" role="tab">Road EXPECT</a>
+			</li>
+		</ul>
+
+		<div class="tab-content" id="convergenceCharts">
+			<div class="tab-pane fade show active" id="surplus" role="tabpanel">
+				<div id="surplusChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="road_count" role="tabpanel">
+				<div id="roadCountChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="road_congestion" role="tabpanel">
+				<div id="roadCongestionChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="road_mean_departure_time" role="tabpanel">
+				<div id="roadMeanDepartureTimeChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="road_expect" role="tabpanel">
+				<div id="roadExpectChart" style="height: 600px; width: 1000px"></div>
+			</div>
+		</div>
+
+		<h2>Last Iteration</h2>
+
+		<div id="roadDepartureTimeHist" style="height: 600px; width: 1000px"></div>
+
+		<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+		<script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
+
+		<script>
+			const data = {{iterations|json|safe}};
+
+			var road_departure_times = {{last_iteration.road_departure_times|json|safe}};
+
+			$(document).ready(function() {
+							var firstHeight = $('.first').height();
+							$("thead tr.second th").css("top", firstHeight)
+						});
+
+			var iters = [];
+			var surplus = [];
+			var road_count = [];
+			var road_congestion = [];
+			var road_mean_departure_time = [];
+			var road_expect = [];
+			for (let i = 0; i < data.length; i++) {
+				iters.push(i + 1);
+				surplus.push(data[i].surplus.mean);
+				road_count.push(data[i].mode_results.road.count);
+				road_congestion.push(data[i].mode_results.road.congestion.mean);
+				var t = new Date(0);
+				t.setSeconds(data[i].mode_results.road.departure_times.mean);
+				road_mean_departure_time.push(t.toISOString());
+				road_expect.push(data[i].mode_results.road.exp_travel_time_diff.mean);
+			}
+
+			var surplus_trace = {
+							x: iters,
+							y: surplus,
+							type: 'scatter'
+						};
+			Plotly.newPlot('surplusChart', [surplus_trace]);
+
+			var road_count_trace = {
+							x: iters,
+							y: road_count,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											rangemode: "tozero"
+										}
+						};
+			Plotly.newPlot('roadCountChart', [road_count_trace], layout);
+
+			var road_congestion_trace = {
+							x: iters,
+							y: road_congestion,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											rangemode: "tozero",
+											tickformat: ".2%"
+										}
+						};
+			Plotly.newPlot('roadCongestionChart', [road_congestion_trace], layout);
+
+			var road_mean_departure_time_trace = {
+							x: iters,
+							y: road_mean_departure_time,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('roadMeanDepartureTimeChart', [road_mean_departure_time_trace], layout);
+
+			var road_expect_trace = {
+							x: iters,
+							y: road_expect,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											rangemode: "tozero",
+											tickformat: ".2%"
+										}
+						};
+			Plotly.newPlot('roadExpectChart', [road_expect_trace], layout);
+
+			road_departure_times = road_departure_times.map(function(v) {
+							var t = new Date(0);
+							t.setSeconds(v);
+							return t.toISOString();
+						});
+			var road_departure_times_trace = {
+							x: road_departure_times,
+							type: 'histogram',
+								histnorm: 'probability',
+						};
+			var layout = {
+							title: "Departure times distribution",
+							xaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('roadDepartureTimeHist', [road_departure_times_trace], layout);
+		</script>
+	</body>
 </html>

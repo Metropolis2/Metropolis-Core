@@ -2,7 +2,6 @@
 //! Library for Metropolis: a dynamic multi-modal traffic-assignment simulator.
 
 pub mod agent;
-pub mod convergence;
 pub mod event;
 pub mod learning;
 pub mod mode;
@@ -10,11 +9,13 @@ pub mod mode_utility;
 pub mod network;
 pub mod schedule_utility;
 pub mod simulation;
+pub mod stop;
 pub mod units;
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
+/// Display statistics on allocated and resident memory.
 pub fn show_stats() {
     jemalloc_ctl::epoch::advance().unwrap();
 

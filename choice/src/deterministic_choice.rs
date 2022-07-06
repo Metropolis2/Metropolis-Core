@@ -19,17 +19,17 @@ use ttf::TTFNum;
 /// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-pub struct DeterministicChoiceModel<V> {
+pub struct DeterministicChoiceModel<T> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
-    u: V,
+    u: T,
 }
 
-impl<V: TTFNum> DeterministicChoiceModel<V> {
+impl<T: TTFNum> DeterministicChoiceModel<T> {
     /// Initialize a new deterministic choice model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
-    pub fn new(u: V) -> Result<Self> {
-        if (V::zero()..V::one()).contains(&u) {
+    pub fn new(u: T) -> Result<Self> {
+        if (T::zero()..T::one()).contains(&u) {
             Ok(DeterministicChoiceModel { u })
         } else {
             Err(anyhow!(
@@ -45,7 +45,7 @@ impl<V: TTFNum> DeterministicChoiceModel<V> {
     ///
     /// - The vector of payoffs is empty.
     /// - The payoffs cannot be compared.
-    pub fn get_choice(&self, values: &[V]) -> Result<(usize, V)> {
+    pub fn get_choice<V: TTFNum>(&self, values: &[V]) -> Result<(usize, V)> {
         if values.is_empty() {
             return Err(anyhow!(
                 "Cannot compute choice from an empty slice of values"
@@ -72,7 +72,7 @@ impl<V: TTFNum> DeterministicChoiceModel<V> {
         // If there are n alternatives with the maximum value, we choose the i-th one if:
         // (i / n) <= u < ((i+1) / n)   =>   i <= u * n < i+1
         // so i is equal to the integer part of u * n.
-        if let Some(nb_indices) = V::from(max_indices.len()) {
+        if let Some(nb_indices) = T::from(max_indices.len()) {
             if let Some(i) = (self.u * nb_indices).to_usize() {
                 let choice_id = max_indices[i];
                 Ok((choice_id, max_value))

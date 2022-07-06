@@ -31,7 +31,7 @@ use ttf::{TTFNum, TTF};
 ///
 /// - `Upward`: the target node is higher in the hierarchy than the source node.
 /// - `Downward`: the target node is lower in the hierarchy than the source node.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
 pub enum HierarchyDirection {
     Upward,
@@ -69,6 +69,7 @@ pub enum HierarchyEdgeClass<T> {
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
 pub struct HierarchyEdge<T> {
     ttf: TTF<T>,
     direction: HierarchyDirection,
@@ -106,8 +107,9 @@ impl<T> HierarchyEdge<T> {
 }
 
 /// Structure representing a graph with a hierarchy of nodes.
-#[derive(Debug, Clone)]
+#[derive(Clone, Default, Debug)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,
@@ -545,6 +547,7 @@ struct AllocatedSearchSpaceData<T: PartialOrd + TTFNum> {
 
 pub type SearchSpace<T> = HashMap<NodeIndex, TTF<T>>;
 
+#[derive(Clone, Default, Debug)]
 pub struct SearchSpaces<T> {
     forward: HashMap<NodeIndex, SearchSpace<T>>,
     backward: HashMap<NodeIndex, SearchSpace<T>>,

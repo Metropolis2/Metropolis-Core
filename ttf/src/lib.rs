@@ -6,7 +6,7 @@ mod point;
 mod pwl;
 mod ttf_num;
 
-pub use pwl::PwlTTF;
+pub use pwl::{PwlTTF, PwlXYF};
 pub use ttf_num::TTFNum;
 
 use either::Either;
@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 /// If `f_undercuts_strictly` is `true`, it means that there exists `x` such that `f(x) < g(x)`.
 ///
 /// If `g_undercuts_strictly` is `true`, it means that there exists `x` such that `g(x) < f(x)`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UndercutDescriptor {
     pub f_undercuts_strictly: bool,
     pub g_undercuts_strictly: bool,
@@ -37,8 +37,9 @@ impl UndercutDescriptor {
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
 pub enum TTF<T> {
     Piecewise(PwlTTF<T>),
     Constant(T),

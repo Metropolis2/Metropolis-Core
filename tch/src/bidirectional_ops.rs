@@ -1,4 +1,4 @@
-//! Trait and structs use to represent bidirectional Dijkstra algorithms.
+//! Trait and structs used to represent bidirectional Dijkstra algorithms.
 
 use crate::node_data::{NodeData, NodeDataWithExtra};
 use crate::node_map::NodeMap;

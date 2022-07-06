@@ -297,11 +297,47 @@ macro_rules! impl_ttf_on_unit(
                     self.partial_cmp(other).unwrap()
                 }
             }
+
+            impl<T> From<T> for $t<T> {
+                fn from(value: T) -> $t<T> {
+                    $t(value)
+                }
+            }
         )*
     };
 );
 
+macro_rules! impl_from_into_no_unit(
+    ( $( $t:ident ),* ) => {
+        $(
+            impl<T: TTFNum> From<$t<T>> for NoUnit<T> {
+                fn from(value: $t<T>) -> NoUnit<T> {
+                    NoUnit(value.0)
+                }
+            }
+
+            impl<T> From<NoUnit<T>> for $t<T> {
+                fn from(value: NoUnit<T>) -> $t<T> {
+                    $t(value.0)
+                }
+            }
+        )*
+    };
+);
+
+/// Representation of a value with no particular unit.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct NoUnit<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for NoUnit<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Representation of time duration or timestamp, expressed in seconds.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Time<T>(pub T);
 
@@ -316,6 +352,7 @@ impl<T: TTFNum> fmt::Display for Time<T> {
 }
 
 /// Representation of a utility (or monetary) amount.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Utility<T>(pub T);
 
@@ -327,6 +364,7 @@ impl<T: TTFNum> fmt::Display for Utility<T> {
 
 /// Representation of a value of time, i.e., a utility amount per time unit, expressed in utility
 /// unit per second.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ValueOfTime<T>(pub T);
 
@@ -337,6 +375,7 @@ impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
 }
 
 /// Representation of a length, expressed in meters.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Length<T>(pub T);
 
@@ -347,6 +386,7 @@ impl<T: TTFNum> fmt::Display for Length<T> {
 }
 
 /// Representation of a speed, expressed in meters per second.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Speed<T>(pub T);
 
@@ -357,6 +397,7 @@ impl<T: TTFNum> fmt::Display for Speed<T> {
 }
 
 /// Representation of a flow of vehicle, in meters per second.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Outflow<T>(pub T);
 
@@ -366,7 +407,9 @@ impl<T: TTFNum> fmt::Display for Outflow<T> {
     }
 }
 
-impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow);
+impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow, NoUnit);
+
+impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow);
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
@@ -451,7 +494,7 @@ impl<T: Copy + PartialOrd> Interval<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Distribution<T> {
     pub mean: T,
     pub std: T,

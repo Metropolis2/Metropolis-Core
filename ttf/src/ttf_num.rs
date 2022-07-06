@@ -1,10 +1,21 @@
 use num_traits::{Float, FromPrimitive};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
 
 pub trait TTFNum:
-    Float + FromPrimitive + Default + PartialOrd + Send + Sync + std::fmt::Debug + std::fmt::Display
+    Float
+    + FromPrimitive
+    + Default
+    + PartialOrd
+    + Send
+    + Sync
+    + std::fmt::Debug
+    + std::fmt::Display
+    + Serialize
+    + DeserializeOwned
 {
     fn small_margin() -> Self;
     fn large_margin() -> Self;

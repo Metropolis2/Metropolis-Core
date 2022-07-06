@@ -5,7 +5,7 @@ use std::fs;
 use std::io::BufReader;
 use std::path::Path;
 
-use simulation::simulation::Simulation;
+use simulation::simulation::{read_output, Simulation, SimulationResults};
 
 /// METROPOLIS simulator.
 #[derive(Parser, Debug)]
@@ -17,6 +17,9 @@ struct Args {
     /// Output directory
     #[clap(short, long, default_value = ".")]
     output: String,
+    /// Only write the report, without running the simulator
+    #[clap(long)]
+    report: bool,
 }
 
 fn main() -> Result<()> {
@@ -36,5 +39,14 @@ fn main() -> Result<()> {
         fs::create_dir(output_dir)?;
     }
 
-    sim.run(output_dir)
+    if args.report {
+        // Write the report.
+        info!("Reading output files");
+        let results: SimulationResults<f64> = read_output(output_dir);
+        info!("Writing report");
+        sim.write_report(&results, output_dir)
+    } else {
+        // Run the simulation.
+        sim.run(output_dir)
+    }
 }

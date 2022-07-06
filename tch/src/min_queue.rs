@@ -26,6 +26,7 @@ pub trait MinPriorityQueue {
     }
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub struct ImplOrd<T>(T);
 

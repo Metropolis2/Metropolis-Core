@@ -3,15 +3,15 @@ use crate::TTFNum;
 use num_traits::Num;
 use std::ops;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-pub struct Point<T> {
-    pub x: T,
-    pub y: T,
+pub struct Point<X, Y> {
+    pub x: X,
+    pub y: Y,
 }
 
-impl<T: Num> ops::Add for Point<T> {
-    type Output = Point<T>;
+impl<X: Num, Y: Num> ops::Add for Point<X, Y> {
+    type Output = Point<X, Y>;
 
     #[inline]
     fn add(self, other: Self) -> Self {
@@ -22,8 +22,8 @@ impl<T: Num> ops::Add for Point<T> {
     }
 }
 
-impl<T: Copy + Num> ops::Add<T> for Point<T> {
-    type Output = Point<T>;
+impl<T: Copy + Num> ops::Add<T> for Point<T, T> {
+    type Output = Point<T, T>;
 
     #[inline]
     fn add(self, a: T) -> Self {
@@ -34,8 +34,8 @@ impl<T: Copy + Num> ops::Add<T> for Point<T> {
     }
 }
 
-impl<T: Num> ops::Sub for Point<T> {
-    type Output = Point<T>;
+impl<X: Num, Y: Num> ops::Sub for Point<X, Y> {
+    type Output = Point<X, Y>;
 
     #[inline]
     fn sub(self, other: Self) -> Self {
@@ -46,8 +46,8 @@ impl<T: Num> ops::Sub for Point<T> {
     }
 }
 
-impl<T: Copy + Num> ops::Mul<T> for Point<T> {
-    type Output = Point<T>;
+impl<T: Copy + Num> ops::Mul<T> for Point<T, T> {
+    type Output = Point<T, T>;
 
     #[inline]
     fn mul(self, a: T) -> Self {
@@ -59,16 +59,21 @@ impl<T: Copy + Num> ops::Mul<T> for Point<T> {
 }
 
 #[inline]
-fn approx_eq<T: TTFNum>(p: &Point<T>, q: &Point<T>) -> bool {
-    p.x.approx_eq(&q.y) && p.y.approx_eq(&q.y)
+fn approx_eq<X: TTFNum, Y: TTFNum>(p: &Point<X, Y>, q: &Point<X, Y>) -> bool {
+    p.x.approx_eq(&q.x) && p.y.approx_eq(&q.y)
 }
 
 #[inline]
-fn perp_dot_product<T: TTFNum>(p: &Point<T>, q: &Point<T>) -> T {
-    p.x * q.y - q.x * p.y
+fn perp_dot_product<X, Y, T>(p: &Point<X, Y>, q: &Point<X, Y>) -> T
+where
+    X: Copy + Into<T>,
+    Y: Copy + Into<T>,
+    T: TTFNum,
+{
+    p.x.into() * q.y.into() - q.x.into() * p.y.into()
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Rotation {
     Colinear,
     Clockwise,
@@ -76,17 +81,22 @@ pub enum Rotation {
 }
 
 #[inline]
-pub fn rotation<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: &Point<T>) -> Rotation {
+pub fn rotation<X, Y, T>(a: &Point<X, Y>, b: &Point<X, Y>, c: &Point<X, Y>) -> Rotation
+where
+    X: TTFNum + Into<T>,
+    Y: TTFNum + Into<T>,
+    T: TTFNum,
+{
     if approx_eq(a, b) && approx_eq(a, c) && approx_eq(b, c) {
         return Rotation::Colinear;
     }
 
-    let x = perp_dot_product(&(*c - *a), &(*b - *a));
-    if x.approx_eq(&T::zero()) {
+    let v = perp_dot_product(&(*c - *a), &(*b - *a));
+    if v.approx_eq(&T::zero()) {
         return Rotation::Colinear;
     }
 
-    if x > T::zero() {
+    if v > T::zero() {
         Rotation::Clockwise
     } else {
         Rotation::CounterClockwise
@@ -94,35 +104,49 @@ pub fn rotation<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: &Point<T>) -> Rotation
 }
 
 #[inline]
-pub fn intersect<T: TTFNum>(a: &Point<T>, b: &Point<T>, p: &Point<T>, q: &Point<T>) -> bool {
+pub fn intersect<T: TTFNum>(
+    a: &Point<T, T>,
+    b: &Point<T, T>,
+    p: &Point<T, T>,
+    q: &Point<T, T>,
+) -> bool {
     use Rotation::*;
-    if rotation(a, b, p) == Colinear
-        || rotation(a, b, q) == Colinear
-        || rotation(p, q, a) == Colinear
-        || rotation(p, q, b) == Colinear
+    if rotation::<T, T, T>(a, b, p) == Colinear
+        || rotation::<T, T, T>(a, b, q) == Colinear
+        || rotation::<T, T, T>(p, q, a) == Colinear
+        || rotation::<T, T, T>(p, q, b) == Colinear
     {
         return false;
     }
 
-    !(rotation(a, b, p) == rotation(a, b, q) || rotation(p, q, a) == rotation(p, q, b))
+    !(rotation::<T, T, T>(a, b, p) == rotation::<T, T, T>(a, b, q)
+        || rotation::<T, T, T>(p, q, a) == rotation::<T, T, T>(p, q, b))
 }
 
 #[inline]
 pub fn intersection_point<T: TTFNum>(
-    a: &Point<T>,
-    b: &Point<T>,
-    p: &Point<T>,
-    q: &Point<T>,
-) -> Point<T> {
-    debug_assert_ne!(perp_dot_product(&(*p - *q), &(*b - *a)), T::zero());
+    a: &Point<T, T>,
+    b: &Point<T, T>,
+    p: &Point<T, T>,
+    q: &Point<T, T>,
+) -> Point<T, T> {
+    debug_assert_ne!(
+        perp_dot_product::<T, T, T>(&(*p - *q), &(*b - *a)),
+        T::zero()
+    );
     *a + (*b - *a)
-        * (perp_dot_product(&(*p - *q), &(*p - *a)) / perp_dot_product(&(*p - *q), &(*b - *a)))
+        * (perp_dot_product::<T, T, T>(&(*p - *q), &(*p - *a))
+            / perp_dot_product::<T, T, T>(&(*p - *q), &(*b - *a)))
 }
 
 /// Return the intersection point of the line (a, b), with `a.x < b.x`, and the horizontal line
 /// given by the equation `y = c`.
 #[inline]
-pub fn intersection_point_horizontal<T: TTFNum>(a: &Point<T>, b: &Point<T>, c: T) -> Point<T> {
+pub fn intersection_point_horizontal<T: TTFNum>(
+    a: &Point<T, T>,
+    b: &Point<T, T>,
+    c: T,
+) -> Point<T, T> {
     debug_assert!(a.y.min(b.y).approx_le(&c));
     debug_assert!(a.y.max(b.y).approx_ge(&c));
 

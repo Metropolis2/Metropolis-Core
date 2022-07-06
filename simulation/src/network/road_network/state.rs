@@ -3,7 +3,7 @@ use super::vehicle::{Vehicle, VehicleIndex};
 use super::weights::RoadNetworkWeights;
 use super::{RoadEdge, RoadNetwork, RoadNode};
 use crate::event::{Event, EventQueue};
-use crate::mode::car::VehicleEvent;
+use crate::mode::road::VehicleEvent;
 use crate::simulation::AgentResult;
 use crate::units::{Interval, Length, Time};
 
@@ -232,11 +232,11 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
         self.total_length
     }
 
-    pub fn enters_edge(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) -> Option<Time<T>> {
+    pub fn enters_edge(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) -> Time<T> {
         let new_length = self.current_length() + vehicle.get_length();
         self.road.set_length(new_length, current_time);
         self.total_length = self.total_length + vehicle.get_length();
-        Some(self.get_travel_time(vehicle))
+        self.get_travel_time(vehicle)
     }
 
     fn get_travel_time(&self, vehicle: &Vehicle<T>) -> Time<T> {
@@ -273,14 +273,14 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             if let Some(last_ta) = last_ta_opt {
                 // Fix travel time so that FIFO is respected.
                 if last_ta > dt + tt {
-                    tt = last_ta - dt;
+                    tt = last_ta - dt + Time::small_margin();
                 }
             }
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
-            assert!(departure_times.is_empty() || *departure_times.last().unwrap() < dt);
-            assert!(last_ta_opt.is_none() || last_ta_opt.unwrap() <= dt + tt);
+            debug_assert!(departure_times.is_empty() || *departure_times.last().unwrap() < dt);
+            debug_assert!(last_ta_opt.is_none() || last_ta_opt.unwrap() <= dt + tt);
             departure_times.push(dt);
             travel_times.push(tt);
             last_ta_opt = Some(dt + tt);
@@ -302,14 +302,14 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
                 if let Some(last_ta) = last_ta_opt {
                     // Fix travel time so that FIFO is respected.
                     if last_ta > edge_entry_time + tt {
-                        tt = last_ta - edge_entry_time;
+                        tt = last_ta - edge_entry_time + Time::small_margin();
                     }
                 }
-                assert!(edge_entry_time > *departure_times.last().unwrap());
+                debug_assert!(edge_entry_time > *departure_times.last().unwrap());
                 if tt.approx_ne(&ff_tt) {
                     is_constant = false;
                 }
-                assert!(last_ta_opt.unwrap() <= edge_entry_time + tt);
+                debug_assert!(last_ta_opt.unwrap() <= edge_entry_time + tt);
                 departure_times.push(edge_entry_time);
                 travel_times.push(tt);
                 last_ta_opt = Some(edge_entry_time + tt);
@@ -329,20 +329,22 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             let mut tt = on_road_tt + waiting_time;
             // Fix travel time so that FIFO is respected.
             if last_ta_opt.unwrap() > period.end() + tt {
-                tt = last_ta_opt.unwrap() - period.end();
+                tt = last_ta_opt.unwrap() - period.end() + Time::small_margin();
             }
             if tt.approx_ne(&ff_tt) {
                 is_constant = false;
             }
-            assert!(*departure_times.last().unwrap() < period.end());
-            assert!(last_ta_opt.unwrap() <= period.end() + tt);
+            debug_assert!(*departure_times.last().unwrap() < period.end());
+            debug_assert!(last_ta_opt.unwrap() <= period.end() + tt);
             departure_times.push(period.end());
             travel_times.push(tt);
         }
         if is_constant {
             TTF::Constant(ff_tt)
         } else {
-            TTF::Piecewise(PwlTTF::from_x_and_y(departure_times, travel_times, true))
+            let mut ttf = PwlTTF::from_x_and_y(departure_times, travel_times);
+            ttf.ensure_fifo();
+            TTF::Piecewise(ttf)
         }
     }
 
@@ -485,18 +487,27 @@ impl<T: TTFNum> WeightSimplification<T> {
             Self::Interval(interval) => {
                 if let TTF::Piecewise(ref mut pwl_ttf) = ttf {
                     let &[start, end] = pwl_ttf.period();
-                    let mut breakpoints =
+                    let mut xs =
+                        Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 1);
+                    let mut bins =
                         Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 2);
                     let mut current_time = start;
+                    let half_interval = interval.average(&Time::zero());
+                    bins.push(start);
                     loop {
-                        breakpoints.push((current_time, pwl_ttf.eval(current_time)));
+                        xs.push(current_time);
+                        if current_time + half_interval < end {
+                            bins.push(current_time + half_interval);
+                        }
                         current_time = current_time + interval;
-                        if current_time.approx_ge(&end) {
+                        if current_time > end {
                             break;
                         }
                     }
-                    breakpoints.push((end, pwl_ttf.eval(end)));
-                    *pwl_ttf = PwlTTF::from_breakpoints(breakpoints, true);
+                    bins.push(end);
+                    let ys = pwl_ttf.average_y_in_intervals(&bins);
+                    *pwl_ttf = PwlTTF::from_x_and_y(xs, ys);
+                    pwl_ttf.ensure_fifo();
                 }
             }
         }
@@ -522,7 +533,7 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
         state: &mut NetworkState<T>,
         _result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
-    ) -> bool {
+    ) {
         let road_network_state = state.get_mut_road_network().unwrap();
         let edge_state = &mut road_network_state[self.edge];
         if let Some((mut vehicle_event, vehicle, entry_time)) = edge_state.bottleneck.pop() {
@@ -543,7 +554,6 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
             // Record that, at the current time, waiting time is null.
             edge_state.bottleneck.record(self.at_time, self.at_time);
         }
-        false
     }
     fn get_time(&self) -> Time<T> {
         self.at_time

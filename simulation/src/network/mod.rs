@@ -7,7 +7,6 @@ use road_network::{
 };
 
 use anyhow::Result;
-use serde::de::Deserialize;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -21,7 +20,7 @@ pub mod road_network;
 /// If some part (for example, the road network) is absent, trips might be unreachable with
 /// some modes of transportation.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum + Deserialize<'de>"))]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct Network<T> {
     road_network: Option<RoadNetwork<T>>,
 }
@@ -92,6 +91,7 @@ impl<T: TTFNum> Network<T> {
 ///
 /// A skim can be composed of the following parts (all of them are optional):
 /// - a [RoadNetworkSkim].
+#[derive(Clone, Default, Debug)]
 pub struct NetworkSkim<T> {
     road_network: Option<RoadNetworkSkims<T>>,
 }
@@ -138,9 +138,20 @@ impl<'a, T: TTFNum> NetworkState<'a, T> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,
+}
+
+impl<T> NetworkWeights<T> {
+    pub fn new(road_network: Option<RoadNetworkWeights<T>>) -> Self {
+        NetworkWeights { road_network }
+    }
+
+    pub fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
+        self.road_network.as_ref()
+    }
 }
 
 impl<T: TTFNum> NetworkWeights<T> {

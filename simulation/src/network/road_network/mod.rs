@@ -4,7 +4,7 @@ pub mod vehicle;
 pub mod weights;
 
 use crate::agent::Agent;
-use crate::mode::{car::RoadVehicleMode, Mode};
+use crate::mode::Mode;
 use crate::units::{Length, Outflow, Speed, Time};
 use skim::{RoadNetworkSkim, RoadNetworkSkims};
 use state::{RoadNetworkState, WeightSimplification};
@@ -17,7 +17,6 @@ use log::debug;
 use num_traits::Zero;
 use petgraph::graph::{DiGraph, EdgeIndex, Neighbors, NodeIndex};
 use petgraph::Direction;
-use serde::de::Deserialize;
 use serde_derive::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
 use tch::{ContractionParameters, HierarchyOverlay};
@@ -49,7 +48,7 @@ fn default_outflow<T: TTFNum>() -> T {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum + Deserialize<'de>"))]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct RoadEdge<T> {
     id: usize,
     base_speed: Speed<T>,
@@ -112,7 +111,7 @@ impl<T: TTFNum> RoadEdge<T> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum + Deserialize<'de>"))]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct RoadNetwork<T> {
     graph: DiGraph<RoadNode, RoadEdge<T>>,
     vehicles: Vec<Vehicle<T>>,
@@ -157,7 +156,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             RoadNetworkPreprocessingData(vec![ODPairs::default(); self.vehicles.len()]);
         for agent in agents {
             for mode in agent.iter_modes() {
-                if let Mode::Car((_, road_mode)) = mode {
+                if let Mode::Road(road_mode) = mode {
                     let od_pairs = &mut od_data[road_mode.vehicle_index()];
                     od_pairs.unique_origins.insert(road_mode.origin());
                     od_pairs.unique_destinations.insert(road_mode.destination());

@@ -1,11 +1,10 @@
 use super::{AgentResults, AggregateResults, IterationResults};
-use crate::convergence::ConvergenceCriterion;
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
+use crate::stop::StopCriterion;
 use crate::units::Interval;
 
 use anyhow::{anyhow, Result};
-use serde::de::Deserialize;
 use serde_derive::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -19,12 +18,12 @@ fn default_update_ratio() -> f64 {
 // The latest possible departure for an agent is such that he can take the last edge of his route
 // at `period_end`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum + Deserialize<'de>"))]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct Parameters<T> {
     pub period: Interval<T>,
     pub network: NetworkParameters<T>,
     pub learning_model: LearningModel<T>,
-    pub convergence_criteria: Vec<ConvergenceCriterion<T>>,
+    pub stopping_criteria: Vec<StopCriterion<T>>,
     #[serde(default = "default_update_ratio")]
     pub update_ratio: f64,
     pub random_seed: u64,
@@ -35,7 +34,7 @@ impl<T> Parameters<T> {
         period: Interval<T>,
         network: NetworkParameters<T>,
         learning_model: LearningModel<T>,
-        convergence_criteria: Vec<ConvergenceCriterion<T>>,
+        stopping_criteria: Vec<StopCriterion<T>>,
         update_ratio: f64,
         random_seed: u64,
     ) -> Result<Self> {
@@ -49,7 +48,7 @@ impl<T> Parameters<T> {
             period,
             network,
             learning_model,
-            convergence_criteria,
+            stopping_criteria,
             update_ratio,
             random_seed,
         })
@@ -57,15 +56,15 @@ impl<T> Parameters<T> {
 }
 
 impl<T: TTFNum> Parameters<T> {
-    pub fn has_converged(
+    pub fn stop(
         &self,
         iteration_counter: u64,
         results: &AgentResults<T>,
         prev_results: Option<&AgentResults<T>>,
     ) -> bool {
-        self.convergence_criteria
+        self.stopping_criteria
             .iter()
-            .any(|c| c.has_converged(iteration_counter, results, prev_results))
+            .any(|c| c.stop(iteration_counter, results, prev_results))
     }
 
     pub fn learn(

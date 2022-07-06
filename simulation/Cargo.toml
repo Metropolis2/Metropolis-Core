@@ -10,7 +10,7 @@ choice = { path = "../choice/", features = ["serde-1"] }
 ttf = { path = "../ttf/", features = ["serde-1"] }
 tch = { path = "../tch/", features = ["serde-1"] }
 anyhow = "1.0"
-askama = "0.11"
+askama = { version = "0.11", features = ["serde-json"] }
 chrono = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 env_logger = "0.9"
