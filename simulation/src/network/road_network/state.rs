@@ -8,14 +8,13 @@ use crate::simulation::AgentResult;
 use crate::units::{Interval, Length, Time};
 
 use log::warn;
-use num_traits::{ToPrimitive, Zero};
+use num_traits::Zero;
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::iter;
 use std::ops::{Index, IndexMut};
-use ttf::{PwlTTF, TTFNum, TTF};
+use ttf::{PwlTTF, TTFNum, TTFSimplification, TTF};
 
 const NB_BREAKPOINTS_WARNING: usize = 10000;
 
@@ -417,7 +416,7 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
     pub fn get_weights(
         &self,
         period: Interval<T>,
-        simplification: WeightSimplification<T>,
+        simplification: TTFSimplification<Time<T>>,
     ) -> RoadNetworkWeights<T> {
         let mut weights =
             RoadNetworkWeights::with_capacity(self.network.vehicles.len(), self.graph.edge_count());
@@ -463,54 +462,6 @@ impl<'a, T> Index<EdgeIndex> for RoadNetworkState<'a, T> {
 impl<'a, T> IndexMut<EdgeIndex> for RoadNetworkState<'a, T> {
     fn index_mut(&mut self, index: EdgeIndex) -> &mut Self::Output {
         &mut self.graph[index]
-    }
-}
-
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-pub enum WeightSimplification<T> {
-    Raw,
-    Bound(Time<T>),
-    Interval(Time<T>),
-}
-
-impl<T> Default for WeightSimplification<T> {
-    fn default() -> Self {
-        WeightSimplification::Raw
-    }
-}
-
-impl<T: TTFNum> WeightSimplification<T> {
-    fn simplify(self, ttf: &mut TTF<Time<T>>) {
-        match self {
-            Self::Raw => (),
-            Self::Bound(bound) => ttf.approximate(bound),
-            Self::Interval(interval) => {
-                if let TTF::Piecewise(ref mut pwl_ttf) = ttf {
-                    let &[start, end] = pwl_ttf.period();
-                    let mut xs =
-                        Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 1);
-                    let mut bins =
-                        Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 2);
-                    let mut current_time = start;
-                    let half_interval = interval.average(&Time::zero());
-                    bins.push(start);
-                    loop {
-                        xs.push(current_time);
-                        if current_time + half_interval < end {
-                            bins.push(current_time + half_interval);
-                        }
-                        current_time = current_time + interval;
-                        if current_time > end {
-                            break;
-                        }
-                    }
-                    bins.push(end);
-                    let ys = pwl_ttf.average_y_in_intervals(&bins);
-                    *pwl_ttf = PwlTTF::from_x_and_y(xs, ys);
-                    pwl_ttf.ensure_fifo();
-                }
-            }
-        }
     }
 }
 

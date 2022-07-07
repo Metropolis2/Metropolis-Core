@@ -1,3 +1,4 @@
+//! A [Network] describes the supply side of a [Simulation].
 use crate::agent::Agent;
 use crate::simulation::parameters::Parameters;
 use road_network::skim::RoadNetworkSkims;
@@ -32,7 +33,7 @@ impl<T: TTFNum> Network<T> {
 
     /// Returns a reference to the road network of the network, as an option.
     ///
-    /// If the network has no road network, returns None.
+    /// If the network has no road network, returns `None`.
     pub fn get_road_network(&self) -> Option<&RoadNetwork<T>> {
         self.road_network.as_ref()
     }
@@ -99,12 +100,17 @@ pub struct NetworkSkim<T> {
 impl<T> NetworkSkim<T> {
     /// Returns a reference to the road-network skim of the skim, as an option.
     ///
-    /// If the skim has no road-network skim, returns None.
+    /// If the skim has no road-network skim, returns `None`.
     pub fn get_road_network(&self) -> Option<&RoadNetworkSkims<T>> {
         self.road_network.as_ref()
     }
 }
 
+/// State of the [Network] at a given time.
+///
+/// The state of the network is updated in the within-day model.
+/// It is used to compute congestion during the within-day modeland to get the observed
+/// [NetworkWeights] at the end of the within-day model.
 pub struct NetworkState<'a, T> {
     road_network: Option<RoadNetworkState<'a, T>>,
 }
@@ -114,12 +120,16 @@ impl<'a, T> NetworkState<'a, T> {
         NetworkState { road_network }
     }
 
+    /// Return a mutable reference to the [RoadNetworkState] of the [NetworkState], as an option.
+    ///
+    /// If the NetworkState has no road-network state, return `None`.
     pub fn get_mut_road_network(&mut self) -> Option<&mut RoadNetworkState<'a, T>> {
         self.road_network.as_mut()
     }
 }
 
 impl<'a, T: TTFNum> NetworkState<'a, T> {
+    /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
     pub fn get_weights(&self, parameters: &Parameters<T>) -> NetworkWeights<T> {
         let rn_weights = self.road_network.as_ref().map(|rn| {
             rn.get_weights(
@@ -138,6 +148,7 @@ impl<'a, T: TTFNum> NetworkState<'a, T> {
     }
 }
 
+/// Simplified representation of the state of a network during a whole day.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
 pub struct NetworkWeights<T> {
@@ -149,12 +160,17 @@ impl<T> NetworkWeights<T> {
         NetworkWeights { road_network }
     }
 
+    /// Return a reference to the [RoadNetworkWeights] of the [NetworkWeights], as an option.
+    ///
+    /// If the NetworkWeights have no road-network weights, return `None`.
     pub fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
         self.road_network.as_ref()
     }
 }
 
 impl<T: TTFNum> NetworkWeights<T> {
+    /// Return the weighted average beteen two [NetworkWeights], where `coefficient` is the weight
+    /// of `self` and `1 - coefficient` is the weight of `other`.
     #[must_use]
     pub fn average(&self, other: &NetworkWeights<T>, coefficient: T) -> NetworkWeights<T> {
         let rn_weights = if let (Some(self_rn_weights), Some(other_rn_weights)) =
@@ -169,6 +185,9 @@ impl<T: TTFNum> NetworkWeights<T> {
         }
     }
 
+    /// Return the genetic average between two [NetworkWeights].
+    ///
+    /// The genetic average of `x` and `y` is `(x^a + y^b)^(1/(a+b))`.
     #[must_use]
     pub fn genetic_average(&self, other: &NetworkWeights<T>, a: T, b: T) -> NetworkWeights<T> {
         let rn_weights = if let (Some(self_rn_weights), Some(other_rn_weights)) =
@@ -192,12 +211,13 @@ pub struct NetworkPreprocessingData {
 }
 
 impl NetworkPreprocessingData {
-    /// Return the [RoadNetworkPreprocessingData] of the NetworkPreprocessingData.
+    /// Return the [RoadNetworkPreprocessingData] of the [NetworkPreprocessingData].
     pub fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData> {
         self.road_network.as_ref()
     }
 }
 
+/// Parameters of the simulation that are specific to the network.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct NetworkParameters<T> {
     road_network: Option<RoadNetworkParameters<T>>,

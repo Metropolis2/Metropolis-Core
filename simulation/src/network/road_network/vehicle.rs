@@ -49,16 +49,14 @@ impl<T: TTFNum> SpeedFunction<T> {
 /// A road vehicle with a given [Length] and [SpeedFunction].
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Vehicle<T> {
-    name: String,
     length: Length<T>,
     speed_function: SpeedFunction<T>,
 }
 
 impl<T> Vehicle<T> {
     /// Create a new vehicle with a given [Length] and [SpeedFunction].
-    pub fn new(name: String, length: Length<T>, speed_function: SpeedFunction<T>) -> Self {
+    pub fn new(length: Length<T>, speed_function: SpeedFunction<T>) -> Self {
         Vehicle {
-            name,
             length,
             speed_function,
         }

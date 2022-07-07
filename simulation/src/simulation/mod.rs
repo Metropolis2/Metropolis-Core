@@ -4,7 +4,9 @@ pub mod preprocess;
 use crate::agent::{agent_index, Agent, AgentIndex};
 use crate::event::{Event, EventQueue};
 use crate::mode::road::AggregateRoadResults;
-use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
+use crate::mode::{
+    AggregateConstantResults, AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices,
+};
 use crate::network::{Network, NetworkSkim, NetworkWeights};
 use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
@@ -294,9 +296,10 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .get_road_network()
                 .expect("Found RoadResults but no road network"),
         );
+        let cst_results = AggregateConstantResults::from_agent_results(cst_entries);
         let mode_results = AggregateModeResults {
             road: road_results,
-            constant: cst_entries.len(),
+            constant: cst_results,
         };
         AggregateResults {
             surplus,

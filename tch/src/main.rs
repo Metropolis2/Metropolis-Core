@@ -12,7 +12,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use tch::*;
-use ttf::{PwlTTF, TTF};
+use ttf::{PwlTTF, TTFSimplification, TTF};
 
 #[allow(dead_code)]
 enum Input {
@@ -91,7 +91,7 @@ pub fn main() -> Result<()> {
         let now = Instant::now();
         let mut approx_ch = ch.clone();
         println!("Approximating TTFs");
-        approx_ch.approximate(10.0);
+        approx_ch.simplify(TTFSimplification::Bound(10.0));
         println!(
             "Time taken for approximation: {}ms.",
             now.elapsed().as_millis()
@@ -213,7 +213,7 @@ pub fn main() -> Result<()> {
         println!("Time taken: {}ms.", now.elapsed().as_millis());
         let now = Instant::now();
         println!("Approximating TTFs for search spaces");
-        search_spaces.approximate(10.0);
+        search_spaces.simplify(TTFSimplification::Bound(10.0));
         println!(
             "Time taken for approximation: {}ms.",
             now.elapsed().as_millis()

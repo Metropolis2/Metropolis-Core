@@ -25,7 +25,7 @@ use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
 use petgraph::Direction;
 use rayon::prelude::*;
 use std::collections::VecDeque;
-use ttf::{TTFNum, TTF};
+use ttf::{TTFNum, TTFSimplification, TTF};
 
 /// Indicate the direction of an edge in the hierarchy.
 ///
@@ -219,10 +219,10 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         self.graph.edge_weights().map(|e| e.ttf.complexity()).sum()
     }
 
-    pub fn approximate(&mut self, error: T) {
+    pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
         self.graph
             .edge_weights_mut()
-            .for_each(|e| e.ttf.approximate(error));
+            .for_each(|e| simplification.simplify(&mut e.ttf));
     }
 
     /// Return the unpacked version of a path, i.e., return the path as a vector of *original*
@@ -564,11 +564,11 @@ impl<T> SearchSpaces<T> {
 }
 
 impl<T: TTFNum> SearchSpaces<T> {
-    pub fn approximate(&mut self, error: T) {
+    pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
         self.forward.par_values_mut().for_each(|search_space| {
             search_space
                 .values_mut()
-                .for_each(|ttf| ttf.approximate(error))
+                .for_each(|ttf| simplification.simplify(ttf))
         });
     }
 }

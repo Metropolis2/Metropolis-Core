@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use std::ops::Index;
 use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
-use ttf::{TTFNum, TTF};
+use ttf::{TTFNum, TTFSimplification, TTF};
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle] of a [RoadNetwork].
 #[derive(Clone, Default, Debug)]
@@ -56,9 +56,9 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     }
 
     /// Simplify all the travel-time functions in the search spaces, using the given bound.
-    pub fn approximate_search_spaces(&mut self, bound: Time<T>) {
+    pub fn simplify_search_spaces(&mut self, simplification: TTFSimplification<Time<T>>) {
         if let Some(search_space) = &mut self.search_spaces {
-            search_space.approximate(bound);
+            search_space.simplify(simplification);
         }
     }
 

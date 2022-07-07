@@ -3,7 +3,8 @@ use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::NetworkSkim;
 use crate::schedule_utility::ScheduleUtility;
-use crate::units::{Time, Utility};
+use crate::simulation::AgentResult;
+use crate::units::{Distribution, Time, Utility};
 use road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
 
 use anyhow::{anyhow, Result};
@@ -15,7 +16,7 @@ pub mod road;
 
 /// Mode identifier.
 ///
-/// The `n` modes of an [Agent] are indexed from `0` to `n-1`.
+/// The `n` modes of an [Agent](crate::agent::Agent) are indexed from `0` to `n-1`.
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
 )]
@@ -173,5 +174,26 @@ pub enum ModeResults<T> {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateModeResults<T> {
     pub road: AggregateRoadResults<T>,
-    pub constant: usize,
+    pub constant: AggregateConstantResults<T>,
+}
+
+/// Aggregate results of an iteration specific to constant modes.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AggregateConstantResults<T> {
+    pub count: usize,
+    pub utility: Distribution<Utility<T>>,
+}
+
+impl<T: TTFNum> AggregateConstantResults<T> {
+    /// Compute [AggregateConstantResults] from the results of an iteration.
+    pub fn from_agent_results(results: Vec<&AgentResult<T>>) -> Self {
+        let msg = "Invalid within-day results";
+        assert!(!results.is_empty(), "{msg}");
+        let utility =
+            Distribution::from_iterator(results.iter().map(|r| r.utility().expect(msg))).unwrap();
+        AggregateConstantResults {
+            count: results.len(),
+            utility,
+        }
+    }
 }

@@ -28,7 +28,7 @@ pub trait Event<T>: Debug {
     );
     /// Return the time at which the event occurs.
     fn get_time(&self) -> Time<T>;
-    /// Return the [AgentIndex] of the associated [Agent], or `None` if the event is not associated
+    /// Return the [AgentIndex] of the associated [Agent](crate::agent::Agent), or `None` if the event is not associated
     /// with an agent.
     fn get_agent_index(&self) -> Option<AgentIndex> {
         None

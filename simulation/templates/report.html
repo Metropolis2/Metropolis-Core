@@ -42,7 +42,7 @@
 						<th scope="col" rowspan="2" class="text-center">Iteration</th>
 						<th scope="col" rowspan="2" class="text-center">Surplus</th>
 						<th scope="col" colspan="14" class="text-center">Road</th>
-						<th scope="col" class="text-center">Constant</th>
+						<th scope="col" colspan="2" class="text-center">Constant</th>
 					</tr>
 					<tr class="second">
 						<th scope="col" class="text-center">Count</th>
@@ -56,37 +56,39 @@
 						<th scope="col" class="text-center">Mean free-flow travel time</th>
 						<th scope="col" class="text-center">Mean distance (m)</th>
 						<th scope="col" class="text-center">Mean edge count</th>
-						<th scope="col" class="text-center">Mean travel utility</th>
+						<th scope="col" class="text-center">Mean utility</th>
 						<th scope="col" class="text-center">EXPECT</th>
 						<th scope="col" class="text-center">Mean departure-time shift</th>
 						<th scope="col" class="text-center">Count</th>
+						<th scope="col" class="text-center">Mean utility</th>
 					</tr>
 				</thead>
 				<tbody>
 					{% for it in iterations %}
 					<tr>
 						<td scope="row" class="text-center">{{ loop.index }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean.0) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean().0) }}</td>
 						<td class="text-center">{{ it.mode_results.road.count }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.congestion.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.departure_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.arrival_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.road_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.bottleneck_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.pending_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.travel_times.mean) }}</td>
-						<td class="text-center">{{ "{}"|format(it.mode_results.road.route_free_flow_travel_times.mean) }}</td>
-						<td class="text-center">{{ "{:.0}"|format(it.mode_results.road.lengths.mean.0) }}</td>
-						<td class="text-center">{{ "{:.2}"|format(it.mode_results.road.edge_counts.mean) }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.utilities.mean.0) }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.exp_travel_time_diff.mean) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.congestion.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.departure_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.arrival_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.road_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.bottleneck_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.pending_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.travel_times.mean()) }}</td>
+						<td class="text-center">{{ "{}"|format(it.mode_results.road.route_free_flow_travel_times.mean()) }}</td>
+						<td class="text-center">{{ "{:.0}"|format(it.mode_results.road.lengths.mean().0) }}</td>
+						<td class="text-center">{{ "{:.2}"|format(it.mode_results.road.edge_counts.mean()) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.utilities.mean().0) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(it.mode_results.road.exp_travel_time_diff.mean()) }}</td>
 						{% match it.mode_results.road.dep_time_shift %}
 						{% when Some with (distr) %}
-						<td class="text-center">{{ "{}"|format(distr.mean) }}</td>
+						<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
 						{% when None %}
 						<td class="text-center">N/A</td>
 						{% endmatch %}
-						<td class="text-center">{{ it.mode_results.constant }}</td>
+						<td class="text-center">{{ it.mode_results.constant.count }}</td>
+						<td class="text-center">{{ it.mode_results.constant.utility.mean() }}</td>
 					</tr>
 					{% endfor %}
 				</tbody>

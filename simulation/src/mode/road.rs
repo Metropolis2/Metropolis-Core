@@ -3,13 +3,13 @@ use super::{ModeCallback, ModeResults, PreDayChoices};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventQueue};
 use crate::mode::PreDayChoiceAllocation;
-use crate::mode_utility::TravelUtility;
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkims};
 use crate::network::road_network::vehicle::VehicleIndex;
 use crate::network::road_network::RoadNetwork;
 use crate::network::{NetworkSkim, NetworkState};
 use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::AgentResult;
+use crate::travel_utility::TravelUtility;
 use crate::units::{Distribution, Length, NoUnit, Time, Utility};
 
 use anyhow::{anyhow, Result};
@@ -114,7 +114,7 @@ impl<T: TTFNum> RoadMode<T> {
 
     /// Return the pre-day choice for this mode.
     ///
-    /// Given the expected [RoadNetworkSkim] and the [ScheduleUtility], this returns a tuple with
+    /// Given the expected [RoadNetworkSkims] and the [ScheduleUtility], this returns a tuple with
     /// the expected utility from the departure-time choice model and a [ModeCallback] function.
     ///
     /// The departure time and route chosen are only computed when the callback function is called.

@@ -1,3 +1,16 @@
+//! Definition of types representing values expressed in a given unit.
+//!
+//! The types assumed the following units:
+//!
+//! - [Length]: meters
+//! - [Time]: seconds
+//! - [Speed]: meter / second
+//! - [Outflow]: meter / second
+//! - [ValueOfTime]: utility / second
+//!
+//! Other units can be assumed but the coherence between units must be kept.
+//! For example, if one consider that lengths are expressed in miles, then speeds and outflows must
+//! also be expressed in miles.
 use chrono::NaiveTime;
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
@@ -326,6 +339,9 @@ macro_rules! impl_from_into_no_unit(
 );
 
 /// Representation of a value with no particular unit.
+///
+/// This type is used to implement the conversion between any unit type and the `NoUnit` type
+/// because it is not possible to implement the conversion between a type Unit<T> and T.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct NoUnit<T>(pub T);
@@ -440,6 +456,7 @@ impl_ops!(ValueOfTime * Time = Utility);
 impl_ops!(Outflow * Time = Length);
 impl_ops!(Length / Speed = Time);
 impl_ops!(Length / Outflow = Time);
+impl_ops!(Length / Time = Outflow);
 
 /// Length * lane number = Length.
 impl<T: TTFNum> Mul<u8> for Length<T> {
@@ -489,20 +506,25 @@ impl<T: Copy> Interval<T> {
 }
 
 impl<T: Copy + PartialOrd> Interval<T> {
+    /// Return `true` if `time` is included in the (closed) interval.
     pub fn contains(&self, time: Time<T>) -> bool {
         self.start() <= time && self.end() >= time
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+/// Struct to describe statistics on a distribution.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Distribution<T> {
-    pub mean: T,
-    pub std: T,
-    pub min: T,
-    pub max: T,
+    mean: T,
+    std: T,
+    min: T,
+    max: T,
 }
 
 impl<T: TTFNum> Distribution<T> {
+    /// Return a `Distribution` from an iterator of elements of the distribution.
+    ///
+    /// Return `None` if the iterator is empty.
     pub fn from_iterator(iter: impl Iterator<Item = T>) -> Option<Distribution<T>> {
         let mut sum = T::zero();
         let mut sum_squared = T::zero();
@@ -555,5 +577,23 @@ impl<T: TTFNum> Distribution<T> {
 
     pub fn max(&self) -> T {
         self.max
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distribution_test() {
+        let values = vec![1., 2., 3., 4., 5.];
+        let d = Distribution::from_iterator(values.into_iter()).unwrap();
+        let expected = Distribution {
+            mean: 3.,
+            std: 2.0f64.sqrt(),
+            min: 1.,
+            max: 5.,
+        };
+        assert_eq!(d, expected);
     }
 }
