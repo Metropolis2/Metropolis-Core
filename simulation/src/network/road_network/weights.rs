@@ -1,3 +1,4 @@
+//! Description of the [RoadNetworkWeights].
 use super::vehicle::VehicleIndex;
 use crate::units::Time;
 
@@ -106,5 +107,28 @@ impl<T> Index<(VehicleIndex, EdgeIndex)> for RoadNetworkWeights<T> {
     type Output = TTF<Time<T>>;
     fn index(&self, (vehicle, edge): (VehicleIndex, EdgeIndex)) -> &Self::Output {
         &self.0[vehicle.index()][edge.index()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn average_test() {
+        let w0 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(10.))]]);
+        let w1 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(20.))]]);
+        // Result = 0.2 * 10 + 0.8 * 20 = 2 + 16 = 18.
+        let w2 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(18.))]]);
+        assert_eq!(w0.average(&w1, 0.2), w2);
+    }
+
+    #[test]
+    fn genetic_average_test() {
+        let w0 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(2.))]]);
+        let w1 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(3.))]]);
+        // Result = (2^3 * 3^2)^(1/5) = 72^(1/5).
+        let w2 = RoadNetworkWeights(vec![vec![TTF::Constant(Time(72.0f64.powf(0.2)))]]);
+        assert_eq!(w0.genetic_average(&w1, 3.0, 2.0), w2);
     }
 }

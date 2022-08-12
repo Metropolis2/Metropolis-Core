@@ -8,20 +8,26 @@ use road_network::{
 };
 
 use anyhow::Result;
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 pub mod road_network;
 
-/// Abstract representation of the physical network where agents can make trips.
+/// Abstract representation of the physical transportation network where agents can make trips.
 ///
 /// A network can be composed of the following parts (all of them are optional):
+///
 /// - a [RoadNetwork].
 ///
 /// If some part (for example, the road network) is absent, trips might be unreachable with
 /// some modes of transportation.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Network")]
+#[schemars(
+    description = "Abstract representation of the physical transportation network where agents can make trips."
+)]
 pub struct Network<T> {
     road_network: Option<RoadNetwork<T>>,
 }
@@ -91,6 +97,7 @@ impl<T: TTFNum> Network<T> {
 /// Simplified representation of the state of a network, as perceived by the agents.
 ///
 /// A skim can be composed of the following parts (all of them are optional):
+///
 /// - a [RoadNetworkSkim].
 #[derive(Clone, Default, Debug)]
 pub struct NetworkSkim<T> {
@@ -218,7 +225,16 @@ impl NetworkPreprocessingData {
 }
 
 /// Parameters of the simulation that are specific to the network.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct NetworkParameters<T> {
+    /// Parameters specific to the road network.
     road_network: Option<RoadNetworkParameters<T>>,
+}
+
+impl<T> Default for NetworkParameters<T> {
+    fn default() -> Self {
+        NetworkParameters {
+            road_network: Some(RoadNetworkParameters::default()),
+        }
+    }
 }

@@ -10,6 +10,7 @@ pub use pwl::{PwlTTF, PwlXYF};
 pub use ttf_num::TTFNum;
 
 use either::Either;
+use schemars::JsonSchema;
 use std::cmp::Ordering;
 
 /// Descriptor used when merging two TTFs `f` and `g`.
@@ -73,6 +74,7 @@ impl<T: TTFNum> TTF<T> {
     /// Return the complexity of the TTF.
     ///
     /// - Return 0 if the TTF is a constant.
+    ///
     /// - Return the number of breakpoints if the TTF is piecewise-linear.
     pub fn complexity(&self) -> usize {
         match self {
@@ -197,6 +199,7 @@ impl<T: TTFNum> TTF<T> {
     ///
     /// Return either
     /// - an `Ordering` implying that `f` is always below `g` or `g` is always below `f`.
+    ///
     /// - a vector of tuples `(T, Ordering)`, where a value `(t, ord)` means that, starting from
     ///   departure time `t`, the ordering between `f` and `g` is `ord`.
     ///   The vector is ordered by increasing departure times.
@@ -256,10 +259,15 @@ impl<T: TTFNum> TTF<T> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
+#[cfg_attr(feature = "serde-1", serde(tag = "type", content = "values"))]
 pub enum TTFSimplification<T> {
+    /// No simplification is done.
     Raw,
+    /// Allow for a given error bound.
     Bound(T),
+    /// Compute the values at fixed intervals.
     Interval(T),
 }
 

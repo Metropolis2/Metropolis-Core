@@ -2,20 +2,34 @@
 use crate::units::{Time, Utility, ValueOfTime};
 
 use num_traits::{Float, Zero};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 /// Representation of how the travel utility of an agent is computed.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+///
+/// **Warning**: This is used to compute the travel *utility* (not the travel *cost*), which is
+/// usually negative.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
+#[schemars(example = "crate::schema::example_travel_utility")]
+#[schemars(example = "crate::schema::example_travel_utility2")]
 pub enum TravelUtility<T> {
     /// Travel utility is always null.
     None,
     /// Travel utility is proportional to the travel time.
     Proportional(ValueOfTime<T>),
     /// Travel utility is a quadratic function of travel time: `u = a * tt + b * tt^2`.
-    ///
-    /// The first value is the coefficient `a`, the second value is the coefficient `b`.
-    Quadratic(ValueOfTime<T>, ValueOfTime<T>),
+    Quadratic {
+        a: ValueOfTime<T>,
+        b: ValueOfTime<T>,
+    },
+}
+
+impl<T> Default for TravelUtility<T> {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 impl<T: TTFNum> TravelUtility<T> {
@@ -24,7 +38,7 @@ impl<T: TTFNum> TravelUtility<T> {
         match *self {
             Self::None => Utility::zero(),
             Self::Proportional(vot) => vot * travel_time,
-            Self::Quadratic(a, b) => a * travel_time + b * travel_time.powi(2),
+            Self::Quadratic { a, b } => a * travel_time + b * travel_time.powi(2),
         }
     }
 }
@@ -40,7 +54,10 @@ mod tests {
         assert_eq!(model.get_travel_utility(tt), Utility::zero());
         let model = TravelUtility::Proportional(ValueOfTime(-10.));
         assert_eq!(model.get_travel_utility(tt), Utility(-50.));
-        let model = TravelUtility::Quadratic(ValueOfTime(-30.), ValueOfTime(2.));
+        let model = TravelUtility::Quadratic {
+            a: ValueOfTime(-30.),
+            b: ValueOfTime(2.),
+        };
         // -30 * 5 + 2 * 5^2 = -100
         assert_eq!(model.get_travel_utility(tt), Utility(-100.));
     }

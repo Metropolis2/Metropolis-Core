@@ -8,6 +8,7 @@ use crate::units::{Distribution, Time, Utility};
 use road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
 
 use anyhow::{anyhow, Result};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use ttf::TTFNum;
@@ -38,7 +39,10 @@ pub fn mode_index(x: usize) -> ModeIndex {
 }
 
 /// Mode of transportation available to an agent.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(tag = "type", content = "values")]
+#[schemars(title = "Mode")]
 pub enum Mode<T> {
     /// A mode of transportation that always provide the same utility level.
     Constant(Utility<T>),
@@ -173,8 +177,8 @@ pub enum ModeResults<T> {
 /// Aggregate results of an iteration that are mode-specific.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateModeResults<T> {
-    pub road: AggregateRoadResults<T>,
-    pub constant: AggregateConstantResults<T>,
+    pub road: Option<AggregateRoadResults<T>>,
+    pub constant: Option<AggregateConstantResults<T>>,
 }
 
 /// Aggregate results of an iteration specific to constant modes.

@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use anyhow::{anyhow, Result};
+use schemars::JsonSchema;
 use ttf::TTFNum;
 
 /// A deterministic choice model between a finite number of alternatives.
@@ -18,9 +19,15 @@ use ttf::TTFNum;
 /// assert_eq!(model.get_choice(&[0., 0., -1.]).unwrap(), (0, 0.));
 /// ```
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
+#[cfg_attr(feature = "serde-1", schemars(title = "Deterministic choice model"))]
+#[cfg_attr(
+    feature = "serde-1",
+    schemars(description = "Choose the alternative with the largest value.")
+)]
 pub struct DeterministicChoiceModel<T> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
+    #[validate(range(min = 0.0, max = 1.0))]
     u: T,
 }
 
@@ -28,15 +35,8 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
     /// Initialize a new deterministic choice model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
-    pub fn new(u: T) -> Result<Self> {
-        if (T::zero()..T::one()).contains(&u) {
-            Ok(DeterministicChoiceModel { u })
-        } else {
-            Err(anyhow!(
-                "The value of u must be such that 0.0 <= u < 1.0, got {:?}",
-                u
-            ))
-        }
+    pub fn new(u: T) -> Self {
+        DeterministicChoiceModel { u }
     }
 
     /// Return the id of the chosen alternative and its payoff, given a vector of payoffs.
@@ -44,6 +44,7 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
     /// Return an error if
     ///
     /// - The vector of payoffs is empty.
+    ///
     /// - The payoffs cannot be compared.
     pub fn get_choice<V: TTFNum>(&self, values: &[V]) -> Result<(usize, V)> {
         if values.is_empty() {

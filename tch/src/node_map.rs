@@ -190,7 +190,7 @@ impl<'a, NM: NodeMap> NodeMap for &'a mut NM {
         (*self).reset();
     }
     fn get_value(&self, node: &Self::Node) -> Option<&Self::Value> {
-        (&**self).get_value(node)
+        (**self).get_value(node)
     }
     fn get_mut_value(&mut self, node: &Self::Node) -> Option<&mut Self::Value> {
         (*self).get_mut_value(node)
@@ -199,13 +199,13 @@ impl<'a, NM: NodeMap> NodeMap for &'a mut NM {
         (*self).insert(node, value);
     }
     fn len(&self) -> usize {
-        (&**self).len()
+        (**self).len()
     }
     fn is_empty(&self) -> bool {
-        (&**self).is_empty()
+        (**self).is_empty()
     }
     fn iter<'b>(&'b self) -> Box<dyn Iterator<Item = (Self::Node, &Self::Value)> + 'b> {
-        (&**self).iter()
+        (**self).iter()
     }
 }
 

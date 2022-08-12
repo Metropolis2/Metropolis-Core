@@ -3,21 +3,40 @@ use super::{ModeCallback, ModeResults, PreDayChoices};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventQueue};
 use crate::mode::PreDayChoiceAllocation;
-use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkims};
+use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
+use crate::network::road_network::state::BottleneckStatus;
 use crate::network::road_network::vehicle::VehicleIndex;
 use crate::network::road_network::RoadNetwork;
-use crate::network::{NetworkSkim, NetworkState};
+use crate::network::{Network, NetworkSkim, NetworkState};
 use crate::schedule_utility::ScheduleUtility;
+use crate::schema::NodeIndexDef;
 use crate::simulation::AgentResult;
 use crate::travel_utility::TravelUtility;
-use crate::units::{Distribution, Length, NoUnit, Time, Utility};
+use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
 
 use anyhow::{anyhow, Result};
 use choice::ContinuousChoiceModel;
+use hashbrown::HashSet;
 use num_traits::{Float, Zero};
 use petgraph::graph::{EdgeIndex, NodeIndex};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
+
+/// Model used to compute the chosen departure time.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
+pub enum DepartureTimeModel<T> {
+    /// The departure time is always equal to the given value.
+    Constant(Time<T>),
+    /// The departure time is chosen according to a continuous choice model.
+    ContinuousChoice {
+        /// Interval in which the departure time is chosen.
+        period: Interval<T>,
+        /// Continuous choice model.
+        choice_model: ContinuousChoiceModel<NoUnit<T>>,
+    },
+}
 
 /// Representation of the mode of transportation for a vehicle that travels on the road network.
 ///
@@ -30,13 +49,23 @@ use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
 ///   this mode.
 /// - A [TravelUtility] object that represents the way the travel utility of the agent is
 ///   computed for this mode.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Road Mode")]
+#[schemars(description = "Mode of transportation for a vehicle that travels on the road network.")]
+#[schemars(example = "crate::schema::example_road_mode")]
 pub struct RoadMode<T> {
+    #[schemars(with = "NodeIndexDef")]
+    /// Id of the origin node on the road network graph.
     origin: NodeIndex,
+    #[schemars(with = "NodeIndexDef")]
+    /// Id of the destination node on the road network graph.
     destination: NodeIndex,
+    /// Id of the vehicle.
     vehicle: VehicleIndex,
-    departure_time_period: [Time<T>; 2],
-    departure_time_model: ContinuousChoiceModel<NoUnit<T>, Time<T>>,
+    /// Model used for the departure-time choice.
+    departure_time_model: DepartureTimeModel<T>,
+    /// Travel-utility model describing how travel utility is computed.
+    #[serde(default)]
     utility_model: TravelUtility<T>,
 }
 
@@ -45,15 +74,13 @@ impl<T> RoadMode<T> {
         origin: NodeIndex,
         destination: NodeIndex,
         vehicle: VehicleIndex,
-        departure_time_period: [Time<T>; 2],
-        departure_time_model: ContinuousChoiceModel<NoUnit<T>, Time<T>>,
+        departure_time_model: DepartureTimeModel<T>,
         utility_model: TravelUtility<T>,
     ) -> Self {
         RoadMode {
             origin,
             destination,
             vehicle,
-            departure_time_period,
             departure_time_model,
             utility_model,
         }
@@ -127,75 +154,87 @@ impl<T: TTFNum> RoadMode<T> {
             .as_ref()
             .ok_or_else(|| anyhow!("No skims were computed for the vehicle of the agent"))?;
         if let Some(ttf) = skims.profile_query(self.origin, self.destination)? {
-            // Create a `PwlXYF` that yields the utility for each departure time breakpoint in the
-            // TTF and for each departure time breakpoint from the schedule utility model.
-            let new_breakpoints = schedule_utility.get_breakpoints(ttf);
-            let breakpoints = match ttf {
-                TTF::Constant(c) => {
-                    let mut breakpoints = Vec::with_capacity(2 + new_breakpoints.len());
-                    breakpoints.push((self.departure_time_period[0], *c));
-                    breakpoints.extend(
-                        new_breakpoints
-                            .into_iter()
-                            .skip_while(|&(dt, _)| dt <= self.departure_time_period[0])
-                            .take_while(|&(dt, _)| dt <= self.departure_time_period[1]),
-                    );
-                    breakpoints.push((self.departure_time_period[1], *c));
-                    breakpoints
-                }
-                TTF::Piecewise(pwl_ttf) => add_breakpoints_to_pwl_ttf(pwl_ttf, new_breakpoints),
-            };
-            let utilities = PwlXYF::from_iterator(
-                breakpoints
-                    .into_iter()
-                    .map(|(dt, tt)| (dt, self.get_utility(schedule_utility, dt, dt + tt, tt))),
-                [self.departure_time_period[0], self.departure_time_period[1]],
-            );
-            let (time_callback, expected_utility) =
-                self.departure_time_model.get_choice(utilities)?;
-            let callback =
-                move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
-                    let departure_time = time_callback();
-                    if let Some((arrival_time, route)) = skims.earliest_arrival_query(
-                        self.origin,
-                        self.destination,
-                        departure_time,
-                        &mut alloc.road_alloc.ea_alloc,
-                    )? {
-                        if cfg!(debug_assertions) {
-                            // Check that there is no loop in the route.
-                            use hashbrown::HashSet;
-                            let n = route.iter().collect::<HashSet<_>>().len();
-                            assert_eq!(n, route.len(), "Invalid route: {:?}", route);
-                            // Check that the predicted arrival time is coherent with the TTF.
-                            let tt = ttf.eval(departure_time);
-                            assert!(
-                                arrival_time - (departure_time + tt) < Time::large_margin(),
-                                "Invalid arrival time: {:?} != {:?} + {:?} = {:?}",
+            match &self.departure_time_model {
+                &DepartureTimeModel::Constant(dt) => {
+                    let tt = ttf.eval(dt);
+                    let utility = self.get_utility(schedule_utility, dt, dt + tt, tt);
+                    let callback =
+                        move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                self.origin,
+                                self.destination,
+                                dt,
+                                skims,
+                                alloc,
+                            )?;
+                            if cfg!(debug_assertions) {
+                                check_route(dt, arrival_time, &route, ttf);
+                            }
+                            Ok(PreDayChoices::Road(RoadChoices::new(
+                                dt,
                                 arrival_time,
-                                departure_time,
-                                tt,
-                                departure_time + tt
+                                route,
+                                self.destination,
+                                self.vehicle,
+                            )))
+                        };
+                    Ok((utility, Box::new(callback)))
+                }
+                DepartureTimeModel::ContinuousChoice {
+                    period,
+                    choice_model,
+                } => {
+                    // Create a `PwlXYF` that yields the utility for each departure time breakpoint in the
+                    // TTF and for each departure time breakpoint from the schedule utility model.
+                    let new_breakpoints = schedule_utility.get_breakpoints(ttf);
+                    let breakpoints = match ttf {
+                        TTF::Constant(c) => {
+                            let mut breakpoints = Vec::with_capacity(2 + new_breakpoints.len());
+                            breakpoints.push((period.start(), *c));
+                            breakpoints.extend(
+                                new_breakpoints
+                                    .into_iter()
+                                    .skip_while(|&(dt, _)| dt <= period.start())
+                                    .take_while(|&(dt, _)| dt <= period.end()),
                             );
+                            breakpoints.push((period.end(), *c));
+                            breakpoints
                         }
-                        Ok(PreDayChoices::Road(RoadChoices::new(
-                            departure_time,
-                            arrival_time,
-                            route,
-                            self.destination,
-                            self.vehicle,
-                        )))
-                    } else {
-                        panic!(
-                            concat!(
-                                "No route from {:?} to {:?} at departure time {:?},",
-                                "even though the profile query returned something"
-                            ),
-                            self.origin, self.destination, departure_time,
-                        );
-                    }
-                };
-            Ok((expected_utility, Box::new(callback)))
+                        TTF::Piecewise(pwl_ttf) => {
+                            add_breakpoints_to_pwl_ttf(pwl_ttf, new_breakpoints)
+                        }
+                    };
+                    let utilities = PwlXYF::from_iterator(
+                        breakpoints.into_iter().map(|(dt, tt)| {
+                            (dt, self.get_utility(schedule_utility, dt, dt + tt, tt))
+                        }),
+                        [period.start(), period.end()],
+                    );
+                    let (time_callback, expected_utility) = choice_model.get_choice(utilities)?;
+                    let callback =
+                        move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
+                            let dt = time_callback();
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                self.origin,
+                                self.destination,
+                                dt,
+                                skims,
+                                alloc,
+                            )?;
+                            if cfg!(debug_assertions) {
+                                check_route(dt, arrival_time, &route, ttf);
+                            }
+                            Ok(PreDayChoices::Road(RoadChoices::new(
+                                dt,
+                                arrival_time,
+                                route,
+                                self.destination,
+                                self.vehicle,
+                            )))
+                        };
+                    Ok((expected_utility, Box::new(callback)))
+                }
+            }
         } else {
             // No route from origin to destination.
             Err(anyhow!(
@@ -205,6 +244,56 @@ impl<T: TTFNum> RoadMode<T> {
             ))
         }
     }
+}
+
+/// Run an earliest arrival query on the [RoadNetworkSkim] to get the arrival time and route, for a
+/// given origin, destination and departure time.
+///
+/// Return an error if the destination cannot be reached with the given departure time from origin.
+fn get_arrival_time_and_route<T: TTFNum>(
+    origin: NodeIndex,
+    destination: NodeIndex,
+    departure_time: Time<T>,
+    skims: &RoadNetworkSkim<T>,
+    alloc: &mut PreDayChoiceAllocation<T>,
+) -> Result<(Time<T>, Vec<EdgeIndex>)> {
+    if let Some((arrival_time, route)) = skims.earliest_arrival_query(
+        origin,
+        destination,
+        departure_time,
+        &mut alloc.road_alloc.ea_alloc,
+    )? {
+        Ok((arrival_time, route))
+    } else {
+        Err(anyhow!(
+            "No route from {:?} to {:?} at departure time {:?}",
+            origin,
+            destination,
+            departure_time,
+        ))
+    }
+}
+
+/// Run checks to ensure that the computed route and arrival time are valid.
+fn check_route<T: TTFNum>(
+    departure_time: Time<T>,
+    arrival_time: Time<T>,
+    route: &[EdgeIndex],
+    ttf: &TTF<Time<T>>,
+) {
+    // Check that there is no loop in the route.
+    let n = route.iter().collect::<HashSet<_>>().len();
+    assert_eq!(n, route.len(), "Invalid route: {:?}", route);
+    // Check that the predicted arrival time is coherent with the TTF.
+    let tt = ttf.eval(departure_time);
+    assert!(
+        arrival_time - (departure_time + tt) < Time::large_margin(),
+        "Invalid arrival time: {:?} != {:?} + {:?} = {:?}",
+        arrival_time,
+        departure_time,
+        tt,
+        departure_time + tt
+    );
 }
 
 /// Add new breakpoints `(td, ta)` to a [PwlTTF].
@@ -381,7 +470,7 @@ impl<T: TTFNum> RoadResults<T> {
     }
 
     /// Record the exit of the vehicle from the bottleneck of the given edge at the given time.
-    fn exits_edge(&mut self, at_time: Time<T>) {
+    fn exits_bottleneck(&mut self, at_time: Time<T>) {
         self.pending_breakpoints.push(at_time);
         if let Some(last_time) = self.bottleneck_breakpoints.last() {
             self.bottleneck_time = self.bottleneck_time + at_time - *last_time;
@@ -575,7 +664,7 @@ pub enum VehicleEventType {
     /// The vehicle enters the bottleneck of its current edge.
     EntersBottleneck,
     /// The vehicle exits the bottleneck of its current edge.
-    ExitsEdge,
+    ExitsBottleneck,
     /// The vehicle reaches its destination.
     ReachesDestination,
 }
@@ -638,8 +727,8 @@ impl<T: TTFNum> VehicleEvent<T> {
                 VehicleEventType::EntersBottleneck => {
                     road_results.enters_bottleneck(self.at_time);
                 }
-                VehicleEventType::ExitsEdge => {
-                    road_results.exits_edge(self.at_time);
+                VehicleEventType::ExitsBottleneck => {
+                    road_results.exits_bottleneck(self.at_time);
                 }
                 _ => {}
             }
@@ -650,13 +739,17 @@ impl<T: TTFNum> VehicleEvent<T> {
 }
 
 impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
-    fn execute(
+    fn execute<'a: 'b, 'b>(
         mut self: Box<Self>,
+        network: &'a Network<T>,
         exp_skims: &NetworkSkim<T>,
-        state: &mut NetworkState<T>,
+        state: &mut NetworkState<'b, T>,
         result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
     ) {
+        let road_network = network
+            .get_road_network()
+            .expect("Got a vehicle event but there is no road network.");
         let road_network_state = state
             .get_mut_road_network()
             .expect("Got a vehicle event but there is no road network state.");
@@ -678,17 +771,17 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                 );
                 self.event_type = VehicleEventType::EntersEdge;
                 // We can execute the next event directly because the time is the same.
-                self.execute(exp_skims, state, Some(agent_result), events);
+                self.execute(network, exp_skims, state, Some(agent_result), events);
             }
             VehicleEventType::EntersEdge => {
                 let vehicle_index = choices.vehicle;
-                let vehicle = road_network_state.get_vehicle(vehicle_index);
+                let vehicle = &road_network[vehicle_index];
                 let travel_time = road_network_state[self.current_edge.unwrap()]
                     .enters_edge(vehicle, self.at_time);
                 self.event_type = VehicleEventType::EntersBottleneck;
                 if travel_time == Time::zero() {
                     // We can execute the next event directly because the time is the same.
-                    self.execute(exp_skims, state, Some(agent_result), events);
+                    self.execute(network, exp_skims, state, Some(agent_result), events);
                 } else {
                     self.at_time = self.at_time + travel_time;
                     events.push(self);
@@ -696,35 +789,58 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
             }
             VehicleEventType::EntersBottleneck => {
                 let vehicle_index = choices.vehicle;
-                let vehicle = road_network_state.get_vehicle(vehicle_index);
-                self.event_type = VehicleEventType::ExitsEdge;
-                if let Some(bottleneck_event) = road_network_state[self.current_edge.unwrap()]
-                    .enters_bottleneck(vehicle, self.at_time, self)
-                {
-                    events.push(bottleneck_event);
+                let vehicle = &road_network[vehicle_index];
+                self.event_type = VehicleEventType::ExitsBottleneck;
+                match road_network_state[self.current_edge.unwrap()].enters_bottleneck(
+                    vehicle,
+                    self.at_time,
+                    self,
+                ) {
+                    BottleneckStatus::Open(mut vehicle_event) => {
+                        // The bottleneck is open, the vehicle immediately exits it.
+                        vehicle_event.event_type = VehicleEventType::ExitsBottleneck;
+                        // We can execute the next event directly because the time is the same.
+                        vehicle_event.execute(
+                            network,
+                            exp_skims,
+                            state,
+                            Some(agent_result),
+                            events,
+                        );
+                    }
+                    BottleneckStatus::Closed(Some(bottleneck_event)) => {
+                        // The bottleneck is closed and we need to push the BottleneckEvent to the
+                        // event queue.
+                        events.push(Box::new(bottleneck_event));
+                    }
+                    BottleneckStatus::Closed(None) => {
+                        // The bottleneck is closed, the vehicle has been pushed to the bottleneck
+                        // queue and a bottleneck event is already in the event queue.
+                    }
                 }
             }
-            VehicleEventType::ExitsEdge => {
+            VehicleEventType::ExitsBottleneck => {
                 self.position += 1;
                 let current_edge = self.get_edge_at_current_position(choices);
                 if current_edge.is_none() {
                     // The vehicle has reached its destination.
                     debug_assert!(
-                        road_network_state
-                            .get_target(self.current_edge.unwrap())
+                        road_network
+                            .get_endpoints(self.current_edge.unwrap())
                             .expect("Current edge is invalid.")
+                            .1
                             == choices.destination
                     );
                     self.event_type = VehicleEventType::ReachesDestination;
                     // We can execute the next event directly because the time is the same.
-                    self.execute(exp_skims, state, Some(agent_result), events);
+                    self.execute(network, exp_skims, state, Some(agent_result), events);
                     return;
                 }
                 self.current_edge = current_edge;
                 self.event_type = VehicleEventType::EntersEdge;
                 // We can execute the next event directly because the time is the same.
                 // TODO: This might no longer be true when spillback will be implemented.
-                self.execute(exp_skims, state, Some(agent_result), events);
+                self.execute(network, exp_skims, state, Some(agent_result), events);
             }
             VehicleEventType::ReachesDestination => (),
         }

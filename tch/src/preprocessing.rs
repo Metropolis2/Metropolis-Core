@@ -21,19 +21,28 @@ use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
 use petgraph::Direction;
 use rayon::prelude::*;
+use schemars::JsonSchema;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use ttf::{TTFNum, TTF};
 
 /// Structure that represents a set of parameters used when contracting a graph.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
+#[cfg_attr(feature = "serde-1", schemars(title = "Contraction Parameters"))]
+#[cfg_attr(
+    feature = "serde-1",
+    schemars(
+        description = "Set of parameters used when contracting a graph. See Batz, Geisberger, Sanders and Vetter (2013) for a description of the parameters."
+    )
+)]
 pub struct ContractionParameters {
     edge_quotient_weight: f64,
     hierarchy_depth_weight: f64,
     unpacked_edges_quotient_weight: f64,
     complexity_quotient_weight: f64,
     thin_profile_interval_hop_limit: u8,
+    /// Number of threads to use for the parallelized parts of the code.
     num_threads: usize,
 }
 

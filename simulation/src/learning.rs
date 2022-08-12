@@ -1,23 +1,31 @@
 //! Day-to-day learning models.
 use crate::network::NetworkWeights;
 
-use anyhow::{anyhow, Result};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 /// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
 /// `x_t` and an update value `y`.
 /// value.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum LearningModel<T> {
-    /// See [ExponentialLearningModel].
+    /// Exponential learning model.
     Exponential(ExponentialLearningModel<T>),
-    /// `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
+    /// Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
     Linear,
-    /// `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
+    /// Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
     Genetic,
-    /// `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where `w = t^(1/2)`
+    /// Quadratic learning model: `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where
+    /// `w = t^(1/2)`
     Quadratic,
+}
+
+impl<T> Default for LearningModel<T> {
+    fn default() -> Self {
+        Self::Linear
+    }
 }
 
 impl<T: TTFNum> LearningModel<T> {
@@ -62,10 +70,10 @@ impl<T: TTFNum> LearningModel<T> {
 ///
 /// When `T` is large, the exponential learning model is such that
 /// `x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}`
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(transparent)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ExponentialLearningModel<T> {
     /// Weight of the old value, between 0 and 1.
+    #[validate(range(min = 0.0, max = 1.0))]
     alpha: T,
 }
 
@@ -73,15 +81,8 @@ impl<T: TTFNum> ExponentialLearningModel<T> {
     /// Create a new exponential learning model.
     ///
     /// Return an error if the `alpha` value is not between 0 and 1.
-    pub fn new(alpha: T) -> Result<Self> {
-        if !(T::zero()..=T::one()).contains(&alpha) {
-            Err(anyhow!(
-                "The value of alpha must be such that 0.0 <= alpha <= 1.0, got {:?}",
-                alpha
-            ))
-        } else {
-            Ok(ExponentialLearningModel { alpha })
-        }
+    pub fn new(alpha: T) -> Self {
+        ExponentialLearningModel { alpha }
     }
 
     /// Return the new [NetworkWeights] given the old values, the update values and the iteration

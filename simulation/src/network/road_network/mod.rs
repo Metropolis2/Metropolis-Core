@@ -6,6 +6,7 @@ pub mod weights;
 
 use crate::agent::Agent;
 use crate::mode::Mode;
+use crate::serialization::DeserRoadGraph;
 use crate::units::{Length, Outflow, Speed, Time};
 use skim::{RoadNetworkSkim, RoadNetworkSkims};
 use state::RoadNetworkState;
@@ -15,52 +16,78 @@ use weights::RoadNetworkWeights;
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
 use log::debug;
-use num_traits::Zero;
+use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, Index, IndexMut};
 use tch::{ContractionParameters, HierarchyOverlay};
 use ttf::{TTFNum, TTFSimplification, TTF};
 
 /// A node of a road network.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct RoadNode {}
 
 /// Speed-density function that can be used for the running part of edges.
 ///
 /// A speed-density function gives the speed on an edge, as a function of the density of vehicle on
 /// this edge.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum SpeedDensityFunction<T> {
     /// Vehicles always travel at free-flow speed.
     FreeFlow,
     /// Vehicles travel at free-flow speed when flow is below edge capacity.
     /// Then, speed is inversely proportional to flow.
     ///
-    /// The outflow parameter represents the capacity of each lane of the edge.
-    Bottleneck(Outflow<T>),
-    /// A speed-density function with three regimes: free flow, congested and traffic jam (See
-    /// [ThreeRegimesSpeedDensityFunction]).
+    /// The parameter represents the capacity of each lane of the edge, in length unit per time
+    /// unit.
+    Bottleneck(T),
+    /// A speed-density function with three regimes: free flow, congested and traffic jam.
     ThreeRegimes(ThreeRegimesSpeedDensityFunction<T>),
+}
+
+impl<T> Default for SpeedDensityFunction<T> {
+    fn default() -> Self {
+        Self::FreeFlow
+    }
 }
 
 /// A speed-density function with three regimes.
 ///
 /// The three regimes are:
 ///
-/// 1. Free-flow regime. If density on the edge is smaller than `min_density`, travel time is equal
-///    to free-flow travel time.
-/// 2. Congested regime. If density on the edge is between `min_density` and `jam_density`, speed
-///    is equal to `v = v0 * (1 - c) + jam_speed * c`, where `v0` is the free-flow speed and
+/// 1. **Free-flow regime.** If density on the edge is smaller than `min_density`, travel time is
+///    equal to free-flow travel time.
+///
+/// 2. **Congested regime.** If density on the edge is between `min_density` and `jam_density`,
+///    speed is equal to `v = v0 * (1 - c) + jam_speed * c`, where `v0` is the free-flow speed and
 ///    `c = ((density - min_density) / (jam_density - min_density))^beta`.
-/// 3. Traffic jam. If density on the edge is larger than `jam_density`, travel time is equal to
-///    `tt = distance / jam_speed`.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+///
+/// 3. **Traffic jam.** If density on the edge is larger than `jam_density`, travel time is equal
+///    to `tt = distance / jam_speed`.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ThreeRegimesSpeedDensityFunction<T> {
+    /// Density on the edge (between `0.0` and `1.0`) below which the speed is equal to free-flow
+    /// speed.
     min_density: T,
+    /// Density on the edge (between `0.0` and `1.0`) above which the speed is equal to jam speed.
     jam_density: T,
+    /// Speed at which the vehicle travel in case of traffic jam.
     jam_speed: Speed<T>,
+    /// Parameter to compute the speed in the congested regime.
     beta: T,
+}
+
+impl<T> ThreeRegimesSpeedDensityFunction<T> {
+    pub fn new(min_density: T, jam_density: T, jam_speed: Speed<T>, beta: T) -> Self {
+        ThreeRegimesSpeedDensityFunction {
+            min_density,
+            jam_density,
+            jam_speed,
+            beta,
+        }
+    }
 }
 
 impl<T: TTFNum> ThreeRegimesSpeedDensityFunction<T> {
@@ -83,8 +110,16 @@ impl<T: TTFNum> ThreeRegimesSpeedDensityFunction<T> {
     }
 }
 
-fn default_outflow<T: TTFNum>() -> T {
-    T::infinity()
+fn default_outflow<T: TTFNum>() -> Outflow<T> {
+    Outflow::infinity()
+}
+
+fn default_outflow_schema() -> String {
+    "Infinity".to_owned()
+}
+
+fn default_lanes() -> u8 {
+    1
 }
 
 /// An edge of a road network.
@@ -94,22 +129,32 @@ fn default_outflow<T: TTFNum>() -> T {
 /// A RoadEdge consists in three parts:
 ///
 /// - A running part, where vehicles are driving at a speed computed from a speed-density function.
+///
 /// - A bottleneck part, where the exit flow of vehicle is limited by a given capacity.
+///
 /// - A pending part, where vehicles waiting for downstream edges to get free are pending.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Road Edge")]
+#[schemars(description = "An edge of a road network that connects two nodes.")]
+#[schemars(example = "crate::schema::example_road_edge")]
 pub struct RoadEdge<T> {
     /// The base speed of the edge.
+    #[validate(range(min = 0.0))]
     base_speed: Speed<T>,
     /// The length of the edge, from source node to target node.
+    #[validate(range(min = 0.0))]
     length: Length<T>,
     /// The number of lanes on the edge.
+    #[serde(default = "default_lanes")]
+    #[validate(range(min = 1))]
     lanes: u8,
     /// Speed-density function for the running part of the edge.
+    #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
-    /// Maximum outflow of vehicle at the end of the edge, in length of vehicle per second per
-    /// lane.
+    /// Maximum outflow of vehicle at the end of the edge.
     #[serde(default = "default_outflow")]
+    #[schemars(default = "default_outflow_schema")]
     bottleneck_outflow: Outflow<T>,
 }
 
@@ -137,17 +182,18 @@ impl<T: TTFNum> RoadEdge<T> {
         match &self.speed_density {
             SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
             &SpeedDensityFunction::Bottleneck(outflow) => {
+                // `outflow` is expressed in Length / Time.
                 // WARNING: The formula below is incorrect when there are vehicles with different
                 // speeds.
-                if occupied_length <= outflow * (self.total_length() / self.base_speed) {
+                if occupied_length.0 <= outflow * (self.total_length() / self.base_speed).0 {
                     self.length / vehicle_speed
                 } else {
-                    occupied_length / (outflow * self.lanes)
+                    Time(occupied_length.0 / (outflow * T::from(self.lanes).unwrap()))
                 }
             }
-            SpeedDensityFunction::ThreeRegimes(bpr) => {
+            SpeedDensityFunction::ThreeRegimes(func) => {
                 let density = (occupied_length / self.total_length()).0;
-                let speed = bpr.get_speed(vehicle_speed, density);
+                let speed = func.get_speed(vehicle_speed, density);
                 self.length / speed
             }
         }
@@ -169,24 +215,57 @@ impl<T: TTFNum> RoadEdge<T> {
     pub fn total_length(&self) -> Length<T> {
         self.length * self.lanes
     }
+
+    /// Return the effective bottleneck outflow of the edge, i.e., the outflow for all the lanes.
+    pub fn get_effective_outflow(&self) -> Outflow<T> {
+        self.bottleneck_outflow * self.lanes
+    }
 }
 
-/// Description of the vehicles and the graph that they can travel.
+/// Description of the graph of a [RoadNetwork].
+///
+/// A RoadGraph is a directed graph of [RoadNode]s and [RoadEdge]s,
+/// Internally, it is represented as a [petgraph::graph::DiGraph].
+#[derive(Clone, Debug, Serialize)]
+pub struct RoadGraph<T>(DiGraph<RoadNode, RoadEdge<T>>);
+
+impl<T> RoadGraph<T> {
+    pub fn new(graph: DiGraph<RoadNode, RoadEdge<T>>) -> Self {
+        Self(graph)
+    }
+}
+
+impl<T> Deref for RoadGraph<T> {
+    type Target = DiGraph<RoadNode, RoadEdge<T>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Description of the vehicles and the road-network graph.
 ///
 /// A RoadNetwork is composed of
 ///
-/// - a [DiGraph](directed graph) of [RoadNode]s and [RoadEdge]s,
+/// - a [RoadGraph],
 /// - a Vec of [Vehicle]s that can travel on the network.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Road Network")]
+#[schemars(description = "Description of the vehicles and the road-network graph.")]
 pub struct RoadNetwork<T> {
-    graph: DiGraph<RoadNode, RoadEdge<T>>,
+    #[schemars(with = "DeserRoadGraph<T>")]
+    graph: RoadGraph<T>,
+    #[validate(length(min = 1))]
     vehicles: Vec<Vehicle<T>>,
 }
 
 impl<T> RoadNetwork<T> {
     pub fn new(graph: DiGraph<RoadNode, RoadEdge<T>>, vehicles: Vec<Vehicle<T>>) -> Self {
-        RoadNetwork { graph, vehicles }
+        RoadNetwork {
+            graph: RoadGraph(graph),
+            vehicles,
+        }
     }
 
     /// Return a reference to the [DiGraph] of the [RoadNetwork].
@@ -227,13 +306,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             for mode in agent.iter_modes() {
                 if let Mode::Road(road_mode) = mode {
                     let od_pairs = &mut od_data[road_mode.vehicle_index()];
-                    od_pairs.unique_origins.insert(road_mode.origin());
-                    od_pairs.unique_destinations.insert(road_mode.destination());
-                    od_pairs
-                        .pairs
-                        .entry(road_mode.origin())
-                        .or_insert_with(HashSet::new)
-                        .insert(road_mode.destination());
+                    od_pairs.add_pair(road_mode.origin(), road_mode.destination());
                 }
             }
         }
@@ -297,20 +370,46 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
 }
 
 /// Set of parameters related to a [RoadNetwork].
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Road Network Parameters")]
+#[schemars(description = "Set of parameters related to a road network.")]
 pub struct RoadNetworkParameters<T> {
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
+    #[schemars(
+        description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
+    )]
     pub contraction: ContractionParameters,
     /// [WeightSimplification] describing how the edges' TTFs are simplified after the
     /// HierarchyOverlay is built.
+    #[serde(default = "TTFSimplification::<Time<T>>::default")]
+    #[schemars(
+        description = "How to simplify the edges TTFs after the hierarchy overlay is built."
+    )]
     pub edge_approx_bound: TTFSimplification<Time<T>>,
     /// [WeightSimplification] describing how the TTFs of the forward and backward search spaces
     /// are simplified.
+    #[serde(default = "TTFSimplification::<Time<T>>::default")]
+    #[schemars(
+        description = "How to simplify the TTFs of the forward and backward search spaces."
+    )]
     pub space_approx_bound: TTFSimplification<Time<T>>,
     /// [WeightSimplification] describing how the weights of the road network are simplified at the
     /// beginning of the iteration.
+    #[serde(default = "TTFSimplification::<Time<T>>::default")]
+    #[schemars(description = "How to simplify the edges TTFs at the beginning of the iteration.")]
     pub weight_simplification: TTFSimplification<Time<T>>,
+}
+
+impl<T> Default for RoadNetworkParameters<T> {
+    fn default() -> Self {
+        RoadNetworkParameters {
+            contraction: Default::default(),
+            edge_approx_bound: Default::default(),
+            space_approx_bound: Default::default(),
+            weight_simplification: Default::default(),
+        }
+    }
 }
 
 /// Structure containing, for each [Vehicle], an [ODPairs] instance representing the
@@ -346,12 +445,23 @@ impl ODPairs {
     fn is_empty(&self) -> bool {
         self.unique_origins.is_empty() && self.unique_destinations.is_empty()
     }
+
+    /// Add an origin-destination pair to the ODPairs.
+    fn add_pair(&mut self, origin: NodeIndex, destination: NodeIndex) {
+        self.unique_origins.insert(origin);
+        self.unique_destinations.insert(destination);
+        self.pairs
+            .entry(origin)
+            .or_insert_with(HashSet::new)
+            .insert(destination);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::vehicle::SpeedFunction;
     use super::*;
+    use crate::units::PCE;
 
     #[test]
     fn get_travel_time_test() {
@@ -362,12 +472,12 @@ mod tests {
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_outflow: Outflow(f64::INFINITY),
         };
-        let vehicle = Vehicle::new(Length(10.), SpeedFunction::Base);
+        let vehicle = Vehicle::new(Length(10.), PCE(1.), SpeedFunction::Base);
         // 1 km at 50 km/h is 40s.
         assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));
         assert_eq!(edge.get_travel_time(Length(4000.), &vehicle), Time(40.));
 
-        edge.speed_density = SpeedDensityFunction::Bottleneck(Outflow(10.));
+        edge.speed_density = SpeedDensityFunction::Bottleneck(10.);
         // The outflow is 2 veh. / s. (there are two lanes) and each veh. can travel through the
         // edge in 40 s. so the threshold is at 80 veh. on the edge = 800 m occupied.
         assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));

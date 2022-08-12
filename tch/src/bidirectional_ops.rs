@@ -19,7 +19,9 @@ use ttf::{TTFNum, TTF};
 /// A BidirectionalDijkstraOps is composed of the following:
 ///
 /// - A [DijkstraOps] for the forward search.
+///
 /// - A [DijkstraOps] for the backward search.
+///
 /// - An (optional) set of instructions that are performed when the two searches meet and that tell
 /// when the algorithm can be stopped.
 pub trait BidirectionalDijkstraOps {

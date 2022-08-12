@@ -3,18 +3,27 @@ use crate::units::{Time, Utility};
 use alpha_beta_gamma::AlphaBetaGammaModel;
 
 use num_traits::Zero;
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
 pub mod alpha_beta_gamma;
 
 /// Model used to represent the schedule utility of an agent.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
+#[schemars(example = "crate::schema::example_schedule_utility")]
 pub enum ScheduleUtility<T> {
     /// The schedule utility is always null.
     None,
-    /// See [AlphaBetaGammaModel].
+    /// The schedule utility is computed using the alpha-beta-gamma model.
     AlphaBetaGamma(AlphaBetaGammaModel<T>),
+}
+
+impl<T> Default for ScheduleUtility<T> {
+    fn default() -> Self {
+        Self::None
+    }
 }
 
 impl<T: TTFNum> ScheduleUtility<T> {

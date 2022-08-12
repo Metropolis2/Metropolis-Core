@@ -1,6 +1,7 @@
 use super::ContinuousChoiceCallback;
 
 use anyhow::{anyhow, Context, Result};
+use schemars::JsonSchema;
 use ttf::{PwlXYF, TTFNum};
 
 const EULER_MASCHERONI: f64 = 0.5772156649;
@@ -44,11 +45,18 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// assert_eq!(callback(), 0.8);
 /// ```
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
+#[cfg_attr(feature = "serde-1", schemars(title = "Logit Model"))]
+#[cfg_attr(
+    feature = "serde-1",
+    schemars(description = "A discrete or continuous Logit model")
+)]
 pub struct LogitModel<T> {
     /// Uniform random number between 0.0 and 1.0 for inversion sampling.
+    #[validate(range(min = 0.0, max = 1.0))]
     u: T,
-    /// Variance of the error terms.
+    /// Variance of the error terms, must be positive.
+    #[validate(range(min = 0.0001))]
     mu: T,
 }
 
@@ -57,20 +65,8 @@ impl<T: TTFNum> LogitModel<T> {
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
     /// The value of `mu` must be such that `mu > 0`.
-    pub fn new(u: T, mu: T) -> Result<Self> {
-        if !(T::zero()..T::one()).contains(&u) {
-            Err(anyhow!(
-                "The value of u must be such that 0.0 <= u < 1.0, got {:?}",
-                u
-            ))
-        } else if mu <= T::zero() || !mu.is_finite() {
-            Err(anyhow!(
-                "The value of mu must be positive and finite, got {:?}",
-                mu
-            ))
-        } else {
-            Ok(LogitModel { u, mu })
-        }
+    pub fn new(u: T, mu: T) -> Self {
+        LogitModel { u, mu }
     }
 
     /// Return the alternative chosen and the expected payoff of the choice given a slice of
@@ -81,7 +77,9 @@ impl<T: TTFNum> LogitModel<T> {
     /// Return an Error if
     ///
     /// - The vector of values is empty.
+    ///
     /// - Invalid values where found (e.g., NAN or infinity).
+    ///
     /// - Euler's constant is not a valid value for the Float type.
     ///
     /// When all assumptions are satisfied, the function always return a valid choice.
@@ -135,13 +133,17 @@ impl<T: TTFNum> LogitModel<T> {
     /// The function can overflow to positive infinity if:
     ///
     /// - `y0` or `y1` is large
+    ///
     /// - `x1 - x0` is large
+    ///
     /// - `mu` is large
     ///
     /// The function can underflow to 0.0 if:
     ///
     /// - `y0` or `y1` is small
+    ///
     /// - `x1 - x0` is small
+    ///
     /// - `mu` is small
     fn get_cum_func_value(&self, (x0, y0): (T, T), (x1, y1): (T, T)) -> T {
         if y0 == y1 {
@@ -183,6 +185,7 @@ impl<T: TTFNum> LogitModel<T> {
     /// Return an error if
     ///
     /// - The breakpoint upper bound is infinite.
+    ///
     /// - Euler's constant is not a valid value for the Float type.
     pub fn get_continuous_choice<'a, X, Y>(
         &'a self,

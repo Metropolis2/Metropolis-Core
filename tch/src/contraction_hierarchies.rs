@@ -30,6 +30,7 @@ use ttf::{TTFNum, TTFSimplification, TTF};
 /// Indicate the direction of an edge in the hierarchy.
 ///
 /// - `Upward`: the target node is higher in the hierarchy than the source node.
+///
 /// - `Downward`: the target node is lower in the hierarchy than the source node.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
@@ -57,6 +58,7 @@ pub enum Packed {
 /// Indicate the type of a [HierarchyEdge].
 ///
 /// - `Original`: an edge that exists in the original graph.
+///
 /// - `Shortcut`: a virtual edge that represents a shortcut.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]

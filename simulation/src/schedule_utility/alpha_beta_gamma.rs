@@ -2,11 +2,16 @@
 use crate::units::{Time, Utility, ValueOfTime};
 
 use num_traits::Zero;
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
 /// Structure to compute the schedule-delay utility from Vickrey's alpha-beta-gamma model.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Alpha-Beta-Gamma Model")]
+#[schemars(
+    description = "Compute the schedule-delay utility using Vickrey's alpha-beta-gamma model"
+)]
 pub struct AlphaBetaGammaModel<T> {
     /// The earliest desired arrival (or departure) time.
     t_star_low: Time<T>,
@@ -16,8 +21,9 @@ pub struct AlphaBetaGammaModel<T> {
     beta: ValueOfTime<T>,
     /// The penalty for late arrivals (or departures), in utility per second.
     gamma: ValueOfTime<T>,
-    /// If `true` tstar represents the desired arrival time, otherwise it represents the desired
-    /// departure time.
+    /// If `true`, `tstar_low` and `t_star_high` represent the desired arrival-time interval,
+    /// otherwise they represent the desired departure-time interval.
+    #[serde(default = "default_is_true")]
     desired_arrival: bool,
 }
 
@@ -94,6 +100,10 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
             self.get_utility_from_time(departure_time)
         }
     }
+}
+
+fn default_is_true() -> bool {
+    true
 }
 
 #[cfg(test)]

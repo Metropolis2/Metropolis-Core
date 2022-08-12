@@ -1,6 +1,6 @@
 //! Event trait and event priority queue.
 use crate::agent::AgentIndex;
-use crate::network::{NetworkSkim, NetworkState};
+use crate::network::{Network, NetworkSkim, NetworkState};
 use crate::simulation::AgentResult;
 use crate::units::Time;
 
@@ -17,12 +17,15 @@ pub trait Event<T>: Debug {
     /// Return `true` if the agent associated with the event has reached its destination.
     ///
     /// - The [NetworkState] can be modified by the event execution.
+    ///
     /// - If the event is associated with an agent, the [AgentResult] can be updated.
+    ///
     /// - The current [EventQueue] can be modified (i.e., new events can be pushed in the queue).
-    fn execute(
+    fn execute<'a: 'b, 'b>(
         self: Box<Self>,
+        network: &'a Network<T>,
         exp_skims: &NetworkSkim<T>,
-        state: &mut NetworkState<T>,
+        state: &mut NetworkState<'b, T>,
         result: Option<&mut AgentResult<T>>,
         events: &mut EventQueue<T>,
     );

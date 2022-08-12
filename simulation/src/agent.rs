@@ -8,6 +8,7 @@ use crate::units::NoUnit;
 use anyhow::{anyhow, Result};
 use choice::ChoiceModel;
 use itertools;
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use std::ops::Index;
 use ttf::TTFNum;
@@ -15,19 +16,28 @@ use ttf::TTFNum;
 /// Representation of an independent and intelligent agent that makes one trip per day.
 ///
 /// An agent is characterized by:
+///
 /// - A set of [modes](Mode) that he/she can take to perform his/her trip.
 /// - A [ChoiceModel] describing how his/her mode is chosen, given the expected utilities for each
 /// mode.
 /// - A [ScheduleUtility] model describing his/her schedule preferences.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Agent")]
+#[schemars(description = "Abstract representation of an individual that makes one trip per day.")]
+#[schemars(example = "crate::schema::example_agent")]
 pub struct Agent<T> {
+    /// Id used when writing the results of the agents.
     #[serde(default)]
     pub id: usize,
     /// Modes accessible to the agent.
+    #[validate(length(min = 1))]
     modes: Vec<Mode<T>>,
     /// Choice model used for mode choice.
+    #[serde(default)]
     mode_choice: ChoiceModel<NoUnit<T>>,
     /// Schedule-utility preferences.
+    #[serde(default)]
     schedule_utility: ScheduleUtility<T>,
 }
 

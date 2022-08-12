@@ -3,20 +3,23 @@ use crate::simulation::AgentResults;
 use crate::units::Time;
 
 use num_traits::{Float, FromPrimitive, Zero};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 /// Criterion that is used to check if a simulation must be stopped.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum StopCriterion<T> {
     /// Stop when the number of iterations has reached a given value.
+    #[validate(range(min = 1))]
     MaxIteration(u64),
     /// Stop when the mean departure-time shift from one iteration to another is below a threshold
     /// value.
     ///
     /// The first value represents the threshold value.
-    /// The second value represents the value to use when an agent switch from a mode to another
-    /// mode.
+    /// The second value represents the backup value to use when an agent switch from a mode to
+    /// another mode.
     DepartureTime(Time<T>, Time<T>),
 }
 

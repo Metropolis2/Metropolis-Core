@@ -1,4 +1,5 @@
 #![warn(clippy::all)]
+#![feature(result_into_ok_or_err)]
 //! Library for Metropolis: a dynamic multi-modal traffic-assignment simulator.
 
 pub mod agent;
@@ -7,6 +8,8 @@ pub mod learning;
 pub mod mode;
 pub mod network;
 pub mod schedule_utility;
+mod schema;
+mod serialization;
 pub mod simulation;
 pub mod stop;
 pub mod travel_utility;

@@ -21,6 +21,7 @@ use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, Write};
@@ -31,12 +32,16 @@ use ttf::TTFNum;
 /// An abstract representation of an area to be simulated.
 ///
 /// A simulation is composed of the following items:
+///
 /// - A set of [agents](Agent) performing trips.
 /// - A representation of the [Network], where trips can take place.
 /// - A [Parameters] instance.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Simulation")]
+#[schemars(description = "")]
 pub struct Simulation<T> {
+    #[serde(default)]
     agents: Vec<Agent<T>>,
     network: Network<T>,
     parameters: Parameters<T>,
@@ -206,6 +211,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let mut state = self.network.get_blank_state();
         let mut results = self.init_agent_results(pre_day_results);
         let mut events = results.get_event_queue();
+        let mut nb_events = 0;
         info!("Executing events");
         let bp = if log_enabled!(Level::Info) {
             ProgressBar::new(events.len() as u64)
@@ -218,19 +224,21 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .progress_chars("█░"),
         );
         while let Some(event) = events.pop() {
+            nb_events += 1;
             if let Some(result) = event.get_agent_index().map(|id| &mut results[id]) {
                 // The event is associated to an agent.
-                event.execute(skims, &mut state, Some(result), &mut events);
+                event.execute(&self.network, skims, &mut state, Some(result), &mut events);
                 if result.has_arrived() {
                     bp.inc(1);
                 }
             } else {
-                event.execute(skims, &mut state, None, &mut events);
+                event.execute(&self.network, skims, &mut state, None, &mut events);
             }
         }
         bp.finish_and_clear();
         // Drop the events queue (it is empty) so that it no longer borrows the results.
         drop(events);
+        debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
         let weights = state.get_weights(&self.parameters);
@@ -290,13 +298,21 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 }
             }
         }
-        let road_results = AggregateRoadResults::from_agent_results(
-            road_entries,
-            self.network
-                .get_road_network()
-                .expect("Found RoadResults but no road network"),
-        );
-        let cst_results = AggregateConstantResults::from_agent_results(cst_entries);
+        let road_results = if road_entries.is_empty() {
+            None
+        } else {
+            Some(AggregateRoadResults::from_agent_results(
+                road_entries,
+                self.network
+                    .get_road_network()
+                    .expect("Found RoadResults but no road network"),
+            ))
+        };
+        let cst_results = if cst_entries.is_empty() {
+            None
+        } else {
+            Some(AggregateConstantResults::from_agent_results(cst_entries))
+        };
         let mode_results = AggregateModeResults {
             road: road_results,
             constant: cst_results,
@@ -320,8 +336,11 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     fn get_update_vector(&self, iteration_counter: u64) -> Vec<bool> {
         // To change the seed from one iteration to another, we add the iteration number to the
         // default seed.
-        let mut rng =
-            XorShiftRng::seed_from_u64(self.parameters.random_seed + iteration_counter as u64);
+        let mut rng = if let Some(seed) = self.parameters.random_seed {
+            XorShiftRng::seed_from_u64(seed + iteration_counter as u64)
+        } else {
+            XorShiftRng::from_entropy()
+        };
         let mut updates = vec![true; self.agents.len()];
         // Number of agents that will be able to switch their choice.
         let n = (self.parameters.update_ratio * self.agents.len() as f64) as usize;

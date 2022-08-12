@@ -12,6 +12,7 @@ use petgraph::graph::NodeIndex;
 /// The structure is composed of:
 ///
 /// - A [NodeMap] to store the nodes' data (including the labels and the predecessors).
+///
 /// - A [MinPriorityQueue] that represent the order in which the nodes are settled.
 #[derive(Clone, Debug, Default)]
 pub struct DijkstraSearch<D, PQ> {
@@ -88,7 +89,9 @@ where
     /// In particular:
     ///
     /// - The Node type must coincide.
+    ///
     /// - The Key type must coincide.
+    ///
     /// - The Data type must coincide.
     pub fn solve_query<Q, O, L>(&mut self, query: Q, ops: &mut O)
     where
@@ -163,10 +166,14 @@ where
     /// Arguments:
     ///
     /// - `edge`: The edge to relax
+    ///
     /// - `current`: The node that is currently settled. This is an endpoint of the edge. The other
     /// endpoint being the node to update.
+    ///
     /// - `key`: The key of node `current`.
+    ///
     /// - `query`: The query that we want to solve.
+    ///
     /// - `ops`: A [DijkstraOps] that describes how to solve the query.
     fn relax_edge<Q, O, L>(
         &mut self,

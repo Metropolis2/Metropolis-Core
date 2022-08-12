@@ -105,8 +105,11 @@ where
     /// must all be compatible. In particular:
     ///
     /// - The Node type must coincide.
+    ///
     /// - The Key type must coincide, for both the forward and backward search.
+    ///
     /// - The Label type must coincide, for both the forward and backward search.
+    ///
     /// - The Predecessor type must coincide, for both the forward and backward search.
     pub fn solve_query<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where

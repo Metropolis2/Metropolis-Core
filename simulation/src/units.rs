@@ -5,14 +5,16 @@
 //! - [Length]: meters
 //! - [Time]: seconds
 //! - [Speed]: meter / second
-//! - [Outflow]: meter / second
 //! - [ValueOfTime]: utility / second
+//! - [PCE] (Passenger Car Equivalent): passenger car
+//! - [Outflow]: PCE / second
 //!
 //! Other units can be assumed but the coherence between units must be kept.
-//! For example, if one consider that lengths are expressed in miles, then speeds and outflows must
-//! also be expressed in miles.
+//! For example, if one consider that lengths are expressed in miles, then speeds must be expressed
+//! in miles per second.
 use chrono::NaiveTime;
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
@@ -343,7 +345,12 @@ macro_rules! impl_from_into_no_unit(
 /// This type is used to implement the conversion between any unit type and the `NoUnit` type
 /// because it is not possible to implement the conversion between a type Unit<T> and T.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
+#[schemars(title = "No Unit")]
+#[schemars(description = "Value with no particular unit")]
+#[serde(transparent)]
 pub struct NoUnit<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for NoUnit<T> {
@@ -354,7 +361,9 @@ impl<T: TTFNum> fmt::Display for NoUnit<T> {
 
 /// Representation of time duration or timestamp, expressed in seconds.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct Time<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Time<T> {
@@ -369,7 +378,9 @@ impl<T: TTFNum> fmt::Display for Time<T> {
 
 /// Representation of a utility (or monetary) amount.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct Utility<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Utility<T> {
@@ -381,7 +392,9 @@ impl<T: TTFNum> fmt::Display for Utility<T> {
 /// Representation of a value of time, i.e., a utility amount per time unit, expressed in utility
 /// unit per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct ValueOfTime<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
@@ -392,7 +405,9 @@ impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
 
 /// Representation of a length, expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct Length<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Length<T> {
@@ -403,7 +418,9 @@ impl<T: TTFNum> fmt::Display for Length<T> {
 
 /// Representation of a speed, expressed in meters per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct Speed<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Speed<T> {
@@ -412,20 +429,44 @@ impl<T: TTFNum> fmt::Display for Speed<T> {
     }
 }
 
-/// Representation of a flow of vehicle, in meters per second.
+/// Unit type for passenger car equivalent.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
+pub struct PCE<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for PCE<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} PCE", self.0)
+    }
+}
+
+/// Representation of a flow of vehicle, in PCE (passenger car equivalent) per second.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
 pub struct Outflow<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Outflow<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} m/s", self.0)
+        write!(f, "{} PCE/s", self.0)
     }
 }
 
-impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow, NoUnit);
+impl_ttf_on_unit!(
+    Time,
+    Utility,
+    ValueOfTime,
+    Length,
+    Speed,
+    PCE,
+    Outflow,
+    NoUnit
+);
 
-impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, Outflow);
+impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Outflow);
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
@@ -453,10 +494,12 @@ macro_rules! impl_ops(
 );
 
 impl_ops!(ValueOfTime * Time = Utility);
-impl_ops!(Outflow * Time = Length);
+impl_ops!(Speed * Time = Length);
 impl_ops!(Length / Speed = Time);
-impl_ops!(Length / Outflow = Time);
-impl_ops!(Length / Time = Outflow);
+impl_ops!(Length / Time = Speed);
+impl_ops!(Outflow * Time = PCE);
+impl_ops!(PCE / Outflow = Time);
+impl_ops!(PCE / Time = Outflow);
 
 /// Length * lane number = Length.
 impl<T: TTFNum> Mul<u8> for Length<T> {
@@ -488,7 +531,9 @@ impl<T: TTFNum> Mul<Outflow<T>> for u8 {
 }
 
 /// An interval between two [Time] units.
-#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Interval")]
+#[schemars(description = "Interval of time.")]
 pub struct Interval<T>(pub [Time<T>; 2]);
 
 impl<T: Copy> Interval<T> {

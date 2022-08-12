@@ -1,3 +1,4 @@
+//! Description of [RoadNetworkSkims].
 use super::vehicle::VehicleIndex;
 use crate::units::Time;
 
@@ -21,6 +22,7 @@ impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
     }
 }
 
+/// For a given origin node, map to each destination a travel-time function.
 type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
@@ -55,7 +57,8 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         );
     }
 
-    /// Simplify all the travel-time functions in the search spaces, using the given bound.
+    /// Simplify all the travel-time functions in the search spaces, using the given
+    /// [TTFSimplification].
     pub fn simplify_search_spaces(&mut self, simplification: TTFSimplification<Time<T>>) {
         if let Some(search_space) = &mut self.search_spaces {
             search_space.simplify(simplification);
@@ -120,6 +123,13 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
             })
     }
 
+    /// Compute and return the arrival time and route of the fastest path between two nodes, at a
+    /// given departure time.
+    ///
+    /// Return an error if a problem occured during the earliest arrival query.
+    ///
+    /// Return `None` if the destination node cannot be reached from the origin node, for the given
+    /// departure time.
     pub fn earliest_arrival_query(
         &self,
         from: NodeIndex,
@@ -137,6 +147,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     }
 }
 
+/// A memory allocation that holds the structures required during earliest arrival queries.
 #[derive(Clone, Debug, Default)]
 pub struct EAAllocation<T: TTFNum> {
     ea_alloc: DefaultEarliestArrivalAllocation<Time<T>>,

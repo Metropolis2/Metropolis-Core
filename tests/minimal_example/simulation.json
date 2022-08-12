@@ -1,0 +1,54 @@
+{
+    "agents": [
+        {
+            "modes": [
+                {
+                    "type": "Road",
+                    "values": {
+                        "origin": 0,
+                        "destination": 1,
+                        "vehicle": 0,
+                        "departure_time_model": {
+                            "type": "Constant",
+                            "values": 1800.0
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "network": {
+        "road_network": {
+            "graph": {
+                "edges": [
+                    [
+                        0,
+                        1,
+                        {
+                            "base_speed": 13.88888889,
+                            "length": 100.0
+                        }
+                    ]
+                ]
+            },
+            "vehicles": [
+                {
+                    "length": 8.0,
+                    "pce": 1.0
+                }
+            ]
+        }
+    },
+    "parameters": {
+        "period": [
+            0.0,
+            3600.0
+        ],
+        "stopping_criteria": [
+            {
+                "type": "MaxIteration",
+                "values": 1
+            }
+        ]
+    }
+}
