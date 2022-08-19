@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use anyhow::{anyhow, Result};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 /// A deterministic choice model between a finite number of alternatives.
@@ -14,17 +15,13 @@ use ttf::TTFNum;
 ///
 /// ```
 /// use choice::DeterministicChoiceModel;
-/// let model = DeterministicChoiceModel::new(0.0f64).unwrap();
+/// let model = DeterministicChoiceModel::new(0.0f64);
 /// assert_eq!(model.get_choice(&[0., 1.]).unwrap(), (1, 1.));
 /// assert_eq!(model.get_choice(&[0., 0., -1.]).unwrap(), (0, 0.));
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
-#[cfg_attr(feature = "serde-1", schemars(title = "Deterministic choice model"))]
-#[cfg_attr(
-    feature = "serde-1",
-    schemars(description = "Choose the alternative with the largest value.")
-)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Deterministic choice model")]
+#[schemars(description = "Choose the alternative with the largest value.")]
 pub struct DeterministicChoiceModel<T> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
     #[validate(range(min = 0.0, max = 1.0))]
@@ -32,16 +29,16 @@ pub struct DeterministicChoiceModel<T> {
 }
 
 impl<T: TTFNum> DeterministicChoiceModel<T> {
-    /// Initialize a new deterministic choice model.
+    /// Initializes a new deterministic choice model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
     pub fn new(u: T) -> Self {
         DeterministicChoiceModel { u }
     }
 
-    /// Return the id of the chosen alternative and its payoff, given a vector of payoffs.
+    /// Returns the id of the chosen alternative and its payoff, given a vector of payoffs.
     ///
-    /// Return an error if
+    /// Returns an error if
     ///
     /// - The vector of payoffs is empty.
     ///
@@ -94,17 +91,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_deterministic_choice_model_test() {
-        // Only create the model if 0.0 <= u < 1.0; else return an error.
-        assert!(DeterministicChoiceModel::new(0.4).is_ok());
-        assert!(DeterministicChoiceModel::new(-1.).is_err());
-        assert!(DeterministicChoiceModel::new(1.).is_err());
-        assert!(DeterministicChoiceModel::new(f64::NAN).is_err());
-    }
-
-    #[test]
     fn deterministic_choice_test() {
-        let model = DeterministicChoiceModel::new(0.6).unwrap();
+        let model = DeterministicChoiceModel::new(0.6);
         // Only one choice.
         assert_eq!(
             model.get_choice(&[f64::NEG_INFINITY]).unwrap(),
@@ -115,7 +103,7 @@ mod tests {
         // Three choices, two that maximize, negative values.
         assert_eq!(model.get_choice(&[-1., -1., -2.]).unwrap(), (1, -1.));
         // No choice.
-        assert!(model.get_choice(&[]).is_err());
+        assert!(model.get_choice::<f64>(&[]).is_err());
         // Invalid comparison
         assert!(model.get_choice(&[1., f64::NAN, 2.]).is_err());
     }

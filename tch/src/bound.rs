@@ -9,24 +9,24 @@ impl<T> Default for Bound<T> {
 }
 
 impl<T> Bound<T> {
-    /// Create an null bound.
+    /// Creates a null bound.
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Create a bound from a value.
+    /// Creates a bound from a value.
     pub fn from_value(value: T) -> Self {
         Bound(Some(value))
     }
 
-    /// Return the current value of the bound.
+    /// Returns the current value of the bound.
     pub fn get(&self) -> Option<&T> {
         self.0.as_ref()
     }
 }
 
 impl<T: Copy + PartialOrd> Bound<T> {
-    /// Decrease the bound to the new value if it is smaller.
+    /// Decreases the bound to the new value if it is smaller.
     ///
     /// Does nothing if the new value is larger than the bound.
     pub fn update(&mut self, new_value: T) {
@@ -39,14 +39,14 @@ impl<T: Copy + PartialOrd> Bound<T> {
         }
     }
 
-    /// Return `true` if the bound is smaller than the given value.
-    /// Return `false` if the bound is not smaller than the given value or if the bound is None.
+    /// Returns `true` if the bound is smaller than the given value.
+    /// Returns `false` if the bound is not smaller than the given value or if the bound is None.
     pub fn is_smaller(&self, value: T) -> bool {
         self.0.map(|b| b < value).unwrap_or(false)
     }
 
-    /// Return `true` if the bound is smaller or equal to the given value.
-    /// Return `false` if the bound is larger than the given value or if the bound is None.
+    /// Returns `true` if the bound is smaller or equal to the given value.
+    /// Returns `false` if the bound is larger than the given value or if the bound is None.
     pub fn is_smaller_equal(&self, value: T) -> bool {
         self.0.map(|b| b <= value).unwrap_or(false)
     }

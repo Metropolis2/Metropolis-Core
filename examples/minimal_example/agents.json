@@ -1,0 +1,18 @@
+[
+    {
+        "modes": [
+            {
+                "type": "Road",
+                "values": {
+                    "origin": 0,
+                    "destination": 1,
+                    "vehicle": 0,
+                    "departure_time_model": {
+                        "type": "Constant",
+                        "values": 1800.0
+                    }
+                }
+            }
+        ]
+    }
+]

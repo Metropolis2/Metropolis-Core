@@ -10,14 +10,14 @@ pub trait NodeMap {
     type Node;
     /// Type to represent the values associated to the nodes.
     type Value;
-    /// Reset the map.
+    /// Resets the map.
     fn reset(&mut self);
-    /// Return a reference to the value of the given node, or None if the node has no value.
+    /// Returns a reference to the value of the given node, or None if the node has no value.
     fn get_value(&self, node: &Self::Node) -> Option<&Self::Value>;
-    /// Return a mutable reference to the value of the given node, or None if the node has no
+    /// Returns a mutable reference to the value of the given node, or None if the node has no
     /// value.
     fn get_mut_value(&mut self, node: &Self::Node) -> Option<&mut Self::Value>;
-    /// Insert a new value in the map, for the given node, erasing the previous value (if any).
+    /// Inserts a new value in the map, for the given node, erasing the previous value (if any).
     fn insert(&mut self, node: Self::Node, value: Self::Value);
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -97,6 +97,8 @@ where
     }
 }
 
+/// A map `N -> V` as a [Vec].
+#[derive(Debug)]
 pub struct VecMap<N, V> {
     vec: Vec<MaybeUninit<V>>,
     bs: FixedBitSet,
@@ -116,10 +118,12 @@ impl<N, V> Default for VecMap<N, V> {
 }
 
 impl<N, V> VecMap<N, V> {
+    /// Creates a new empty VecMap.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Creates a new empty VecMap with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         VecMap {
             vec: Vec::with_capacity(capacity),
@@ -183,7 +187,7 @@ where
     }
 }
 
-impl<'a, NM: NodeMap> NodeMap for &'a mut NM {
+impl<NM: NodeMap> NodeMap for &mut NM {
     type Node = NM::Node;
     type Value = NM::Value;
     fn reset(&mut self) {
@@ -215,7 +219,7 @@ mod tests {
 
     #[test]
     fn hash_map_test() {
-        let mut map = HashMap::new();
+        let mut map = hashbrown::HashMap::new();
         map.insert('a', 1);
         assert_eq!(map.get_value(&'a'), Some(&1));
         let value_a = map.get_mut_value(&'a').unwrap();

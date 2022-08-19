@@ -11,9 +11,9 @@ use petgraph::graph::NodeIndex;
 ///
 /// The structure is composed of:
 ///
-/// - A [NodeMap] to store the nodes' data (including the labels and the predecessors).
+/// - A [HashMap] to store the nodes' data (including the labels and the predecessors).
 ///
-/// - A [MinPriorityQueue] that represent the order in which the nodes are settled.
+/// - A priority queue that represent the order in which the nodes are settled.
 #[derive(Clone, Debug, Default)]
 pub struct DijkstraSearch<D, PQ> {
     /// A map Node -> Data.
@@ -23,27 +23,27 @@ pub struct DijkstraSearch<D, PQ> {
 }
 
 impl<D, PQ> DijkstraSearch<D, PQ> {
-    /// Initialize a new DijkstraRun.
+    /// Initializes a new DijkstraRun.
     pub fn new(data: HashMap<NodeIndex, D>, queue: PQ) -> Self {
         DijkstraSearch { data, queue }
     }
 
-    /// Return a reference to the node map of the DijkstraSearch.
+    /// Returns a reference to the node map of the DijkstraSearch.
     pub fn node_map(&self) -> &HashMap<NodeIndex, D> {
         &self.data
     }
 
-    /// Return a mutable reference to the node map of the DijkstraSearch.
+    /// Returns a mutable reference to the node map of the DijkstraSearch.
     pub fn node_map_mut(&mut self) -> &mut HashMap<NodeIndex, D> {
         &mut self.data
     }
 
-    /// Return a reference to the priority queue of the DijkstraSearch.
+    /// Returns a reference to the priority queue of the DijkstraSearch.
     pub fn priority_queue(&self) -> &PQ {
         &self.queue
     }
 
-    /// Return a mutable reference to the priority queue of the DijkstraSearch.
+    /// Returns a mutable reference to the priority queue of the DijkstraSearch.
     pub fn priority_queue_mut(&mut self) -> &mut PQ {
         &mut self.queue
     }
@@ -53,23 +53,23 @@ impl<D, PQ> DijkstraSearch<D, PQ>
 where
     PQ: MinPriorityQueue,
 {
-    /// Return true if the priority queue is empty.
+    /// Returns true if the priority queue is empty.
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 
-    /// Reset all data structures of the instance.
+    /// Resets all data structures of the instance.
     pub fn reset(&mut self) {
         self.data.clear();
         self.queue.reset();
     }
 
-    /// Empty the priority queue.
+    /// Empties the priority queue.
     pub fn empty_queue(&mut self) {
         self.queue.reset();
     }
 
-    /// Pop the element with minimum value in the queue.
+    /// Pops the element with minimum value in the queue.
     pub fn pop_queue(&mut self) -> Option<(PQ::Key, PQ::Value)> {
         self.queue.pop()
     }
@@ -80,7 +80,7 @@ where
     PQ: MinPriorityQueue<Key = NodeIndex, Value = K>,
     K: Copy,
 {
-    /// Initialize and solve a [QueryRef], using the given [DijkstraOps].
+    /// Initializes and solve a [QueryRef], using the given [DijkstraOps].
     ///
     /// This does not return any result but the results can be retrieved from the internal
     /// structure of the DijkstraSearch or from the [DijkstraOps].
@@ -103,7 +103,7 @@ where
         self.solve(query, ops);
     }
 
-    /// Reset the search and initialize a new [QueryRef], using the given [DijkstraOps].
+    /// Resets the search and initialize a new [QueryRef], using the given [DijkstraOps].
     pub fn init_query<Q, O, L>(&mut self, query: Q, ops: &O)
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
@@ -118,7 +118,7 @@ where
         }
     }
 
-    /// Solve a query that is already initialized.
+    /// Solves a query that is already initialized.
     fn solve<Q, O, L>(&mut self, query: Q, ops: &mut O)
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
@@ -131,7 +131,7 @@ where
         }
     }
 
-    /// Settle the next node of the Dijkstra run, i.e., relax all its edges.
+    /// Settles the next node of the Dijkstra run, i.e., relax all its edges.
     pub fn settle_node<Q, O, L>(&mut self, node: NodeIndex, key: K, query: Q, ops: &mut O)
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
@@ -161,7 +161,7 @@ where
         self.data.insert(node, node_data);
     }
 
-    /// Relax an edge.
+    /// Relaxes an edge.
     ///
     /// Arguments:
     ///
@@ -206,7 +206,7 @@ where
 }
 
 impl<PQ, D> DijkstraSearch<D, PQ> {
-    /// Return the current label of a node (or `None` if the node has never been explored).
+    /// Returns the current label of a node (or `None` if the node has never been explored).
     pub fn get_data(&self, node: &NodeIndex) -> Option<&D> {
         self.data.get(node)
     }
@@ -216,7 +216,7 @@ impl<PQ, D, L> DijkstraSearch<D, PQ>
 where
     D: NodeData<Label = L>,
 {
-    /// Return the current label of a node (or `None` if the node has never been explored).
+    /// Returns the current label of a node (or `None` if the node has never been explored).
     pub fn get_label(&self, node: &NodeIndex) -> Option<&L> {
         self.data.get(node).map(|d| d.label())
     }
@@ -226,7 +226,7 @@ impl<PQ, D, P> DijkstraSearch<D, PQ>
 where
     D: NodeData<Predecessor = P>,
 {
-    /// Return the current label of a node (or `None` if the node has never been explored).
+    /// Returns the current label of a node (or `None` if the node has never been explored).
     pub fn get_predecessor(&self, node: &NodeIndex) -> Option<&P> {
         self.data.get(node).and_then(|d| d.predecessor())
     }
@@ -237,7 +237,7 @@ where
     PQ: MinPriorityQueue<Key = NodeIndex, Value = K>,
     K: Copy,
 {
-    /// Peek the value of the next key in the priority queue.
+    /// Peeks the value of the next key in the priority queue.
     pub fn peek_key(&self) -> Option<K> {
         self.queue.peek().map(|(_, &k)| k)
     }
@@ -248,7 +248,7 @@ impl<PQ, D> DijkstraSearch<D, PQ>
 where
     D: NodeData<Predecessor = NodeIndex>,
 {
-    /// Return the reverse path from any source node to `end`.
+    /// Returns the reverse path from any source node to `end`.
     ///
     /// The function takes recursively the predecessors of the current node until a node without
     /// predecessor is reached.
@@ -268,7 +268,7 @@ where
         Ok(path)
     }
 
-    /// Return the path, from any source node to `end`, as a vector of nodes, using the predecessor
+    /// Returns the path, from any source node to `end`, as a vector of nodes, using the predecessor
     /// map of the DijkstraSearch.
     ///
     /// The path returned is only valid if the predecessor map is filled correctly and if the node

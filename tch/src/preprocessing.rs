@@ -22,19 +22,16 @@ use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visit
 use petgraph::Direction;
 use rayon::prelude::*;
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use ttf::{TTFNum, TTF};
 
 /// Structure that represents a set of parameters used when contracting a graph.
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
-#[cfg_attr(feature = "serde-1", schemars(title = "Contraction Parameters"))]
-#[cfg_attr(
-    feature = "serde-1",
-    schemars(
-        description = "Set of parameters used when contracting a graph. See Batz, Geisberger, Sanders and Vetter (2013) for a description of the parameters."
-    )
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Contraction Parameters")]
+#[schemars(
+    description = "Set of parameters used when contracting a graph. See Batz, Geisberger, Sanders and Vetter (2013) for a description of the parameters."
 )]
 pub struct ContractionParameters {
     edge_quotient_weight: f64,
@@ -53,6 +50,7 @@ impl Default for ContractionParameters {
 }
 
 impl ContractionParameters {
+    /// Creates a new set of ContractionParameters.
     pub fn new(
         edge_quotient_weight: f64,
         hierarchy_depth_weight: f64,
@@ -95,9 +93,8 @@ type ContractionCache = Vec<ContractionCacheEntry>;
 type ContractionResults<T> = (NodeIndex, NodeIndex, ToContractEdge<T>);
 
 /// Structure for nodes in a [ContractionGraph].
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-pub struct ToContractNode {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct ToContractNode {
     id: NodeIndex,
     /// Order of the node in the hierarchy.
     /// Set to 0 if the order has not been determined yet.
@@ -110,7 +107,7 @@ pub struct ToContractNode {
 }
 
 impl ToContractNode {
-    pub fn new(id: NodeIndex) -> Self {
+    pub(crate) fn new(id: NodeIndex) -> Self {
         ToContractNode {
             id,
             order: 0,
@@ -119,8 +116,8 @@ impl ToContractNode {
         }
     }
 
-    /// Create a new node with a known order.
-    pub fn from_order(id: NodeIndex, order: usize) -> Self {
+    /// Creates a new node with a known order.
+    pub(crate) fn from_order(id: NodeIndex, order: usize) -> Self {
         ToContractNode {
             id,
             order,
@@ -131,10 +128,9 @@ impl ToContractNode {
 }
 
 /// Structure for edges in a [ContractionGraph].
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
-pub struct ToContractEdge<T> {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
+pub(crate) struct ToContractEdge<T> {
     /// Current metric of the edge.
     ttf: TTF<T>,
     /// Number of packed edge that a shortcut edge represents (1 if this is not a shortcut edge).
@@ -152,17 +148,17 @@ impl<T> ToContractEdge<T> {
         }
     }
 
-    /// Create a new original edge.
-    pub fn new_original(ttf: TTF<T>, id: EdgeIndex) -> Self {
+    /// Creates a new original edge.
+    pub(crate) fn new_original(ttf: TTF<T>, id: EdgeIndex) -> Self {
         ToContractEdge::new(ttf, 1, HierarchyEdgeClass::Original(id))
     }
 
-    /// Create a new shortcut edge.
+    /// Creates a new shortcut edge.
     fn new_shortcut(ttf: TTF<T>, nb_packed: usize, node: NodeIndex) -> Self {
         ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::ShortcutThrough(node))
     }
 
-    /// Create a new shortcut edge.
+    /// Creates a new shortcut edge.
     fn new_packed(ttf: TTF<T>, nb_packed: usize, pack: EdgePack<T>) -> Self {
         ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::PackedShortcut(pack))
     }
@@ -209,7 +205,7 @@ where
 }
 
 /// Temporary graph used to construct a [HierarchyOverlay].
-pub struct ContractionGraph<T: PartialOrd> {
+pub(crate) struct ContractionGraph<T: PartialOrd> {
     graph: DiGraph<ToContractNode, ToContractEdge<T>>,
     /// Parameters used during the contraction.
     parameters: ContractionParameters,
@@ -222,8 +218,8 @@ pub struct ContractionGraph<T: PartialOrd> {
 }
 
 impl<T: TTFNum> ContractionGraph<T> {
-    /// Create a new ContractionGraph from a graph of [ToContractNode] and [ToContractEdge].
-    pub fn new(
+    /// Creates a new ContractionGraph from a graph of [ToContractNode] and [ToContractEdge].
+    pub(crate) fn new(
         graph: DiGraph<ToContractNode, ToContractEdge<T>>,
         parameters: ContractionParameters,
     ) -> Self {
@@ -248,9 +244,9 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Construct a [HierarchyOverlay] from the ContractionGraph, i.e., contract all the nodes in
+    /// Constructs a [HierarchyOverlay] from the ContractionGraph, i.e., contract all the nodes in
     /// the given hierarchy order.
-    pub fn construct(mut self) -> HierarchyOverlay<T> {
+    pub(crate) fn construct(mut self) -> HierarchyOverlay<T> {
         while self.graph.node_count() > 0 {
             // Find the largest set of independent nodes than can be contracted in parallel.
             // A node is contracted if its order is smaller than the order of all its neighbors.
@@ -289,8 +285,8 @@ impl<T: TTFNum> ContractionGraph<T> {
         self.into_hierarchy_overlay()
     }
 
-    /// Order the nodes and construct a [HierarchyOverlay] from the ContractionGraph.
-    pub fn order(mut self) -> HierarchyOverlay<T> {
+    /// Orders the nodes and construct a [HierarchyOverlay] from the ContractionGraph.
+    pub(crate) fn order(mut self) -> HierarchyOverlay<T> {
         debug!("Starting ordering");
         // Initialize a ContractionCache.
         let mut cache = ContractionCache::new();
@@ -381,7 +377,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         self.into_hierarchy_overlay()
     }
 
-    /// Update the depth of the neighbor nodes of the given nodes and return a vector with all
+    /// Updates the depth of the neighbor nodes of the given nodes and return a vector with all
     /// neighbor nodes that were updated.
     fn update_depths(&mut self, nodes: &HashSet<NodeIndex>) -> HashSet<NodeIndex> {
         let mut updated = HashSet::with_capacity(nodes.len() * 4);
@@ -397,14 +393,14 @@ impl<T: TTFNum> ContractionGraph<T> {
         updated
     }
 
-    /// Convert a successfully contracted [ContractionGraph] into a [HierarchyOverlay].
+    /// Converts a successfully contracted [ContractionGraph] into a [HierarchyOverlay].
     fn into_hierarchy_overlay(self) -> HierarchyOverlay<T> {
         // Build the graph.
-        let graph: DiGraph<(), HierarchyEdge<T>> = DiGraph::<(), _>::from_edges(self.edges);
+        let graph = DiGraph::<(), HierarchyEdge<T>>::from_edges(self.edges);
         HierarchyOverlay::new_raw(graph, self.order)
     }
 
-    /// Contract a batch of nodes in parallel.
+    /// Contracts a batch of nodes in parallel.
     fn contract_nodes(
         &mut self,
         nodes_to_contract: &HashSet<NodeIndex>,
@@ -427,7 +423,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         self.apply_contraction(contraction_results, cache);
     }
 
-    /// Apply a batch of [ContractionResults], i.e., create new shortcuts and merge existing
+    /// Applies a batch of [ContractionResults], i.e., create new shortcuts and merge existing
     /// shortcuts.
     fn apply_contraction(
         &mut self,
@@ -463,20 +459,24 @@ impl<T: TTFNum> ContractionGraph<T> {
         let mut original_ids = HashMap::with_capacity(nodes_to_contract.len());
         self.graph = DiGraph::with_capacity(nodes.len() - nodes_to_contract.len(), edges.len());
         for (i, node) in nodes.into_iter().enumerate() {
-            original_ids.insert(node_index(i), node.weight.id);
-            if nodes_to_contract.contains(&node.weight.id) {
+            let old_id = node.weight.id;
+            original_ids.insert(node_index(i), old_id);
+            if nodes_to_contract.contains(&old_id) {
                 self.order[node.weight.id.index()] = self.next_order;
                 self.next_order += 1;
-                continue;
+            } else {
+                let new_id = self.graph.add_node(node.weight);
+                self.new_ids[old_id.index()] = Some(new_id);
             }
-            let old_id = node.weight.id;
-            let new_id = self.graph.add_node(node.weight);
-            self.new_ids[old_id.index()] = Some(new_id);
         }
         for edge in edges {
             let &source_id = original_ids.get(&edge.source()).unwrap();
             let &target_id = original_ids.get(&edge.target()).unwrap();
             if nodes_to_contract.contains(&source_id) || nodes_to_contract.contains(&target_id) {
+                debug_assert!(
+                    nodes_to_contract.contains(&source_id) ^ nodes_to_contract.contains(&target_id),
+                    "Source and target cannot be both contracted"
+                );
                 let dir = if nodes_to_contract.contains(&source_id) {
                     HierarchyDirection::Upward
                 } else {
@@ -504,7 +504,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Check if a condition is valid for all 2-hop neighbors of a given node.
+    /// Checks if a condition is valid for all 2-hop neighbors of a given node.
     fn check_2_hop_neighborhood<F>(&self, node: NodeIndex, condition: F) -> bool
     where
         F: Fn(NodeIndex, &ToContractNode) -> bool,
@@ -518,7 +518,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         })
     }
 
-    /// Compute the tentative cost of a node.
+    /// Computes the tentative cost of a node.
     ///
     /// The contraction cache of the node is updated at the same time.
     fn get_tentative_cost(
@@ -570,7 +570,7 @@ impl<T: TTFNum> ContractionGraph<T> {
     /// Returns the number of edges, unpacked edges and breakpoints removed when the given node is
     /// contracted.
     fn get_nb_removed(&self, node: NodeIndex) -> (usize, usize, usize) {
-        let sum = |tot: (usize, usize, usize), edge: EdgeReference<ToContractEdge<T>>| {
+        let sum = |tot: (usize, usize, usize), edge: EdgeReference<'_, ToContractEdge<T>>| {
             (
                 tot.0 + 1,
                 tot.1 + edge.weight().ttf.complexity(),
@@ -588,7 +588,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         (nb_out.0 + nb_in.0, nb_out.1 + nb_in.1, nb_out.2 + nb_in.2)
     }
 
-    /// Return the results of the simulated contraction of a node as a vector of tuples `(usize,
+    /// Returns the results of the simulated contraction of a node as a vector of tuples `(usize,
     /// usize)` that represent the complexity and the number of packed original edges of the new
     /// shortcut edges to insert.
     fn get_simulated_node_contraction(
@@ -608,12 +608,12 @@ impl<T: TTFNum> ContractionGraph<T> {
             .collect()
     }
 
-    /// Return the results of a witness search to check whether a shortcut edge that represents
+    /// Returns the results of a witness search to check whether a shortcut edge that represents
     /// edges `in_edge` and `out_edge` is necessary.
     fn get_simulated_edge_contraction(
         &self,
-        in_edge: EdgeReference<ToContractEdge<T>>,
-        out_edge: EdgeReference<ToContractEdge<T>>,
+        in_edge: EdgeReference<'_, ToContractEdge<T>>,
+        out_edge: EdgeReference<'_, ToContractEdge<T>>,
         cache: &mut ContractionCacheEntry,
         alloc: &mut AllocatedDijkstraData<T>,
     ) -> CachedResult {
@@ -638,14 +638,15 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Return an iterator over all the pairs (in_edge, out_edge) of a node in the remaining graph.
+    /// Returns an iterator over all the pairs (in_edge, out_edge) of a node in the remaining
+    /// graph.
     fn iter_remaining_edge_pairs(
         &self,
         node: NodeIndex,
     ) -> impl Iterator<
         Item = (
-            EdgeReference<ToContractEdge<T>>,
-            EdgeReference<ToContractEdge<T>>,
+            EdgeReference<'_, ToContractEdge<T>>,
+            EdgeReference<'_, ToContractEdge<T>>,
         ),
     > {
         self.graph
@@ -657,7 +658,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             })
     }
 
-    /// Return the new shortcut edges resulting from the contraction of a node.
+    /// Returns the new shortcut edges resulting from the contraction of a node.
     fn get_node_contraction(
         &self,
         node: NodeIndex,
@@ -671,7 +672,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             .collect()
     }
 
-    /// Return the new shortcut edge (if needed) representing edges `in_edge` and `out_edge`.
+    /// Returns the new shortcut edge (if needed) representing edges `in_edge` and `out_edge`.
     fn get_edge_contraction<'b>(
         &self,
         in_edge: EdgeReference<'b, ToContractEdge<T>>,
@@ -717,7 +718,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Return `true` if a witness indicating that the shortcut is not needed was found.
+    /// Returns `true` if a witness indicating that the shortcut is not needed was found.
     fn search_witness(
         &self,
         from: NodeIndex,
@@ -770,8 +771,8 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Run a hop-limited thin profile interval search between `source` and `target`, excluding the
-    /// given node.
+    /// Runs a hop-limited thin profile interval search between `source` and `target`, excluding
+    /// the given node.
     fn run_thin_profile_interval_query(
         &self,
         source: NodeIndex,
@@ -782,16 +783,17 @@ impl<T: TTFNum> ContractionGraph<T> {
         let remaining_graph =
             NodeFiltered::from_fn(&self.graph, |node_id| Some(node_id) != excluded_node);
         let mut ops = HopLimitedDijkstra::new(
-            ThinProfileIntervalDijkstra::new_forward(&remaining_graph, |edge: EdgeReference<_>| {
-                &self.graph[edge.id()].ttf
-            }),
+            ThinProfileIntervalDijkstra::new_forward(
+                &remaining_graph,
+                |edge: EdgeReference<'_, _>| &self.graph[edge.id()].ttf,
+            ),
             self.parameters.thin_profile_interval_hop_limit,
         );
         let query = PointToPointQuery::from_default(source, target);
         alloc.interval_search.solve_query(&query, &mut ops);
     }
 
-    /// Return the corridor resulting from a previous thin profile interval search.
+    /// Returns the corridor resulting from a previous thin profile interval search.
     ///
     /// The corridor is represented by a [FixedBitSet] whose ones represent the indices of the
     /// nodes that are part of the corridor.
@@ -814,7 +816,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         bs
     }
 
-    /// Run a time-dependent search at a given departure time.
+    /// Runs a time-dependent search at a given departure time.
     fn run_sample_search(
         &self,
         source: NodeIndex,
@@ -824,14 +826,14 @@ impl<T: TTFNum> ContractionGraph<T> {
         alloc: &mut AllocatedDijkstraData<T>,
     ) {
         let corridor_graph = NodeFiltered(&self.graph, corridor);
-        let mut ops = TimeDependentDijkstra::new(&corridor_graph, |edge: EdgeReference<_>| {
+        let mut ops = TimeDependentDijkstra::new(&corridor_graph, |edge: EdgeReference<'_, _>| {
             &self.graph[edge.id()].ttf
         });
         let query = PointToPointQuery::new(source, target, departure_time);
         alloc.sample_search.solve_query(&query, &mut ops);
     }
 
-    /// Run a profile search between `source` and `target`, using only the given corridor.
+    /// Runs a profile search between `source` and `target`, using only the given corridor.
     fn run_profile_query(
         &self,
         source: NodeIndex,
@@ -842,9 +844,10 @@ impl<T: TTFNum> ContractionGraph<T> {
         let corridor_graph = NodeFiltered(&self.graph, corridor);
         // We do not use a hop-limit for profile search as the search is already limited by the
         // corridor.
-        let mut ops = ProfileDijkstra::new_forward(&corridor_graph, |edge: EdgeReference<_>| {
-            &self.graph[edge.id()].ttf
-        });
+        let mut ops =
+            ProfileDijkstra::new_forward(&corridor_graph, |edge: EdgeReference<'_, _>| {
+                &self.graph[edge.id()].ttf
+            });
         let query = PointToPointQuery::from_default(source, target);
         alloc.profile_search.solve_query(&query, &mut ops);
     }

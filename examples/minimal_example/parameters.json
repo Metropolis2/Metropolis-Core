@@ -1,0 +1,12 @@
+{
+    "period": [
+        0.0,
+        3600.0
+    ],
+    "stopping_criteria": [
+        {
+            "type": "MaxIteration",
+            "values": 1
+        }
+    ]
+}

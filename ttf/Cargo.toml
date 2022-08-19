@@ -1,15 +1,16 @@
 [package]
 name = "ttf"
 version = "0.1.0"
+authors = ["Lucas Javaudin <me@lucasjavaudin.com>"]
 edition = "2021"
+description = "Travel-time functions and other utilities"
+repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
+keywords = ["travel-time", "piecewise"]
+categories = ["science", "mathematics"]
+publish = false
 
 [dependencies]
 either = "1.6"
 num-traits = "0.2"
-ordered-float = "2.10"
-serde = { version = "1.0", optional = true }
-serde_derive = { version = "1.0", optional = true }
-schemars = { version = "0.8", optional = true }
-
-[features]
-serde-1 = ["serde", "serde_derive", "schemars"]
+serde = "1.0"
+schemars = "0.8"

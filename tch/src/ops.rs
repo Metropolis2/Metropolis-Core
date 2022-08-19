@@ -27,36 +27,36 @@ pub trait DijkstraOps {
     /// Iterator used when iterating over the edges of a node.
     type EdgeIterator: Iterator<Item = Self::Edge>;
 
-    /// Link the current label to the label of a successor edge.
+    /// Links the current label to the label of a successor edge.
     fn link(
         &self,
         data: &<Self::Data as NodeData>::Label,
         edge: Self::Edge,
     ) -> <Self::Data as NodeData>::Label;
-    /// Return the current node as predecessor data.
+    /// Returns the current node as predecessor data.
     fn as_new_data(
         &self,
         prev: Option<Self::Node>,
         label: <Self::Data as NodeData>::Label,
     ) -> Self::Data;
-    /// Return the node to explore given the currently relaxed edge.
+    /// Returns the node to explore given the currently relaxed edge.
     fn get_next_node(&self, edge: Self::Edge) -> Self::Node;
-    /// Return an iterator over the edges to explore from the current node.
+    /// Returns an iterator over the edges to explore from the current node.
     fn edges_from(&self, node: Self::Node) -> Self::EdgeIterator;
-    /// Return the key of a label.
+    /// Returns the key of a label.
     fn get_key(&self, label: &<Self::Data as NodeData>::Label) -> Self::Key;
-    /// Given the new label and the existing label for a node, update the existing label and the
+    /// Given the new label and the existing label for a node, updates the existing label and the
     /// predecessor.
     ///
-    /// Return the new key of the node in the priority queue (only needed if it is smaller than the
-    /// previous key).
+    /// Returns the new key of the node in the priority queue (only needed if it is smaller than
+    /// the previous key).
     fn relax_existing_label(
         &self,
         prev: Self::Node,
         new_label: <Self::Data as NodeData>::Label,
         node_data: &mut Self::Data,
     ) -> Option<Self::Key>;
-    /// Perform operations immediately after a node has been relaxed, given its predecessor, its
+    /// Performs operations immediately after a node has been relaxed, given its predecessor, its
     /// label and the query.
     fn node_is_relaxed(
         &mut self,
@@ -67,7 +67,7 @@ pub trait DijkstraOps {
         _query: impl Query<Node = Self::Node>,
     ) {
     }
-    /// Return `true` if a node can be skipped.
+    /// Returns `true` if a node can be skipped.
     fn skip_node<D: NodeData<Label = <Self::Data as NodeData>::Label>>(
         &self,
         _node: Self::Node,
@@ -76,7 +76,7 @@ pub trait DijkstraOps {
     ) -> bool {
         false
     }
-    /// Return `true` if the Dijkstra search can stop just before the given node is being settled,
+    /// Returns `true` if the Dijkstra search can stop just before the given node is being settled,
     /// given its key and the query.
     fn stop(
         &self,
@@ -104,25 +104,26 @@ pub trait DijkstraOps {
 /// # Example
 ///
 /// ```
-/// use dijkstra::DijkstraSearch;
-/// use dijkstra::ops::ScalarDijkstra;
-/// use dijkstra::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
+/// use tch::ops::ScalarDijkstra;
+/// use tch::query::PointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
 ///
 /// // Run a standard point-to-point Dijkstra search with scalars on a graph with three edges.
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), i32>::from_edges(&[(0, 1, 1), (1, 2, 2), (0, 2, 4)]);
-/// let mut ops = ScalarDijkstra::new_forward(&graph, |e: EdgeReference<i32>| *e.weight());
+/// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
+/// let mut ops = ScalarDijkstra::new_forward(&graph, |e: EdgeReference<_>| *e.weight());
 /// let query = PointToPointQuery::from_default(node_index(0), node_index(2));
-/// search.solve_query(&query, &mut ops).unwrap();
-/// assert_eq!(search.get_label(&node_index(2)), Some(&3));
+/// search.solve_query(&query, &mut ops);
+/// assert_eq!(search.get_label(&node_index(2)), Some(&3.));
 /// assert_eq!(
 ///     search.get_path(&node_index(2)).unwrap(),
 ///     vec![node_index(0), node_index(1), node_index(2)]
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct ScalarDijkstra<G, F> {
     /// Graph used by the algorithm.
     graph: G,
@@ -133,7 +134,7 @@ pub struct ScalarDijkstra<G, F> {
 }
 
 impl<G, F> ScalarDijkstra<G, F> {
-    /// Initialize a new ScalaDijkstra instance, with the given direction.
+    /// Initializes a new ScalaDijkstra instance, with the given direction.
     fn new(graph: G, edge_label: F, direction: Direction) -> Self {
         ScalarDijkstra {
             graph,
@@ -142,12 +143,12 @@ impl<G, F> ScalarDijkstra<G, F> {
         }
     }
 
-    /// Initialize a new ScalarDijkstra instance for a forward search.
+    /// Initializes a new ScalarDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
         ScalarDijkstra::new(graph, edge_label, Direction::Outgoing)
     }
 
-    /// Initialize a new ScalarDijkstra instance for a backward search.
+    /// Initializes a new ScalarDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
         ScalarDijkstra::new(graph, edge_label, Direction::Incoming)
     }
@@ -224,54 +225,35 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::ops::TimeDependentDijkstra;
-/// use dijkstra::query::PointToPointQuery;
-/// use dijkstra::DijkstraSearch;
+/// use ttf::{PwlTTF, TTF};
+/// use tch::ops::TimeDependentDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = TimeDependentDijkstra::new(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 ///
 /// // When leaving at 0.0, its better to take path 0 -> 1 -> 2 (travel time is 3.0).
-/// let query = PointToPointQuery::new(node_index(0), node_index(2), OrderedFloat(0.));
-/// search.solve_query(&query, &mut ops).unwrap();
+/// let query = PointToPointQuery::new(node_index(0), node_index(2), 0.);
+/// search.solve_query(&query, &mut ops);
 /// assert_eq!(
 ///     search.get_label(&node_index(2)),
-///     Some(&OrderedFloat(3.))
+///     Some(&3.)
 /// );
 /// assert_eq!(
 ///     search.get_path(&node_index(2)).unwrap(),
@@ -279,17 +261,18 @@ where
 /// );
 ///
 /// // When leaving at 5.0, its better to take path 0 -> 2 (travel time is 2.0, arrival time is 5.0).
-/// let query = PointToPointQuery::new(node_index(0), node_index(2), OrderedFloat(5.));
-/// search.solve_query(&query, &mut ops).unwrap();
+/// let query = PointToPointQuery::new(node_index(0), node_index(2), 5.);
+/// search.solve_query(&query, &mut ops);
 /// assert_eq!(
 ///     search.get_label(&node_index(2)),
-///     Some(&OrderedFloat(5. + 2.))
+///     Some(&(5. + 2.))
 /// );
 /// assert_eq!(
 ///     search.get_path(&node_index(2)).unwrap(),
 ///     vec![node_index(0), node_index(2)]
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct TimeDependentDijkstra<G, F, T> {
     graph: G,
     edge_label: F,
@@ -297,7 +280,7 @@ pub struct TimeDependentDijkstra<G, F, T> {
 }
 
 impl<G, F, T> TimeDependentDijkstra<G, F, T> {
-    /// Initialize a new TimeDependentDijkstra instance, with a graph and edge weights.
+    /// Initializes a new TimeDependentDijkstra instance, with a graph and edge weights.
     pub fn new(graph: G, edge_label: F) -> Self {
         TimeDependentDijkstra {
             graph,
@@ -306,7 +289,7 @@ impl<G, F, T> TimeDependentDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new TimeDependentDijkstra instance, with a graph, edge weights and a bound.
+    /// Initializes a new TimeDependentDijkstra instance, with a graph, edge weights and a bound.
     pub fn new_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         TimeDependentDijkstra {
             graph,
@@ -315,14 +298,14 @@ impl<G, F, T> TimeDependentDijkstra<G, F, T> {
         }
     }
 
-    /// Return the current bound of the TimeDependentDijkstra.
+    /// Returns the current bound of the TimeDependentDijkstra.
     pub fn get_bound(&self) -> &Bound<T> {
         &self.bound
     }
 }
 
 impl<G, F, T: Copy + PartialOrd> TimeDependentDijkstra<G, F, T> {
-    /// Update the current bound of the TimeDependentDijkstra.
+    /// Updates the current bound of the TimeDependentDijkstra.
     pub fn update_bound(&mut self, value: T) {
         self.bound.update(value);
     }
@@ -334,6 +317,7 @@ where
     F: Fn(G::EdgeRef) -> &'a TTF<T>,
     T: 'a,
 {
+    /// Returns a reference to the [TTF] of a given edge.
     pub fn get_ttf(&self, edge: G::EdgeRef) -> &'a TTF<T> {
         (self.edge_label)(edge)
     }
@@ -408,62 +392,45 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::ops::ProfileDijkstra;
-/// use dijkstra::query::PointToPointQuery;
-/// use dijkstra::DijkstraSearch;
+/// use ttf::{PwlTTF, TTF};
+/// use tch::ops::ProfileDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = ProfileDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 ///
 /// let query = PointToPointQuery::from_default(node_index(0), node_index(2));
-/// search.solve_query(&query, &mut ops).unwrap();
+/// search.solve_query(&query, &mut ops);
 ///
-/// let ttf = PWLFunction::from_breakpoints(vec![
-///     (OrderedFloat(0.), OrderedFloat(3.)),
-///     (OrderedFloat(2.5), OrderedFloat(3.)),
-///     (OrderedFloat(10.), OrderedFloat(0.)),
-/// ])
-/// .unwrap();
+/// let ttf = TTF::Piecewise(
+///     PwlTTF::from_breakpoints(vec![
+///         (0., 3.),
+///         (2.5, 3.),
+///         (10., 0.),
+///     ])
+/// );
 /// assert_eq!(
 ///     search.get_label(&node_index(2)),
 ///     Some(&ttf)
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct ProfileDijkstra<G, F, T> {
     graph: G,
     direction: Direction,
@@ -472,7 +439,7 @@ pub struct ProfileDijkstra<G, F, T> {
 }
 
 impl<G, F, T> ProfileDijkstra<G, F, T> {
-    /// Initialize a new ProfileDijkstra instance of a given direction.
+    /// Initializes a new ProfileDijkstra instance of a given direction.
     fn new(graph: G, edge_label: F, direction: Direction) -> Self {
         ProfileDijkstra {
             graph,
@@ -482,17 +449,17 @@ impl<G, F, T> ProfileDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ProfileDijkstra instance for a forward search.
+    /// Initializes a new ProfileDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
         ProfileDijkstra::new(graph, edge_label, Direction::Outgoing)
     }
 
-    /// Initialize a new ProfileDijkstra instance for a backward search.
+    /// Initializes a new ProfileDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
         ProfileDijkstra::new(graph, edge_label, Direction::Incoming)
     }
 
-    /// Initialize a new ProfileDijkstra instance of a given direction with a bound.
+    /// Initializes a new ProfileDijkstra instance of a given direction with a bound.
     fn new_with_bound(graph: G, edge_label: F, direction: Direction, bound: T) -> Self {
         ProfileDijkstra {
             graph,
@@ -502,24 +469,24 @@ impl<G, F, T> ProfileDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ProfileDijkstra instance for a forward search with a bound.
+    /// Initializes a new ProfileDijkstra instance for a forward search with a bound.
     pub fn new_forward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ProfileDijkstra::new_with_bound(graph, edge_label, Direction::Outgoing, bound)
     }
 
-    /// Initialize a new ProfileDijkstra instance for a backward search with a bound.
+    /// Initializes a new ProfileDijkstra instance for a backward search with a bound.
     pub fn new_backward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ProfileDijkstra::new_with_bound(graph, edge_label, Direction::Incoming, bound)
     }
 
-    /// Return the current bound of the ProfileDijkstra.
+    /// Returns the current bound of the ProfileDijkstra.
     pub fn get_bound(&self) -> &Bound<T> {
         &self.bound
     }
 }
 
 impl<G, F, T: Copy + PartialOrd> ProfileDijkstra<G, F, T> {
-    /// Update the current bound of the ProfileDijkstra.
+    /// Updates the current bound of the ProfileDijkstra.
     pub fn update_bound(&mut self, value: T) {
         self.bound.update(value);
     }
@@ -531,6 +498,7 @@ where
     F: Fn(G::EdgeRef) -> &'a TTF<T>,
     T: 'a,
 {
+    /// Returns a reference to the [TTF] of a given edge.
     pub fn get_ttf(&self, edge: G::EdgeRef) -> &'a TTF<T> {
         (self.edge_label)(edge)
     }
@@ -651,60 +619,41 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
+/// use ttf::{PwlTTF, TTF};
 /// use tch::ops::ProfileIntervalDijkstra;
-/// use dijkstra::query::PointToPointQuery;
-/// use dijkstra::DijkstraSearch;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 ///
-/// let zero = OrderedFloat(0.);
-/// let query = PointToPointQuery::new(node_index(0), node_index(2), [zero, zero]);
-/// search.solve_query(&query, &mut ops).unwrap();
+/// let query = PointToPointQuery::new(node_index(0), node_index(2), [0., 0.]);
+/// search.solve_query(&query, &mut ops);
 ///
 /// assert_eq!(
 ///     search.get_label(&node_index(2)),
-///     Some(&[OrderedFloat(0.), OrderedFloat(3.)])
+///     Some(&[0., 3.])
 /// );
 /// let p = search.get_predecessor(&node_index(2)).unwrap();
 /// assert!(p.contains(&node_index(0)));
 /// assert!(p.contains(&node_index(1)));
 /// ```
+#[derive(Clone, Debug)]
 pub struct ProfileIntervalDijkstra<G, F, T> {
     graph: G,
     edge_label: F,
@@ -714,7 +663,7 @@ pub struct ProfileIntervalDijkstra<G, F, T> {
 }
 
 impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
-    /// Initialize a new ProfileIntervalDijkstra instance of a given direction.
+    /// Initializes a new ProfileIntervalDijkstra instance of a given direction.
     fn new(graph: G, edge_label: F, direction: Direction, stalling: bool) -> Self {
         ProfileIntervalDijkstra {
             graph,
@@ -725,17 +674,17 @@ impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a forward search.
+    /// Initializes a new ProfileIntervalDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
         ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, false)
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a backward search.
+    /// Initializes a new ProfileIntervalDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
         ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, false)
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance of a given direction with a bound.
+    /// Initializes a new ProfileIntervalDijkstra instance of a given direction with a bound.
     fn new_with_bound(
         graph: G,
         edge_label: F,
@@ -752,7 +701,7 @@ impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a forward search with a bound.
+    /// Initializes a new ProfileIntervalDijkstra instance for a forward search with a bound.
     pub fn new_forward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ProfileIntervalDijkstra::new_with_bound(
             graph,
@@ -763,7 +712,7 @@ impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
         )
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a backward search with a bound.
+    /// Initializes a new ProfileIntervalDijkstra instance for a backward search with a bound.
     pub fn new_backward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ProfileIntervalDijkstra::new_with_bound(
             graph,
@@ -774,24 +723,25 @@ impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
         )
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a forward search with stall-on-demand.
+    /// Initializes a new ProfileIntervalDijkstra instance for a forward search with stall-on-demand.
     pub fn new_forward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
         ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, true)
     }
 
-    /// Initialize a new ProfileIntervalDijkstra instance for a backward search with
+    /// Initializes a new ProfileIntervalDijkstra instance for a backward search with
     /// stall-on-demand.
     pub fn new_backward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
         ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, true)
     }
 
-    /// Return a reference to the current bound of the ops.
+    /// Returns a reference to the current bound of the ops.
     pub fn get_bound(&self) -> &Bound<T> {
         &self.bound
     }
 }
 
 impl<G, F, T: Copy + PartialOrd> ProfileIntervalDijkstra<G, F, T> {
+    /// Updates the bound with the given value.
     pub fn update_bound(&mut self, value: T) {
         self.bound.update(value);
     }
@@ -834,6 +784,7 @@ where
     F: Fn(G::EdgeRef) -> &'a TTF<T>,
     T: 'a,
 {
+    /// Returns a reference to the [TTF] of the given edge.
     pub fn get_ttf(&self, edge: G::EdgeRef) -> &'a TTF<T> {
         (self.edge_label)(edge)
     }
@@ -964,63 +915,44 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
+/// use ttf::{PwlTTF, TTF};
 /// use tch::ops::ThinProfileIntervalDijkstra;
-/// use dijkstra::query::PointToPointQuery;
-/// use dijkstra::DijkstraSearch;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = ThinProfileIntervalDijkstra::new_forward(
 ///     &graph, |e: EdgeReference<_>| &graph[e.id()]
 /// );
 ///
-/// let zero = OrderedFloat(0.);
-/// let query = PointToPointQuery::new(node_index(0), node_index(2), [zero, zero]);
-/// search.solve_query(&query, &mut ops).unwrap();
+/// let query = PointToPointQuery::new(node_index(0), node_index(2), [0., 0.]);
+/// search.solve_query(&query, &mut ops);
 ///
 /// assert_eq!(
 ///     search.get_label(&node_index(2)),
-///     Some(&[OrderedFloat(0.), OrderedFloat(3.)])
+///     Some(&[0., 3.])
 /// );
 /// assert_eq!(
 ///     search.get_predecessor(&node_index(2)),
 ///     Some(&[node_index(0), node_index(1)])
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct ThinProfileIntervalDijkstra<G, F, T> {
     graph: G,
     edge_label: F,
@@ -1029,7 +961,7 @@ pub struct ThinProfileIntervalDijkstra<G, F, T> {
 }
 
 impl<G, F, T> ThinProfileIntervalDijkstra<G, F, T> {
-    /// Initialize a new ThinProfileIntervalDijkstra instance of a given direction.
+    /// Initializes a new ThinProfileIntervalDijkstra instance of a given direction.
     fn new(graph: G, edge_label: F, direction: Direction) -> Self {
         ThinProfileIntervalDijkstra {
             graph,
@@ -1039,17 +971,17 @@ impl<G, F, T> ThinProfileIntervalDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ThinProfileIntervalDijkstra instance for a forward search.
+    /// Initializes a new ThinProfileIntervalDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
         ThinProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing)
     }
 
-    /// Initialize a new ThinProfileIntervalDijkstra instance for a backward search.
+    /// Initializes a new ThinProfileIntervalDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
         ThinProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming)
     }
 
-    /// Initialize a new ThinProfileIntervalDijkstra instance of a given direction with a bound.
+    /// Initializes a new ThinProfileIntervalDijkstra instance of a given direction with a bound.
     fn new_with_bound(graph: G, edge_label: F, direction: Direction, bound: T) -> Self {
         ThinProfileIntervalDijkstra {
             graph,
@@ -1059,17 +991,17 @@ impl<G, F, T> ThinProfileIntervalDijkstra<G, F, T> {
         }
     }
 
-    /// Initialize a new ThinProfileIntervalDijkstra instance for a forward search with a bound.
+    /// Initializes a new ThinProfileIntervalDijkstra instance for a forward search with a bound.
     pub fn new_forward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ThinProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Outgoing, bound)
     }
 
-    /// Initialize a new ThinProfileIntervalDijkstra instance for a backward search with a bound.
+    /// Initializes a new ThinProfileIntervalDijkstra instance for a backward search with a bound.
     pub fn new_backward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
         ThinProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Incoming, bound)
     }
 
-    /// Return a reference to the current bound of the ops.
+    /// Returns a reference to the current bound of the ops.
     pub fn get_bound(&self) -> &Bound<T> {
         &self.bound
     }
@@ -1169,44 +1101,41 @@ where
 /// All nodes that are further away from a source node than a given maximum number of edges are
 /// skipped.
 ///
-/// See [HopLimit] for more.
-///
 /// # Example
 ///
 /// ```
-/// use dijkstra::DijkstraSearch;
-/// use dijkstra::ops::ScalarDijkstra;
-/// use dijkstra::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
+/// use tch::ops::ScalarDijkstra;
+/// use tch::query::PointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
-/// use tch::HopLimit;
 /// use tch::ops::HopLimitedDijkstra;
 ///
-/// // Standard scalar Dijkstra search with a hop limit of 1.
-/// let mut search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let graph = DiGraph::<(), i32>::from_edges(&[(0, 1, 1), (1, 2, 2), (0, 2, 4)]);
-/// let mut map = HashMap::new();
+/// // Standard scalar Dijkstra search with a hop limit of 0.
+/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
 /// let mut ops = HopLimitedDijkstra::new(
-///     ScalarDijkstra::new_forward(&graph, |e: EdgeReference<i32>| *e.weight()),
-///     HopLimit::new(1, &mut map),
+///     ScalarDijkstra::new_forward(&graph, |e: EdgeReference<_>| *e.weight()),
+///     0,
 /// );
-/// let query = PointToPointQuery::new(node_index(0), node_index(2), 0);
-/// search.solve_query(&query, &mut ops).unwrap();
-/// // Only possible path with a hop limit of 1 is edge 0 -> 2.
-/// assert_eq!(search.get_label(&node_index(2)), Some(&4));
+/// let query = PointToPointQuery::new(node_index(0), node_index(2), 0.);
+/// search.solve_query(&query, &mut ops);
+/// // Only possible path with a hop limit of 0 is edge 0 -> 2.
+/// assert_eq!(search.get_label(&node_index(2)), Some(&4.));
 /// assert_eq!(
 ///     search.get_path(&node_index(2)).unwrap(),
 ///     vec![node_index(0), node_index(2)]
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct HopLimitedDijkstra<O> {
     ops: O,
     hop_limit: u8,
 }
 
 impl<O> HopLimitedDijkstra<O> {
-    /// Initialize a new HopLimitedDijkstra instance.
+    /// Initializes a new HopLimitedDijkstra instance.
     pub fn new(ops: O, hop_limit: u8) -> Self {
         HopLimitedDijkstra { ops, hop_limit }
     }
@@ -1287,6 +1216,8 @@ where
     }
 }
 
+/// A [DijkstraOps] that can store a bound to each node.
+#[derive(Clone, Debug)]
 pub struct BoundedDijkstra<O>(pub O);
 
 impl<O> DijkstraOps for BoundedDijkstra<O>
@@ -1412,7 +1343,8 @@ mod tests {
                 TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 0.), (100., 0.)])),
             ),
         ]);
-        let mut ops = ProfileDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
+        let mut ops =
+            ProfileDijkstra::new_forward(&graph, |e: EdgeReference<'_, _>| &graph[e.id()]);
 
         let query = PointToPointQuery::from_default(node_index(0), node_index(4));
         search.solve_query(&query, &mut ops);
@@ -1472,7 +1404,7 @@ mod tests {
             ),
         ]);
         let mut ops =
-            ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
+            ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<'_, _>| &graph[e.id()]);
 
         let query = PointToPointQuery::from_default(node_index(0), node_index(4));
         search.solve_query(&query, &mut ops);

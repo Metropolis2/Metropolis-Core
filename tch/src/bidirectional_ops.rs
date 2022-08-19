@@ -31,9 +31,9 @@ pub trait BidirectionalDijkstraOps {
     type FOps: DijkstraOps<Node = Self::Node>;
     /// Type of the backward search [DijkstraOps].
     type BOps: DijkstraOps<Node = Self::Node>;
-    /// Return a mutable reference to the forward search [DijkstraOps].
+    /// Returns a mutable reference to the forward search [DijkstraOps].
     fn forward_ops(&mut self) -> &mut Self::FOps;
-    /// Return a mutable reference to the backward search [DijkstraOps].
+    /// Returns a mutable reference to the backward search [DijkstraOps].
     fn backward_ops(&mut self) -> &mut Self::BOps;
     /// Function called each time the forward and backward search meet, i.e., when the next node to
     /// be settled in one direction has already been explored in the other direction.
@@ -57,6 +57,8 @@ pub trait BidirectionalDijkstraOps {
     ) -> bool {
         false
     }
+    /// Returns `true` if the given node can be stalled, i.e., it can be skipped from the Dijkstra
+    /// search.
     fn can_be_stalled(
         &mut self,
         _node: Self::Node,
@@ -82,9 +84,9 @@ pub trait BidirectionalDijkstraOps {
 /// # Example
 ///
 /// ```
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
-/// use dijkstra::bidirectional_ops::ScalarBidirectionalDijkstra;
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use tch::bidirectional_ops::ScalarBidirectionalDijkstra;
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
@@ -93,20 +95,21 @@ pub trait BidirectionalDijkstraOps {
 /// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), i32>::from_edges(&[(0, 1, 1), (1, 2, 2), (0, 2, 4)]);
+/// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
 /// let mut ops = ScalarBidirectionalDijkstra::new(
 ///     &graph,
-///     |e: EdgeReference<i32>| *e.weight(),
+///     |e: EdgeReference<_>| *e.weight(),
 /// );
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
-/// search.solve_query(&query, &mut ops).unwrap();
-/// assert_eq!(ops.get_score(), Some(3));
+/// search.solve_query(&query, &mut ops);
+/// assert_eq!(ops.get_score(), Some(3.));
 /// assert_eq!(ops.get_meeting_node(), Some(node_index(1)));
 /// assert_eq!(
 ///     search.get_path(node_index(1)).unwrap(),
 ///     vec![node_index(0), node_index(1), node_index(2)]
 /// );
 /// ```
+#[derive(Clone, Debug)]
 pub struct ScalarBidirectionalDijkstra<G1, G2, F1, F2, N, T> {
     forw_ops: ScalarDijkstra<G1, F1>,
     back_ops: ScalarDijkstra<G2, F2>,
@@ -115,7 +118,7 @@ pub struct ScalarBidirectionalDijkstra<G1, G2, F1, F2, N, T> {
 }
 
 impl<G1, G2, F1, F2, N, T> ScalarBidirectionalDijkstra<G1, G2, F1, F2, N, T> {
-    /// Initialize a new ScalarBidirectionalDijkstra from a graph with labels for the forward
+    /// Initializes a new ScalarBidirectionalDijkstra from a graph with labels for the forward
     /// search and a graph with labels for the backward search.
     pub fn new_raw(graph1: G1, edge_label1: F1, graph2: G2, edge_label2: F2) -> Self {
         let forw_ops = ScalarDijkstra::new_forward(graph1, edge_label1);
@@ -130,7 +133,7 @@ impl<G1, G2, F1, F2, N, T> ScalarBidirectionalDijkstra<G1, G2, F1, F2, N, T> {
 }
 
 impl<G: Copy, F: Copy, N, T> ScalarBidirectionalDijkstra<G, G, F, F, N, T> {
-    /// Initialize a new ScalarBidirectionalDijkstra from a graph and labels that are used for both
+    /// Initializes a new ScalarBidirectionalDijkstra from a graph and labels that are used for both
     /// the forward and backward search.
     pub fn new(graph: G, edge_label: F) -> Self {
         ScalarBidirectionalDijkstra::new_raw(graph, edge_label, graph, edge_label)
@@ -138,13 +141,13 @@ impl<G: Copy, F: Copy, N, T> ScalarBidirectionalDijkstra<G, G, F, F, N, T> {
 }
 
 impl<G1, G2, F1, F2, N: Copy, T: Copy> ScalarBidirectionalDijkstra<G1, G2, F1, F2, N, T> {
-    /// Return the meeting node of the forward and backward searches (or `None` if the searches
+    /// Returns the meeting node of the forward and backward searches (or `None` if the searches
     /// have not met).
     pub fn get_meeting_node(&self) -> Option<N> {
         self.meeting_node
     }
 
-    /// Return the minimum score found for the current query (or `None` if no score has been
+    /// Returns the minimum score found for the current query (or `None` if no score has been
     /// found).
     pub fn get_score(&self) -> Option<T> {
         self.score
@@ -203,12 +206,11 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
-/// use dijkstra::bidirectional_ops::BidirectionalProfileDijkstra;
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use ttf::{PwlTTF, TTF};
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use tch::bidirectional_ops::BidirectionalProfileDijkstra;
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -216,33 +218,15 @@ where
 /// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalProfileDijkstra::new(
@@ -251,13 +235,14 @@ where
 ///     HashMap::new(),
 /// );
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
-/// search.solve_query(&query, &mut ops).unwrap();
+/// search.solve_query(&query, &mut ops);
 /// let candidates = ops.get_candidates();
 /// assert_eq!(candidates.len(), 3);
-/// assert_eq!(candidates.get(&node_index(0)), Some(&OrderedFloat(0.)));
-/// assert_eq!(candidates.get(&node_index(1)), Some(&OrderedFloat(3.)));
-/// assert_eq!(candidates.get(&node_index(2)), Some(&OrderedFloat(0.)));
+/// assert_eq!(candidates.get(&node_index(0)), Some(&0.));
+/// assert_eq!(candidates.get(&node_index(1)), Some(&3.));
+/// assert_eq!(candidates.get(&node_index(2)), Some(&0.));
 /// ```
+#[derive(Clone, Debug)]
 pub struct BidirectionalProfileDijkstra<G1, G2, F1, F2, B, CM> {
     forw_ops: ProfileDijkstra<G1, F1, B>,
     back_ops: ProfileDijkstra<G2, F2, B>,
@@ -265,17 +250,17 @@ pub struct BidirectionalProfileDijkstra<G1, G2, F1, F2, B, CM> {
 }
 
 impl<G: Copy, F: Copy, B, CM> BidirectionalProfileDijkstra<G, G, F, F, B, CM> {
-    /// Initialize a new BidirectionalProfileDijkstra, given a graph and weights used for both the
-    /// forward and backward searches, and a [NodeMap] used to store the candidates,
+    /// Initializes a new BidirectionalProfileDijkstra, given a graph and weights used for both the
+    /// forward and backward searches, and a map used to store the candidates,
     pub fn new(graph: G, edge_label: F, candidates: CM) -> Self {
         BidirectionalProfileDijkstra::new_raw(graph, edge_label, graph, edge_label, candidates)
     }
 }
 
 impl<G1, G2, F1, F2, B, CM> BidirectionalProfileDijkstra<G1, G2, F1, F2, B, CM> {
-    /// Initialize a new BidirectionalProfileDijkstra, given a graph and weights for the forward
-    /// search, another graph and weights for the backward search, and a [NodeMap] used to store
-    /// the candidates.
+    /// Initializes a new BidirectionalProfileDijkstra, given a graph and weights for the forward
+    /// search, another graph and weights for the backward search, and a map used to store the
+    /// candidates.
     pub fn new_raw(
         graph1: G1,
         edge_label1: F1,
@@ -292,7 +277,7 @@ impl<G1, G2, F1, F2, B, CM> BidirectionalProfileDijkstra<G1, G2, F1, F2, B, CM> 
         }
     }
 
-    /// Return a reference to the map of candidates.
+    /// Returns a reference to the map of candidates.
     ///
     /// This is a map `N -> T`, that gives, for each candidate node `n`, a lower bound for the
     /// travel time between a source and a target when going through this node.
@@ -365,65 +350,44 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use ttf::{PwlTTF, TTF};
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 /// use tch::bidirectional_ops::BidirectionalTCHEA;
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalTCHEA::new(
 ///     &graph,
 ///     |e: EdgeReference<_>| &graph[e.id()],
 ///     HashMap::new(),
-///     HashMap::new(),
-///     HashMap::new(),
 /// );
-/// let zero = OrderedFloat(0.);
 /// let query =
-///     BidirectionalPointToPointQuery::new(node_index(0), node_index(2), zero, [zero, zero]);
-/// search.solve_query(&query, &mut ops).unwrap();
+///     BidirectionalPointToPointQuery::new(node_index(0), node_index(2), 0., [0., 0.]);
+/// search.solve_query(&query, &mut ops);
 /// let candidates = ops.get_candidates();
 /// assert_eq!(candidates.len(), 3);
-/// assert_eq!(candidates.get(&node_index(0)), Some(&(zero, zero)));
-/// assert_eq!(candidates.get(&node_index(1)), Some(&(OrderedFloat(3.), OrderedFloat(1.))));
-/// assert_eq!(candidates.get(&node_index(2)), Some(&(OrderedFloat(3.), OrderedFloat(3.))));
+/// assert_eq!(candidates.get(&node_index(0)), Some(&(0., 0.)));
+/// assert_eq!(candidates.get(&node_index(1)), Some(&(3., 1.)));
+/// assert_eq!(candidates.get(&node_index(2)), Some(&(3., 3.)));
 /// ```
+#[derive(Clone, Debug)]
 pub struct BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> {
     forw_ops: TimeDependentDijkstra<G1, F1, B0>,
     back_ops: ProfileIntervalDijkstra<G2, F2, B1>,
@@ -431,17 +395,16 @@ pub struct BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> {
 }
 
 impl<G: Copy, F: Copy, B0, B1, CM> BidirectionalTCHEA<G, G, F, F, B0, B1, CM> {
-    /// Initialize a new BidirectionalTCHEA, given a graph and weights used for both the forward
-    /// and backward searches, and a [NodeMap] used to store the candidates,
+    /// Initializes a new BidirectionalTCHEA, given a graph and weights used for both the forward
+    /// and backward searches, and a map used to store the candidates,
     pub fn new(graph: G, edge_label: F, candidates: CM) -> Self {
         BidirectionalTCHEA::new_raw(graph, edge_label, graph, edge_label, candidates)
     }
 }
 
 impl<G1, G2, F1, F2, B0, B1, CM> BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> {
-    /// Initialize a new BidirectionalTCHEA, given a graph and weights for the forward search,
-    /// another graph and weights for the backward search, and a [NodeMap] used to store the
-    /// candidates.
+    /// Initializes a new BidirectionalTCHEA, given a graph and weights for the forward search,
+    /// another graph and weights for the backward search, and a map used to store the candidates.
     pub fn new_raw(
         graph1: G1,
         edge_label1: F1,
@@ -458,7 +421,7 @@ impl<G1, G2, F1, F2, B0, B1, CM> BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> 
         }
     }
 
-    /// Return a reference to the map of candidates.
+    /// Returns a reference to the map of candidates.
     ///
     /// This is a map `N -> (T, T)`, that gives, for each candidate node `n`, a tuple `(t0, t1)`
     /// where `t0` is a lower bound for the arrival time to a target when going through node `n`
@@ -467,9 +430,6 @@ impl<G1, G2, F1, F2, B0, B1, CM> BidirectionalTCHEA<G1, G2, F1, F2, B0, B1, CM> 
         &self.candidates
     }
 }
-
-pub type TcheaFData<G1, F1, T> = <TimeDependentDijkstra<G1, F1, T> as DijkstraOps>::Data;
-pub type TcheaBData<G2, F2, T> = <ProfileIntervalDijkstra<G2, F2, T> as DijkstraOps>::Data;
 
 impl<'a, G1, G2, F1, F2, N, T, CM> BidirectionalDijkstraOps
     for BidirectionalTCHEA<G1, G2, F1, F2, T, T, CM>
@@ -584,63 +544,43 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use ttf::{PwlTTF, TTF};
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
 /// use tch::bidirectional_ops::BidirectionalTCHProfile;
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), PWLFunction<_>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalTCHProfile::new(
 ///     &graph,
 ///     |e: EdgeReference<_>| &graph[e.id()],
 ///     HashMap::new(),
-///     HashMap::new(),
-///     HashMap::new(),
 /// );
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
-/// search.solve_query(&query, &mut ops).unwrap();
+/// search.solve_query(&query, &mut ops);
 /// let candidates = ops.get_candidates();
 /// assert_eq!(candidates.len(), 3);
-/// assert_eq!(candidates.get(&node_index(0)), Some(&OrderedFloat(0.)));
-/// assert_eq!(candidates.get(&node_index(1)), Some(&OrderedFloat(3.)));
-/// assert_eq!(candidates.get(&node_index(2)), Some(&OrderedFloat(0.)));
+/// assert_eq!(candidates.get(&node_index(0)), Some(&0.));
+/// assert_eq!(candidates.get(&node_index(1)), Some(&3.));
+/// assert_eq!(candidates.get(&node_index(2)), Some(&0.));
 /// ```
+#[derive(Clone, Debug)]
 pub struct BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
     forw_ops: ProfileDijkstra<G1, F1, B>,
     back_ops: ProfileDijkstra<G2, F2, B>,
@@ -648,17 +588,17 @@ pub struct BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
 }
 
 impl<G: Copy, F: Copy, B, CM> BidirectionalTCHProfile<G, G, F, F, B, CM> {
-    /// Initialize a new BidirectionalTCHProfile, given a graph and weights used for both the
-    /// forward and backward searches, and a [NodeMap] used to store the candidates,
+    /// Initializes a new BidirectionalTCHProfile, given a graph and weights used for both the
+    /// forward and backward searches, and a map used to store the candidates,
     pub fn new(graph: G, edge_label: F, candidates: CM) -> Self {
         BidirectionalTCHProfile::new_raw(graph, edge_label, graph, edge_label, candidates)
     }
 }
 
 impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
-    /// Initialize a new BidirectionalTCHProfile, given a graph and weights for the forward
-    /// search, another graph and weights for the backward search, and a [NodeMap] used to store
-    /// the candidates.
+    /// Initializes a new BidirectionalTCHProfile, given a graph and weights for the forward
+    /// search, another graph and weights for the backward search, and a map used to store the
+    /// candidates.
     pub fn new_raw(
         graph1: G1,
         edge_label1: F1,
@@ -675,7 +615,7 @@ impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfile<G1, G2, F1, F2, B, CM> {
         }
     }
 
-    /// Return a reference to the map of candidates.
+    /// Returns a reference to the map of candidates.
     ///
     /// This is a map `N -> T`, that gives, for each candidate node `n`, a lower bound for the
     /// travel time between a source and a target when going through this node.
@@ -740,6 +680,7 @@ where
 /// The algorithm executes a [ProfileIntervalDijkstra] in both direction.
 ///
 /// Stall-on-demand is used, as described in Section 5.4 of Batz et al. (2013)[^ref].
+#[derive(Clone, Debug)]
 pub struct BidirectionalTCHProfileInterval<G1, G2, F1, F2, B, CM> {
     forw_ops: BoundedDijkstra<ProfileIntervalDijkstra<G1, F1, B>>,
     back_ops: BoundedDijkstra<ProfileIntervalDijkstra<G2, F2, B>>,
@@ -747,8 +688,8 @@ pub struct BidirectionalTCHProfileInterval<G1, G2, F1, F2, B, CM> {
 }
 
 impl<G: Copy, F: Copy, B, CM> BidirectionalTCHProfileInterval<G, G, F, F, B, CM> {
-    /// Initialize a new BidirectionalTCHProfile, given a graph and weights used for both the
-    /// forward and backward searches, and a [NodeMap] used to store the candidates,
+    /// Initializes a new BidirectionalTCHProfile, given a graph and weights used for both the
+    /// forward and backward searches, and a map used to store the candidates,
     pub fn new(graph: G, edge_label: F, candidate_map: CM) -> Self {
         BidirectionalTCHProfileInterval::new_raw(
             graph,
@@ -761,9 +702,8 @@ impl<G: Copy, F: Copy, B, CM> BidirectionalTCHProfileInterval<G, G, F, F, B, CM>
 }
 
 impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfileInterval<G1, G2, F1, F2, B, CM> {
-    /// Initialize a new BidirectionalTCHProfile, given a graph and weights for the forward
-    /// search, another graph and weights for the backward search, and a [NodeMap] used to store
-    /// the candidates.
+    /// Initializes a new BidirectionalTCHProfile, given a graph and weights for the forward search,
+    /// another graph and weights for the backward search, and a map used to store the candidates.
     pub fn new_raw(
         graph1: G1,
         edge_label1: F1,
@@ -780,7 +720,7 @@ impl<G1, G2, F1, F2, B, CM> BidirectionalTCHProfileInterval<G1, G2, F1, F2, B, C
         }
     }
 
-    /// Return a reference to the map of candidates.
+    /// Returns a reference to the map of candidates.
     ///
     /// This is a map `N -> T`, that gives, for each candidate node `n`, a lower bound for the
     /// travel time between a source and a target when going through this node.

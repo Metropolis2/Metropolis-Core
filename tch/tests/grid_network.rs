@@ -4,7 +4,6 @@ use petgraph::visit::EdgeRef;
 use priority_queue::PriorityQueue;
 use ttf::{PwlTTF, TTF};
 
-use tch::node_data::NodeData;
 use tch::ops::ScalarDijkstra;
 use tch::*;
 
@@ -144,9 +143,9 @@ fn hop_limit_test() {
         search
             .node_map()
             .values()
-            .map(|v| v.label())
+            .map(|v| v.data.0)
             .max_by(|a, b| a.partial_cmp(b).unwrap()),
-        Some(&3.)
+        Some(3.)
     );
 }
 
@@ -387,11 +386,11 @@ fn contraction_hierarchies_test() {
     assert_eq!(arr_time, 25.);
     assert_eq!(path.len(), 2);
     assert_eq!(
-        ch.get_graph().edge_endpoints(path[0]),
+        graph.edge_endpoints(path[0]),
         Some((node_index(0), node_index(n)))
     );
     assert_eq!(
-        ch.get_graph().edge_endpoints(path[1]),
+        graph.edge_endpoints(path[1]),
         Some((node_index(n), node_index(n + 1)))
     );
 
@@ -410,11 +409,11 @@ fn contraction_hierarchies_test() {
     assert_eq!(arr_time, 5000. + 30.);
     assert_eq!(path.len(), 2);
     assert_eq!(
-        ch.get_graph().edge_endpoints(path[0]),
+        graph.edge_endpoints(path[0]),
         Some((node_index(0), node_index(1)))
     );
     assert_eq!(
-        ch.get_graph().edge_endpoints(path[1]),
+        graph.edge_endpoints(path[1]),
         Some((node_index(1), node_index(n + 1)))
     );
 
@@ -505,11 +504,11 @@ fn contraction_hierarchies_test() {
     assert_eq!(arr_time, 25.);
     assert_eq!(path.len(), 2);
     assert_eq!(
-        ch2.get_graph().edge_endpoints(path[0]),
+        graph.edge_endpoints(path[0]),
         Some((node_index(0), node_index(n)))
     );
     assert_eq!(
-        ch2.get_graph().edge_endpoints(path[1]),
+        graph.edge_endpoints(path[1]),
         Some((node_index(n), node_index(n + 1)))
     );
 
@@ -528,11 +527,11 @@ fn contraction_hierarchies_test() {
     assert_eq!(arr_time, 5000. + 30.);
     assert_eq!(path.len(), 2);
     assert_eq!(
-        ch2.get_graph().edge_endpoints(path[0]),
+        graph.edge_endpoints(path[0]),
         Some((node_index(0), node_index(1)))
     );
     assert_eq!(
-        ch2.get_graph().edge_endpoints(path[1]),
+        graph.edge_endpoints(path[1]),
         Some((node_index(1), node_index(n + 1)))
     );
 

@@ -35,7 +35,7 @@ where
 }
 
 impl<FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2> {
-    /// Initialize a new BidirectionalDijkstraSearch from a forward and a backward
+    /// Initializes a new BidirectionalDijkstraSearch from a forward and a backward
     /// [DijkstraSearch].
     pub fn new(
         forward_search: DijkstraSearch<FData, PQ1>,
@@ -48,12 +48,12 @@ impl<FData, BData, PQ1, PQ2> BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>
         }
     }
 
-    /// Return a reference to the [DijkstraSearch] for the forward direction.
+    /// Returns a reference to the [DijkstraSearch] for the forward direction.
     pub fn get_forward_search(&self) -> &DijkstraSearch<FData, PQ1> {
         &self.forward_search
     }
 
-    /// Return a reference to the [DijkstraSearch] for the backward direction.
+    /// Returns a reference to the [DijkstraSearch] for the backward direction.
     pub fn get_backward_search(&self) -> &DijkstraSearch<BData, PQ2> {
         &self.backward_search
     }
@@ -64,7 +64,7 @@ where
     PQ1: MinPriorityQueue,
     PQ2: MinPriorityQueue,
 {
-    /// Reset all data structures of the BidirectionalDijkstraSearch.
+    /// Resets all data structures of the BidirectionalDijkstraSearch.
     pub fn reset(&mut self) {
         self.forward_search.reset();
         self.backward_search.reset();
@@ -79,7 +79,7 @@ where
     FKey: Copy,
     BKey: Copy,
 {
-    /// Reset the search and initialize a new [BidirectionalQueryRef], using the given
+    /// Resets the search and initialize a new [BidirectionalQueryRef], using the given
     /// [BidirectionalDijkstraOps].
     pub fn init_query<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
@@ -96,7 +96,8 @@ where
             .init_query(query.reverse(), ops.backward_ops());
     }
 
-    /// Initialize and solve a [BidirectionalQueryRef], using the given [BidirectionalDijkstraOps].
+    /// Initializes and solve a [BidirectionalQueryRef], using the given
+    /// [BidirectionalDijkstraOps].
     ///
     /// This does not return any result but the results can be retrieved from the internal structure
     /// of the BidirectionalDijkstraSearch or from the BidirectionalDijkstraOps.
@@ -124,7 +125,7 @@ where
         self.solve(query, ops);
     }
 
-    /// Switch the direction of the search.
+    /// Switches the direction of the search.
     ///
     /// If the priority queue of the new direction is empty, the direction is not switched so that
     /// both priority queues get emptied before the algorithm stops.
@@ -143,7 +144,7 @@ where
         }
     }
 
-    /// Find the next node that needs to be settled and settle it.
+    /// Finds the next node that needs to be settled and settle it.
     pub fn next<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
         Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
@@ -222,7 +223,7 @@ where
         }
     }
 
-    /// Solve a query by settling nodes until the priority queues for both directions are empty.
+    /// Solves a query by settling nodes until the priority queues for both directions are empty.
     pub fn solve<Q, O, FLabel, BLabel>(&mut self, query: Q, ops: &mut O)
     where
         Q: BidirectionalQueryRef<Node = NodeIndex, Label = FLabel, RevLabel = BLabel>,
@@ -237,7 +238,7 @@ where
         }
     }
 
-    /// Emtpy the priority queue of both the forward and backward search.
+    /// Empties the priority queue of both the forward and backward search.
     fn empty_queues(&mut self) {
         self.forward_search.empty_queue();
         self.backward_search.empty_queue();
@@ -249,7 +250,7 @@ where
     FData: NodeData<Predecessor = NodeIndex>,
     BData: NodeData<Predecessor = NodeIndex>,
 {
-    /// Return a path from a source to a target of the current query, given the meeting node of the
+    /// Returns a path from a source to a target of the current query, given the meeting node of the
     /// forward and backward search.
     ///
     /// The path returned is valid only if the predecessor maps of the forward and backward

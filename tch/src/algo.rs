@@ -1,3 +1,4 @@
+//! Set of algorithm to compute time-dependent shortest paths.
 use crate::bidirectional_ops::{
     BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
 };
@@ -18,20 +19,19 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::{EdgeFiltered, EdgeRef, IntoEdgesDirected};
 use ttf::{TTFNum, TTF};
 
-/// Return the metric resulting from a profile query.
+/// Returns the metric resulting from a profile query.
 ///
-/// Return `None` if no source and target can be linked.
+/// Returns `None` if no source and target can be linked.
 ///
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch, NoPredecessor};
-/// use dijkstra::algo::profile_query;
-/// use dijkstra::bidirectional_ops::BidirectionalProfileDijkstra;
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use ttf::{PwlTTF, TTF};
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use tch::algo::profile_query;
+/// use tch::bidirectional_ops::BidirectionalProfileDijkstra;
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -41,33 +41,15 @@ use ttf::{TTFNum, TTF};
 /// let back_search =
 ///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), PWLFunction<OrderedFloat<f32>>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<f32>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalProfileDijkstra::new(
@@ -78,14 +60,15 @@ use ttf::{TTFNum, TTF};
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
 /// let label = profile_query(&mut search, &query, &mut ops);
 /// assert_eq!(
-///     label.unwrap(),
+///     label,
 ///     Some(
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(3.)),
-///             (OrderedFloat(2.5), OrderedFloat(3.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap()
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![
+///                 (0., 3.),
+///                 (2.5, 3.),
+///                 (10., 0.),
+///             ])
+///         )
 ///     )
 /// );
 /// ```
@@ -161,15 +144,19 @@ where
     flabel.link(blabel)
 }
 
+/// Memory allocation that can be used when computing earliest-arrival queries.
 #[derive(Clone, Debug, Default)]
 pub struct EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3> {
+    /// Allocation for the bidirectional search.
     search: BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>,
+    /// Allocation for the downward search.
     downward_search: DijkstraSearch<DData, PQ3>,
 }
 
 impl<FData, BData, DData, PQ1, PQ2, PQ3>
     EarliestArrivalAllocation<FData, BData, DData, PQ1, PQ2, PQ3>
 {
+    /// Creates a new EarliestArrivalAllocation.
     pub fn new(
         search: BidirectionalDijkstraSearch<FData, BData, PQ1, PQ2>,
         downward_search: DijkstraSearch<DData, PQ3>,
@@ -188,15 +175,16 @@ where
     PQ2: MinPriorityQueue,
     PQ3: MinPriorityQueue,
 {
+    /// Resets the allocation so that it can be used again.
     pub fn reset(&mut self) {
         self.search.reset();
         self.downward_search.reset();
     }
 }
 
-/// Return the arrival time and path resulting from a bidirectional earliest-arrival query.
+/// Returns the arrival time and path resulting from a bidirectional earliest-arrival query.
 ///
-/// Return `None` if the source and target cannot be linked.
+/// Returns `None` if the source and target cannot be linked.
 ///
 /// This corresponds to Algorithm 4 in Batz et al. (2013)[^ref].
 ///
@@ -207,47 +195,28 @@ where
 /// # Example
 ///
 /// ```
-/// use breakpoint_function::PWLFunction;
-/// use dijkstra::{DijkstraSearch, BidirectionalDijkstraSearch};
+/// use ttf::{PwlTTF, TTF};
+/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
 /// use tch::algo::{EarliestArrivalAllocation, earliest_arrival_query};
 /// use tch::bidirectional_ops::BidirectionalTCHEA;
-/// use dijkstra::query::BidirectionalPointToPointQuery;
+/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
-/// use ordered_float::OrderedFloat;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-/// let graph = DiGraph::<(), PWLFunction<OrderedFloat<f32>>>::from_edges(&[
-///     (
-///         0,
-///         1,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(1.)),
-///             (OrderedFloat(10.), OrderedFloat(1.)),
-///         ])
-///         .unwrap(),
-///     ),
-///     (
-///         1,
-///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(2.)),
-///             (OrderedFloat(10.), OrderedFloat(2.)),
-///         ])
-///         .unwrap(),
-///     ),
+/// let graph = DiGraph::<(), TTF<f32>>::from_edges(&[
+///     (0, 1, TTF::Constant(1.)),
+///     (1, 2, TTF::Constant(2.)),
 ///     (
 ///         0,
 ///         2,
-///         PWLFunction::from_breakpoints(vec![
-///             (OrderedFloat(0.), OrderedFloat(4.)),
-///             (OrderedFloat(10.), OrderedFloat(0.)),
-///         ])
-///         .unwrap(),
+///         TTF::Piecewise(
+///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///         ),
 ///     ),
 /// ]);
 /// let edge_label = |e: EdgeReference<_>| &graph[e.id()];
@@ -255,24 +224,21 @@ where
 ///     &graph,
 ///     edge_label,
 ///     HashMap::new(),
-///     HashMap::new(),
-///     HashMap::new(),
 /// );
-/// let zero = OrderedFloat(0.);
 /// let query = BidirectionalPointToPointQuery::new(
 ///     node_index(0),
 ///     node_index(2),
-///     OrderedFloat(5.),
-///     [zero, zero]
+///     5.,
+///     [0., 0.]
 /// );
 /// let down_search =
-///     DijkstraSearch::new(HashMap::new(), HashMap::new(), PriorityQueue::new());
+///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut alloc = EarliestArrivalAllocation::new(search, down_search);
 /// let results =
 ///     earliest_arrival_query(&mut alloc, &query, &mut ops, &graph, edge_label);
 /// assert_eq!(
 ///     results.unwrap(),
-///     Some((OrderedFloat(7.), vec![node_index(0), node_index(2)])),
+///     Some((7., vec![node_index(0), node_index(2)])),
 /// );
 /// ```
 pub fn earliest_arrival_query<'a, PQ1, PQ2, PQ3, G1, G2, G3, F1, F2, F3, CM, Q, T>(
@@ -373,6 +339,10 @@ where
     Ok(path)
 }
 
+/// Returns the minimum [TTF] between source and target using the given forward and backward search
+/// spaces.
+///
+/// Returns an error if either the source or target node is not in the search spaces.
 pub fn intersect_profile_query<T: TTFNum>(
     source: NodeIndex,
     target: NodeIndex,

@@ -1,10 +1,10 @@
 use crate::TTFNum;
 
 use num_traits::Num;
+use serde::{Deserialize, Serialize};
 use std::ops;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Point<X, Y> {
     pub x: X,
     pub y: Y,
@@ -74,14 +74,14 @@ where
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Rotation {
+pub(crate) enum Rotation {
     Colinear,
     Clockwise,
     CounterClockwise,
 }
 
 #[inline]
-pub fn rotation<X, Y, T>(a: &Point<X, Y>, b: &Point<X, Y>, c: &Point<X, Y>) -> Rotation
+pub(crate) fn rotation<X, Y, T>(a: &Point<X, Y>, b: &Point<X, Y>, c: &Point<X, Y>) -> Rotation
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T>,
@@ -104,7 +104,7 @@ where
 }
 
 #[inline]
-pub fn intersect<T: TTFNum>(
+pub(crate) fn intersect<T: TTFNum>(
     a: &Point<T, T>,
     b: &Point<T, T>,
     p: &Point<T, T>,
@@ -124,7 +124,7 @@ pub fn intersect<T: TTFNum>(
 }
 
 #[inline]
-pub fn intersection_point<T: TTFNum>(
+pub(crate) fn intersection_point<T: TTFNum>(
     a: &Point<T, T>,
     b: &Point<T, T>,
     p: &Point<T, T>,
@@ -139,10 +139,10 @@ pub fn intersection_point<T: TTFNum>(
             / perp_dot_product::<T, T, T>(&(*p - *q), &(*b - *a)))
 }
 
-/// Return the intersection point of the line (a, b), with `a.x < b.x`, and the horizontal line
+/// Returns the intersection point of the line (a, b), with `a.x < b.x`, and the horizontal line
 /// given by the equation `y = c`.
 #[inline]
-pub fn intersection_point_horizontal<T: TTFNum>(
+pub(crate) fn intersection_point_horizontal<T: TTFNum>(
     a: &Point<T, T>,
     b: &Point<T, T>,
     c: T,
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn intersect_test() {
-        let a: Point<f64> = Point { x: 0., y: 0. };
+        let a: Point<f64, f64> = Point { x: 0., y: 0. };
         let b = Point { x: 1., y: 1. };
         // Parallel.
         assert!(!intersect(
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn intersection_point_test() {
-        let a: Point<f64> = Point { x: 0., y: 0. };
+        let a: Point<f64, f64> = Point { x: 0., y: 0. };
         let b = Point { x: 1., y: 1. };
         assert_eq!(
             intersection_point(&a, &b, &Point { x: 0., y: 1. }, &Point { x: 1., y: 0. }),

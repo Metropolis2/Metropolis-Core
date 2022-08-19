@@ -8,17 +8,17 @@ pub trait Query {
     type Node;
     /// Type of the node labels.
     type Label;
-    /// Iterate over the source nodes of the query.
+    /// Iterates over the source nodes of the query.
     fn sources<'a>(&'a self) -> Box<dyn Iterator<Item = Self::Node> + 'a>;
-    /// Return the target node of the query (if any).
+    /// Returns the target node of the query (if any).
     fn target(&self) -> Option<Self::Node>;
-    /// Iterate over the source nodes together with their initial label.
+    /// Iterates over the source nodes together with their initial label.
     fn sources_with_labels<'a>(
         &'a self,
     ) -> Box<dyn Iterator<Item = (Self::Node, Self::Label)> + 'a>;
 }
 
-impl<'b, Q> Query for &'b Q
+impl<Q> Query for &Q
 where
     Q: Query,
 {
@@ -38,7 +38,7 @@ where
 /// A copyable reference to a [Query].
 pub trait QueryRef: Copy + Query {}
 
-impl<'a, Q> QueryRef for &'a Q where Q: Query {}
+impl<Q> QueryRef for &Q where Q: Query {}
 
 /// A Dijkstra query with 1 or more source nodes and 1 or more target nodes and that can be run in
 /// both directions.
@@ -47,11 +47,11 @@ pub trait BidirectionalQuery: Query {
     type RevLabel;
     /// Type of the reverse query.
     type RevQuery: Query<Node = Self::Node, Label = Self::RevLabel>;
-    /// Return the query corresponding to the reverse direction.
+    /// Returns the query corresponding to the reverse direction.
     fn reverse(&self) -> &Self::RevQuery;
 }
 
-impl<'b, Q> BidirectionalQuery for &'b Q
+impl<Q> BidirectionalQuery for &Q
 where
     Q: BidirectionalQuery,
 {
@@ -65,16 +65,17 @@ where
 /// A copyable reference to a [BidirectionalQuery].
 pub trait BidirectionalQueryRef: Copy + BidirectionalQuery + QueryRef {}
 
-impl<'a, Q> BidirectionalQueryRef for &'a Q where Q: BidirectionalQuery {}
+impl<Q> BidirectionalQueryRef for &Q where Q: BidirectionalQuery {}
 
 /// A query from one source node to all nodes.
+#[derive(Clone, Debug)]
 pub struct SingleSourceQuery<N, L> {
     source: N,
     initial_label: L,
 }
 
 impl<N, L> SingleSourceQuery<N, L> {
-    /// Create a new [SingleSourceQuery] from the given source node and its initial label.
+    /// Creates a new [SingleSourceQuery] from the given source node and its initial label.
     pub fn new(source: N, initial_label: L) -> Self {
         SingleSourceQuery {
             source,
@@ -84,7 +85,7 @@ impl<N, L> SingleSourceQuery<N, L> {
 }
 
 impl<N, L: Default> SingleSourceQuery<N, L> {
-    /// Create a new [SingleSourceQuery] from the given source node, using the default value as
+    /// Creates a new [SingleSourceQuery] from the given source node, using the default value as
     /// label.
     pub fn from_default(source: N) -> Self {
         SingleSourceQuery::new(source, Default::default())
@@ -106,6 +107,7 @@ impl<N: Copy, L: Clone> Query for SingleSourceQuery<N, L> {
 }
 
 /// A query from one source node to one target node.
+#[derive(Clone, Debug)]
 pub struct PointToPointQuery<N, L> {
     source: N,
     target: N,
@@ -113,7 +115,7 @@ pub struct PointToPointQuery<N, L> {
 }
 
 impl<N, L> PointToPointQuery<N, L> {
-    /// Create a new [PointToPointQuery] from the given source and target node and the initial
+    /// Creates a new [PointToPointQuery] from the given source and target node and the initial
     /// label of the source node.
     pub fn new(source: N, target: N, initial_label: L) -> Self {
         PointToPointQuery {
@@ -125,7 +127,7 @@ impl<N, L> PointToPointQuery<N, L> {
 }
 
 impl<N, L: Default> PointToPointQuery<N, L> {
-    /// Create a new [PointToPointQuery] from the given source and target node, using the default
+    /// Creates a new [PointToPointQuery] from the given source and target node, using the default
     /// value as label.
     pub fn from_default(source: N, target: N) -> Self {
         PointToPointQuery::new(source, target, Default::default())
@@ -147,6 +149,7 @@ impl<N: Copy, L: Clone> Query for PointToPointQuery<N, L> {
 }
 
 /// A query from multiple source nodes to all other nodes.
+#[derive(Clone, Debug)]
 pub struct MultipleSourcesQuery<N, L> {
     sources: Vec<N>,
     labels: Vec<L>,
@@ -154,7 +157,8 @@ pub struct MultipleSourcesQuery<N, L> {
 }
 
 impl<N, L> MultipleSourcesQuery<N, L> {
-    /// Create a new [MultipleSourcesQuery] from a vector of source nodes and their initial labels.
+    /// Creates a new [MultipleSourcesQuery] from a vector of source nodes and their initial
+    /// labels.
     ///
     /// To get the label of a given source node, the query cycles over the labels so the number of
     /// labels can be smaller or larger than the number of source nodes.
@@ -166,8 +170,8 @@ impl<N, L> MultipleSourcesQuery<N, L> {
         }
     }
 
-    /// Create a new [MultipleSourcesQuery] from a vector of source nodes, their initial labels and
-    /// a target node.
+    /// Creates a new [MultipleSourcesQuery] from a vector of source nodes, their initial labels
+    /// and a target node.
     ///
     /// To get the label of a given source node, the query cycles over the labels so the number of
     /// labels can be smaller or larger than the number of source nodes.
@@ -181,7 +185,7 @@ impl<N, L> MultipleSourcesQuery<N, L> {
 }
 
 impl<N, L: Default> MultipleSourcesQuery<N, L> {
-    /// Create a new [MultipleSourcesQuery] from a vector of source nodes, using the default value
+    /// Creates a new [MultipleSourcesQuery] from a vector of source nodes, using the default value
     /// as label.
     pub fn from_default(sources: Vec<N>) -> Self {
         MultipleSourcesQuery::new(sources, vec![Default::default()])
@@ -209,13 +213,14 @@ impl<N: Copy, L: Clone> Query for MultipleSourcesQuery<N, L> {
 }
 
 /// A bidirectional query from one source to one target.
+#[derive(Clone, Debug)]
 pub struct BidirectionalPointToPointQuery<N, L0, L1> {
     forw_query: PointToPointQuery<N, L0>,
     back_query: PointToPointQuery<N, L1>,
 }
 
 impl<N: Copy, L0, L1> BidirectionalPointToPointQuery<N, L0, L1> {
-    /// Create a new [BidirectionalPointToPointQuery] from a source and target node and their
+    /// Creates a new [BidirectionalPointToPointQuery] from a source and target node and their
     /// respective initial label.
     pub fn new(source: N, target: N, forward_label: L0, backward_label: L1) -> Self {
         let forw_query = PointToPointQuery::new(source, target, forward_label);
@@ -228,7 +233,7 @@ impl<N: Copy, L0, L1> BidirectionalPointToPointQuery<N, L0, L1> {
 }
 
 impl<N: Copy, L0: Default, L1: Default> BidirectionalPointToPointQuery<N, L0, L1> {
-    /// Create a new [BidirectionalPointToPointQuery] from a source and target node, using the
+    /// Creates a new [BidirectionalPointToPointQuery] from a source and target node, using the
     /// default values as labels.
     pub fn from_default(source: N, target: N) -> Self {
         let forw_query = PointToPointQuery::new(source, target, Default::default());

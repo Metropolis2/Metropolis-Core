@@ -89,7 +89,7 @@ pub fn main() -> Result<()> {
     println!("Number of breakpoints: {}", ch.complexity());
     let approx_ch = if true {
         let now = Instant::now();
-        let mut approx_ch = ch.clone();
+        let mut approx_ch = ch;
         println!("Approximating TTFs");
         approx_ch.simplify(TTFSimplification::Bound(10.0));
         println!(

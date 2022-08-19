@@ -5,6 +5,7 @@ use serde::Serialize;
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
 
+/// Trait for numbers that support a wide variety of operations.
 pub trait TTFNum:
     Float
     + FromPrimitive
@@ -17,23 +18,37 @@ pub trait TTFNum:
     + Serialize
     + DeserializeOwned
 {
+    /// Returns a small number representing a small error margin.
     fn small_margin() -> Self;
+    /// Returns a small number representing a large error margin.
     fn large_margin() -> Self;
+    /// Returns the average between two numbers.
     #[must_use]
     fn average(&self, other: &Self) -> Self;
+    /// Returns `true` if the two numbers are equal (allowing for a small approximation error).
     fn approx_eq(&self, other: &Self) -> bool;
+    /// Returns `true` if the two number are not equal.
     fn approx_ne(&self, other: &Self) -> bool {
         !self.approx_eq(other)
     }
+    /// Returns `true` if the first number is smaller than or equal to the second number (allowing
+    /// for a small approximation error).
     fn approx_le(&self, other: &Self) -> bool;
+    /// Returns `true` if the first number is smaller than the second number (allowing for a small
+    /// approximation error).
     fn approx_lt(&self, other: &Self) -> bool;
+    /// Returns `true` if the first number is greater than or equal to the second number (allowing
+    /// for a small approximation error).
     fn approx_ge(&self, other: &Self) -> bool {
         // self >= other - margin  -->  other <= self + margin
         other.approx_le(self)
     }
+    /// Returns `true` if the first number is greater than the second number (allowing for a small
+    /// approximation error).
     fn approx_gt(&self, other: &Self) -> bool {
         other.approx_lt(self)
     }
+    /// Returns the minimum of two numbers.
     #[must_use]
     fn min(&self, other: &Self) -> Self {
         if self < other {
@@ -42,6 +57,7 @@ pub trait TTFNum:
             *other
         }
     }
+    /// Returns the maximum of two numbers.
     #[must_use]
     fn max(&self, other: &Self) -> Self {
         if self > other {
@@ -93,87 +109,3 @@ impl TTFNum for f64 {
         (self + other) / 2.0
     }
 }
-
-// impl TTFNum for OrderedFloat<f32> {
-// fn margin() -> Self {
-// OrderedFloat(MARGIN32)
-// }
-// fn approx_eq(self, other: Self) -> bool {
-// (self.0 - other.0).abs() < MARGIN32
-// }
-// fn approx_le(self, other: Self) -> bool {
-// self.0 <= other.0 + MARGIN32
-// }
-// fn approx_lt(self, other: Self) -> bool {
-// self.0 + MARGIN32 < other.0
-// }
-// fn average(self, other: Self) -> Self {
-// (self + other) / 2.0
-// }
-// fn to_usize(self) -> usize {
-// self.0 as usize
-// }
-// }
-
-// impl TTFNum for OrderedFloat<f64> {
-// fn margin() -> Self {
-// OrderedFloat(MARGIN64)
-// }
-// fn approx_eq(self, other: Self) -> bool {
-// (self.0 - other.0).abs() < MARGIN64
-// }
-// fn approx_le(self, other: Self) -> bool {
-// self.0 <= other.0 + MARGIN64
-// }
-// fn approx_lt(self, other: Self) -> bool {
-// self.0 + MARGIN64 < other.0
-// }
-// fn average(self, other: Self) -> Self {
-// (self + other) / 2.0
-// }
-// fn to_usize(self) -> usize {
-// self.0 as usize
-// }
-// }
-
-// impl TTFNum for NotNan<f32> {
-// fn margin() -> Self {
-// unsafe { NotNan::new_unchecked(MARGIN32) }
-// }
-// fn approx_eq(self, other: Self) -> bool {
-// (self.into_inner() - other.into_inner()).abs() < MARGIN32
-// }
-// fn approx_le(self, other: Self) -> bool {
-// self.into_inner() <= other.into_inner() + MARGIN32
-// }
-// fn approx_lt(self, other: Self) -> bool {
-// self.into_inner() + MARGIN32 < other.into_inner()
-// }
-// fn average(self, other: Self) -> Self {
-// (self + other) / 2.0
-// }
-// fn to_usize(self) -> usize {
-// self.into_inner() as usize
-// }
-// }
-
-// impl TTFNum for NotNan<f64> {
-// fn margin() -> Self {
-// unsafe { NotNan::new_unchecked(MARGIN64) }
-// }
-// fn approx_eq(self, other: Self) -> bool {
-// (self.into_inner() - other.into_inner()).abs() < MARGIN64
-// }
-// fn approx_le(self, other: Self) -> bool {
-// self.into_inner() <= other.into_inner() + MARGIN64
-// }
-// fn approx_lt(self, other: Self) -> bool {
-// self.into_inner() + MARGIN64 < other.into_inner()
-// }
-// fn average(self, other: Self) -> Self {
-// (self + other) / 2.0
-// }
-// fn to_usize(self) -> usize {
-// self.into_inner() as usize
-// }
-// }

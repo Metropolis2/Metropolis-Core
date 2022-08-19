@@ -3,30 +3,34 @@ use crate::ttf_num::TTFNum;
 use crate::UndercutDescriptor;
 
 use either::Either;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::cmp::Ordering;
 use std::ops;
 
 const BUCKET_SIZE: usize = 8;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde-1", derive(Serialize))]
+/// A piecewise-linear function represented by a Vec of points `(x, y)`.
+///
+/// The `x` values are of type `X`, the `y` values are of type `Y`.
+/// The `T` generic type is used to convert from `X` to `Y`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PwlXYF<X, Y, T> {
     points: Vec<Point<X, Y>>,
     min: Option<Y>,
     max: Option<Y>,
     period: [X; 2],
-    #[cfg_attr(feature = "serde-1", serde(skip_serializing))]
+    #[serde(skip_serializing)]
     buckets: Vec<usize>,
-    #[cfg_attr(feature = "serde-1", serde(skip_serializing))]
+    #[serde(skip_serializing)]
     bucket_shift: usize,
-    #[cfg_attr(feature = "serde-1", serde(skip_serializing))]
+    #[serde(skip_serializing)]
     convert_type: std::marker::PhantomData<T>,
 }
 
+/// A piecewise-linear function represented by a Vec of points `(x, y)`, where the `x` and `y`
+/// values have the same type.
 pub type PwlTTF<T> = PwlXYF<T, T, T>;
 
-#[cfg(feature = "serde-1")]
 impl<'de, X, Y, T> Deserialize<'de> for PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
@@ -43,16 +47,15 @@ where
     }
 }
 
-#[cfg_attr(feature = "serde-1", derive(Deserialize))]
-#[cfg_attr(feature = "serde-1", serde(rename = "PwlXYF"))]
-pub struct DeserPwlXYF<X, Y> {
+#[derive(Deserialize)]
+#[serde(rename = "PwlXYF")]
+pub(crate) struct DeserPwlXYF<X, Y> {
     points: Vec<Point<X, Y>>,
     min: Option<Y>,
     max: Option<Y>,
     period: [X; 2],
 }
 
-#[cfg(feature = "serde-1")]
 impl<X, Y, T> PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
@@ -80,17 +83,20 @@ where
     Y: TTFNum + Into<T> + From<T>,
     T: TTFNum,
 {
+    /// Creates a new PwlXYF from a Vec of `x` values and a Vec of `y` values.
     pub fn from_x_and_y(x: Vec<X>, y: Vec<Y>) -> Self {
         assert_eq!(x.len(), y.len());
         let period = [x[0], x[x.len() - 1]];
         Self::from_iterator(x.into_iter().zip(y.into_iter()), period)
     }
 
+    /// Creates a new PwlXYF from a Vec of `(x, y)` values.
     pub fn from_breakpoints(points: Vec<(X, Y)>) -> Self {
         let period = [points[0].0, points[points.len() - 1].0];
         Self::from_iterator(points.into_iter(), period)
     }
 
+    /// Creates a new PwlXYF from an Iterator over both `x` and `y` values.
     pub fn from_iterator(iter: impl Iterator<Item = (X, Y)>, period: [X; 2]) -> Self {
         let mut ttf = PwlXYF::new(period);
         for (x, y) in iter {
@@ -124,22 +130,27 @@ where
         }
     }
 
+    /// Returns the period of the function (first and last `x` value).
     pub fn period(&self) -> &[X; 2] {
         &self.period
     }
 
+    /// Iterates over the `(x, y)` values of the function.
     pub fn iter(&self) -> impl Iterator<Item = &Point<X, Y>> {
         self.points.iter()
     }
 
+    /// Iterates over the `x` values of the function.
     pub fn iter_x(&self) -> impl Iterator<Item = &X> {
         self.iter().map(|p| &p.x)
     }
 
+    /// Iterates over the `y` values of the function.
     pub fn iter_y(&self) -> impl Iterator<Item = &Y> {
         self.iter().map(|p| &p.y)
     }
 
+    /// Iterates over values `((x_i, y_i), (x_i+1, y_i+1))`.
     pub fn double_iter(&self) -> impl Iterator<Item = (&Point<X, Y>, &Point<X, Y>)> {
         self.points.iter().zip(self.points[1..].iter())
     }
@@ -199,18 +210,22 @@ where
         }
     }
 
+    /// Returns `true` if the function is empty (there is no breakpoint).
     pub fn is_empty(&self) -> bool {
         self.points.is_empty()
     }
 
+    /// Returns the number of breakpoints of the function.
     pub fn len(&self) -> usize {
         self.points.len()
     }
 
-    pub fn middle_departure_time(&self) -> X {
+    /// Returns the middle `x` value.
+    pub fn middle_x(&self) -> X {
         self.period[0].average(&self.period[1])
     }
 
+    /// Returns the minimum `y` value.
     pub fn get_min(&self) -> Y {
         debug_assert!(self.min.is_some());
         debug_assert!(self.min.unwrap().approx_eq(
@@ -221,23 +236,23 @@ where
         self.min.unwrap()
     }
 
+    /// Returns the maximum `y` value.
     pub fn get_max(&self) -> Y {
         debug_assert!(self.max.is_some());
-        debug_assert!(self.max.unwrap().approx_eq(
-            self.iter_y()
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap()
-        ));
+        debug_assert!(
+            self.max.unwrap().is_infinite()
+                || self.max.unwrap().approx_eq(
+                    self.iter_y()
+                        .max_by(|a, b| a.partial_cmp(b).unwrap())
+                        .unwrap()
+                )
+        );
         self.max.unwrap()
     }
 
+    /// Returns `true` if the function is constant.
     pub fn is_cst(&self) -> bool {
         self.len() == 1
-    }
-
-    pub fn get_cst_value(&self) -> Y {
-        debug_assert!(self.is_cst());
-        self[0].y
     }
 
     fn get_bucket(&self, x: X) -> usize {
@@ -258,6 +273,7 @@ where
         }
     }
 
+    /// Evaluates the value of the function at the given `x` value.
     pub fn eval(&self, x: X) -> Y {
         debug_assert!(!self.is_empty());
         debug_assert!(x >= self.period[0], "{:?} < {:?}", x, self.period[0]);
@@ -334,11 +350,13 @@ where
         }
     }
 
+    /// Returns a new PwlXYF equal to the input PwlXYF plus a constant value.
     #[must_use]
     pub fn add(&self, c: Y) -> Self {
         self.apply(|y| y + c)
     }
 
+    /// Returns a new PwlXYF by applying a given function on the `y` values of the two input PwlXYFs.
     #[must_use]
     pub fn apply<F: Fn(Y) -> Y>(&self, func: F) -> Self {
         debug_assert!(!self.is_empty());
@@ -361,6 +379,9 @@ where
 }
 
 impl<T: TTFNum> PwlTTF<T> {
+    /// Modifies the `y` values to force the PwlTTF to be FIFO (first-in, first-out).
+    ///
+    /// A PwlTTF is FIFO if its `z = x + y` values are non-decreasing.
     pub fn ensure_fifo(&mut self) {
         for i in 1..self.len() {
             if self[i].x + self[i].y < self[i - 1].x + self[i - 1].y {
@@ -379,9 +400,9 @@ impl<T: TTFNum> PwlTTF<T> {
         true
     }
 
-    /// Return the index `i` such that `z_i = x_i + y_i >= z` and `z_i-1 = x_i-1 + y_i-1 < z`.
+    /// Returns the index `i` such that `z_i = x_i + y_i >= z` and `z_i-1 = x_i-1 + y_i-1 < z`.
     ///
-    /// Return `None` if such an index does not exist.
+    /// Returns `None` if such an index does not exist.
     fn first_index_with_z_ge(&self, z: T) -> Option<usize> {
         debug_assert!(!self.is_empty());
         if z < self.period[0] + self.points[0].y {
@@ -411,6 +432,10 @@ impl<T: TTFNum> PwlTTF<T> {
         Some(self.len())
     }
 
+    /// Returns the `x` value of the function such that `x + f(x) = z`.
+    ///
+    /// Returns `None` if `z` is smaller than the smallest `x + y` or if `z` is larger than the
+    /// largest `x + y`.
     pub fn x_at_z(&self, z: T) -> Option<T> {
         let i = self.first_index_with_z_ge(z)?;
         let x = if i == 0 {
@@ -439,7 +464,7 @@ impl<T: TTFNum> PwlTTF<T> {
         Some(x)
     }
 
-    /// Simplify the PWL function using Reumann-Witkam simplification.
+    /// Simplifies the PWL function using Reumann-Witkam simplification.
     pub fn approximate(&mut self, error: T) {
         if self.len() <= 2 {
             return;
@@ -470,6 +495,11 @@ impl<T: TTFNum> PwlTTF<T> {
         self.setup_buckets();
     }
 
+    /// Returns the average `y` values for different `x` intervals.
+    ///
+    /// Given `n` intervals `[x_0, x_1, ..., x_n]`, the function returns `n - 1` values `[y_0, y_1,
+    /// ..., y_n-1]`, where the value `y_i` is the average `y` value in the interval `[x_i,
+    /// x_i-1]`.
     pub fn average_y_in_intervals(&self, xs: &[T]) -> Vec<T> {
         assert!(xs[0] >= self.period[0]);
         assert!(xs[xs.len() - 1] <= self.period[1]);
@@ -644,7 +674,7 @@ fn area_below<T: TTFNum>(p: Point<T, T>, q: Point<T, T>) -> T {
     (q.x - p.x) * (min_y + (max_y.average(&min_y) - min_y))
 }
 
-pub fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
+pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert!(f.is_fifo());
@@ -697,7 +727,7 @@ pub fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     h
 }
 
-pub fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
+pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     debug_assert!(!g.is_empty());
 
     let mut h = PwlTTF::with_capacity(g.period, g.len());
@@ -735,7 +765,7 @@ pub fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     h
 }
 
-pub fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDescriptor) {
+pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDescriptor) {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert_eq!(f.period, g.period);
@@ -895,7 +925,7 @@ pub fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDes
     (h, descr)
 }
 
-pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescriptor) {
+pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescriptor) {
     debug_assert!(!f.is_empty());
 
     let mut descr = UndercutDescriptor::default();
@@ -951,7 +981,7 @@ pub fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescript
     (h, descr)
 }
 
-pub fn analyze_relative_position<T: TTFNum>(
+pub(crate) fn analyze_relative_position<T: TTFNum>(
     f: &PwlTTF<T>,
     g: &PwlTTF<T>,
 ) -> Either<Ordering, Vec<(T, Ordering)>> {
@@ -1116,7 +1146,7 @@ pub fn analyze_relative_position<T: TTFNum>(
     Either::Right(results)
 }
 
-pub fn analyze_relative_position_to_cst<T: TTFNum>(
+pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
     f: &PwlTTF<T>,
     c: T,
 ) -> Either<Ordering, Vec<(T, Ordering)>> {
@@ -1185,7 +1215,11 @@ fn segment_contains<T: TTFNum>(segment: [Point<T, T>; 2], error: T, p: &Point<T,
     dist <= error
 }
 
-pub fn apply<T: TTFNum, F: Fn(T, T) -> T>(f: &PwlTTF<T>, g: &PwlTTF<T>, func: F) -> PwlTTF<T> {
+pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
+    f: &PwlTTF<T>,
+    g: &PwlTTF<T>,
+    func: F,
+) -> PwlTTF<T> {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert_eq!(f.period, g.period);
@@ -1262,6 +1296,7 @@ mod tests {
         assert_eq!(ttf.eval(0.), 20.);
         assert_eq!(ttf.eval(10.), 5.);
         assert_eq!(ttf.eval(-5.), 17.5);
+        assert_eq!(ttf.eval(15.), 5.0);
     }
 
     #[test]
@@ -1270,14 +1305,6 @@ mod tests {
         let breakpoints = vec![(-10., 5.), (0., 10.), (10., -5.)];
         let ttf = PwlTTF::from_breakpoints(breakpoints);
         ttf.eval(-15.);
-    }
-
-    #[test]
-    #[should_panic]
-    fn piecewise_panic_test2() {
-        let breakpoints = vec![(-10., 5.), (0., 10.), (10., -5.)];
-        let ttf = PwlTTF::from_breakpoints(breakpoints);
-        ttf.eval(15.);
     }
 
     #[test]

@@ -24,18 +24,16 @@ use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
 use petgraph::Direction;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use ttf::{TTFNum, TTFSimplification, TTF};
 
 /// Indicate the direction of an edge in the hierarchy.
-///
-/// - `Upward`: the target node is higher in the hierarchy than the source node.
-///
-/// - `Downward`: the target node is lower in the hierarchy than the source node.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, Serialize)]
 pub enum HierarchyDirection {
+    /// The target node is higher in the hierarchy than the source node.
     Upward,
+    /// The target node is lower in the hierarchy than the source node.
     Downward,
 }
 
@@ -46,32 +44,28 @@ pub enum HierarchyDirection {
 ///
 /// A tuple `(t, None)` indicates that, starting at time `t`, the fastest path from the source to
 /// the target of the shortcut edge takes the shortcut edge as an original edge.
-pub type EdgePack<T> = Vec<(T, Packed)>;
+pub(crate) type EdgePack<T> = Vec<(T, Packed)>;
 
-#[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub enum Packed {
     IntermediateNode(NodeIndex),
     OriginalEdge(EdgeIndex),
 }
 
 /// Indicate the type of a [HierarchyEdge].
-///
-/// - `Original`: an edge that exists in the original graph.
-///
-/// - `Shortcut`: a virtual edge that represents a shortcut.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum HierarchyEdgeClass<T> {
+    /// An edge that exists in the original graph.
     Original(EdgeIndex),
+    /// A virtual edge that represents a shortcut, going through a single node.
     ShortcutThrough(NodeIndex),
+    /// A virtual edge that represents a shortcut, going through multiple nodes.
     PackedShortcut(EdgePack<T>),
 }
 
 /// Structure for edges in a [HierarchyOverlay].
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct HierarchyEdge<T> {
     ttf: TTF<T>,
     direction: HierarchyDirection,
@@ -79,6 +73,7 @@ pub struct HierarchyEdge<T> {
 }
 
 impl<T> HierarchyEdge<T> {
+    /// Creates a new original edge.
     pub fn new_original(ttf: TTF<T>, direction: HierarchyDirection, id: EdgeIndex) -> Self {
         HierarchyEdge {
             ttf,
@@ -87,6 +82,7 @@ impl<T> HierarchyEdge<T> {
         }
     }
 
+    /// Creates a new shortcut edge.
     pub fn new_shortcut(
         ttf: TTF<T>,
         direction: HierarchyDirection,
@@ -99,6 +95,7 @@ impl<T> HierarchyEdge<T> {
         }
     }
 
+    /// Creates a new packed edge.
     pub fn new_packed(ttf: TTF<T>, direction: HierarchyDirection, pack: EdgePack<T>) -> Self {
         HierarchyEdge {
             ttf,
@@ -109,16 +106,15 @@ impl<T> HierarchyEdge<T> {
 }
 
 /// Structure representing a graph with a hierarchy of nodes.
-#[derive(Clone, Default, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,
 }
 
 impl<T> HierarchyOverlay<T> {
-    /// Create a HierarchyOverlay from a graph of [HierarchyEdge] and a node order.
+    /// Creates a HierarchyOverlay from a graph of [HierarchyEdge] and a node order.
     ///
     /// The graph edges and the node order must be compatible.
     /// In particular, the [HierarchyDirection] of the edges must match the order of the source and
@@ -127,7 +123,7 @@ impl<T> HierarchyOverlay<T> {
         HierarchyOverlay { graph, order }
     }
 
-    /// Return the order of the nodes in the hierarchy.
+    /// Returns the order of the nodes in the hierarchy.
     ///
     /// The order of a node correspond to the value in the returned slice at the index of the node.
     ///
@@ -136,11 +132,12 @@ impl<T> HierarchyOverlay<T> {
         &self.order
     }
 
+    /// Returns a reference to the graph of the HierarchyOverlay.
     pub fn get_graph(&self) -> &DiGraph<(), HierarchyEdge<T>> {
         &self.graph
     }
 
-    /// Return the upward graph of the [HierarchyOverlay], i.e., the graph with all edges that go
+    /// Returns the upward graph of the [HierarchyOverlay], i.e., the graph with all edges that go
     /// upward in the hierarchy.
     fn get_upward_graph<'a>(
         &'a self,
@@ -153,8 +150,8 @@ impl<T> HierarchyOverlay<T> {
         })
     }
 
-    /// Return the downward graph of the [HierarchyOverlay], i.e., the graph with all edges that go
-    /// downward in the hierarchy.
+    /// Returns the downward graph of the [HierarchyOverlay], i.e., the graph with all edges that
+    /// go downward in the hierarchy.
     fn get_downward_graph<'a>(
         &'a self,
     ) -> EdgeFiltered<
@@ -166,19 +163,19 @@ impl<T> HierarchyOverlay<T> {
         })
     }
 
-    /// Return the number of nodes in the overlay graph.
+    /// Returns the number of nodes in the overlay graph.
     pub fn node_count(&self) -> usize {
         self.graph.node_count()
     }
 
-    /// Return the number of edges in the overlay graph, including shortcut edges.
+    /// Returns the number of edges in the overlay graph, including shortcut edges.
     pub fn edge_count(&self) -> usize {
         self.graph.edge_count()
     }
 }
 
 impl<T: TTFNum> HierarchyOverlay<T> {
-    /// Construct a HierarchyOverlay from a weighted graph and a hierarchy of nodes.
+    /// Constructs a HierarchyOverlay from a weighted graph and a hierarchy of nodes.
     ///
     /// The hierarchy of nodes is a function that returns, for each node, its order in the
     /// hierarchy (higher values imply an higher order).
@@ -200,7 +197,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         contraction.construct()
     }
 
-    /// Order the nodes and construct a HierarchyOverlay from a weighted graph.
+    /// Orders the nodes and construct a HierarchyOverlay from a weighted graph.
     pub fn order<N, E, F>(
         graph: &DiGraph<N, E>,
         mut edge_cost: F,
@@ -217,17 +214,22 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         contraction.order()
     }
 
+    /// Returns the complexity of the HierarchyOverlay.
+    ///
+    /// The complexity is the sum of the complexity of the edges' [TTF] (See [TTF::complexity]).
     pub fn complexity(&self) -> usize {
         self.graph.edge_weights().map(|e| e.ttf.complexity()).sum()
     }
 
+    /// Simplifies all the edges' TTF of the HierarchyOverlay using the given [TTFSimplification]
+    /// rule.
     pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
         self.graph
             .edge_weights_mut()
             .for_each(|e| simplification.simplify(&mut e.ttf));
     }
 
-    /// Return the unpacked version of a path, i.e., return the path as a vector of *original*
+    /// Returns the unpacked version of a path, i.e., return the path as a vector of *original*
     /// edges.
     fn unpack_path(&self, path: &[NodeIndex], departure_time: T) -> Result<Vec<EdgeIndex>> {
         let mut unpacked_path = Vec::new();
@@ -244,7 +246,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         Ok(unpacked_path)
     }
 
-    /// Unpack recusively an edge in a path, i.e., unpack shortcut edges until a original edge is
+    /// Unpacks recusively an edge in a path, i.e., unpack shortcut edges until a original edge is
     /// found.
     fn unpack_edge(
         &self,
@@ -294,7 +296,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         Ok(())
     }
 
-    /// Return the earliest arrival time, and its associated path, when going from `source` to
+    /// Returns the earliest arrival time, and its associated path, when going from `source` to
     /// `target`, starting at time `deparure_time`.
     pub fn earliest_arrival_query<PQ1, PQ2, PQ3, CM>(
         &self,
@@ -322,7 +324,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         let zero = T::zero();
         let query =
             BidirectionalPointToPointQuery::new(source, target, departure_time, [zero, zero]);
-        let edge_label = |e: EdgeReference<_>| &self.graph[e.id()].ttf;
+        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
         let upward_graph = &self.get_upward_graph();
         let downward_graph = &self.get_downward_graph();
         let mut ops = BidirectionalTCHEA::new_raw(
@@ -355,7 +357,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         }
     }
 
-    /// Return the travel-time profile from `source` to `target`.
+    /// Returns the travel-time profile from `source` to `target`.
     ///
     /// This uses Algorithm 7 in Batz et al. (2013)[^ref].
     ///
@@ -388,7 +390,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         interval_search.reset();
         candidate_map.reset();
         let query = BidirectionalPointToPointQuery::from_default(source, target);
-        let edge_label = |e: EdgeReference<_>| &self.graph[e.id()].ttf;
+        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
         let upward_graph = &self.get_upward_graph();
         let downward_graph = &self.get_downward_graph();
         let mut ops = BidirectionalTCHProfileInterval::new_raw(
@@ -460,6 +462,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         bs
     }
 
+    /// Computes and returns the search spaces for the given source and target nodes.
     pub fn get_search_spaces<'a>(
         &self,
         sources: impl IntoParallelIterator<Item = &'a NodeIndex>,
@@ -503,7 +506,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         alloc.profile_search.reset();
         let interval_query = SingleSourceQuery::from_default(node);
         let profile_query = SingleSourceQuery::from_default(node);
-        let edge_label = |e: EdgeReference<_>| &self.graph[e.id()].ttf;
+        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
         match direction {
             Direction::Outgoing => {
                 let graph = self.get_upward_graph();
@@ -547,25 +550,33 @@ struct AllocatedSearchSpaceData<T: PartialOrd + TTFNum> {
     profile_search: DijkstraSearch<ProfileData<T>, MinPQ<NodeIndex, T>>,
 }
 
-pub type SearchSpace<T> = HashMap<NodeIndex, TTF<T>>;
+pub(crate) type SearchSpace<T> = HashMap<NodeIndex, TTF<T>>;
 
+/// Search spaces for a set of source and target nodes.
 #[derive(Clone, Default, Debug)]
 pub struct SearchSpaces<T> {
+    /// Forward search spaces from the source nodes.
     forward: HashMap<NodeIndex, SearchSpace<T>>,
+    /// Backward search spaces from the target nodes.
     backward: HashMap<NodeIndex, SearchSpace<T>>,
 }
 
 impl<T> SearchSpaces<T> {
+    /// Returns a reference to the search spaces of the given node (in forward direction), if it
+    /// exits.
     pub fn get_forward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {
         self.forward.get(node)
     }
 
+    /// Returns a reference to the search spaces of the given node (in backward direction), if it
+    /// exits.
     pub fn get_backward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {
         self.backward.get(node)
     }
 }
 
 impl<T: TTFNum> SearchSpaces<T> {
+    /// Simplifies all the search spaces using the given [TTFSimplification] rule.
     pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
         self.forward.par_values_mut().for_each(|search_space| {
             search_space

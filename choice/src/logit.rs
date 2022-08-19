@@ -2,6 +2,7 @@ use super::ContinuousChoiceCallback;
 
 use anyhow::{anyhow, Context, Result};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum};
 
 const EULER_MASCHERONI: f64 = 0.5772156649;
@@ -20,9 +21,9 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 ///
 /// ```
 /// use choice::LogitModel;
-/// use breakpoint_function::PWLFunction;
+/// use ttf::PwlXYF;
 ///
-/// let model = LogitModel::new(0.8f64, 1.0f64).unwrap();
+/// let model = LogitModel::new(0.8f64, 1.0f64);
 ///
 /// let (choice_id, exp_payoff) = model.get_choice(&[0.]).unwrap();
 /// assert_eq!(choice_id, 0);
@@ -34,23 +35,17 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// let (choice_id, _exp_payoff) = model.get_choice(&[1., 0.]).unwrap();
 /// assert_eq!(choice_id, 1);
 ///
-/// let bpf = PWLFunction::from_breakpoints(
-///     vec![(0., 0.), (1., 0.)]
-/// ).unwrap();
-/// let (callback, exp_payoff) = model.get_continuous_choice(&bpf).unwrap();
+/// let bpf = PwlXYF::from_breakpoints(vec![(0., 0.), (1., 0.)]);
+/// let (callback, exp_payoff) = model.get_continuous_choice(bpf).unwrap();
 /// // The expected payoff is equal to the Euler's constant.
 /// assert!((exp_payoff - 0.5772156649).abs() < 1e-8);
 /// // The choice (given by the callback function) is equal to `u = 0.8` because the
 /// // piecewise-linear function is constant between 0.0 and 1.0.
 /// assert_eq!(callback(), 0.8);
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
-#[cfg_attr(feature = "serde-1", schemars(title = "Logit Model"))]
-#[cfg_attr(
-    feature = "serde-1",
-    schemars(description = "A discrete or continuous Logit model")
-)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Logit Model")]
+#[schemars(description = "A discrete or continuous Logit model")]
 pub struct LogitModel<T> {
     /// Uniform random number between 0.0 and 1.0 for inversion sampling.
     #[validate(range(min = 0.0, max = 1.0))]
@@ -61,7 +56,7 @@ pub struct LogitModel<T> {
 }
 
 impl<T: TTFNum> LogitModel<T> {
-    /// Initialize a Logit model.
+    /// Initializes a Logit model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
     /// The value of `mu` must be such that `mu > 0`.
@@ -69,12 +64,12 @@ impl<T: TTFNum> LogitModel<T> {
         LogitModel { u, mu }
     }
 
-    /// Return the alternative chosen and the expected payoff of the choice given a slice of
+    /// Returns the alternative chosen and the expected payoff of the choice given a slice of
     /// values for a finite number of alternatives.
     ///
     /// The expected payoff is computed using the log-sum formula.
     ///
-    /// Return an Error if
+    /// Returns an Error if
     ///
     /// - The vector of values is empty.
     ///
@@ -128,7 +123,7 @@ impl<T: TTFNum> LogitModel<T> {
         Ok((choice_id, expected_value))
     }
 
-    /// Return the integral of the function exp(v / mu) between x0 and x1.
+    /// Returns the integral of the function exp(v / mu) between x0 and x1.
     ///
     /// The function can overflow to positive infinity if:
     ///
@@ -161,7 +156,7 @@ impl<T: TTFNum> LogitModel<T> {
         (self.mu / theta) * y_exp_diff
     }
 
-    /// Return the chosen x value, given the chosen segment and the distance to the threshold value.
+    /// Returns the chosen x value, given the chosen segment and the distance to the threshold value.
     fn get_chosen_x(&self, (x0, y0): (T, T), (x1, y1): (T, T), prob_diff: T) -> T {
         let theta = (y1 - y0) / (x1 - x0);
         let x = if theta.is_zero() {
@@ -176,13 +171,13 @@ impl<T: TTFNum> LogitModel<T> {
         x.max(x0).min(x1)
     }
 
-    /// Return the expected payoff of the choice and a [ContinuousChoiceCallback] that gives the
-    /// chosen continuous alternative, given a [PWLFunction] that yields the payoff value
-    /// for any possible alternative.
+    /// Returns the expected payoff of the choice and a [ContinuousChoiceCallback] that gives the
+    /// chosen continuous alternative, given a [PwlXYF] that yields the payoff value for any
+    /// possible alternative.
     ///
     /// The expected payoff is computed using the log-sum formula.
     ///
-    /// Return an error if
+    /// Returns an error if
     ///
     /// - The breakpoint upper bound is infinite.
     ///
@@ -190,7 +185,7 @@ impl<T: TTFNum> LogitModel<T> {
     pub fn get_continuous_choice<'a, X, Y>(
         &'a self,
         func: PwlXYF<X, Y, T>,
-    ) -> Result<(ContinuousChoiceCallback<X>, Y)>
+    ) -> Result<(ContinuousChoiceCallback<'a, X>, Y)>
     where
         X: TTFNum + Into<T> + From<T> + 'a,
         Y: TTFNum + Into<T> + From<T> + 'a,
@@ -256,25 +251,15 @@ impl<T: TTFNum> LogitModel<T> {
 
 #[cfg(test)]
 mod tests {
+    use ttf::PwlTTF;
+
     use super::*;
 
     #[test]
-    fn new_logit_model_test() {
-        // Only create the model if 0.0 <= u < 1.0 and mu > 0; else return an error.
-        assert!(LogitModel::new(0.4, 1.).is_ok());
-        assert!(LogitModel::new(0., f64::min_positive_value()).is_ok());
-        assert!(LogitModel::new(-1., 1.).is_err());
-        assert!(LogitModel::new(1., 1.).is_err());
-        assert!(LogitModel::new(0.4, 0.).is_err());
-        assert!(LogitModel::new(f64::NAN, 1.).is_err());
-        assert!(LogitModel::new(0.4, f64::NAN).is_err());
-    }
-
-    #[test]
     fn logit_choice_test() {
-        let model = LogitModel::new(0.9f64, 2.0f64).unwrap();
+        let model = LogitModel::new(0.9f64, 2.0f64);
         // No choice: error.
-        assert!(model.get_choice(&[]).is_err());
+        assert!(model.get_choice::<f64>(&[]).is_err());
         // Invalid values: error.
         assert!(model.get_choice(&[1., 0., f64::NAN]).is_err());
         assert!(model.get_choice(&[1., 0., f64::NEG_INFINITY]).is_err());
@@ -301,7 +286,7 @@ mod tests {
             (1, f64::MIN + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI)
         );
         // Very small mu.
-        let model = LogitModel::new(1e-4, f64::min_positive_value()).unwrap();
+        let model = LogitModel::new(1e-4, f64::MIN_POSITIVE);
         let choice = model.get_choice(&[1. - f64::EPSILON, 1.]).unwrap();
         assert_eq!(choice.0, 1);
         assert!((choice.1 - 1.).abs() < 1e8);
@@ -309,7 +294,7 @@ mod tests {
         assert_eq!(choice.0, 1);
         assert_eq!(choice.1, f64::MAX);
         // Very large mu.
-        let model = LogitModel::new(0., f64::MAX).unwrap();
+        let model = LogitModel::new(0., f64::MAX);
         let choice = model.get_choice(&[f64::MIN, f64::MAX]).unwrap();
         assert_eq!(choice.0, 1);
         assert!(choice.1.is_infinite());
@@ -318,14 +303,14 @@ mod tests {
     #[test]
     fn get_cum_func_value_test() {
         // Squares.
-        let model = LogitModel::new(0.5f64, 2.0f64).unwrap();
+        let model = LogitModel::new(0.5f64, 2.0f64);
         assert_eq!(
             model.get_cum_func_value((0., 10.), (10., 10.)),
             10. * 5.0f64.exp()
         );
         assert_eq!(
             model.get_cum_func_value((-20., -10.), (-10., -10.)),
-            10. * (-5.).exp()
+            10. * (-5.0f64).exp()
         );
         // Very small values.
         assert_eq!(
@@ -357,68 +342,66 @@ mod tests {
         // Large slope: overflow.
         assert!((model.get_cum_func_value((0., f64::MIN), (1., 0.)).abs() < 1e-8));
         // Very small mu.
-        let model = LogitModel::new(1e-4, f64::min_positive_value()).unwrap();
+        let model = LogitModel::new(1e-4, f64::MIN_POSITIVE);
         assert_eq!(model.get_cum_func_value((0., 0.), (1., 0.)), 1.);
         assert_eq!(model.get_cum_func_value((0., -1.), (1., -2.)), 0.);
         // Very large mu.
-        let model = LogitModel::new(0., f64::MAX).unwrap();
+        let model = LogitModel::new(0., f64::MAX);
         assert_eq!(model.get_cum_func_value((0., 0.), (1., -f64::EPSILON)), 1.);
     }
 
     #[test]
     fn continuous_logit_test() {
-        let model = LogitModel::new(0.4f64, 2.0f64).unwrap();
+        let model = LogitModel::new(0.4f64, 2.0f64);
         // Invalid values: error.
-        let bpf = PWLFunction::from_x_and_y(vec![0., 10.], vec![0., f64::INFINITY]).unwrap();
-        assert!(model.get_continuous_choice(&bpf).is_err());
+        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![0., f64::INFINITY]);
+        assert!(model.get_continuous_choice(bpf).is_err());
         // Two equal choices: linear interpolation.
         // Log sum is mu * ln(10.0) + mu * Euler's constant.
-        let bpf = PWLFunction::from_x_and_y(vec![0., 10.], vec![0., 0.]).unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![0., 0.]);
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 4.);
         assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EULER_MASCHERONI);
         // Very large slope 1.
-        let bpf = PWLFunction::from_x_and_y(vec![0., 10.], vec![f64::MIN, f64::MAX]).unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![f64::MIN, f64::MAX]);
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
         assert_eq!(
             choice.1,
             f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI
         );
         // Very large slope 2.
-        let bpf = PWLFunction::from_x_and_y(vec![0., 10., 20.], vec![f64::MIN, f64::MAX, f64::MIN])
-            .unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        let bpf = PwlTTF::from_x_and_y(vec![0., 10., 20.], vec![f64::MIN, f64::MAX, f64::MIN]);
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
         assert_eq!(
             choice.1,
             f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
         );
         // Very large slope 3.
-        let bpf = PWLFunction::from_x_and_y(vec![0., 10., 20.], vec![f64::MAX, f64::MIN, f64::MAX])
-            .unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        let bpf = PwlTTF::from_x_and_y(vec![0., 10., 20.], vec![f64::MAX, f64::MIN, f64::MAX]);
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 0.);
         assert_eq!(
             choice.1,
             f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
         );
         // Very large slope 4.
-        let bpf = PWLFunction::from_x_and_y(
+        let bpf = PwlTTF::from_x_and_y(
             vec![0., 100., 100. + 1e-8, 100. + 2e-8, 200.],
             vec![10., 10., f64::MIN, 10., 10.],
-        )
-        .unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        );
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert!(((choice.0)() - 0.4 * 200.) < 1e-8);
-        assert!((choice.1 - (10. + 2. * 200.0f64.ln() + 2. * EULER_MASCHERONI)).abs() < 1e-8);
+        assert!(choice
+            .1
+            .approx_eq(&(10. + 2. * 200.0f64.ln() + 2. * EULER_MASCHERONI)));
         // Large and constant values.
-        let bpf = PWLFunction::from_x_and_y(
+        let bpf = PwlTTF::from_x_and_y(
             vec![0., f64::EPSILON, 1_000., 100_000.],
             vec![f64::MAX, f64::MAX, f64::MAX, f64::MAX],
-        )
-        .unwrap();
-        let choice = model.get_continuous_choice(&bpf).unwrap();
+        );
+        let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 40_000.);
         assert_eq!(
             choice.1,

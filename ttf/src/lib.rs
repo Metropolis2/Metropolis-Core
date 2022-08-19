@@ -1,6 +1,22 @@
-#[cfg(feature = "serde-1")]
-#[macro_use]
-extern crate serde_derive;
+//! Travel-time functions represented as piecewise linear functions.
+#![warn(
+    elided_lifetimes_in_paths,
+    explicit_outlives_requirements,
+    macro_use_extern_crate,
+    missing_debug_implementations,
+    missing_docs,
+    non_ascii_idents,
+    noop_method_call,
+    single_use_lifetimes,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unused_crate_dependencies,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_lifetimes,
+    unused_qualifications
+)]
 
 mod point;
 mod pwl;
@@ -11,21 +27,20 @@ pub use ttf_num::TTFNum;
 
 use either::Either;
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
 /// Descriptor used when merging two TTFs `f` and `g`.
-///
-/// If `f_undercuts_strictly` is `true`, it means that there exists `x` such that `f(x) < g(x)`.
-///
-/// If `g_undercuts_strictly` is `true`, it means that there exists `x` such that `g(x) < f(x)`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct UndercutDescriptor {
+    /// If `true`, it means that there exists `x` such that `f(x) < g(x)`.
     pub f_undercuts_strictly: bool,
+    /// If `true`, it means that there exists `x` such that `g(x) < f(x)`.
     pub g_undercuts_strictly: bool,
 }
 
 impl UndercutDescriptor {
-    /// Reverse the role of `f` and `g` in the descriptor.
+    /// Reverses the role of `f` and `g` in the descriptor.
     fn reverse(mut self) -> Self {
         std::mem::swap(
             &mut self.f_undercuts_strictly,
@@ -38,11 +53,12 @@ impl UndercutDescriptor {
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize))]
-#[cfg_attr(feature = "serde-1", serde(bound(deserialize = "T: TTFNum")))]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub enum TTF<T> {
+    /// A piecewise-linear travel-time function.
     Piecewise(PwlTTF<T>),
+    /// A constant travel-time function.
     Constant(T),
 }
 
@@ -53,7 +69,7 @@ impl<T: TTFNum> Default for TTF<T> {
 }
 
 impl<T: TTFNum> TTF<T> {
-    /// Return the minimum travel time observed over the departure-time period, i.e., return `min_x
+    /// Returns the minimum travel time observed over the departure-time period, i.e., return `min_x
     /// f(x)`.
     pub fn get_min(&self) -> T {
         match self {
@@ -62,7 +78,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Return the maximum travel time observed over the departure-time period, i.e., return `max_x
+    /// Returns the maximum travel time observed over the departure-time period, i.e., return `max_x
     /// f(x)`.
     pub fn get_max(&self) -> T {
         match self {
@@ -71,11 +87,11 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Return the complexity of the TTF.
+    /// Returns the complexity of the TTF.
     ///
-    /// - Return 0 if the TTF is a constant.
+    /// - Returns 0 if the TTF is a constant.
     ///
-    /// - Return the number of breakpoints if the TTF is piecewise-linear.
+    /// - Returns the number of breakpoints if the TTF is piecewise-linear.
     pub fn complexity(&self) -> usize {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.len(),
@@ -83,17 +99,17 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Return the departure time at the middle of the departure-time period of the TTF.
+    /// Returns the departure time at the middle of the departure-time period of the TTF.
     ///
     /// If the TTF is constant, the departure-time period is unknown so `None` is returned instead.
     pub fn middle_departure_time(&self) -> Option<T> {
         match self {
-            Self::Piecewise(pwl_ttf) => Some(pwl_ttf.middle_departure_time()),
+            Self::Piecewise(pwl_ttf) => Some(pwl_ttf.middle_x()),
             Self::Constant(_) => None,
         }
     }
 
-    /// Return the travel time at the given departure time.
+    /// Returns the travel time at the given departure time.
     pub fn eval(&self, x: T) -> T {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.eval(x),
@@ -101,16 +117,16 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Return the departure time `x` such that `f(x) = z`.
+    /// Returns the departure time `x` such that `f(x) = z`.
     ///
-    /// Return None if it is not possible to arrive at `z`.
+    /// Returns None if it is not possible to arrive at `z`.
     ///
     /// # Example
     ///
     /// ```
     /// use ttf::TTF;
     /// let ttf = TTF::Constant(1.0f64);
-    /// assert_eq!(ttf.departure_time_with_arrival(3.0), 2.0);
+    /// assert_eq!(ttf.departure_time_with_arrival(3.0), Some(2.0));
     /// ```
     pub fn departure_time_with_arrival(&self, z: T) -> Option<T> {
         match self {
@@ -119,7 +135,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Link the TTF with another TTF.
+    /// Links the TTF with another TTF.
     ///
     /// The link operation returns the TTF `h` such that `h(x) = f(x) + g(f(x))`.
     ///
@@ -141,7 +157,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Merge the TTF with another TTF.
+    /// Merges the TTF with another TTF.
     ///
     /// The merge operation returns the TTF `h` such that `h(x) = min(f(x), g(x))`.
     /// It also returns an [UndercutDescriptor] that describes if `f` is strictly below `g` and if
@@ -150,13 +166,13 @@ impl<T: TTFNum> TTF<T> {
     /// # Example
     ///
     /// ```
-    /// use ttf::TTF;
-    /// let f = TTF::Constant(1.0f64);
-    /// let g = TTF::Constant(2.0f64);
+    /// use ttf::{TTF, UndercutDescriptor};
+    /// let f = TTF::Constant(2.0f64);
+    /// let g = TTF::Constant(1.0f64);
     /// let descr = UndercutDescriptor {
     ///     f_undercuts_strictly: false,
     ///     g_undercuts_strictly: true,
-    /// }
+    /// };
     /// assert_eq!(f.merge(&g), (g, descr));
     /// ```
     #[must_use]
@@ -169,7 +185,7 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => {
                 let (h, descr) = pwl::merge_cst(f, c);
                 let h = if h.is_cst() {
-                    Self::Constant(h.get_cst_value())
+                    Self::Constant(h[0].y)
                 } else {
                     Self::Piecewise(h)
                 };
@@ -178,7 +194,7 @@ impl<T: TTFNum> TTF<T> {
             (&Self::Constant(c), Self::Piecewise(g)) => {
                 let (h, rev_descr) = pwl::merge_cst(g, c);
                 let h = if h.is_cst() {
-                    Self::Constant(h.get_cst_value())
+                    Self::Constant(h[0].y)
                 } else {
                     Self::Piecewise(h)
                 };
@@ -194,10 +210,10 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Simulate the merge operation between two TTFs `f` and `g` and check where `f` is below `g`
+    /// Simulates the merge operation between two TTFs `f` and `g` and check where `f` is below `g`
     /// and where `g` is below `f`.
     ///
-    /// Return either
+    /// Returns either
     /// - an `Ordering` implying that `f` is always below `g` or `g` is always below `f`.
     ///
     /// - a vector of tuples `(T, Ordering)`, where a value `(t, ord)` means that, starting from
@@ -227,6 +243,7 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Returns a new TTF equal to the input TTF plus a constant value.
     #[must_use]
     pub fn add(&self, c: T) -> Self {
         match self {
@@ -235,12 +252,18 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Reduces the number of breakpoints of the TTF, ensuring that the approximation error never
+    /// exceeds a given bound.
+    ///
+    /// The approximation error is the difference between the `y` values of the initial TTF and the
+    /// resulting TTF, for any `x`.
     pub fn approximate(&mut self, error: T) {
         if let Self::Piecewise(pwl_ttf) = self {
             pwl_ttf.approximate(error);
         }
     }
 
+    /// Returns a new TTF by applying a given function on the `y` values of the two input TTFs.
     #[must_use]
     pub fn apply<F>(&self, other: &Self, func: F) -> Self
     where
@@ -259,9 +282,9 @@ impl<T: TTFNum> TTF<T> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "serde-1", derive(Deserialize, Serialize, JsonSchema))]
-#[cfg_attr(feature = "serde-1", serde(tag = "type", content = "values"))]
+/// Description of a method to simplify a TTF.
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum TTFSimplification<T> {
     /// No simplification is done.
     Raw,
@@ -278,6 +301,7 @@ impl<T> Default for TTFSimplification<T> {
 }
 
 impl<T: TTFNum> TTFSimplification<T> {
+    /// Applies the simplification method to a TTF.
     pub fn simplify(self, ttf: &mut TTF<T>) {
         match self {
             Self::Raw => (),

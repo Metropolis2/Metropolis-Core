@@ -10,17 +10,17 @@ pub trait MinPriorityQueue {
     type Key;
     /// Type of the values.
     type Value;
-    /// Reset the priority queue.
+    /// Resets the priority queue.
     fn reset(&mut self);
-    /// Push a new item to the priority queue.
+    /// Pushes a new item to the priority queue.
     fn push(&mut self, key: Self::Key, value: Self::Value);
-    /// Decrease the value of a key.
+    /// Decreases the value of a key.
     fn decrease_value(&mut self, key: Self::Key, new_value: Self::Value);
-    /// Pop the next item in the queue.
+    /// Pops the next item in the queue.
     fn pop(&mut self) -> Option<(Self::Key, Self::Value)>;
-    /// Peek the next item in the queue.
+    /// Peeks the next item in the queue.
     fn peek(&self) -> Option<(&Self::Key, &Self::Value)>;
-    /// Return true if the priority queue is empty.
+    /// Returns true if the priority queue is empty.
     fn is_empty(&self) -> bool {
         self.peek().is_some()
     }
@@ -39,7 +39,7 @@ impl<T: PartialOrd> Ord for ImplOrd<T> {
     }
 }
 
-pub type MinPQ<I, P> = PriorityQueue<I, Reverse<ImplOrd<P>>, DefaultHashBuilder>;
+pub(crate) type MinPQ<I, P> = PriorityQueue<I, Reverse<ImplOrd<P>>, DefaultHashBuilder>;
 
 impl<I, P, H> MinPriorityQueue for PriorityQueue<I, Reverse<ImplOrd<P>>, H>
 where
