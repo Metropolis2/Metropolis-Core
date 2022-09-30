@@ -3,12 +3,6 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use anyhow::Result;
-use geojson::{FeatureCollection, GeoJson};
-use hashbrown::HashMap;
-use petgraph::graph::{node_index, DiGraph, EdgeIndex, NodeIndex};
-use petgraph::visit::EdgeRef;
-use priority_queue::PriorityQueue;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
@@ -16,6 +10,12 @@ use std::io::BufReader;
 use std::path::Path;
 use std::time::Instant;
 
+use anyhow::Result;
+use geojson::{FeatureCollection, GeoJson};
+use hashbrown::HashMap;
+use petgraph::graph::{node_index, DiGraph, EdgeIndex, NodeIndex};
+use petgraph::visit::EdgeRef;
+use priority_queue::PriorityQueue;
 use tch::*;
 use ttf::{PwlTTF, TTFSimplification, TTF};
 

@@ -3,15 +3,15 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use anyhow::{Context, Result};
+use petgraph::{graph::NodeIndex, Direction};
+
 use crate::bidirectional_ops::BidirectionalDijkstraOps;
 use crate::min_queue::MinPriorityQueue;
 use crate::node_data::NodeData;
 use crate::ops::DijkstraOps;
 use crate::query::*;
 use crate::search::DijkstraSearch;
-
-use anyhow::{Context, Result};
-use petgraph::{graph::NodeIndex, Direction};
 
 /// A data structure that can be used to run bidirectional Dijkstra's algorithms.
 ///

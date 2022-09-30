@@ -3,16 +3,8 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use crate::contraction_hierarchies::{
-    EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, Packed,
-};
-use crate::min_queue::MinPQ;
-use crate::node_data::NodeDataWithExtra;
-use crate::ops::{
-    HopLimitedDijkstra, ProfileDijkstra, ThinProfileIntervalDijkstra, TimeDependentDijkstra,
-};
-use crate::query::PointToPointQuery;
-use crate::search::DijkstraSearch;
+use std::cmp::Ordering;
+use std::collections::VecDeque;
 
 use either::Either;
 use fixedbitset::FixedBitSet;
@@ -28,9 +20,18 @@ use petgraph::Direction;
 use rayon::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::VecDeque;
 use ttf::{TTFNum, TTF};
+
+use crate::contraction_hierarchies::{
+    EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, Packed,
+};
+use crate::min_queue::MinPQ;
+use crate::node_data::NodeDataWithExtra;
+use crate::ops::{
+    HopLimitedDijkstra, ProfileDijkstra, ThinProfileIntervalDijkstra, TimeDependentDijkstra,
+};
+use crate::query::PointToPointQuery;
+use crate::search::DijkstraSearch;
 
 /// Structure that represents a set of parameters used when contracting a graph.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -1002,8 +1003,9 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use petgraph::graph::edge_index;
+
+    use super::*;
 
     #[test]
     fn update_depth_test() {

@@ -4,13 +4,13 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to schedule utility.
-use crate::units::{Time, Utility};
 use alpha_beta_gamma::AlphaBetaGammaModel;
-
 use num_traits::Zero;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
+
+use crate::units::{Time, Utility};
 
 pub mod alpha_beta_gamma;
 

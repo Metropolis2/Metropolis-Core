@@ -27,13 +27,13 @@ mod deterministic_choice;
 mod logit;
 mod schema;
 
-pub use self::deterministic_choice::DeterministicChoiceModel;
-pub use self::logit::LogitModel;
-
 use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum};
+
+pub use self::deterministic_choice::DeterministicChoiceModel;
+pub use self::logit::LogitModel;
 
 /// A choice model between a finite number of alternatives.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

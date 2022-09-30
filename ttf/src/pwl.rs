@@ -3,16 +3,17 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use crate::point::*;
-use crate::ttf_num::TTFNum;
-use crate::UndercutDescriptor;
+use std::cmp::Ordering;
+use std::ops;
 
 use either::Either;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::cmp::Ordering;
-use std::ops;
+
+use crate::point::*;
+use crate::ttf_num::TTFNum;
+use crate::UndercutDescriptor;
 
 const BUCKET_SIZE: usize = 8;
 

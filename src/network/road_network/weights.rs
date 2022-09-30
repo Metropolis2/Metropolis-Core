@@ -4,14 +4,15 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of the [RoadNetworkWeights].
-use super::vehicle::VehicleIndex;
-use crate::units::Time;
+use std::ops::{Index, IndexMut};
 
 use petgraph::graph::EdgeIndex;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use std::ops::{Index, IndexMut};
 use ttf::{TTFNum, TTF};
+
+use super::vehicle::VehicleIndex;
+use crate::units::Time;
 
 /// Structure to store the travel-time functions of each edge of a [RoadNetwork](super::RoadNetwork),
 /// for each [Vehicle](super::vehicle::Vehicle).

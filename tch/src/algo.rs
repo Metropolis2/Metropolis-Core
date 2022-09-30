@@ -4,6 +4,13 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Set of algorithm to compute time-dependent shortest paths.
+use anyhow::{anyhow, Context, Result};
+use either::Either;
+use hashbrown::hash_map::HashMap;
+use petgraph::graph::NodeIndex;
+use petgraph::visit::{EdgeFiltered, EdgeRef, IntoEdgesDirected};
+use ttf::{TTFNum, TTF};
+
 use crate::bidirectional_ops::{
     BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
 };
@@ -16,13 +23,6 @@ use crate::node_map::NodeMap;
 use crate::ops::TimeDependentDijkstra;
 use crate::query::{BidirectionalQueryRef, MultipleSourcesQuery};
 use crate::search::DijkstraSearch;
-
-use anyhow::{anyhow, Context, Result};
-use either::Either;
-use hashbrown::hash_map::HashMap;
-use petgraph::graph::NodeIndex;
-use petgraph::visit::{EdgeFiltered, EdgeRef, IntoEdgesDirected};
-use ttf::{TTFNum, TTF};
 
 /// Returns the metric resulting from a profile query.
 ///

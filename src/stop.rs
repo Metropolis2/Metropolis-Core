@@ -4,13 +4,13 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to stopping criteria.
-use crate::simulation::results::AgentResults;
-use crate::units::Time;
-
 use num_traits::{Float, FromPrimitive, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::simulation::results::AgentResults;
+use crate::units::Time;
 
 /// Criterion that is used to check if a simulation must be stopped.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

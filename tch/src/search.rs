@@ -3,14 +3,14 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use anyhow::{anyhow, Result};
+use hashbrown::{HashMap, HashSet};
+use petgraph::graph::NodeIndex;
+
 use super::min_queue::MinPriorityQueue;
 use super::node_data::NodeData;
 use super::ops::DijkstraOps;
 use super::query::QueryRef;
-
-use anyhow::{anyhow, Result};
-use hashbrown::{HashMap, HashSet};
-use petgraph::graph::NodeIndex;
 
 /// A data structure that can be used to run any uni-directional Dijkstra's algorithm.
 ///
@@ -287,10 +287,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use hashbrown::HashMap;
     use petgraph::graph::node_index;
     use priority_queue::PriorityQueue;
+
+    use super::*;
 
     #[test]
     fn path_test() {

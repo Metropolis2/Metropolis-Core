@@ -4,11 +4,11 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Day-to-day learning models.
-use crate::network::NetworkWeights;
-
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::network::NetworkWeights;
 
 /// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
 /// `x_t` and an update value `y`.
@@ -110,11 +110,12 @@ impl<T: TTFNum> ExponentialLearningModel<T> {
 
 #[cfg(test)]
 mod tests {
+    use ttf::TTF;
+
     use super::*;
     use crate::network::road_network::vehicle::vehicle_index;
     use crate::network::road_network::weights::RoadNetworkWeights;
     use crate::units::Time;
-    use ttf::TTF;
 
     fn get_weigths(v: f64) -> NetworkWeights<f64> {
         let mut rn = RoadNetworkWeights::with_capacity(1, 1);

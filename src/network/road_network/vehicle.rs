@@ -4,11 +4,11 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
-use crate::units::{Length, Speed, PCE};
-
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::units::{Length, Speed, PCE};
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

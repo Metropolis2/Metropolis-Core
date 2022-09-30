@@ -3,6 +3,19 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use std::collections::VecDeque;
+
+use anyhow::{anyhow, Context, Result};
+use fixedbitset::FixedBitSet;
+use hashbrown::{HashMap, HashSet};
+use object_pool::Pool;
+use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
+use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
+use petgraph::Direction;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use ttf::{TTFNum, TTFSimplification, TTF};
+
 use crate::algo::{earliest_arrival_query, profile_query, EarliestArrivalAllocation};
 use crate::bidirectional_ops::{
     BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
@@ -20,18 +33,6 @@ use crate::preprocessing::{
 };
 use crate::query::{BidirectionalPointToPointQuery, SingleSourceQuery};
 use crate::search::DijkstraSearch;
-
-use anyhow::{anyhow, Context, Result};
-use fixedbitset::FixedBitSet;
-use hashbrown::{HashMap, HashSet};
-use object_pool::Pool;
-use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
-use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
-use petgraph::Direction;
-use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use ttf::{TTFNum, TTFSimplification, TTF};
 
 /// Indicate the direction of an edge in the hierarchy.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, Serialize)]

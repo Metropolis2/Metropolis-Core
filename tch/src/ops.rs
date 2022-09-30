@@ -4,16 +4,17 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Trait and structs used to represent Dijkstra algorithms.
-use crate::bound::Bound;
-use crate::node_data::{NodeData, NodeDataWithExtra};
-use crate::query::Query;
+use std::hash::Hash;
 
 use hashbrown::{HashMap, HashSet};
 use petgraph::graph::IndexType;
 use petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use petgraph::Direction;
-use std::hash::Hash;
 use ttf::{TTFNum, TTF};
+
+use crate::bound::Bound;
+use crate::node_data::{NodeData, NodeDataWithExtra};
+use crate::query::Query;
 
 /// Trait representing a set of instructions to perform a Dijkstra's algorithm.
 ///
@@ -108,12 +109,12 @@ pub trait DijkstraOps {
 /// # Example
 ///
 /// ```
-/// use tch::DijkstraSearch;
-/// use tch::ops::ScalarDijkstra;
-/// use tch::query::PointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
+/// use tch::ops::ScalarDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 ///
 /// // Run a standard point-to-point Dijkstra search with scalars on a graph with three edges.
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
@@ -396,14 +397,14 @@ where
 /// # Example
 ///
 /// ```
-/// use ttf::{PwlTTF, TTF};
-/// use tch::ops::ProfileDijkstra;
-/// use tch::query::PointToPointQuery;
-/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
+/// use tch::ops::ProfileDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
+/// use ttf::{PwlTTF, TTF};
 ///
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
@@ -412,9 +413,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
-///         ),
+///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
 ///     ),
 /// ]);
 /// let mut ops = ProfileDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
@@ -422,17 +421,12 @@ where
 /// let query = PointToPointQuery::from_default(node_index(0), node_index(2));
 /// search.solve_query(&query, &mut ops);
 ///
-/// let ttf = TTF::Piecewise(
-///     PwlTTF::from_breakpoints(vec![
-///         (0., 3.),
-///         (2.5, 3.),
-///         (10., 0.),
-///     ])
-/// );
-/// assert_eq!(
-///     search.get_label(&node_index(2)),
-///     Some(&ttf)
-/// );
+/// let ttf = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
+///     (0., 3.),
+///     (2.5, 3.),
+///     (10., 0.),
+/// ]));
+/// assert_eq!(search.get_label(&node_index(2)), Some(&ttf));
 /// ```
 #[derive(Clone, Debug)]
 pub struct ProfileDijkstra<G, F, T> {
@@ -623,14 +617,14 @@ where
 /// # Example
 ///
 /// ```
-/// use ttf::{PwlTTF, TTF};
-/// use tch::ops::ProfileIntervalDijkstra;
-/// use tch::query::PointToPointQuery;
-/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
+/// use tch::ops::ProfileIntervalDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
+/// use ttf::{PwlTTF, TTF};
 ///
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
@@ -639,20 +633,16 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
-///         ),
+///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
 ///     ),
 /// ]);
-/// let mut ops = ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
+/// let mut ops =
+///     ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 ///
 /// let query = PointToPointQuery::new(node_index(0), node_index(2), [0., 0.]);
 /// search.solve_query(&query, &mut ops);
 ///
-/// assert_eq!(
-///     search.get_label(&node_index(2)),
-///     Some(&[0., 3.])
-/// );
+/// assert_eq!(search.get_label(&node_index(2)), Some(&[0., 3.]));
 /// let p = search.get_predecessor(&node_index(2)).unwrap();
 /// assert!(p.contains(&node_index(0)));
 /// assert!(p.contains(&node_index(1)));
@@ -919,14 +909,14 @@ where
 /// # Example
 ///
 /// ```
-/// use ttf::{PwlTTF, TTF};
-/// use tch::ops::ThinProfileIntervalDijkstra;
-/// use tch::query::PointToPointQuery;
-/// use tch::DijkstraSearch;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
+/// use tch::ops::ThinProfileIntervalDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
+/// use ttf::{PwlTTF, TTF};
 ///
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
@@ -935,22 +925,16 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
-///         ),
+///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
 ///     ),
 /// ]);
-/// let mut ops = ThinProfileIntervalDijkstra::new_forward(
-///     &graph, |e: EdgeReference<_>| &graph[e.id()]
-/// );
+/// let mut ops =
+///     ThinProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
 ///
 /// let query = PointToPointQuery::new(node_index(0), node_index(2), [0., 0.]);
 /// search.solve_query(&query, &mut ops);
 ///
-/// assert_eq!(
-///     search.get_label(&node_index(2)),
-///     Some(&[0., 3.])
-/// );
+/// assert_eq!(search.get_label(&node_index(2)), Some(&[0., 3.]));
 /// assert_eq!(
 ///     search.get_predecessor(&node_index(2)),
 ///     Some(&[node_index(0), node_index(1)])
@@ -1108,13 +1092,13 @@ where
 /// # Example
 ///
 /// ```
-/// use tch::DijkstraSearch;
-/// use tch::ops::ScalarDijkstra;
-/// use tch::query::PointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
 /// use tch::ops::HopLimitedDijkstra;
+/// use tch::ops::ScalarDijkstra;
+/// use tch::query::PointToPointQuery;
+/// use tch::DijkstraSearch;
 ///
 /// // Standard scalar Dijkstra search with a hop limit of 0.
 /// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
@@ -1293,14 +1277,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::query::PointToPointQuery;
-    use crate::search::DijkstraSearch;
     use hashbrown::HashMap;
     use petgraph::graph::{node_index, DiGraph, EdgeReference};
     use petgraph::visit::EdgeRef;
     use priority_queue::PriorityQueue;
     use ttf::PwlTTF;
+
+    use super::*;
+    use crate::query::PointToPointQuery;
+    use crate::search::DijkstraSearch;
 
     #[test]
     fn profile_dijkstra_test() {

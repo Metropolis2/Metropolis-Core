@@ -27,13 +27,13 @@ mod point;
 mod pwl;
 mod ttf_num;
 
-pub use pwl::{PwlTTF, PwlXYF};
-pub use ttf_num::TTFNum;
+use std::cmp::Ordering;
 
 use either::Either;
+pub use pwl::{PwlTTF, PwlXYF};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
+pub use ttf_num::TTFNum;
 
 /// Descriptor used when merging two TTFs `f` and `g`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -4,16 +4,17 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! HTML report with the results of a simulation.
-use crate::mode::ModeResults;
-use crate::simulation::results::{AggregateResults, SimulationResults};
-use crate::units::Time;
-
-use anyhow::{anyhow, Result};
-use askama::Template;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use anyhow::{anyhow, Result};
+use askama::Template;
 use ttf::TTFNum;
+
+use crate::mode::ModeResults;
+use crate::simulation::results::{AggregateResults, SimulationResults};
+use crate::units::Time;
 
 /// Writes a HTML report of the given [SimulationResults].
 ///

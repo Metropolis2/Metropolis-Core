@@ -3,12 +3,13 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use crate::TTFNum;
+use std::ops;
 
 use num_traits::Num;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::ops;
+
+use crate::TTFNum;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Point<X, Y> {

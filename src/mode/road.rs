@@ -4,6 +4,15 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to road modes of transportation.
+use anyhow::{anyhow, Result};
+use choice::ContinuousChoiceModel;
+use hashbrown::HashSet;
+use num_traits::{Float, Zero};
+use petgraph::graph::{EdgeIndex, NodeIndex};
+use schemars::JsonSchema;
+use serde_derive::{Deserialize, Serialize};
+use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
+
 use super::{ModeCallback, ModeResults, PreDayChoices};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventQueue};
@@ -18,15 +27,6 @@ use crate::schema::{EdgeIndexDef, NodeIndexDef};
 use crate::simulation::results::AgentResult;
 use crate::travel_utility::TravelUtility;
 use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
-
-use anyhow::{anyhow, Result};
-use choice::ContinuousChoiceModel;
-use hashbrown::HashSet;
-use num_traits::{Float, Zero};
-use petgraph::graph::{EdgeIndex, NodeIndex};
-use schemars::JsonSchema;
-use serde_derive::{Deserialize, Serialize};
-use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
 
 /// Model used to compute the chosen departure time.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

@@ -4,15 +4,16 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Event trait and event priority queue.
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+use std::fmt::Debug;
+
+use ttf::TTFNum;
+
 use crate::agent::AgentIndex;
 use crate::network::{Network, NetworkSkim, NetworkState};
 use crate::simulation::results::AgentResult;
 use crate::units::Time;
-
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::fmt::Debug;
-use ttf::TTFNum;
 
 /// Trait to represent an event (e.g., from an agent, a vehicle, a network infrastructure) that can
 /// be executed.

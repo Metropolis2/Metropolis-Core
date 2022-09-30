@@ -17,14 +17,15 @@
 //! Other units can be assumed but the coherence between units must be kept.
 //! For example, if one consider that lengths are expressed in miles, then speeds must be expressed
 //! in miles per second.
-use chrono::NaiveTime;
-use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
-use schemars::JsonSchema;
-use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::FpCategory;
 use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
+
+use chrono::NaiveTime;
+use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
+use schemars::JsonSchema;
+use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 // To implement TTFNum, we first have to implement `Float` and its requirements.

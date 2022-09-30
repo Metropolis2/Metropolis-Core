@@ -4,12 +4,12 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to travel utility models.
-use crate::units::{Time, Utility, ValueOfTime};
-
 use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::units::{Time, Utility, ValueOfTime};
 
 /// Representation of how the travel utility of an agent is computed.
 ///

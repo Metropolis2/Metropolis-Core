@@ -3,12 +3,12 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use super::ContinuousChoiceCallback;
-
 use anyhow::{anyhow, Context, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum};
+
+use super::ContinuousChoiceCallback;
 
 const EULER_MASCHERONI: f64 = 0.5772156649;
 

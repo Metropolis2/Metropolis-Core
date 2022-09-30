@@ -4,18 +4,18 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of the supply side of a simulation.
-use crate::agent::Agent;
-use crate::parameters::Parameters;
+use anyhow::Result;
 use road_network::skim::RoadNetworkSkims;
 use road_network::{
     state::RoadNetworkState, weights::RoadNetworkWeights, RoadNetwork, RoadNetworkParameters,
     RoadNetworkPreprocessingData,
 };
-
-use anyhow::Result;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::agent::Agent;
+use crate::parameters::Parameters;
 
 pub mod road_network;
 

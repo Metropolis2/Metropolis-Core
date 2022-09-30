@@ -4,12 +4,12 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! The alpha-beta-gamma schedule-delay cost model.
-use crate::units::{Time, Utility, ValueOfTime};
-
 use num_traits::Zero;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
+
+use crate::units::{Time, Utility, ValueOfTime};
 
 /// Structure to compute the schedule-delay utility from Vickrey's alpha-beta-gamma model.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

@@ -4,19 +4,20 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to modes of transportation.
+use std::fmt;
+
+use anyhow::{anyhow, Result};
+use road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
+use schemars::JsonSchema;
+use serde_derive::{Deserialize, Serialize};
+use ttf::TTFNum;
+
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::NetworkSkim;
 use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::results::AgentResult;
 use crate::units::{Distribution, Time, Utility};
-use road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
-
-use anyhow::{anyhow, Result};
-use schemars::JsonSchema;
-use serde_derive::{Deserialize, Serialize};
-use std::fmt;
-use ttf::TTFNum;
 
 pub mod road;
 

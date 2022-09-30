@@ -4,6 +4,15 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of [RoadNetworkState].
+use std::cmp::Ordering;
+use std::collections::VecDeque;
+use std::mem::MaybeUninit;
+use std::ops::{Index, IndexMut};
+
+use num_traits::{Float, Zero};
+use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
+use ttf::{PwlTTF, TTFNum, TTFSimplification, TTF};
+
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
@@ -12,14 +21,6 @@ use crate::event::{Event, EventQueue};
 use crate::mode::road::VehicleEvent;
 use crate::simulation::results::AgentResult;
 use crate::units::{Interval, Length, Outflow, Time};
-
-use num_traits::{Float, Zero};
-use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use std::cmp::Ordering;
-use std::collections::VecDeque;
-use std::mem::MaybeUninit;
-use std::ops::{Index, IndexMut};
-use ttf::{PwlTTF, TTFNum, TTFSimplification, TTF};
 
 /// Struct that holds data on the current state of a [RoadNode].
 #[derive(Clone, Debug)]

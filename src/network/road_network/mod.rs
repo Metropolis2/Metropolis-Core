@@ -9,14 +9,7 @@ pub mod state;
 pub mod vehicle;
 pub mod weights;
 
-use crate::agent::Agent;
-use crate::mode::Mode;
-use crate::serialization::DeserRoadGraph;
-use crate::units::{Length, Outflow, Speed, Time};
-use skim::{RoadNetworkSkim, RoadNetworkSkims};
-use state::RoadNetworkState;
-use vehicle::{vehicle_index, Vehicle, VehicleIndex};
-use weights::RoadNetworkWeights;
+use std::ops::{Deref, Index, IndexMut};
 
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
@@ -25,9 +18,17 @@ use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use std::ops::{Deref, Index, IndexMut};
+use skim::{RoadNetworkSkim, RoadNetworkSkims};
+use state::RoadNetworkState;
 use tch::{ContractionParameters, HierarchyOverlay};
 use ttf::{TTFNum, TTFSimplification, TTF};
+use vehicle::{vehicle_index, Vehicle, VehicleIndex};
+use weights::RoadNetworkWeights;
+
+use crate::agent::Agent;
+use crate::mode::Mode;
+use crate::serialization::DeserRoadGraph;
+use crate::units::{Length, Outflow, Speed, Time};
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]

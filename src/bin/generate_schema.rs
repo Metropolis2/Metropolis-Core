@@ -3,18 +3,18 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use anyhow::Result;
-use clap::Parser;
-use log::info;
-use schemars::gen::SchemaSettings;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+use anyhow::Result;
+use clap::Parser;
+use log::info;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::parameters::Parameters;
 use metropolis::simulation::results::{AggregateResults, IterationResults};
+use schemars::gen::SchemaSettings;
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
 #[derive(Parser, Debug)]

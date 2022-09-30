@@ -3,11 +3,12 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use fixedbitset::FixedBitSet;
-use petgraph::graph::IndexType;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+
+use fixedbitset::FixedBitSet;
+use petgraph::graph::IndexType;
 
 /// Trait to represent a data structure that can be used as a map of values for nodes.
 pub trait NodeMap {

@@ -4,17 +4,18 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of [RoadNetworkSkims].
-use super::vehicle::VehicleIndex;
-use crate::units::Time;
+use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
-use std::ops::Index;
 use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTFSimplification, TTF};
+
+use super::vehicle::VehicleIndex;
+use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle](super::vehicle::Vehicle) of a
 /// [RoadNetwork](super::RoadNetwork).

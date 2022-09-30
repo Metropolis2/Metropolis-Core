@@ -3,12 +3,12 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use crate::network::road_network::{ODPairs, RoadEdge, RoadGraph};
-
 use petgraph::graph::{node_index, DiGraph};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use ttf::TTFNum;
+
+use crate::network::road_network::{ODPairs, RoadEdge, RoadGraph};
 
 impl<'de, T> Deserialize<'de> for RoadGraph<T>
 where

@@ -4,20 +4,21 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Structs holding the results of a simulation.
+use std::fs::File;
+use std::io::BufReader;
+use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::path::{Path, PathBuf};
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use ttf::TTFNum;
+
 use crate::agent::{agent_index, AgentIndex};
 use crate::event::{Event, EventQueue};
 use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
 use crate::network::NetworkWeights;
 use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::BufReader;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::path::{Path, PathBuf};
-use ttf::TTFNum;
 
 /// Struct to store the results of a [Simulation](super::Simulation).
 #[derive(Clone, Debug, Default, Serialize, JsonSchema)]

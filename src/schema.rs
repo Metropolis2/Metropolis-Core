@@ -3,6 +3,11 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
+use petgraph::graph::{EdgeIndex, NodeIndex};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::learning::{ExponentialLearningModel, LearningModel};
 use crate::mode::road::{DepartureTimeModel, RoadMode};
 use crate::mode::Mode;
@@ -17,11 +22,6 @@ use crate::stop::StopCriterion;
 use crate::travel_utility::TravelUtility;
 use crate::units::*;
 use crate::{agent::Agent, schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel};
-
-use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
-use petgraph::graph::{EdgeIndex, NodeIndex};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(remote = "NodeIndex")]

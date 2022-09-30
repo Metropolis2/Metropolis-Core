@@ -3,10 +3,11 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::hash_map::DefaultHashBuilder;
-use priority_queue::PriorityQueue;
 use std::cmp::Reverse;
 use std::hash::{BuildHasher, Hash};
+
+use hashbrown::hash_map::DefaultHashBuilder;
+use priority_queue::PriorityQueue;
 
 /// Trait representing a priority queue of (key, value) items that are sorted in increasing order
 /// of their values.

@@ -4,18 +4,19 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to simulation parameters.
+use std::fs::File;
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use schemars::JsonSchema;
+use serde_derive::{Deserialize, Serialize};
+use ttf::TTFNum;
+
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
 use crate::simulation::results::{AgentResults, AggregateResults, IterationResults};
 use crate::stop::StopCriterion;
 use crate::units::Interval;
-
-use anyhow::Result;
-use schemars::JsonSchema;
-use serde_derive::{Deserialize, Serialize};
-use std::fs::File;
-use std::path::{Path, PathBuf};
-use ttf::TTFNum;
 
 fn default_update_ratio() -> f64 {
     1.0

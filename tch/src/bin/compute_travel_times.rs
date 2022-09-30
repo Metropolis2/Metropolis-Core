@@ -3,6 +3,11 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 use either::Either;
@@ -17,11 +22,6 @@ use rayon::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
-use std::fs::File;
-use std::io::BufReader;
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
-
 use tch::algo::{
     earliest_arrival_query, intersect_earliest_arrival_query, intersect_profile_query,
     profile_query,

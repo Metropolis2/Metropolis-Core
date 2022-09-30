@@ -4,19 +4,20 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to agents.
-use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
-use crate::network::NetworkSkim;
-use crate::schedule_utility::ScheduleUtility;
-use crate::simulation::results::PreDayResult;
-use crate::units::NoUnit;
+use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use choice::ChoiceModel;
 use itertools;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use std::ops::Index;
 use ttf::TTFNum;
+
+use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
+use crate::network::NetworkSkim;
+use crate::schedule_utility::ScheduleUtility;
+use crate::simulation::results::PreDayResult;
+use crate::units::NoUnit;
 
 /// Representation of an independent and intelligent agent that makes one trip per day.
 ///
@@ -165,12 +166,13 @@ pub fn agent_index(index: usize) -> AgentIndex {
 
 #[cfg(test)]
 mod tests {
+    use choice::DeterministicChoiceModel;
+
     use super::*;
     use crate::mode::mode_index;
     use crate::mode::PreDayChoices;
     use crate::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
     use crate::units::{Time, Utility, ValueOfTime};
-    use choice::DeterministicChoiceModel;
 
     fn get_agent() -> Agent<f64> {
         let modes = vec![Mode::Constant(Utility(10.))];
