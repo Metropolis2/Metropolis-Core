@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Set of algorithm to compute time-dependent shortest paths.
 use crate::bidirectional_ops::{
     BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
@@ -26,20 +31,18 @@ use ttf::{TTFNum, TTF};
 /// # Example
 ///
 /// ```
-/// use ttf::{PwlTTF, TTF};
-/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
-/// use tch::algo::profile_query;
-/// use tch::bidirectional_ops::BidirectionalProfileDijkstra;
-/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
+/// use tch::algo::profile_query;
+/// use tch::bidirectional_ops::BidirectionalProfileDijkstra;
+/// use tch::query::BidirectionalPointToPointQuery;
+/// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
+/// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search =
-///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search =
-///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<f32>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -47,9 +50,7 @@ use ttf::{TTFNum, TTF};
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
-///         ),
+///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalProfileDijkstra::new(
@@ -61,15 +62,11 @@ use ttf::{TTFNum, TTF};
 /// let label = profile_query(&mut search, &query, &mut ops);
 /// assert_eq!(
 ///     label,
-///     Some(
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![
-///                 (0., 3.),
-///                 (2.5, 3.),
-///                 (10., 0.),
-///             ])
-///         )
-///     )
+///     Some(TTF::Piecewise(PwlTTF::from_breakpoints(vec![
+///         (0., 3.),
+///         (2.5, 3.),
+///         (10., 0.),
+///     ])))
 /// );
 /// ```
 pub fn profile_query<'a, PQ1, PQ2, G1, G2, F1, F2, CM, Q, T>(
@@ -88,6 +85,7 @@ where
     Q: BidirectionalQueryRef<Node = NodeIndex, Label = TTF<T>, RevLabel = TTF<T>>,
     T: TTFNum + 'a,
 {
+    search.reset();
     // Run the bidirectional profile search.
     search.solve_query(query, ops);
     let candidates = ops.get_candidates();
@@ -195,15 +193,15 @@ where
 /// # Example
 ///
 /// ```
-/// use ttf::{PwlTTF, TTF};
-/// use tch::{DijkstraSearch, BidirectionalDijkstraSearch};
-/// use tch::algo::{EarliestArrivalAllocation, earliest_arrival_query};
-/// use tch::bidirectional_ops::BidirectionalTCHEA;
-/// use tch::query::BidirectionalPointToPointQuery;
 /// use hashbrown::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
+/// use tch::algo::{earliest_arrival_query, EarliestArrivalAllocation};
+/// use tch::bidirectional_ops::BidirectionalTCHEA;
+/// use tch::query::BidirectionalPointToPointQuery;
+/// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
+/// use ttf::{PwlTTF, TTF};
 ///
 /// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
@@ -214,28 +212,15 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
-///         ),
+///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
 ///     ),
 /// ]);
 /// let edge_label = |e: EdgeReference<_>| &graph[e.id()];
-/// let mut ops = BidirectionalTCHEA::new(
-///     &graph,
-///     edge_label,
-///     HashMap::new(),
-/// );
-/// let query = BidirectionalPointToPointQuery::new(
-///     node_index(0),
-///     node_index(2),
-///     5.,
-///     [0., 0.]
-/// );
-/// let down_search =
-///     DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut ops = BidirectionalTCHEA::new(&graph, edge_label, HashMap::new());
+/// let query = BidirectionalPointToPointQuery::new(node_index(0), node_index(2), 5., [0., 0.]);
+/// let down_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
 /// let mut alloc = EarliestArrivalAllocation::new(search, down_search);
-/// let results =
-///     earliest_arrival_query(&mut alloc, &query, &mut ops, &graph, edge_label);
+/// let results = earliest_arrival_query(&mut alloc, &query, &mut ops, &graph, edge_label);
 /// assert_eq!(
 ///     results.unwrap(),
 ///     Some((7., vec![node_index(0), node_index(2)])),
@@ -337,6 +322,54 @@ where
         .context("Failed to get upward path")?;
     path.extend_from_slice(&down_path[1..]);
     Ok(path)
+}
+
+/// Returns the earliest possible arrival time from source to target, when leaving source at the
+/// given departure time, using the given forward and backward search spaces.
+///
+/// Returns an error if either the source or target node is not in the search spaces.
+pub fn intersect_earliest_arrival_query<T: TTFNum>(
+    source: NodeIndex,
+    target: NodeIndex,
+    departure_time: T,
+    search_spaces: &SearchSpaces<T>,
+) -> Result<Option<T>> {
+    if source == target {
+        return Ok(Some(departure_time));
+    }
+    if let (Some(source_space), Some(target_space)) = (
+        search_spaces.get_forward_search_space(&source),
+        search_spaces.get_backward_search_space(&target),
+    ) {
+        let candidates = find_candidates(source_space, target_space);
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        let mut earliest_arrival = T::infinity();
+        for candidate in candidates.iter() {
+            let source_ttf = &source_space[candidate];
+            let target_ttf = &target_space[candidate];
+            use log::debug;
+            debug!("Candidate: {}", candidate.index());
+            debug!("Source TTF: {:?}", source_ttf);
+            debug!("Target TTF: {:?}", target_ttf);
+            if (departure_time + source_ttf.get_min() + target_ttf.get_min())
+                .approx_ge(&earliest_arrival)
+            {
+                continue;
+            }
+            let mut new_arrival = departure_time + source_ttf.eval(departure_time);
+            new_arrival = new_arrival + target_ttf.eval(new_arrival);
+            earliest_arrival = earliest_arrival.min(new_arrival);
+        }
+        Ok(Some(earliest_arrival))
+    } else {
+        Err(anyhow!(
+            "No search space for node {:?} or {:?}",
+            source,
+            target
+        ))
+    }
 }
 
 /// Returns the minimum [TTF] between source and target using the given forward and backward search

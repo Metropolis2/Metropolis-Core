@@ -1,8 +1,15 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 use crate::point::*;
 use crate::ttf_num::TTFNum;
 use crate::UndercutDescriptor;
 
 use either::Either;
+use itertools::Itertools;
+use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::cmp::Ordering;
 use std::ops;
@@ -13,17 +20,26 @@ const BUCKET_SIZE: usize = 8;
 ///
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(title = "PwlXYF")]
+#[schemars(description = "Piecewise-linear function represented by an array of points `(x, y)`.")]
 pub struct PwlXYF<X, Y, T> {
+    /// Breakpoints representing the function.
     points: Vec<Point<X, Y>>,
+    /// Minimum `y` value of the function.
     min: Option<Y>,
+    /// Maximum `y` value of the function.
     max: Option<Y>,
+    /// Array `[x0, x1]` representing the domain of the function.
     period: [X; 2],
     #[serde(skip_serializing)]
+    #[schemars(skip)]
     buckets: Vec<usize>,
     #[serde(skip_serializing)]
+    #[schemars(skip)]
     bucket_shift: usize,
     #[serde(skip_serializing)]
+    #[schemars(skip)]
     convert_type: std::marker::PhantomData<T>,
 }
 
@@ -51,8 +67,6 @@ where
 #[serde(rename = "PwlXYF")]
 pub(crate) struct DeserPwlXYF<X, Y> {
     points: Vec<Point<X, Y>>,
-    min: Option<Y>,
-    max: Option<Y>,
     period: [X; 2],
 }
 
@@ -63,10 +77,20 @@ where
     T: TTFNum,
 {
     fn from_deserialized(input: DeserPwlXYF<X, Y>) -> Self {
+        if input.points.is_empty() {
+            panic!("Cannot deserialize a PwlXYF with no point");
+        }
+        let (min_y, max_y) = input
+            .points
+            .iter()
+            .map(|p| p.y)
+            .minmax()
+            .into_option()
+            .unwrap();
         let mut f = PwlXYF {
             points: input.points,
-            min: input.min,
-            max: input.max,
+            min: Some(min_y),
+            max: Some(max_y),
             period: input.period,
             buckets: Vec::new(),
             bucket_shift: 0,

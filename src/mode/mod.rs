@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Everything related to modes of transportation.
 use crate::agent::AgentIndex;
 use crate::event::Event;
@@ -19,7 +24,18 @@ pub mod road;
 ///
 /// The `n` modes of an [Agent](crate::agent::Agent) are indexed from `0` to `n-1`.
 #[derive(
-    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    PartialOrd,
+    Eq,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    JsonSchema,
 )]
 pub struct ModeIndex(usize);
 
@@ -133,7 +149,8 @@ pub type ModeCallback<'a, T> =
     Box<dyn FnOnce(&mut PreDayChoiceAllocation<T>) -> Result<PreDayChoices<T>> + 'a>;
 
 /// Enum representing the pre-day choices for a given mode.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum PreDayChoices<T> {
     /// Choices when a road mode is chosen.
     Road(RoadChoices<T>),
@@ -172,7 +189,8 @@ pub struct PreDayChoiceAllocation<T: TTFNum> {
 }
 
 /// Results of the within-day model specific to a mode of transportation.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "values")]
 pub enum ModeResults<T> {
     /// Results for road modes.
     Road(RoadResults<T>),
@@ -181,7 +199,7 @@ pub enum ModeResults<T> {
 }
 
 /// Aggregate results of an iteration that are mode-specific.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateModeResults<T> {
     /// Results specific to road modes.
     pub road: Option<AggregateRoadResults<T>>,
@@ -190,7 +208,7 @@ pub struct AggregateModeResults<T> {
 }
 
 /// Aggregate results of an iteration specific to constant modes.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateConstantResults<T> {
     /// Number of agents who chose a constant mode.
     pub count: usize,

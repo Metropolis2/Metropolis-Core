@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Description of the supply side of a simulation.
 use crate::agent::Agent;
 use crate::parameters::Parameters;
@@ -159,7 +164,7 @@ impl<T: TTFNum> NetworkState<'_, T> {
 }
 
 /// Simplified representation of the state of a network during a whole day.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
 pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,

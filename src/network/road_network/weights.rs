@@ -1,8 +1,14 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Description of the [RoadNetworkWeights].
 use super::vehicle::VehicleIndex;
 use crate::units::Time;
 
 use petgraph::graph::EdgeIndex;
+use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
 use ttf::{TTFNum, TTF};
@@ -14,8 +20,13 @@ use ttf::{TTFNum, TTF};
 /// [RoadNetwork](super::RoadNetwork).
 /// The inner vectors have all the same length (i.e., the RoadNetworkWeights represent a matrix)
 /// which is equal to the number of edges of the associated [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[schemars(title = "Road Network Weights")]
+#[schemars(
+    description = "Travel-time functions of each edge of road network (inner array), for each \
+    vehicle (outer array)."
+)]
 pub struct RoadNetworkWeights<T>(Vec<Vec<TTF<Time<T>>>>);
 
 impl<T> RoadNetworkWeights<T> {

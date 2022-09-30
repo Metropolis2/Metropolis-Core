@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Library for Metropolis: a dynamic multi-modal traffic-assignment simulator.
 #![warn(
     elided_lifetimes_in_paths,
@@ -17,7 +22,6 @@
     unused_qualifications
 )]
 #![warn(clippy::all)]
-#![feature(result_into_ok_or_err)]
 
 pub mod agent;
 pub mod event;

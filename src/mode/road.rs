@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Everything related to road modes of transportation.
 use super::{ModeCallback, ModeResults, PreDayChoices};
 use crate::agent::AgentIndex;
@@ -9,7 +14,7 @@ use crate::network::road_network::vehicle::VehicleIndex;
 use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkSkim, NetworkState};
 use crate::schedule_utility::ScheduleUtility;
-use crate::schema::NodeIndexDef;
+use crate::schema::{EdgeIndexDef, NodeIndexDef};
 use crate::simulation::results::AgentResult;
 use crate::travel_utility::TravelUtility;
 use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
@@ -54,11 +59,11 @@ pub enum DepartureTimeModel<T> {
 #[schemars(description = "Mode of transportation for a vehicle that travels on the road network.")]
 #[schemars(example = "crate::schema::example_road_mode")]
 pub struct RoadMode<T> {
-    #[schemars(with = "NodeIndexDef")]
     /// Id of the origin node on the road network graph.
-    origin: NodeIndex,
     #[schemars(with = "NodeIndexDef")]
+    origin: NodeIndex,
     /// Id of the destination node on the road network graph.
+    #[schemars(with = "NodeIndexDef")]
     destination: NodeIndex,
     /// Id of the vehicle.
     vehicle: VehicleIndex,
@@ -344,16 +349,27 @@ fn add_breakpoints_to_pwl_ttf<T: TTFNum>(
 /// [RoadMode].
 ///
 /// The destination and vehicle from the [RoadMode] are stored here for convenience.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Road Choices")]
+#[schemars(description = "Results from the pre-day model, for a road mode of transportation.")]
 pub struct RoadChoices<T> {
+    /// Departure time from origin chosen.
     departure_time: Time<T>,
+    /// Expected arrival time at destination.
     expected_arrival_time: Time<T>,
+    /// The route chosen, as a Vec of [EdgeIndex].
+    #[schemars(with = "EdgeIndexDef")]
+    #[schemars(description = "Ids of edges representing the route chosen.")]
     route: Vec<EdgeIndex>,
+    /// Destination of the vehicle.
     #[serde(skip_serializing)]
     #[serde(default)]
+    #[schemars(skip)]
     destination: NodeIndex,
+    /// Index of the [Vehicle].
     #[serde(skip_serializing)]
     #[serde(default)]
+    #[schemars(skip)]
     vehicle: VehicleIndex,
 }
 
@@ -420,9 +436,13 @@ impl<T: TTFNum> RoadChoices<T> {
 }
 
 /// Struct used to store the results from a [RoadMode] in the within-day model.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Road Results")]
+#[schemars(description = "Results from the within-day model, for a road mode of transportation.")]
 pub struct RoadResults<T> {
     /// The route taken by the vehicle, as a Vec of [EdgeIndex].
+    #[schemars(with = "EdgeIndexDef")]
+    #[schemars(description = "Ids of edges representing the route taken by the vehicle.")]
     route: Vec<EdgeIndex>,
     /// The timings at which the vehicle entered each edge.
     road_breakpoints: Vec<Time<T>>,
@@ -529,9 +549,9 @@ impl<T: TTFNum> RoadResults<T> {
 }
 
 /// Struct to store aggregate results specific to road modes of transportation.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateRoadResults<T> {
-    /// Number of trips taken with a [RoadMode].
+    /// Number of trips taken with a road mode of transportation.
     pub count: usize,
     /// The relative difference between average actual travel time and average free-flow travel
     /// time.
@@ -546,7 +566,7 @@ pub struct AggregateRoadResults<T> {
     pub bottleneck_times: Distribution<Time<T>>,
     /// Distribution of pending times.
     pub pending_times: Distribution<Time<T>>,
-    /// Distribution of total travel times times.
+    /// Distribution of total travel times.
     pub travel_times: Distribution<Time<T>>,
     /// Distribution of route free-flow travel times times.
     pub route_free_flow_travel_times: Distribution<Time<T>>,
@@ -559,7 +579,7 @@ pub struct AggregateRoadResults<T> {
     /// Distribution of relative difference between expected travel time and actual travel time.
     pub exp_travel_time_diff: Distribution<T>,
     /// Distribution of departure time shift compared to previous iteration (except for the first
-    /// iteration, excluding agents who chose a different mode in the previous iteration).
+    /// iteration; excluding agents who chose a different mode in the previous iteration).
     pub dep_time_shift: Option<Distribution<Time<T>>>,
 }
 

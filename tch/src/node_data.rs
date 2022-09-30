@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 use hashbrown::HashSet;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
@@ -37,7 +42,7 @@ impl<L, P> NodeData for (L, Option<P>) {
 }
 
 /// A Struct that can store extra data in addition to the standard node's data.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct NodeDataWithExtra<D1, D2> {
     /// The standard node's data.
     pub data: D1,

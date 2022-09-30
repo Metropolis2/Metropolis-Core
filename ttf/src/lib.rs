@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Travel-time functions represented as piecewise linear functions.
 #![warn(
     elided_lifetimes_in_paths,
@@ -53,8 +58,11 @@ impl UndercutDescriptor {
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(untagged)]
+#[schemars(title = "TTF")]
+#[schemars(description = "Constant or piecewise-linear travel time function.")]
 pub enum TTF<T> {
     /// A piecewise-linear travel-time function.
     Piecewise(PwlTTF<T>),
@@ -166,7 +174,7 @@ impl<T: TTFNum> TTF<T> {
     /// # Example
     ///
     /// ```
-    /// use ttf::{TTF, UndercutDescriptor};
+    /// use ttf::{UndercutDescriptor, TTF};
     /// let f = TTF::Constant(2.0f64);
     /// let g = TTF::Constant(1.0f64);
     /// let descr = UndercutDescriptor {

@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Structs holding the results of a simulation.
 use crate::agent::{agent_index, AgentIndex};
 use crate::event::{Event, EventQueue};
@@ -6,6 +11,7 @@ use crate::network::NetworkWeights;
 use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufReader;
@@ -14,7 +20,7 @@ use std::path::{Path, PathBuf};
 use ttf::TTFNum;
 
 /// Struct to store the results of a [Simulation](super::Simulation).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
 pub struct SimulationResults<T> {
     /// [AggregateResults] of each iteration.
     pub iterations: Vec<AggregateResults<T>>,
@@ -70,7 +76,7 @@ impl<T: TTFNum> SimulationResults<T> {
 }
 
 /// Aggregate results summarizing the results of an iteration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateResults<T> {
     /// Distribution of the surplus of the agents.
     pub surplus: Distribution<Utility<T>>,
@@ -79,7 +85,7 @@ pub struct AggregateResults<T> {
 }
 
 /// Detailed results of an iteration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
 pub struct IterationResults<T> {
     /// Agent-specific results.
@@ -122,7 +128,7 @@ impl<T> IterationResults<T> {
 }
 
 /// Results from the pre-day choices of an agent.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 pub struct PreDayResult<T> {
     /// Index of the chosen mode.
     mode: ModeIndex,
@@ -174,7 +180,7 @@ impl<T: TTFNum + 'static> PreDayResult<T> {
 }
 
 /// Results of an agent, during a single iteration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AgentResult<T> {
     /// Id of the agent.
     id: usize,
@@ -272,7 +278,9 @@ impl<T: TTFNum> AgentResult<T> {
 }
 
 /// Struct to store the [AgentResult] of each agent in the Simulation.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "Agent Results")]
+#[schemars(description = "Results for each agent in the simulation.")]
 pub struct AgentResults<T>(Vec<AgentResult<T>>);
 
 impl<T> AgentResults<T> {

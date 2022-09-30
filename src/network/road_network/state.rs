@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Description of [RoadNetworkState].
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
@@ -248,7 +253,7 @@ impl<T: TTFNum> Bottleneck<'_, T> {
     /// If there is a recorded vehicle with the exact same entry time, the function returns the
     /// waiting time of this vehicle that arrived at the same time.
     fn get_waiting_time_at(&self, entry_time: Time<T>) -> Time<T> {
-        let i = self.entry_times.binary_search(&entry_time).into_ok_or_err();
+        let i = self.entry_times.partition_point(|t| t < &entry_time);
         if i == 0 {
             // The entry time is such that `entry_time <= t_0`, i.e., the vehicle arrive before any
             // other vehicle.

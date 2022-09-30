@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Definition of types representing values expressed in a given unit.
 //!
 //! The types assumed the following units:
@@ -561,7 +566,7 @@ impl<T: Copy + PartialOrd> Interval<T> {
 }
 
 /// Struct to describe statistics on a distribution.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Distribution<T> {
     mean: T,
     std: T,

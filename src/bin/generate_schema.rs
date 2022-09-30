@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 use anyhow::Result;
 use clap::Parser;
 use log::info;
@@ -9,6 +14,7 @@ use std::path::PathBuf;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::parameters::Parameters;
+use metropolis::simulation::results::{AggregateResults, IterationResults};
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
 #[derive(Parser, Debug)]
@@ -44,8 +50,20 @@ fn main() -> Result<()> {
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Parameters.
-    let schema = gen.into_root_schema_for::<Parameters<f64>>();
+    let schema = gen.clone().into_root_schema_for::<Parameters<f64>>();
     let filename = args.path.join("schema-parameters.json");
+    let mut file = File::create(&filename)?;
+    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
+
+    // Aggregate results.
+    let schema = gen.clone().into_root_schema_for::<AggregateResults<f64>>();
+    let filename = args.path.join("schema-iteration.json");
+    let mut file = File::create(&filename)?;
+    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
+
+    // Iteration results.
+    let schema = gen.into_root_schema_for::<IterationResults<f64>>();
+    let filename = args.path.join("schema-output.json");
     let mut file = File::create(&filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 

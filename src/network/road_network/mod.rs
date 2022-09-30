@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! The part of the network dedicated to road vehicles.
 pub mod skim;
 pub mod state;
@@ -340,11 +345,11 @@ impl<T: TTFNum> RoadNetwork<T> {
                 |edge_id| weights[(vehicle_id, edge_id)].clone(),
                 parameters.contraction.clone(),
             );
-            hierarchy.simplify(parameters.edge_approx_bound);
+            hierarchy.simplify(parameters.edge_simplification);
             let mut skim = RoadNetworkSkim::new(hierarchy);
             let od_pairs = &preprocess_data[vehicle_id];
             skim.compute_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
-            skim.simplify_search_spaces(parameters.space_approx_bound);
+            skim.simplify_search_spaces(parameters.search_space_simplification);
             skim.pre_compute_profile_queries(&od_pairs.pairs)?;
             skims.push(Some(skim));
         }
@@ -390,14 +395,14 @@ pub struct RoadNetworkParameters<T> {
     #[schemars(
         description = "How to simplify the edges TTFs after the hierarchy overlay is built."
     )]
-    pub edge_approx_bound: TTFSimplification<Time<T>>,
+    pub edge_simplification: TTFSimplification<Time<T>>,
     /// [TTFSimplification] describing how the TTFs of the forward and backward search spaces
     /// are simplified.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
     #[schemars(
         description = "How to simplify the TTFs of the forward and backward search spaces."
     )]
-    pub space_approx_bound: TTFSimplification<Time<T>>,
+    pub search_space_simplification: TTFSimplification<Time<T>>,
     /// [TTFSimplification] describing how the weights of the road network are simplified at the
     /// beginning of the iteration.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
@@ -409,8 +414,8 @@ impl<T> Default for RoadNetworkParameters<T> {
     fn default() -> Self {
         RoadNetworkParameters {
             contraction: Default::default(),
-            edge_approx_bound: Default::default(),
-            space_approx_bound: Default::default(),
+            edge_simplification: Default::default(),
+            search_space_simplification: Default::default(),
             weight_simplification: Default::default(),
         }
     }
@@ -438,7 +443,8 @@ impl IndexMut<VehicleIndex> for RoadNetworkPreprocessingData {
 
 /// Structure representing the origin-destination pairs for which at least one agent can make a
 /// trip, with a given vehicle.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(from = "crate::serialization::DeserODPairs")]
 pub struct ODPairs {
     unique_origins: HashSet<NodeIndex>,
     unique_destinations: HashSet<NodeIndex>,
@@ -446,6 +452,16 @@ pub struct ODPairs {
 }
 
 impl ODPairs {
+    /// Create a new ODPairs from a Vec of tuples `(o, d)`, where `o` is the [NodeIndex] of the
+    /// origin and `d` is the [NodeIndex] of the destination.
+    pub fn from_vec(raw_pairs: Vec<(NodeIndex, NodeIndex)>) -> Self {
+        let mut pairs = ODPairs::default();
+        for (origin, destination) in raw_pairs {
+            pairs.add_pair(origin, destination);
+        }
+        pairs
+    }
+
     fn is_empty(&self) -> bool {
         self.unique_origins.is_empty() && self.unique_destinations.is_empty()
     }

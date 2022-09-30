@@ -1,5 +1,9 @@
-//! Traits and structs used to represent Dijkstra queries.
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Traits and structs used to represent Dijkstra queries.
 use std::iter;
 
 /// A Dijkstra query with 1 or more source nodes and 0 or more target nodes.

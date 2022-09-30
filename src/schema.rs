@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 use crate::learning::{ExponentialLearningModel, LearningModel};
 use crate::mode::road::{DepartureTimeModel, RoadMode};
 use crate::mode::Mode;
@@ -14,7 +19,7 @@ use crate::units::*;
 use crate::{agent::Agent, schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel};
 
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +34,20 @@ fn get_node_index(node: &NodeIndex) -> usize {
 impl From<NodeIndexDef> for NodeIndex {
     fn from(def: NodeIndexDef) -> NodeIndex {
         NodeIndex::new(def.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(remote = "EdgeIndex")]
+pub struct EdgeIndexDef(#[serde(getter = "get_edge_index")] usize);
+
+fn get_edge_index(edge: &EdgeIndex) -> usize {
+    edge.index()
+}
+
+impl From<EdgeIndexDef> for EdgeIndex {
+    fn from(def: EdgeIndexDef) -> EdgeIndex {
+        EdgeIndex::new(def.0)
     }
 }
 

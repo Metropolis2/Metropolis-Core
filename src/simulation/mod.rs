@@ -1,14 +1,13 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Everything related to simulations.
 pub mod results;
 
-use crate::agent::Agent;
-use crate::mode::road::AggregateRoadResults;
-use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
-use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
-use crate::parameters::Parameters;
-use crate::report;
-use crate::units::Distribution;
-use results::{AgentResults, AggregateResults, IterationResults, PreDayResult, SimulationResults};
+use std::ops::Deref;
+use std::path::Path;
 
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -17,11 +16,18 @@ use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
+use results::{AgentResults, AggregateResults, IterationResults, PreDayResult, SimulationResults};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
-use std::path::Path;
 use ttf::TTFNum;
+
+use crate::agent::Agent;
+use crate::mode::road::AggregateRoadResults;
+use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
+use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
+use crate::parameters::Parameters;
+use crate::report;
+use crate::units::Distribution;
 
 /// An abstract representation of an area to be simulated.
 ///

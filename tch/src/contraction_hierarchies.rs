@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 use crate::algo::{earliest_arrival_query, profile_query, EarliestArrivalAllocation};
 use crate::bidirectional_ops::{
     BidirectionalDijkstraOps, BidirectionalProfileDijkstra, BidirectionalTCHEA,
@@ -401,7 +406,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             &mut candidate_map,
         );
         interval_search.solve_query(&query, &mut ops);
-        let bound = *ops.forward_ops().0.get_bound().get().unwrap();
+        let bound = *ops.forward_ops().0.get_bound().get()?;
         let forw_cone = self.get_cone(
             ops.get_candidates(),
             bound,

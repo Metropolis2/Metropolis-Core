@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Set of algorithms based on Time-Dependent Contraction Hierarchies.
 #![warn(
     elided_lifetimes_in_paths,
@@ -52,9 +57,39 @@ pub type DefaultEarliestArrivalAllocation<T> = algo::EarliestArrivalAllocation<
     min_queue::MinPQ<NodeIndex, T>,
 >;
 
+/// Baseline [BidirectionalDijkstraSearch] for TCH interval profile queries.
+pub type DefaultBidirectionalIntervalSearch<T> = BidirectionalDijkstraSearch<
+    node_data::ProfileIntervalDataWithExtra<T>,
+    node_data::ProfileIntervalDataWithExtra<T>,
+    min_queue::MinPQ<NodeIndex, T>,
+    min_queue::MinPQ<NodeIndex, T>,
+>;
+
+/// Baseline [BidirectionalDijkstraSearch] for the [profile search](algo::profile_query).
+pub type DefaultBidirectionalProfileSearch<T> = BidirectionalDijkstraSearch<
+    node_data::ProfileData<T>,
+    node_data::ProfileData<T>,
+    min_queue::MinPQ<NodeIndex, T>,
+    min_queue::MinPQ<NodeIndex, T>,
+>;
+
+/// Baseline allocation for the TCH profile query.
+#[derive(Clone, Debug, Default)]
+pub struct DefaultTCHProfileAllocation<T: ttf::TTFNum> {
+    /// Allocation for the interval search.
+    pub interval_search: DefaultBidirectionalIntervalSearch<T>,
+    /// Allocation for the profile search.
+    pub profile_search: DefaultBidirectionalProfileSearch<T>,
+}
+
 // Dependencies only used in the bins.
 // TODO: Remove them when the bin will no longer be useful.
 use bincode as _;
 use csv as _;
 use geojson as _;
 use serde_json as _;
+
+// Dependencies only used in the bins.
+use clap as _;
+use env_logger as _;
+use serde_with as _;

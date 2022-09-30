@@ -1,3 +1,8 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
 //! Everything related to agents.
 use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
 use crate::network::NetworkSkim;
