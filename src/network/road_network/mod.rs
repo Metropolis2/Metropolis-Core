@@ -103,13 +103,13 @@ impl<T: TTFNum> ThreeRegimesSpeedDensityFunction<T> {
     fn get_speed(&self, ff_speed: Speed<T>, density: T) -> Speed<T> {
         if density >= self.jam_density {
             // Traffic jam: all vehicles travel at the jam speed.
-            TTFNum::min(&self.jam_speed, &ff_speed)
+            Float::min(self.jam_speed, ff_speed)
         } else if density >= self.min_density {
             // Congestion.
             let coef = ((density - self.min_density) / (self.jam_density - self.min_density))
                 .powf(self.beta);
             let speed = Speed(ff_speed.0 * (T::one() - coef) + self.jam_speed.0 * coef);
-            TTFNum::min(&speed, &ff_speed)
+            Float::min(speed, ff_speed)
         } else {
             // Vehicle can travel at full speed.
             ff_speed
@@ -196,7 +196,7 @@ impl<T: TTFNum> RoadEdge<T> {
                 if occupied_length.0 <= outflow * (self.total_length() / self.base_speed).0 {
                     self.length / vehicle_speed
                 } else {
-                    Time(occupied_length.0 / (outflow * T::from(self.lanes).unwrap()))
+                    Time(occupied_length.0 / (outflow * T::from_u8(self.lanes).unwrap()))
                 }
             }
             SpeedDensityFunction::ThreeRegimes(func) => {

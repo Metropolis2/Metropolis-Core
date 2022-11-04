@@ -345,7 +345,7 @@ fn read_geojson(path_str: &str) -> GeoJson {
     let display = path.display();
 
     // Open file.
-    let mut file = match File::open(&path) {
+    let mut file = match File::open(path) {
         Err(why) => panic!("Cannot open {}: {}", display, why),
         Ok(file) => file,
     };
@@ -481,7 +481,7 @@ fn read_traffic_patterns(
     let display = path.display();
 
     // Open file.
-    let file = match File::open(&path) {
+    let file = match File::open(path) {
         Err(why) => panic!("Cannot open {}: {}", display, why),
         Ok(file) => file,
     };
@@ -553,7 +553,7 @@ fn read_link_patterns(edge_map: &EdgeMap, full: bool) -> HashMap<EdgeIndex, u64>
     let display = path.display();
 
     // Open file.
-    let file = match File::open(&path) {
+    let file = match File::open(path) {
         Err(why) => panic!("Cannot open {}: {}", display, why),
         Ok(file) => file,
     };
@@ -576,7 +576,7 @@ fn read_link_patterns(edge_map: &EdgeMap, full: bool) -> HashMap<EdgeIndex, u64>
         let display = path.display();
 
         // Open file.
-        let file = match File::open(&path) {
+        let file = match File::open(path) {
             Err(why) => panic!("Cannot open {}: {}", display, why),
             Ok(file) => file,
         };
@@ -602,7 +602,7 @@ fn read_order() -> HashMap<NodeIndex, usize> {
     let display = path.display();
 
     // Open file.
-    let file = match File::open(&path) {
+    let file = match File::open(path) {
         Err(why) => panic!("Cannot open {}: {}", display, why),
         Ok(file) => file,
     };

@@ -47,18 +47,18 @@ impl<T: TTFNum> LearningModel<T> {
         match self {
             Self::Exponential(model) => model.learn(old_weights, update_weights, iteration_counter),
             Self::Linear => {
-                let t = T::from(iteration_counter)
+                let t = T::from_u64(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 let coef = t / (t + T::one());
                 old_weights.average(update_weights, coef)
             }
             Self::Genetic => {
-                let t = T::from(iteration_counter)
+                let t = T::from_u64(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 old_weights.genetic_average(update_weights, t, T::one())
             }
             Self::Quadratic => {
-                let t = T::from(iteration_counter)
+                let t = T::from_u64(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 let coef = t.sqrt() / (t.sqrt() + T::one());
                 old_weights.average(update_weights, coef)

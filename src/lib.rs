@@ -22,6 +22,9 @@
     unused_qualifications
 )]
 #![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+// #![warn(clippy::nursery)]
+// #![warn(clippy::cargo)]
 
 pub mod agent;
 pub mod event;
@@ -55,7 +58,9 @@ pub fn show_stats() {
 }
 
 // Re-exports.
+pub use report::write_report;
+
 // Dependencies only used in the bins.
 use clap as _;
 use env_logger as _;
-pub use report::write_report;
+use rmp_serde as _;

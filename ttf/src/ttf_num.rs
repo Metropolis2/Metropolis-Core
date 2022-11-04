@@ -6,6 +6,7 @@
 use num_traits::{Float, FromPrimitive};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::fmt;
 
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;
@@ -18,8 +19,8 @@ pub trait TTFNum:
     + PartialOrd
     + Send
     + Sync
-    + std::fmt::Debug
-    + std::fmt::Display
+    + fmt::Debug
+    + fmt::Display
     + Serialize
     + DeserializeOwned
 {
@@ -52,24 +53,6 @@ pub trait TTFNum:
     /// approximation error).
     fn approx_gt(&self, other: &Self) -> bool {
         other.approx_lt(self)
-    }
-    /// Returns the minimum of two numbers.
-    #[must_use]
-    fn min(&self, other: &Self) -> Self {
-        if self < other {
-            *self
-        } else {
-            *other
-        }
-    }
-    /// Returns the maximum of two numbers.
-    #[must_use]
-    fn max(&self, other: &Self) -> Self {
-        if self > other {
-            *self
-        } else {
-            *other
-        }
     }
 }
 

@@ -75,7 +75,7 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
         // If there are n alternatives with the maximum value, we choose the i-th one if:
         // (i / n) <= u < ((i+1) / n)   =>   i <= u * n < i+1
         // so i is equal to the integer part of u * n.
-        if let Some(nb_indices) = T::from(max_indices.len()) {
+        if let Some(nb_indices) = T::from_usize(max_indices.len()) {
             if let Some(i) = (self.u * nb_indices).to_usize() {
                 let choice_id = max_indices[i];
                 Ok((choice_id, max_value))
