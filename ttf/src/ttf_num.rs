@@ -3,10 +3,11 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use std::fmt;
+
 use num_traits::{Float, FromPrimitive};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::fmt;
 
 const MARGIN32: f32 = 1e-4;
 const MARGIN64: f64 = 1e-4;

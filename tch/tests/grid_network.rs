@@ -2,10 +2,9 @@ use hashbrown::HashMap;
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeReference};
 use petgraph::visit::EdgeRef;
 use priority_queue::PriorityQueue;
-use ttf::{PwlTTF, TTF};
-
 use tch::ops::ScalarDijkstra;
 use tch::*;
+use ttf::{PwlTTF, TTF};
 
 fn get_grid_network(n: usize) -> DiGraph<(), ()> {
     let mut graph = DiGraph::with_capacity(n * n, n * n * 4);
