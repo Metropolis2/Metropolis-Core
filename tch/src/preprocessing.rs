@@ -324,7 +324,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         bp.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:60} ETA: {eta}")
-                .progress_chars("█░"),
+                .unwrap(),
         );
         while self.graph.node_count() > 0 {
             // Find the largest set of independent nodes than can be contracted in parallel.

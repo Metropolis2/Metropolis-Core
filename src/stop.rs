@@ -38,13 +38,9 @@ impl<T: TTFNum> StopCriterion<T> {
     ) -> bool {
         match *self {
             Self::MaxIteration(max_iter) => max_iter <= iteration_counter,
-            Self::DepartureTime(threshold, default) => {
-                if let Some(prev_results) = prev_results {
-                    get_mean_departure_time_shift(results, prev_results, default) <= threshold
-                } else {
-                    false
-                }
-            }
+            Self::DepartureTime(threshold, default) => prev_results.map_or(false, |prev_results| {
+                get_mean_departure_time_shift(results, prev_results, default) <= threshold
+            }),
         }
     }
 }

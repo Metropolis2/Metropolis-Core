@@ -544,12 +544,12 @@ pub struct Interval<T>(pub [Time<T>; 2]);
 
 impl<T: Copy> Interval<T> {
     /// Returns the start of the interval.
-    pub fn start(&self) -> Time<T> {
+    pub const fn start(&self) -> Time<T> {
         self.0[0]
     }
 
     /// Returns the end of the interval.
-    pub fn end(&self) -> Time<T> {
+    pub const fn end(&self) -> Time<T> {
         self.0[1]
     }
 
@@ -618,22 +618,22 @@ impl<T: TTFNum> Distribution<T> {
     }
 
     /// Returns the mean of the distribution.
-    pub fn mean(&self) -> T {
+    pub const fn mean(&self) -> T {
         self.mean
     }
 
     /// Returns the standard-deviation of the distribution.
-    pub fn std(&self) -> T {
+    pub const fn std(&self) -> T {
         self.std
     }
 
     /// Returns the minimum of the distribution.
-    pub fn min(&self) -> T {
+    pub const fn min(&self) -> T {
         self.min
     }
 
     /// Returns the maximum of the distribution.
-    pub fn max(&self) -> T {
+    pub const fn max(&self) -> T {
         self.max
     }
 }

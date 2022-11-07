@@ -84,7 +84,7 @@ pub struct ExponentialLearningModel<T> {
 
 impl<T: TTFNum> ExponentialLearningModel<T> {
     /// Creates a new exponential learning model.
-    pub fn new(alpha: T) -> Self {
+    pub const fn new(alpha: T) -> Self {
         ExponentialLearningModel { alpha }
     }
 

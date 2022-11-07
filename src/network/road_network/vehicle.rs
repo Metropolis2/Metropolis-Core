@@ -80,7 +80,7 @@ pub struct Vehicle<T> {
 
 impl<T> Vehicle<T> {
     /// Create a new vehicle with a given [Length], [PCE] and [SpeedFunction].
-    pub fn new(length: Length<T>, pce: PCE<T>, speed_function: SpeedFunction<T>) -> Self {
+    pub const fn new(length: Length<T>, pce: PCE<T>, speed_function: SpeedFunction<T>) -> Self {
         Vehicle {
             length,
             pce,
@@ -91,12 +91,12 @@ impl<T> Vehicle<T> {
 
 impl<T: Copy> Vehicle<T> {
     /// Returns the length of the vehicle.
-    pub fn get_length(&self) -> Length<T> {
+    pub const fn get_length(&self) -> Length<T> {
         self.length
     }
 
     /// Returns the PCE of the vehicle.
-    pub fn get_pce(&self) -> PCE<T> {
+    pub const fn get_pce(&self) -> PCE<T> {
         self.pce
     }
 }
@@ -127,18 +127,18 @@ pub struct VehicleIndex(usize);
 
 impl VehicleIndex {
     /// Creates a new VehicleIndex.
-    pub fn new(x: usize) -> Self {
+    pub const fn new(x: usize) -> Self {
         VehicleIndex(x)
     }
 
     /// Returns the index of the VehicleIndex.
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.0
     }
 }
 
 /// Short version of `VehicleIndex::new`.
-pub fn vehicle_index(x: usize) -> VehicleIndex {
+pub const fn vehicle_index(x: usize) -> VehicleIndex {
     VehicleIndex::new(x)
 }
 

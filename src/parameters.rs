@@ -18,7 +18,7 @@ use crate::simulation::results::{AgentResults, AggregateResults, IterationResult
 use crate::stop::StopCriterion;
 use crate::units::Interval;
 
-fn default_update_ratio() -> f64 {
+const fn default_update_ratio() -> f64 {
     1.0
 }
 

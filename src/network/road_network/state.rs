@@ -32,7 +32,7 @@ pub struct RoadNodeState<'a> {
 
 impl<'a> RoadNodeState<'a> {
     /// Creates a new RoadNodeState.
-    pub fn new(reference: &'a RoadNode, node_index: NodeIndex) -> Self {
+    pub const fn new(reference: &'a RoadNode, node_index: NodeIndex) -> Self {
         RoadNodeState {
             reference,
             node_index,
@@ -384,11 +384,10 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             .peek()
             .map(|(_, &dt)| dt >= period.start())
             .unwrap_or(true));
-        let (mut bottleneck_iter, has_bottleneck) = if let Some(bottleneck) = &self.bottleneck {
-            (MaybeUninit::new(bottleneck.iter().peekable()), true)
-        } else {
-            (MaybeUninit::uninit(), false)
-        };
+        let (mut bottleneck_iter, has_bottleneck) = self.bottleneck.as_ref().map_or_else(
+            || (MaybeUninit::uninit(), false),
+            |bottleneck| (MaybeUninit::new(bottleneck.iter().peekable()), true),
+        );
         let mut last_ta_opt = None;
         let ff_tt = self.reference.get_free_flow_travel_time(vehicle);
         let mut is_constant = true;
@@ -400,11 +399,12 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
         }
         while let Some((&length, &dt)) = length_iter.next() {
             let on_road_tt = self.reference.get_travel_time(length, vehicle);
-            let waiting_time = if let Some(bottleneck) = &self.bottleneck {
-                bottleneck.get_waiting_time_at(dt + on_road_tt)
-            } else {
-                Time::zero()
-            };
+            let waiting_time = self
+                .bottleneck
+                .as_ref()
+                .map_or_else(Time::zero, |bottleneck| {
+                    bottleneck.get_waiting_time_at(dt + on_road_tt)
+                });
             let mut tt = on_road_tt + waiting_time;
             if let Some(last_ta) = last_ta_opt {
                 // Fix travel time so that FIFO is respected.
@@ -468,11 +468,12 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             } else {
                 ff_tt
             };
-            let waiting_time = if let Some(bottleneck) = &self.bottleneck {
-                bottleneck.get_waiting_time_at(period.end() + on_road_tt)
-            } else {
-                Time::zero()
-            };
+            let waiting_time = self
+                .bottleneck
+                .as_ref()
+                .map_or_else(Time::zero, |bottleneck| {
+                    bottleneck.get_waiting_time_at(period.end() + on_road_tt)
+                });
             let mut tt = on_road_tt + waiting_time;
             // Fix travel time so that FIFO is respected.
             if last_ta_opt.unwrap() > period.end() + tt {
@@ -628,7 +629,7 @@ pub struct BottleneckEvent<T> {
 
 impl<T> BottleneckEvent<T> {
     /// Creates a new BottleneckEvent.
-    pub fn new(at_time: Time<T>, edge: EdgeIndex) -> Self {
+    pub const fn new(at_time: Time<T>, edge: EdgeIndex) -> Self {
         BottleneckEvent { at_time, edge }
     }
 }

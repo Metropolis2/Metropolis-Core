@@ -58,12 +58,12 @@ impl<T> Simulation<T> {
     }
 
     /// Return a reference to the [Network] of the simulation.
-    pub fn get_network(&self) -> &Network<T> {
+    pub const fn get_network(&self) -> &Network<T> {
         &self.network
     }
 
     /// Return a reference to the [Parameters] of the simulation.
-    pub fn get_parameters(&self) -> &Parameters<T> {
+    pub const fn get_parameters(&self) -> &Parameters<T> {
         &self.parameters
     }
 }
@@ -185,7 +185,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         bp.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:60} ETA: {eta}")
-                .progress_chars("█░"),
+                .unwrap(),
         );
         let results = if let Some(previous_results) = previous_results_opt {
             let updates = self.get_update_vector(iteration_counter);
@@ -245,7 +245,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         bp.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:60} ETA: {eta}")
-                .progress_chars("█░"),
+                .unwrap(),
         );
         while let Some(event) = events.pop() {
             nb_events += 1;
@@ -366,11 +366,12 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     fn get_update_vector(&self, iteration_counter: u64) -> Vec<bool> {
         // To change the seed from one iteration to another, we add the iteration number to the
         // default seed.
-        let mut rng = if let Some(seed) = self.parameters.random_seed {
-            XorShiftRng::seed_from_u64(seed + iteration_counter)
-        } else {
-            XorShiftRng::from_entropy()
-        };
+        let mut rng = self
+            .parameters
+            .random_seed
+            .map_or_else(XorShiftRng::from_entropy, |seed| {
+                XorShiftRng::seed_from_u64(seed + iteration_counter)
+            });
         let mut updates = vec![true; self.agents.len()];
         // Number of agents that will be able to switch their choice.
         let n = (self.parameters.update_ratio * self.agents.len() as f64) as usize;

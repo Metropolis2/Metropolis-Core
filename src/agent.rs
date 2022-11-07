@@ -71,7 +71,7 @@ impl<T> Agent<T> {
     }
 
     /// Returns the schedule-utility preferences of the agent.
-    pub fn schedule_utility(&self) -> &ScheduleUtility<T> {
+    pub const fn schedule_utility(&self) -> &ScheduleUtility<T> {
         &self.schedule_utility
     }
 }
@@ -149,18 +149,18 @@ pub struct AgentIndex(usize);
 
 impl AgentIndex {
     /// Creates a new AgentIndex.
-    pub fn new(x: usize) -> Self {
+    pub const fn new(x: usize) -> Self {
         AgentIndex(x)
     }
 
     /// Returns the index of the AgentIndex.
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.0
     }
 }
 
 /// Short version of `AgentIndex::new`.
-pub fn agent_index(index: usize) -> AgentIndex {
+pub const fn agent_index(index: usize) -> AgentIndex {
     AgentIndex::new(index)
 }
 

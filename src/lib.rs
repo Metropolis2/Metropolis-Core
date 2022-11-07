@@ -22,9 +22,6 @@
     unused_qualifications
 )]
 #![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-// #![warn(clippy::nursery)]
-// #![warn(clippy::cargo)]
 
 pub mod agent;
 pub mod event;

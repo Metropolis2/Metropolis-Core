@@ -34,7 +34,7 @@ pub struct AlphaBetaGammaModel<T> {
 
 impl<T> AlphaBetaGammaModel<T> {
     /// Creates a new AlphaBetaGammaModel.
-    pub fn new(
+    pub const fn new(
         t_star_low: Time<T>,
         t_star_high: Time<T>,
         beta: ValueOfTime<T>,
@@ -108,7 +108,7 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     }
 }
 
-fn default_is_true() -> bool {
+const fn default_is_true() -> bool {
     true
 }
 

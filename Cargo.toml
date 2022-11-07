@@ -18,10 +18,10 @@ tch = { path = "tch/" }
 anyhow = "1.0"
 askama = { version = "0.11", features = ["serde-json"] }
 chrono = "0.4"
-clap = { version = "3.1", features = ["derive"] }
+clap = { version = "4.0", features = ["derive"] }
 env_logger = "0.9"
 hashbrown = { version = "0.12", features = ["rayon"] }
-indicatif = "0.16"
+indicatif = "0.17"
 itertools = "0.10"
 jemallocator = "0.5"
 jemalloc-ctl = "0.5"
@@ -36,4 +36,13 @@ rmp-serde = "1.1"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-schemars = "0.8.7"
+schemars = "0.8"
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = false
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false

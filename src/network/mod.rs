@@ -39,14 +39,14 @@ pub struct Network<T> {
 
 impl<T: TTFNum> Network<T> {
     /// Creates a new Network.
-    pub fn new(road_network: Option<RoadNetwork<T>>) -> Self {
+    pub const fn new(road_network: Option<RoadNetwork<T>>) -> Self {
         Network { road_network }
     }
 
     /// Returns a reference to the road network of the network, as an option.
     ///
     /// If the network has no road network, returns `None`.
-    pub fn get_road_network(&self) -> Option<&RoadNetwork<T>> {
+    pub const fn get_road_network(&self) -> Option<&RoadNetwork<T>> {
         self.road_network.as_ref()
     }
 
@@ -115,7 +115,7 @@ impl<T> NetworkSkim<T> {
     /// Returns a reference to the road-network skim of the skim, as an option.
     ///
     /// If the skim has no road-network skim, returns `None`.
-    pub fn get_road_network(&self) -> Option<&RoadNetworkSkims<T>> {
+    pub const fn get_road_network(&self) -> Option<&RoadNetworkSkims<T>> {
         self.road_network.as_ref()
     }
 }
@@ -131,7 +131,7 @@ pub struct NetworkState<'a, T> {
 }
 
 impl<'a, T> NetworkState<'a, T> {
-    fn new(road_network: Option<RoadNetworkState<'a, T>>) -> Self {
+    const fn new(road_network: Option<RoadNetworkState<'a, T>>) -> Self {
         NetworkState { road_network }
     }
 
@@ -172,14 +172,14 @@ pub struct NetworkWeights<T> {
 
 impl<T> NetworkWeights<T> {
     /// Creates a new NetworkWeights.
-    pub fn new(road_network: Option<RoadNetworkWeights<T>>) -> Self {
+    pub const fn new(road_network: Option<RoadNetworkWeights<T>>) -> Self {
         NetworkWeights { road_network }
     }
 
     /// Return a reference to the [RoadNetworkWeights] of the [NetworkWeights], as an option.
     ///
     /// If the NetworkWeights have no road-network weights, return `None`.
-    pub fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
+    pub const fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
         self.road_network.as_ref()
     }
 }
@@ -228,7 +228,7 @@ pub struct NetworkPreprocessingData {
 
 impl NetworkPreprocessingData {
     /// Return the [RoadNetworkPreprocessingData] of the [NetworkPreprocessingData].
-    pub fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData> {
+    pub const fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData> {
         self.road_network.as_ref()
     }
 }

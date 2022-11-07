@@ -39,38 +39,31 @@ use ttf::{TTFSimplification, TTF};
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// Which algorithm to use
-    #[clap(arg_enum, value_parser)]
+    #[clap(value_enum, value_parser)]
     algorithm: Algorithm,
     /// Path to the file where the source-target pairs are stored.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     pairs: PathBuf,
     /// Path to the file where the graph is stored.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     graph: PathBuf,
     /// Path to the file where the graph weights are stored.
     /// If not specified, the weights are read from the graph file (with key "weight").
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     weights: Option<PathBuf>,
     /// Path to the file where the parameters are stored.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     parameters: Option<PathBuf>,
     /// Path to the file where the results of the queries should be stored.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     output: PathBuf,
     /// Path to the file where the node ordering is stored (only for intersect and tch).
     /// If not specified, the node ordering is computing automatically.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     input_order: Option<PathBuf>,
     /// Path to the file where the node ordering should be stored (only for intersect and tch).
     /// If not specified, the node ordering is not saved.
     #[clap(long)]
-    #[clap(parse(from_os_str))]
     output_order: Option<PathBuf>,
 }
 
@@ -288,7 +281,7 @@ fn main() -> Result<()> {
         bp.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:60} ETA: {eta}")
-                .progress_chars("█░"),
+                .unwrap(),
         );
         pairs
             .par_iter()
@@ -382,7 +375,7 @@ fn main() -> Result<()> {
             bp.set_style(
                 ProgressStyle::default_bar()
                     .template("{bar:60} ETA: {eta}")
-                    .progress_chars("█░"),
+                    .unwrap(),
             );
             pairs
                 .par_iter()
@@ -432,7 +425,7 @@ fn main() -> Result<()> {
             bp.set_style(
                 ProgressStyle::default_bar()
                     .template("{bar:60} ETA: {eta}")
-                    .progress_chars("█░"),
+                    .unwrap(),
             );
             pairs
                 .par_iter()

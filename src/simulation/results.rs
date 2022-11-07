@@ -58,12 +58,10 @@ impl<T: TTFNum> SimulationResults<T> {
         let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
             .iter()
             .collect();
-        let last_iteration = if let Ok(file) = File::open(filename) {
+        let last_iteration = File::open(filename).map_or(None, |file| {
             let reader = BufReader::new(file);
             Some(serde_json::from_reader(reader).expect("Unable to parse IterationResults"))
-        } else {
-            None
-        };
+        });
         SimulationResults {
             iterations,
             last_iteration,
@@ -97,7 +95,7 @@ pub struct IterationResults<T> {
 
 impl<T> IterationResults<T> {
     /// Creates a new IterationResults.
-    pub fn new(agent_results: AgentResults<T>, weights: NetworkWeights<T>) -> Self {
+    pub const fn new(agent_results: AgentResults<T>, weights: NetworkWeights<T>) -> Self {
         IterationResults {
             agent_results,
             weights,
@@ -105,12 +103,12 @@ impl<T> IterationResults<T> {
     }
 
     /// Returns a reference to the [AgentResults].
-    pub fn agent_results(&self) -> &AgentResults<T> {
+    pub const fn agent_results(&self) -> &AgentResults<T> {
         &self.agent_results
     }
 
     /// Returns a reference to the [NetworkWeights].
-    pub fn network_weights(&self) -> &NetworkWeights<T> {
+    pub const fn network_weights(&self) -> &NetworkWeights<T> {
         &self.weights
     }
 
@@ -141,7 +139,11 @@ pub struct PreDayResult<T> {
 
 impl<T> PreDayResult<T> {
     /// Creates a new PreDayResult.
-    pub fn new(mode: ModeIndex, expected_utility: Utility<T>, choices: PreDayChoices<T>) -> Self {
+    pub const fn new(
+        mode: ModeIndex,
+        expected_utility: Utility<T>,
+        choices: PreDayChoices<T>,
+    ) -> Self {
         PreDayResult {
             mode,
             expected_utility,
@@ -150,19 +152,19 @@ impl<T> PreDayResult<T> {
     }
 
     /// Returns a reference to the [PreDayChoices].
-    pub fn get_choices(&self) -> &PreDayChoices<T> {
+    pub const fn get_choices(&self) -> &PreDayChoices<T> {
         &self.choices
     }
 
     /// Returns the index of the chosen mode.
-    pub fn get_mode_index(&self) -> ModeIndex {
+    pub const fn get_mode_index(&self) -> ModeIndex {
         self.mode
     }
 }
 
 impl<T: Copy> PreDayResult<T> {
     /// Returns the expected utility.
-    pub fn get_expected_utility(&self) -> Utility<T> {
+    pub const fn get_expected_utility(&self) -> Utility<T> {
         self.expected_utility
     }
 }
@@ -199,7 +201,11 @@ pub struct AgentResult<T> {
 
 impl<T> AgentResult<T> {
     /// Creates a new AgentResult.
-    pub fn new(id: usize, pre_day_results: PreDayResult<T>, mode_results: ModeResults<T>) -> Self {
+    pub const fn new(
+        id: usize,
+        pre_day_results: PreDayResult<T>,
+        mode_results: ModeResults<T>,
+    ) -> Self {
         AgentResult {
             id,
             utility: None,
@@ -211,17 +217,17 @@ impl<T> AgentResult<T> {
     }
 
     /// Returns the id of the agent.
-    pub fn id(&self) -> usize {
+    pub const fn id(&self) -> usize {
         self.id
     }
 
     /// Returns a reference to the [PreDayResult].
-    pub fn pre_day_results(&self) -> &PreDayResult<T> {
+    pub const fn pre_day_results(&self) -> &PreDayResult<T> {
         &self.pre_day_results
     }
 
     /// Returns a reference to the [ModeResults].
-    pub fn mode_results(&self) -> &ModeResults<T> {
+    pub const fn mode_results(&self) -> &ModeResults<T> {
         &self.mode_results
     }
 
@@ -241,24 +247,24 @@ impl<T> AgentResult<T> {
     }
 
     /// Returns `true` if the agent has arrived at destination.
-    pub fn has_arrived(&self) -> bool {
+    pub const fn has_arrived(&self) -> bool {
         self.arrival_time.is_some()
     }
 }
 
 impl<T: Copy> AgentResult<T> {
     /// Returns the utility of the agent.
-    pub fn utility(&self) -> Option<Utility<T>> {
+    pub const fn utility(&self) -> Option<Utility<T>> {
         self.utility
     }
 
     /// Returns the departure time of the agent.
-    pub fn departure_time(&self) -> Option<Time<T>> {
+    pub const fn departure_time(&self) -> Option<Time<T>> {
         self.departure_time
     }
 
     /// Returns the arrival time of the agent.
-    pub fn arrival_time(&self) -> Option<Time<T>> {
+    pub const fn arrival_time(&self) -> Option<Time<T>> {
         self.arrival_time
     }
 }

@@ -79,11 +79,11 @@ pub(crate) fn example_road_mode() -> RoadMode<f64> {
     )
 }
 
-pub(crate) fn example_travel_utility() -> TravelUtility<f64> {
+pub(crate) const fn example_travel_utility() -> TravelUtility<f64> {
     TravelUtility::Proportional(ValueOfTime(-10.0))
 }
 
-pub(crate) fn example_travel_utility2() -> TravelUtility<f64> {
+pub(crate) const fn example_travel_utility2() -> TravelUtility<f64> {
     TravelUtility::Quadratic {
         a: ValueOfTime(-5.0),
         b: ValueOfTime(-2.0),
@@ -100,7 +100,7 @@ pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {
     ))
 }
 
-pub(crate) fn example_vehicle() -> Vehicle<f64> {
+pub(crate) const fn example_vehicle() -> Vehicle<f64> {
     Vehicle::new(Length(8.0), PCE(1.0), SpeedFunction::Multiplicator(0.8))
 }
 

@@ -87,7 +87,7 @@ pub struct ThreeRegimesSpeedDensityFunction<T> {
 
 impl<T> ThreeRegimesSpeedDensityFunction<T> {
     /// Creates a new ThreeRegimesSpeedDensityFunction.
-    pub fn new(min_density: T, jam_density: T, jam_speed: Speed<T>, beta: T) -> Self {
+    pub const fn new(min_density: T, jam_density: T, jam_speed: Speed<T>, beta: T) -> Self {
         ThreeRegimesSpeedDensityFunction {
             min_density,
             jam_density,
@@ -125,7 +125,7 @@ fn default_outflow_schema() -> String {
     "Infinity".to_owned()
 }
 
-fn default_lanes() -> u8 {
+const fn default_lanes() -> u8 {
     1
 }
 
@@ -167,7 +167,7 @@ pub struct RoadEdge<T> {
 
 impl<T: TTFNum> RoadEdge<T> {
     /// Creates a new RoadEdge.
-    pub fn new(
+    pub const fn new(
         base_speed: Speed<T>,
         length: Length<T>,
         lanes: u8,
@@ -214,7 +214,7 @@ impl<T: TTFNum> RoadEdge<T> {
     }
 
     /// Return the length of the edge, from source to target.
-    pub fn length(&self) -> Length<T> {
+    pub const fn length(&self) -> Length<T> {
         self.length
     }
 
@@ -239,7 +239,7 @@ pub struct RoadGraph<T>(DiGraph<RoadNode, RoadEdge<T>>);
 
 impl<T> RoadGraph<T> {
     /// Creates a new RoadGraph.
-    pub fn new(graph: DiGraph<RoadNode, RoadEdge<T>>) -> Self {
+    pub const fn new(graph: DiGraph<RoadNode, RoadEdge<T>>) -> Self {
         Self(graph)
     }
 }

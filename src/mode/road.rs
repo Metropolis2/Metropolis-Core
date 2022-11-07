@@ -76,7 +76,7 @@ pub struct RoadMode<T> {
 
 impl<T> RoadMode<T> {
     /// Creates a new RoadMode.
-    pub fn new(
+    pub const fn new(
         origin: NodeIndex,
         destination: NodeIndex,
         vehicle: VehicleIndex,
@@ -93,17 +93,17 @@ impl<T> RoadMode<T> {
     }
 
     /// Return the [VehicleIndex] of the [RoadMode].
-    pub fn vehicle_index(&self) -> VehicleIndex {
+    pub const fn vehicle_index(&self) -> VehicleIndex {
         self.vehicle
     }
 
     /// Return the origin of the [RoadMode].
-    pub fn origin(&self) -> NodeIndex {
+    pub const fn origin(&self) -> NodeIndex {
         self.origin
     }
 
     /// Return the destination of the [RoadMode].
-    pub fn destination(&self) -> NodeIndex {
+    pub const fn destination(&self) -> NodeIndex {
         self.destination
     }
 }
@@ -410,7 +410,7 @@ impl<T> RoadChoices<T> {
 
 impl<T: Copy> RoadChoices<T> {
     /// Return the departure time chosen in the pre-day model.
-    pub fn get_departure_time(&self) -> Time<T> {
+    pub const fn get_departure_time(&self) -> Time<T> {
         self.departure_time
     }
 }
@@ -715,7 +715,7 @@ pub struct VehicleEvent<T> {
 impl<T> VehicleEvent<T> {
     /// Create a new [VehicleEvent] for a given agent that leaves his / her origin at the given
     /// time.
-    pub fn new(agent: AgentIndex, at_time: Time<T>) -> Self {
+    pub const fn new(agent: AgentIndex, at_time: Time<T>) -> Self {
         VehicleEvent {
             agent,
             at_time,

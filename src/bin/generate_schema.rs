@@ -21,7 +21,6 @@ use schemars::gen::SchemaSettings;
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// The directory where the JSON Schemas should be stored
-    #[clap(parse(from_os_str))]
     path: PathBuf,
 }
 

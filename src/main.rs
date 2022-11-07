@@ -22,19 +22,15 @@ use metropolis::simulation::{results::SimulationResults, Simulation};
 struct Args {
     /// Path of the input JSON file with the agents' data
     #[clap(short, long)]
-    #[clap(parse(from_os_str))]
     agents: PathBuf,
     /// Path of the input JSON file with the road-network's data
     #[clap(short, long)]
-    #[clap(parse(from_os_str))]
     road_network: Option<PathBuf>,
     /// Path of the input JSON file with the parameters' data
     #[clap(short, long)]
-    #[clap(parse(from_os_str))]
     parameters: PathBuf,
     /// Output directory
     #[clap(short, long, default_value = ".")]
-    #[clap(parse(from_os_str))]
     output: PathBuf,
     /// Only write the report, without running the simulator (the output directory must contain the
     /// results of a previous run)

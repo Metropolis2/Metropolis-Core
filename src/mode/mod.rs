@@ -42,18 +42,18 @@ pub struct ModeIndex(usize);
 
 impl ModeIndex {
     /// Creates a new ModeIndex.
-    pub fn new(x: usize) -> Self {
+    pub const fn new(x: usize) -> Self {
         ModeIndex(x)
     }
 
     /// Returns the index of the ModeIndex.
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.0
     }
 }
 
 /// Short version of `ModeIndex::new`.
-pub fn mode_index(x: usize) -> ModeIndex {
+pub const fn mode_index(x: usize) -> ModeIndex {
     ModeIndex::new(x)
 }
 
