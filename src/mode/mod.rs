@@ -60,7 +60,7 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 /// Mode of transportation available to an agent.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 #[schemars(title = "Mode")]
 pub enum Mode<T> {
     /// A mode of transportation that always provide the same utility level.
@@ -151,7 +151,7 @@ pub type ModeCallback<'a, T> =
 
 /// Enum representing the pre-day choices for a given mode.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum PreDayChoices<T> {
     /// Choices when a road mode is chosen.
     Road(RoadChoices<T>),
@@ -191,7 +191,8 @@ pub struct PreDayChoiceAllocation<T: TTFNum> {
 
 /// Results of the within-day model specific to a mode of transportation.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
+#[serde(bound(serialize = "T: TTFNum"))]
 pub enum ModeResults<T> {
     /// Results for road modes.
     Road(RoadResults<T>),

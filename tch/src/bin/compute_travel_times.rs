@@ -348,7 +348,7 @@ fn main() -> Result<()> {
         };
 
         if let Some(filename) = args.output_order {
-            serde_json::to_writer(&File::create(&filename)?, &overlay.get_order())?
+            serde_json::to_writer(&File::create(filename)?, &overlay.get_order())?
         }
 
         info!("Simplifying hierarchy overlay");

@@ -88,17 +88,14 @@ where
             .minmax()
             .into_option()
             .unwrap();
-        let mut f = PwlXYF {
+        let f = PwlXYFBuilder {
             points: input.points,
             min: Some(min_y),
             max: Some(max_y),
             period: input.period,
-            buckets: Vec::new(),
-            bucket_shift: 0,
             convert_type: std::marker::PhantomData,
         };
-        f.setup_buckets();
-        f
+        f.finish()
     }
 }
 
@@ -123,24 +120,15 @@ where
 
     /// Creates a new PwlXYF from an Iterator over both `x` and `y` values.
     pub fn from_iterator(iter: impl Iterator<Item = (X, Y)>, period: [X; 2]) -> Self {
-        let mut ttf = PwlXYF::new(period);
+        let mut xyf_builder = if let (_, Some(capacity)) = iter.size_hint() {
+            PwlXYFBuilder::with_capacity(period, capacity)
+        } else {
+            PwlXYFBuilder::new(period)
+        };
         for (x, y) in iter {
-            ttf.append_point(Point { x, y });
+            xyf_builder.push(x, y);
         }
-        ttf.setup_buckets();
-        ttf
-    }
-
-    fn new(period: [X; 2]) -> Self {
-        PwlXYF {
-            points: Vec::new(),
-            min: None,
-            max: None,
-            period,
-            buckets: Vec::with_capacity(BUCKET_SIZE),
-            bucket_shift: 0,
-            convert_type: std::marker::PhantomData,
-        }
+        xyf_builder.finish()
     }
 
     fn with_capacity(period: [X; 2], capacity: usize) -> Self {
@@ -180,48 +168,6 @@ where
         self.points.iter().zip(self.points[1..].iter())
     }
 
-    fn append_point(&mut self, p: Point<X, Y>) {
-        debug_assert!(
-            self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),
-            "{:?} > {:?}",
-            self.points.last().unwrap().x,
-            p.x
-        );
-        debug_assert!(!self.is_empty() || p.x == self.period[0]);
-        debug_assert!(p.x >= self.period[0]);
-        debug_assert!(p.x <= self.period[1]);
-        self.update_min_max(p.y);
-        if let Some(last_point) = self.points.last_mut() {
-            if last_point.x.approx_eq(&p.x) {
-                // The point to add has the same x as the last point added.
-                if last_point.y.approx_eq(&p.y) {
-                    // Do not try to add the same point again.
-                    return;
-                }
-                let new_x = last_point.x.max(p.x) + X::small_margin();
-                last_point.x = last_point.x.min(p.x);
-                debug_assert!(last_point.x < new_x);
-                self.points.push(Point { x: new_x, y: p.y });
-                return;
-            }
-            debug_assert!(last_point.x < p.x);
-        }
-        if self.len() > 1
-            && rotation(
-                &self.points[self.len() - 2],
-                &self.points[self.len() - 1],
-                &p,
-            ) == Rotation::Colinear
-        {
-            // The new point is colinear with the two previous points.
-            // The new point replaces the last one.
-            *self.points.last_mut().unwrap() = p;
-            return;
-        }
-        debug_assert!(self.is_empty() || self.points.last().unwrap().x < p.x);
-        self.points.push(p);
-    }
-
     fn update_min_max(&mut self, y: Y) {
         if self.min.is_none() {
             assert!(self.max.is_none());
@@ -247,7 +193,7 @@ where
 
     /// Returns the middle `x` value.
     pub fn middle_x(&self) -> X {
-        self.period[0].average(&self.period[1])
+        self.period[0].average(self.period[1])
     }
 
     /// Returns the minimum `y` value.
@@ -378,17 +324,21 @@ where
     /// Returns a new PwlXYF equal to the input PwlXYF plus a constant value.
     #[must_use]
     pub fn add(&self, c: Y) -> Self {
-        self.apply(|y| y + c)
+        self.map(|y| y + c)
     }
 
     /// Returns a new PwlXYF by applying a given function on the `y` values of the two input PwlXYFs.
     #[must_use]
-    pub fn apply<F: Fn(Y) -> Y>(&self, func: F) -> Self {
+    pub fn map<F: Fn(Y) -> W, W>(&self, func: F) -> PwlXYF<X, W, T>
+    where
+        F: Fn(Y) -> W,
+        W: TTFNum + Into<T> + From<T>,
+    {
         debug_assert!(!self.is_empty());
-        let mut ttf = Self::with_capacity(self.period, self.len());
-        ttf.min = Some(func(self.get_min()));
-        ttf.max = Some(func(self.get_max()));
-        ttf.points = self
+        let mut xyf = PwlXYF::<X, W, T>::with_capacity(self.period, self.len());
+        xyf.min = Some(func(self.get_min()));
+        xyf.max = Some(func(self.get_max()));
+        xyf.points = self
             .points
             .iter()
             .map(|p| Point {
@@ -397,9 +347,24 @@ where
             })
             .collect();
         // We do not need to update the buckets because the `x` values did not change.
-        ttf.buckets = self.buckets.clone();
-        ttf.bucket_shift = self.bucket_shift;
-        ttf
+        xyf.buckets = self.buckets.clone();
+        xyf.bucket_shift = self.bucket_shift;
+        xyf
+    }
+}
+
+impl<T, U> PwlXYF<T, T, U> {
+    /// Convenient way to convert a `PwlXYF<T, T, U>` into a `PwlTTF<T>`.
+    pub fn to_ttf(self) -> PwlTTF<T> {
+        PwlTTF {
+            points: self.points,
+            min: self.min,
+            max: self.max,
+            period: self.period,
+            buckets: self.buckets,
+            bucket_shift: self.bucket_shift,
+            convert_type: std::marker::PhantomData,
+        }
     }
 }
 
@@ -594,9 +559,9 @@ impl<T: TTFNum> PwlTTF<T> {
         }
         let mut y = area_below(p0, self[i + 1]);
         for h in (i + 1)..(j - 1) {
-            y = y + area_below(self[h], self[h + 1]);
+            y += area_below(self[h], self[h + 1]);
         }
-        y = y + area_below(self[j - 1], p1);
+        y += area_below(self[j - 1], p1);
         y / (x1 - x0)
     }
 
@@ -696,7 +661,7 @@ fn inv_linear_interp<T: TTFNum>(p: Point<T, T>, q: Point<T, T>, z: T) -> T {
 
 fn area_below<T: TTFNum>(p: Point<T, T>, q: Point<T, T>) -> T {
     let (min_y, max_y) = if p.y > q.y { (q.y, p.y) } else { (p.y, q.y) };
-    (q.x - p.x) * (min_y + (max_y.average(&min_y) - min_y))
+    (q.x - p.x) * (min_y + (max_y.average(min_y) - min_y))
 }
 
 pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
@@ -708,7 +673,7 @@ pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     debug_assert!(f.get_min() >= T::zero());
     debug_assert!(g.get_min() >= T::zero());
 
-    let mut h = PwlTTF::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
     let f_first_ta = f.period[0] + f.eval(f.period[0]);
     let mut i = if f_first_ta <= g.period[1] {
         g.first_index_with_x_ge(f_first_ta)
@@ -733,20 +698,19 @@ pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
             y = f[j].y + linear_interp(g[i - 1], g[i], f[j].x + f[j].y);
             j += 1;
         }
-        h.append_point(Point { x, y });
+        h.push(x, y);
     }
     for j in j..f.len() {
         let x = f[j].x;
         let y = f[j].y + g[g.len() - 1].y;
-        h.append_point(Point { x, y });
+        h.push(x, y);
     }
     for i in i..g.len() {
         let x = g[i].x - f[f.len() - 1].y;
         let y = f[f.len() - 1].y + g[i].y;
-        h.append_point(Point { x, y });
+        h.push(x, y);
     }
-    h.points.shrink_to_fit();
-    h.setup_buckets();
+    let h = h.finish();
     debug_assert!(h.is_fifo());
     // debug_assert!(h.dbg_check_link(f, g));
     h
@@ -755,16 +719,12 @@ pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
 pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     debug_assert!(!g.is_empty());
 
-    let mut h = PwlTTF::with_capacity(g.period, g.len());
+    let mut h = PwlTTFBuilder::with_capacity(g.period, g.len());
     let i = g.first_index_with_x_ge(g.period[0] + c);
 
     if i == g.len() {
         // g ends before first g.period[0] + c.
-        let p = Point {
-            x: h.period[0],
-            y: c + g[0].x,
-        };
-        h.append_point(p);
+        h.push(h.period[0], c + g[0].x);
     }
 
     for i in i..g.len() {
@@ -775,17 +735,12 @@ pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
         debug_assert!(p.x >= h.period[0]);
         if p.x > h.period[0] && h.is_empty() {
             // Add first point.
-            let p0 = Point {
-                x: h.period[0],
-                y: c + g.eval(h.period[0] + c),
-            };
-            h.append_point(p0);
+            h.push(h.period[0], c + g.eval(h.period[0] + c));
         }
-        h.append_point(p);
+        h.push_point(p);
     }
 
-    h.points.shrink_to_fit();
-    h.setup_buckets();
+    let h = h.finish();
     debug_assert!(h.is_fifo());
     h
 }
@@ -805,14 +760,11 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
         return (g.clone(), descr);
     }
 
-    let mut h = PwlTTF::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
 
     debug_assert_eq!(f[0].x, h.period[0]);
     debug_assert_eq!(g[0].x, h.period[0]);
-    h.append_point(Point {
-        x: h.period[0],
-        y: f[0].y.min(g[0].y),
-    });
+    h.push(h.period[0], f[0].y.min(g[0].y));
 
     let mut i = 1;
     let mut j = 1;
@@ -820,14 +772,14 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     while i < f.len() && j < g.len() {
         if intersect(&f[i - 1], &f[i], &g[j - 1], &g[j]) {
             let p = intersection_point(&f[i - 1], &f[i], &g[j - 1], &g[j]);
-            h.append_point(p);
+            h.push_point(p);
             descr.f_undercuts_strictly = true;
             descr.g_undercuts_strictly = true;
         }
 
         if f[i].x.approx_eq(&g[j].x) {
             if f[i].y.approx_eq(&g[j].y) {
-                h.append_point(f[i]);
+                h.push_point(f[i]);
 
                 if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::CounterClockwise
                     || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j + 1])
@@ -842,10 +794,10 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                     descr.g_undercuts_strictly = true;
                 }
             } else if f[i].y < g[j].y {
-                h.append_point(f[i]);
+                h.push_point(f[i]);
                 descr.f_undercuts_strictly = true;
             } else {
-                h.append_point(g[j]);
+                h.push_point(g[j]);
                 descr.g_undercuts_strictly = true;
             }
             i += 1;
@@ -854,7 +806,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
             match rotation::<T, T, T>(&g[j - 1], &f[i], &g[j]) {
                 Rotation::CounterClockwise => {
                     descr.f_undercuts_strictly = true;
-                    h.append_point(f[i]);
+                    h.push_point(f[i]);
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i])
@@ -863,7 +815,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                             == Rotation::CounterClockwise
                     {
                         descr.f_undercuts_strictly = true;
-                        h.append_point(f[i]);
+                        h.push_point(f[i]);
                     }
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j]) == Rotation::Clockwise
@@ -878,7 +830,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
             match rotation::<T, T, T>(&f[i - 1], &g[j], &f[i]) {
                 Rotation::CounterClockwise => {
                     descr.g_undercuts_strictly = true;
-                    h.append_point(g[j]);
+                    h.push_point(g[j]);
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j])
@@ -887,7 +839,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                             == Rotation::CounterClockwise
                     {
                         descr.g_undercuts_strictly = true;
-                        h.append_point(g[j]);
+                        h.push_point(g[j]);
                     }
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&g[j], &g[j + 1], &f[i]) == Rotation::Clockwise
@@ -909,42 +861,41 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     let mut is_first = true;
     for i in i..f.len() {
         if f[i].y.approx_eq(&last_y_from_other) {
-            h.append_point(f[i]);
+            h.push_point(f[i]);
         } else if f[i].y < last_y_from_other {
             if !is_first && f[i - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
-                h.append_point(p);
+                h.push_point(p);
             }
             descr.f_undercuts_strictly = true;
-            h.append_point(f[i]);
+            h.push_point(f[i]);
         } else if !is_first && f[i - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
             descr.g_undercuts_strictly = true;
-            h.append_point(p);
+            h.push_point(p);
         }
         is_first = false;
     }
     for j in j..g.len() {
         if g[j].y.approx_eq(&last_y_from_other) {
-            h.append_point(g[j]);
+            h.push_point(g[j]);
         } else if g[j].y < last_y_from_other {
             if !is_first && g[j - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
-                h.append_point(p);
+                h.push_point(p);
             }
             descr.g_undercuts_strictly = true;
-            h.append_point(g[j]);
+            h.push_point(g[j]);
         } else if !is_first && g[j - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
             descr.f_undercuts_strictly = true;
-            h.append_point(p);
+            h.push_point(p);
         }
         is_first = false;
     }
 
     debug_assert!(!h.is_empty());
-    h.points.shrink_to_fit();
-    h.setup_buckets();
+    let h = h.finish();
     // debug_assert!(h.dbg_check_min(f, g));
     debug_assert!(h.is_fifo());
     (h, descr)
@@ -962,46 +913,37 @@ pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutD
         descr.f_undercuts_strictly = true;
     }
 
-    let mut h = PwlTTF::with_capacity(f.period, 2 * f.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, 2 * f.len());
 
     if c.approx_le(&f.get_min()) {
-        let p = Point {
-            x: h.period[0],
-            y: c,
-        };
-        h.append_point(p);
-        h.points.shrink_to_fit();
-        h.setup_buckets();
+        h.push(h.period[0], c);
+        let h = h.finish();
         debug_assert!(h.is_fifo());
         return (h, descr);
     }
 
     debug_assert_eq!(f[0].x, h.period[0]);
-    h.append_point(Point {
-        x: h.period[0],
-        y: f[0].y.min(c),
-    });
+    h.push(h.period[0], f[0].y.min(c));
 
     for i in 1..f.len() {
         if f[i].y.approx_eq(&c) {
             if f[i - 1].y.approx_lt(&c) || (i < f.len() - 1 && f[i + 1].y.approx_lt(&c)) {
-                h.append_point(Point { x: f[i].x, y: c });
+                h.push(f[i].x, c);
             }
         } else if f[i].y < c {
             if c.approx_lt(&f[i - 1].y) {
                 let p = intersection_point_horizontal(&f[i - 1], &f[i], c);
-                h.append_point(p);
+                h.push_point(p);
             }
-            h.append_point(f[i]);
+            h.push_point(f[i]);
         } else if f[i - 1].y.approx_lt(&c) {
             let p = intersection_point_horizontal(&f[i - 1], &f[i], c);
-            h.append_point(p);
+            h.push_point(p);
         }
     }
 
     debug_assert!(!h.is_empty());
-    h.points.shrink_to_fit();
-    h.setup_buckets();
+    let h = h.finish();
     debug_assert!(h.is_fifo());
     (h, descr)
 }
@@ -1249,37 +1191,25 @@ pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
     debug_assert!(!g.is_empty());
     debug_assert_eq!(f.period, g.period);
 
-    let mut h = PwlTTF::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
 
     debug_assert_eq!(f[0].x, h.period[0]);
     debug_assert_eq!(g[0].x, h.period[0]);
-    h.append_point(Point {
-        x: h.period[0],
-        y: func(f[0].y, g[0].y),
-    });
+    h.push(h.period[0], func(f[0].y, g[0].y));
 
     let mut i = 1;
     let mut j = 1;
 
     while i < f.len() && j < g.len() {
         if f[i].x.approx_eq(&g[j].x) {
-            h.append_point(Point {
-                x: f[i].x,
-                y: func(f[i].y, g[j].y),
-            });
+            h.push(f[i].x, func(f[i].y, g[j].y));
             i += 1;
             j += 1;
         } else if f[i].x < g[j].x {
-            h.append_point(Point {
-                x: f[i].x,
-                y: func(f[i].y, g.eval(f[i].x)),
-            });
+            h.push(f[i].x, func(f[i].y, g.eval(f[i].x)));
             i += 1;
         } else {
-            h.append_point(Point {
-                x: g[j].x,
-                y: func(f.eval(g[j].x), g[j].y),
-            });
+            h.push(g[j].x, func(f.eval(g[j].x), g[j].y));
             j += 1;
         }
     }
@@ -1290,23 +1220,181 @@ pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
         f[f.len() - 1].y
     };
     for i in i..f.len() {
-        h.append_point(Point {
-            x: f[i].x,
-            y: func(f[i].y, last_y_from_other),
-        });
+        h.push(f[i].x, func(f[i].y, last_y_from_other));
     }
     for j in j..g.len() {
-        h.append_point(Point {
-            x: g[j].x,
-            y: func(last_y_from_other, g[j].y),
-        });
+        h.push(g[j].x, func(last_y_from_other, g[j].y));
     }
 
     debug_assert!(!h.is_empty());
-    h.points.shrink_to_fit();
-    h.setup_buckets();
+    let h = h.finish();
     debug_assert!(h.is_fifo());
     h
+}
+
+/// A struct to conveniently build a [PwlXYF].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PwlXYFBuilder<X, Y, T> {
+    /// Breakpoints representing the function.
+    points: Vec<Point<X, Y>>,
+    /// Minimum `y` value of the function.
+    min: Option<Y>,
+    /// Maximum `y` value of the function.
+    max: Option<Y>,
+    /// Array `[x0, x1]` representing the domain of the function.
+    period: [X; 2],
+    convert_type: std::marker::PhantomData<T>,
+}
+
+/// A struct to conveniently build a [PwlTTF].
+pub type PwlTTFBuilder<T> = PwlXYFBuilder<T, T, T>;
+
+impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
+    /// Creates a new [PwlXYFBuilder] with no point.
+    pub fn new(period: [X; 2]) -> Self {
+        Self {
+            points: Vec::new(),
+            min: None,
+            max: None,
+            period,
+            convert_type: std::marker::PhantomData,
+        }
+    }
+
+    /// Creates a new [PwlXYFBuilder] with no point, that can hold at least the given capacity of
+    /// points.
+    pub fn with_capacity(period: [X; 2], capacity: usize) -> Self {
+        Self {
+            points: Vec::with_capacity(capacity),
+            min: None,
+            max: None,
+            period,
+            convert_type: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<X, Y, T> PwlXYFBuilder<X, Y, T>
+where
+    X: TTFNum + Into<T>,
+    Y: TTFNum + Into<T> + From<T>,
+    T: TTFNum,
+{
+    /// Returns `true` if the function is empty (there is no breakpoint).
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    /// Returns the number of breakpoints of the function.
+    pub fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    fn update_min_max(&mut self, y: Y) {
+        if self.min.is_none() {
+            assert!(self.max.is_none());
+            self.min = Some(y);
+            self.max = Some(y);
+        }
+        if y < self.min.unwrap() {
+            self.min = Some(y);
+        } else if y > self.max.unwrap() {
+            self.max = Some(y);
+        }
+    }
+
+    /// Pushes a new point (`x`, `y`) to the [PwlXYFBuilder].
+    pub fn push(&mut self, x: X, y: Y) {
+        self.push_point(Point { x, y });
+    }
+
+    /// Pushes a new point to the [PwlXYFBuilder].
+    fn push_point(&mut self, p: Point<X, Y>) {
+        debug_assert!(
+            self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),
+            "{:?} > {:?}",
+            self.points.last().unwrap().x,
+            p.x
+        );
+        debug_assert!(!self.is_empty() || p.x == self.period[0]);
+        debug_assert!(p.x >= self.period[0]);
+        debug_assert!(p.x <= self.period[1]);
+        self.update_min_max(p.y);
+        if let Some(last_point) = self.points.last_mut() {
+            if last_point.x.approx_eq(&p.x) {
+                // The point to add has the same x as the last point added.
+                if last_point.y.approx_eq(&p.y) {
+                    // Do not try to add the same point again.
+                    return;
+                }
+                let new_x = last_point.x.max(p.x) + X::small_margin();
+                last_point.x = last_point.x.min(p.x);
+                debug_assert!(last_point.x < new_x);
+                self.points.push(Point { x: new_x, y: p.y });
+                return;
+            }
+            debug_assert!(last_point.x < p.x);
+        }
+        if self.len() > 1
+            && rotation(
+                &self.points[self.len() - 2],
+                &self.points[self.len() - 1],
+                &p,
+            ) == Rotation::Colinear
+        {
+            // The new point is colinear with the two previous points.
+            // The new point replaces the last one.
+            *self.points.last_mut().unwrap() = p;
+            return;
+        }
+        debug_assert!(self.is_empty() || self.points.last().unwrap().x < p.x);
+        self.points.push(p);
+    }
+
+    /// Consumes the PwlXYFBuilder and returns a PwlXYF.
+    ///
+    /// *Panics* if the PwlXYFBuilder has no point.
+    pub fn finish(mut self) -> PwlXYF<X, Y, T> {
+        assert!(
+            !self.is_empty(),
+            "The piecewise-linear function must have at least 1 point"
+        );
+        debug_assert!(
+            self.min.unwrap().approx_eq(
+                &self
+                    .points
+                    .iter()
+                    .min_by(|p, q| p.y.partial_cmp(&q.y).unwrap())
+                    .unwrap()
+                    .y
+            ),
+            "Minimum value is incorrect"
+        );
+        debug_assert!(
+            self.max.unwrap().is_infinite()
+                || self.max.unwrap().approx_eq(
+                    &self
+                        .points
+                        .iter()
+                        .max_by(|p, q| p.y.partial_cmp(&q.y).unwrap())
+                        .unwrap()
+                        .y
+                ),
+            "Maximum value in incorrect"
+        );
+        self.points.shrink_to_fit();
+        let mut xyf = PwlXYF {
+            points: self.points,
+            min: self.min,
+            max: self.max,
+            period: self.period,
+            buckets: Vec::with_capacity(BUCKET_SIZE),
+            bucket_shift: 0,
+            convert_type: self.convert_type,
+        };
+        xyf.setup_buckets();
+        xyf
+    }
 }
 
 #[cfg(test)]

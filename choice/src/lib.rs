@@ -37,7 +37,7 @@ pub use self::logit::LogitModel;
 
 /// A choice model between a finite number of alternatives.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 #[schemars(example = "crate::schema::example_choice_model")]
 pub enum ChoiceModel<T> {
     /// Choose the alternative with the largest utility.
@@ -62,7 +62,7 @@ pub type ContinuousChoiceCallback<'a, T> = Box<dyn FnOnce() -> T + 'a>;
 
 /// A choice model between a continuous number of ordered alternatives.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum ContinuousChoiceModel<T> {
     /// Choose the alternative using Continuous Logit probabilities.
     Logit(LogitModel<T>),

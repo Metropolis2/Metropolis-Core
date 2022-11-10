@@ -50,8 +50,8 @@
 						<th scope="col" class="text-center">Mean departure time</th>
 						<th scope="col" class="text-center">Mean arrival time</th>
 						<th scope="col" class="text-center">Mean road time</th>
-						<th scope="col" class="text-center">Mean bottleneck time</th>
-						<th scope="col" class="text-center">Mean pending time</th>
+						<th scope="col" class="text-center">Mean in-bottleneck time</th>
+						<th scope="col" class="text-center">Mean out-bottleneck time</th>
 						<th scope="col" class="text-center">Mean travel time</th>
 						<th scope="col" class="text-center">Mean free-flow travel time</th>
 						<th scope="col" class="text-center">Mean distance (m)</th>
@@ -75,8 +75,8 @@
 								<td class="text-center">{{ "{}"|format(road.departure_times.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(road.arrival_times.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(road.road_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.bottleneck_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.pending_times.mean()) }}</td>
+								<td class="text-center">{{ "{}"|format(road.in_bottleneck_times.mean()) }}</td>
+								<td class="text-center">{{ "{}"|format(road.out_bottleneck_times.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(road.travel_times.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(road.route_free_flow_travel_times.mean()) }}</td>
 								<td class="text-center">{{ "{:.0}"|format(road.lengths.mean().0) }}</td>

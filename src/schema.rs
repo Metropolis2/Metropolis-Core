@@ -13,7 +13,7 @@ use crate::mode::road::{DepartureTimeModel, RoadMode};
 use crate::mode::Mode;
 use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use crate::network::road_network::{
-    RoadEdge, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
+    RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
 use crate::network::NetworkParameters;
 use crate::parameters::Parameters;
@@ -124,14 +124,17 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
             Speed(10.0 / 3.6),
             2.0,
         )),
-        Outflow(0.4),
+        Flow(0.4),
+        Flow(0.4),
     )
 }
 
 pub(crate) fn example_parameters() -> Parameters<f64> {
     Parameters::new(
         Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
-        NetworkParameters::default(),
+        NetworkParameters {
+            road_network: Some(RoadNetworkParameters::from_recording_interval(Time(60.0))),
+        },
         LearningModel::Exponential(ExponentialLearningModel::new(0.9)),
         vec![
             StopCriterion::MaxIteration(100),

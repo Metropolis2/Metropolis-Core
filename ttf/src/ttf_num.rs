@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use num_traits::{Float, FromPrimitive};
+use num_traits::{Float, FromPrimitive, NumAssignOps};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -15,6 +15,7 @@ const MARGIN64: f64 = 1e-4;
 /// Trait for numbers that support a wide variety of operations.
 pub trait TTFNum:
     Float
+    + NumAssignOps
     + FromPrimitive
     + Default
     + PartialOrd
@@ -31,7 +32,7 @@ pub trait TTFNum:
     fn large_margin() -> Self;
     /// Returns the average between two numbers.
     #[must_use]
-    fn average(&self, other: &Self) -> Self;
+    fn average(self, other: Self) -> Self;
     /// Returns `true` if the two numbers are equal (allowing for a small approximation error).
     fn approx_eq(&self, other: &Self) -> bool;
     /// Returns `true` if the two number are not equal.
@@ -73,7 +74,7 @@ impl TTFNum for f32 {
     fn approx_lt(&self, other: &Self) -> bool {
         *self + MARGIN32 < *other
     }
-    fn average(&self, other: &Self) -> Self {
+    fn average(self, other: Self) -> Self {
         (self + other) / 2.0
     }
 }
@@ -94,7 +95,7 @@ impl TTFNum for f64 {
     fn approx_lt(&self, other: &Self) -> bool {
         *self + MARGIN64 < *other
     }
-    fn average(&self, other: &Self) -> Self {
+    fn average(self, other: Self) -> Self {
         (self + other) / 2.0
     }
 }

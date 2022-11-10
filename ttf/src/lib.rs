@@ -30,7 +30,8 @@ mod ttf_num;
 use std::cmp::Ordering;
 
 use either::Either;
-pub use pwl::{PwlTTF, PwlXYF};
+use num_traits::Zero;
+pub use pwl::{PwlTTF, PwlTTFBuilder, PwlXYF, PwlXYFBuilder};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 pub use ttf_num::TTFNum;
@@ -55,76 +56,120 @@ impl UndercutDescriptor {
     }
 }
 
+/// A function that can be either constant or piecewise-linear.
+///
+/// If the function is piecewise-linear, it is represented using a [PwlXYF].
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(deserialize = "X: TTFNum, Y: TTFNum + From<T>, T: TTFNum + From<X> + From<Y>"))]
+#[serde(untagged)]
+#[schemars(title = "XYF")]
+#[schemars(description = "Constant or piecewise-linear function.")]
+pub enum XYF<X, Y, T> {
+    /// A piecewise-linear function.
+    Piecewise(PwlXYF<X, Y, T>),
+    /// A constant function.
+    Constant(Y),
+}
+
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
-#[serde(untagged)]
-#[schemars(title = "TTF")]
-#[schemars(description = "Constant or piecewise-linear travel time function.")]
-pub enum TTF<T> {
-    /// A piecewise-linear travel-time function.
-    Piecewise(PwlTTF<T>),
-    /// A constant travel-time function.
-    Constant(T),
-}
+pub type TTF<T> = XYF<T, T, T>;
 
-impl<T: TTFNum> Default for TTF<T> {
+impl<X, Y: Zero, T> Default for XYF<X, Y, T> {
     fn default() -> Self {
-        TTF::Constant(T::zero())
+        XYF::Constant(Y::zero())
     }
 }
 
-impl<T: TTFNum> TTF<T> {
+impl<X, Y, T> XYF<X, Y, T>
+where
+    X: TTFNum,
+    Y: TTFNum + From<T>,
+    T: TTFNum + From<X> + From<Y>,
+{
     /// Returns the minimum travel time observed over the departure-time period, i.e., return `min_x
     /// f(x)`.
-    pub fn get_min(&self) -> T {
+    pub fn get_min(&self) -> Y {
         match self {
-            Self::Piecewise(pwl_ttf) => pwl_ttf.get_min(),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.get_min(),
             Self::Constant(c) => *c,
         }
     }
 
     /// Returns the maximum travel time observed over the departure-time period, i.e., return `max_x
     /// f(x)`.
-    pub fn get_max(&self) -> T {
+    pub fn get_max(&self) -> Y {
         match self {
-            Self::Piecewise(pwl_ttf) => pwl_ttf.get_max(),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.get_max(),
             Self::Constant(c) => *c,
         }
     }
 
-    /// Returns the complexity of the TTF.
+    /// Returns the complexity of the XYF.
     ///
-    /// - Returns 0 if the TTF is a constant.
+    /// - Returns 0 if the XYF is a constant.
     ///
-    /// - Returns the number of breakpoints if the TTF is piecewise-linear.
+    /// - Returns the number of breakpoints if the XYF is piecewise-linear.
     pub fn complexity(&self) -> usize {
         match self {
-            Self::Piecewise(pwl_ttf) => pwl_ttf.len(),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.len(),
             Self::Constant(_) => 0,
         }
     }
 
-    /// Returns the departure time at the middle of the departure-time period of the TTF.
+    /// Returns the departure time at the middle of the departure-time period of the XYF.
     ///
-    /// If the TTF is constant, the departure-time period is unknown so `None` is returned instead.
-    pub fn middle_departure_time(&self) -> Option<T> {
+    /// If the XYF is constant, the departure-time period is unknown so `None` is returned instead.
+    pub fn middle_departure_time(&self) -> Option<X> {
         match self {
-            Self::Piecewise(pwl_ttf) => Some(pwl_ttf.middle_x()),
+            Self::Piecewise(pwl_xyf) => Some(pwl_xyf.middle_x()),
             Self::Constant(_) => None,
         }
     }
 
     /// Returns the travel time at the given departure time.
-    pub fn eval(&self, x: T) -> T {
+    pub fn eval(&self, x: X) -> Y {
         match self {
-            Self::Piecewise(pwl_ttf) => pwl_ttf.eval(x),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.eval(x),
             Self::Constant(c) => *c,
         }
     }
 
+    /// Returns a new XYF equal to the input XYF plus a constant value.
+    #[must_use]
+    pub fn add(&self, c: Y) -> Self {
+        match self {
+            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.add(c)),
+            Self::Constant(c0) => XYF::Constant(*c0 + c),
+        }
+    }
+
+    /// Returns a new XYF equal to the input XYF after applying a function to all the `y` values.
+    #[must_use]
+    pub fn map<F, W>(&self, func: F) -> XYF<X, W, T>
+    where
+        F: Fn(Y) -> W,
+        W: TTFNum + Into<T> + From<T>,
+    {
+        match self {
+            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.map(func)),
+            Self::Constant(c) => XYF::Constant(func(*c)),
+        }
+    }
+}
+
+impl<T, U> XYF<T, T, U> {
+    /// Convenient way to transform a `XYF<T, T, U>` in a `TTF<T>`.
+    pub fn to_ttf(self) -> TTF<T> {
+        match self {
+            Self::Piecewise(pwl_xyf) => TTF::Piecewise(pwl_xyf.to_ttf()),
+            Self::Constant(c) => TTF::Constant(c),
+        }
+    }
+}
+
+impl<T: TTFNum> TTF<T> {
     /// Returns the departure time `x` such that `f(x) = z`.
     ///
     /// Returns None if it is not possible to arrive at `z`.
@@ -251,15 +296,6 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Returns a new TTF equal to the input TTF plus a constant value.
-    #[must_use]
-    pub fn add(&self, c: T) -> Self {
-        match self {
-            Self::Piecewise(pwl_ttf) => TTF::Piecewise(pwl_ttf.add(c)),
-            Self::Constant(c0) => TTF::Constant(*c0 + c),
-        }
-    }
-
     /// Reduces the number of breakpoints of the TTF, ensuring that the approximation error never
     /// exceeds a given bound.
     ///
@@ -279,12 +315,8 @@ impl<T: TTFNum> TTF<T> {
     {
         match (self, other) {
             (Self::Piecewise(f), Self::Piecewise(g)) => Self::Piecewise(pwl::apply(f, g, func)),
-            (Self::Piecewise(f), &Self::Constant(c)) => {
-                Self::Piecewise(f.apply(|f_y| func(f_y, c)))
-            }
-            (&Self::Constant(c), Self::Piecewise(g)) => {
-                Self::Piecewise(g.apply(|g_y| func(c, g_y)))
-            }
+            (Self::Piecewise(f), &Self::Constant(c)) => Self::Piecewise(f.map(|f_y| func(f_y, c))),
+            (&Self::Constant(c), Self::Piecewise(g)) => Self::Piecewise(g.map(|g_y| func(c, g_y))),
             (&Self::Constant(a), &Self::Constant(b)) => Self::Constant(func(a, b)),
         }
     }
@@ -292,7 +324,7 @@ impl<T: TTFNum> TTF<T> {
 
 /// Description of a method to simplify a TTF.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum TTFSimplification<T> {
     /// No simplification is done.
     Raw,
@@ -322,14 +354,14 @@ impl<T: TTFNum> TTFSimplification<T> {
                     let mut bins =
                         Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 2);
                     let mut current_time = start;
-                    let half_interval = interval.average(&T::zero());
+                    let half_interval = interval.average(T::zero());
                     bins.push(start);
                     loop {
                         xs.push(current_time);
                         if current_time + half_interval < end {
                             bins.push(current_time + half_interval);
                         }
-                        current_time = current_time + interval;
+                        current_time += interval;
                         if current_time > end {
                             break;
                         }

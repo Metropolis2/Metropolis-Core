@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 use choice::ContinuousChoiceModel;
 use hashbrown::HashSet;
 use num_traits::{Float, Zero};
-use petgraph::graph::{EdgeIndex, NodeIndex};
+use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
@@ -30,7 +30,7 @@ use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
 
 /// Model used to compute the chosen departure time.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum DepartureTimeModel<T> {
     /// The departure time is always equal to the given value.
     Constant(Time<T>),
@@ -435,27 +435,56 @@ impl<T: TTFNum> RoadChoices<T> {
     }
 }
 
+/// Timings for the event of an edge being taken by a vehicle.
+#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+// #[serde(into = "TransparentRoadEvent<T>")]
+// #[serde(bound(serialize = "T: TTFNum"))]
+pub struct RoadEvent<T> {
+    /// Id of the edge taken.
+    #[schemars(with = "EdgeIndexDef")]
+    edge: EdgeIndex,
+    /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
+    edge_entry: Time<T>,
+    /// Time at which the vehicle enters the road segment of the edge (i.e., it exits the
+    /// in-bottleneck).
+    segment_entry: Time<T>,
+    /// Time at which the vehicle enters the out-bottleneck of the edge (i.e., it exits the road
+    /// segment).
+    out_bottleneck_entry: Time<T>,
+    /// Time at which the vehicle exits the out-bottleneck of the edge (note that the vehicle might
+    /// still be pending on the edge).
+    edge_exit: Time<T>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+struct TransparentRoadEvent<T>(EdgeIndex, Time<T>, Time<T>, Time<T>, Time<T>);
+
+impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
+    fn from(v: RoadEvent<T>) -> Self {
+        Self(
+            v.edge,
+            v.edge_entry,
+            v.segment_entry,
+            v.out_bottleneck_entry,
+            v.edge_exit,
+        )
+    }
+}
+
 /// Struct used to store the results from a [RoadMode] in the within-day model.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
 #[schemars(title = "Road Results")]
 #[schemars(description = "Results from the within-day model, for a road mode of transportation.")]
+#[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadResults<T> {
-    /// The route taken by the vehicle, as a Vec of [EdgeIndex].
-    #[schemars(with = "EdgeIndexDef")]
-    #[schemars(description = "Ids of edges representing the route taken by the vehicle.")]
-    route: Vec<EdgeIndex>,
-    /// The timings at which the vehicle entered each edge.
-    road_breakpoints: Vec<Time<T>>,
-    /// The timings at which the vehicle reached the bottleneck of each edge.
-    bottleneck_breakpoints: Vec<Time<T>>,
-    /// The timings at which the vehicle exited the bottleneck of each edge.
-    pending_breakpoints: Vec<Time<T>>,
+    /// The route taken by the vehicle, together with the timings of the events.
+    route: Vec<RoadEvent<T>>,
     /// Total time spent traveling on an edge.
     road_time: Time<T>,
-    /// Total time spent waiting at the bottleneck of an edge.
-    bottleneck_time: Time<T>,
-    /// Total time spent pending for the next edge to get free.
-    pending_time: Time<T>,
+    /// Total time spent waiting at the in-bottleneck of an edge.
+    in_bottleneck_time: Time<T>,
+    /// Total time spent waiting at the out-bottleneck of an edge.
+    out_bottleneck_time: Time<T>,
 }
 
 impl<T: TTFNum> RoadResults<T> {
@@ -468,42 +497,14 @@ impl<T: TTFNum> RoadResults<T> {
     pub fn with_capacity(capacity: usize) -> Self {
         RoadResults {
             route: Vec::with_capacity(capacity),
-            road_breakpoints: Vec::with_capacity(capacity),
-            bottleneck_breakpoints: Vec::with_capacity(capacity),
-            pending_breakpoints: Vec::with_capacity(capacity),
             ..Default::default()
         }
     }
 
-    /// Record the entry of the vehicle on the given edge at the given time.
-    fn enters_edge(&mut self, edge: EdgeIndex, at_time: Time<T>) {
-        self.route.push(edge);
-        self.road_breakpoints.push(at_time);
-        if let Some(last_time) = self.pending_breakpoints.last() {
-            self.pending_time = self.pending_time + at_time - *last_time;
-        }
-    }
-
-    /// Record the entry of the vehicle at the bottleneck of the given edge at the given time.
-    fn enters_bottleneck(&mut self, at_time: Time<T>) {
-        self.bottleneck_breakpoints.push(at_time);
-        if let Some(last_time) = self.road_breakpoints.last() {
-            self.road_time = self.road_time + at_time - *last_time;
-        }
-    }
-
-    /// Record the exit of the vehicle from the bottleneck of the given edge at the given time.
-    fn exits_bottleneck(&mut self, at_time: Time<T>) {
-        self.pending_breakpoints.push(at_time);
-        if let Some(last_time) = self.bottleneck_breakpoints.last() {
-            self.bottleneck_time = self.bottleneck_time + at_time - *last_time;
-        }
-    }
-
-    /// Return the total travel time of the vehicle (sum of road time, bottleneck time and pending
+    /// Return the total travel time of the vehicle (sum of road time, bottleneck times and pending
     /// time).
     pub fn total_travel_time(&self) -> Time<T> {
-        self.road_time + self.bottleneck_time + self.pending_time
+        self.road_time + self.in_bottleneck_time + self.out_bottleneck_time
     }
 
     /// Return the number of edges taken by the vehicle.
@@ -522,13 +523,12 @@ impl<T: TTFNum> RoadResults<T> {
     ) -> Time<T> {
         let mut tt = Time::zero();
         let vehicle = &road_network[vehicle_index];
-        for &edge_id in self.route.iter() {
-            tt = tt
-                + road_network
-                    .get_graph()
-                    .edge_weight(edge_id)
-                    .expect("The route is incompatible with the road network.")
-                    .get_free_flow_travel_time(vehicle);
+        for road_event in self.route.iter() {
+            tt += road_network
+                .get_graph()
+                .edge_weight(road_event.edge)
+                .expect("The route is incompatible with the road network.")
+                .get_free_flow_travel_time(vehicle);
         }
         tt
     }
@@ -536,15 +536,23 @@ impl<T: TTFNum> RoadResults<T> {
     /// Return the length of the route taken by the vehicle.
     pub fn route_length(&self, road_network: &RoadNetwork<T>) -> Length<T> {
         let mut length = Length::zero();
-        for &edge_id in self.route.iter() {
-            length = length
-                + road_network
-                    .get_graph()
-                    .edge_weight(edge_id)
-                    .expect("The route is incompatible with the road network.")
-                    .length();
+        for road_event in self.route.iter() {
+            length += road_network
+                .get_graph()
+                .edge_weight(road_event.edge)
+                .expect("The route is incompatible with the road network.")
+                .length();
         }
         length
+    }
+
+    /// Compute the travel time by type.
+    pub fn process_results(&mut self) {
+        for road_event in self.route.iter() {
+            self.in_bottleneck_time += road_event.segment_entry - road_event.edge_entry;
+            self.road_time += road_event.out_bottleneck_entry - road_event.segment_entry;
+            self.out_bottleneck_time += road_event.edge_exit - road_event.out_bottleneck_entry;
+        }
     }
 }
 
@@ -562,10 +570,10 @@ pub struct AggregateRoadResults<T> {
     pub arrival_times: Distribution<Time<T>>,
     /// Distribution of road times.
     pub road_times: Distribution<Time<T>>,
-    /// Distribution of bottleneck times.
-    pub bottleneck_times: Distribution<Time<T>>,
-    /// Distribution of pending times.
-    pub pending_times: Distribution<Time<T>>,
+    /// Distribution of in-bottleneck times.
+    pub in_bottleneck_times: Distribution<Time<T>>,
+    /// Distribution of out-bottleneck times.
+    pub out_bottleneck_times: Distribution<Time<T>>,
     /// Distribution of total travel times.
     pub travel_times: Distribution<Time<T>>,
     /// Distribution of route free-flow travel times times.
@@ -623,8 +631,8 @@ impl<T: TTFNum + 'static> AggregateRoadResults<T> {
         )
         .unwrap();
         let road_times = get_distribution(&results, |_, r| r.road_time);
-        let bottleneck_times = get_distribution(&results, |_, r| r.bottleneck_time);
-        let pending_times = get_distribution(&results, |_, r| r.pending_time);
+        let in_bottleneck_times = get_distribution(&results, |_, r| r.in_bottleneck_time);
+        let out_bottleneck_times = get_distribution(&results, |_, r| r.out_bottleneck_time);
         let travel_times = get_distribution(&results, |_, r| r.total_travel_time());
         let route_free_flow_travel_times = get_distribution(&results, |m, r| {
             r.route_free_flow_travel_time(road_network, m.vehicle)
@@ -667,8 +675,8 @@ impl<T: TTFNum + 'static> AggregateRoadResults<T> {
             departure_times,
             arrival_times,
             road_times,
-            bottleneck_times,
-            pending_times,
+            in_bottleneck_times,
+            out_bottleneck_times,
             travel_times,
             route_free_flow_travel_times,
             lengths,
@@ -685,20 +693,64 @@ impl<T: TTFNum + 'static> AggregateRoadResults<T> {
 pub enum VehicleEventType {
     /// The vehicle leaves its origin.
     LeavesOrigin,
-    /// The vehicle enters the next edge.
-    EntersEdge,
-    /// The vehicle enters the bottleneck of its current edge.
-    EntersBottleneck,
-    /// The vehicle exits the bottleneck of its current edge.
-    ExitsBottleneck,
+    /// The vehicle enters the in-bottleneck of the next edge.
+    EntersInBottleneck,
+    /// The vehicle enters the running part of its current edge.
+    EntersRoadSegment,
+    /// The vehicle enters the out-bottleneck of its current edge.
+    EntersOutBottleneck,
+    /// The vehicle exits its current edge (but it might still be pending).
+    ExitsEdge,
     /// The vehicle reaches its destination.
     ReachesDestination,
+}
+
+/// Timings for the event of an edge being taken by a vehicle.
+#[derive(Debug, Default, Clone)]
+pub struct TemporaryRoadEvent<T> {
+    /// Id of the edge taken.
+    edge: EdgeIndex,
+    /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
+    edge_entry: Option<Time<T>>,
+    /// Time at which the vehicle enters the road segment of the edge (i.e., it exits the
+    /// in-bottleneck).
+    segment_entry: Option<Time<T>>,
+    /// Time at which the vehicle enters the out-bottleneck of the edge (i.e., it exits the road
+    /// segment).
+    out_bottleneck_entry: Option<Time<T>>,
+    /// Time at which the vehicle exits the out-bottleneck of the edge (note that the vehicle might
+    /// still be pending on the edge).
+    edge_exit: Option<Time<T>>,
+}
+
+impl<T> TemporaryRoadEvent<T> {
+    fn new(edge: EdgeIndex) -> Self {
+        Self {
+            edge,
+            edge_entry: None,
+            segment_entry: None,
+            out_bottleneck_entry: None,
+            edge_exit: None,
+        }
+    }
+}
+
+impl<T> From<TemporaryRoadEvent<T>> for RoadEvent<T> {
+    fn from(v: TemporaryRoadEvent<T>) -> Self {
+        Self {
+            edge: v.edge,
+            edge_entry: v.edge_entry.unwrap(),
+            segment_entry: v.segment_entry.unwrap(),
+            out_bottleneck_entry: v.out_bottleneck_entry.unwrap(),
+            edge_exit: v.edge_exit.unwrap(),
+        }
+    }
 }
 
 /// Struct that describes the vehicle events that happen in the within-day model.
 ///
 /// The struct is updated and re-inserted in the event queue when the event is executed.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct VehicleEvent<T> {
     /// The index of the associated agent.
     agent: AgentIndex,
@@ -707,7 +759,9 @@ pub struct VehicleEvent<T> {
     /// Index of the current edge of the vehicle in the planned route.
     position: usize,
     /// Edge where the vehicle currently is.
-    current_edge: Option<EdgeIndex>,
+    current_edge: EdgeIndex,
+    /// Current [TemporaryRoadEvent].
+    current_event: Option<TemporaryRoadEvent<T>>,
     /// Type of event.
     event_type: VehicleEventType,
 }
@@ -715,12 +769,14 @@ pub struct VehicleEvent<T> {
 impl<T> VehicleEvent<T> {
     /// Create a new [VehicleEvent] for a given agent that leaves his / her origin at the given
     /// time.
-    pub const fn new(agent: AgentIndex, at_time: Time<T>) -> Self {
+    pub fn new(agent: AgentIndex, at_time: Time<T>) -> Self {
         VehicleEvent {
             agent,
             at_time,
             position: 0,
-            current_edge: None,
+            // The current edge is initialized to 0 but it should never be read.
+            current_edge: edge_index(0),
+            current_event: None,
             event_type: VehicleEventType::LeavesOrigin,
         }
     }
@@ -737,29 +793,32 @@ impl<T> VehicleEvent<T> {
     }
 }
 
-impl<T: TTFNum> VehicleEvent<T> {
-    /// Record this event in the given [AgentResult].
-    fn record_event(&self, result: &mut AgentResult<T>) {
-        if self.event_type == VehicleEventType::LeavesOrigin {
-            result.set_departure_time(self.at_time);
-        } else if self.event_type == VehicleEventType::ReachesDestination {
-            result.set_arrival_time(self.at_time);
-        }
-        if let ModeResults::Road(road_results) = result.mut_mode_results() {
-            match self.event_type {
-                VehicleEventType::EntersEdge => {
-                    road_results.enters_edge(self.current_edge.unwrap(), self.at_time);
-                }
-                VehicleEventType::EntersBottleneck => {
-                    road_results.enters_bottleneck(self.at_time);
-                }
-                VehicleEventType::ExitsBottleneck => {
-                    road_results.exits_bottleneck(self.at_time);
-                }
-                _ => {}
+impl<T> VehicleEvent<T> {
+    fn set_edge_entry(&mut self, time: Time<T>) {
+        self.current_event.as_mut().unwrap().edge_entry = Some(time);
+    }
+
+    fn set_segment_entry(&mut self, time: Time<T>) {
+        self.current_event.as_mut().unwrap().segment_entry = Some(time);
+    }
+
+    fn set_out_bottleneck_entry(&mut self, time: Time<T>) {
+        self.current_event.as_mut().unwrap().out_bottleneck_entry = Some(time);
+    }
+
+    fn set_edge_exit(&mut self, time: Time<T>) {
+        self.current_event.as_mut().unwrap().edge_exit = Some(time);
+    }
+
+    /// Record the last edge taken by the vehicle.
+    fn record_edge(&mut self, result: &mut AgentResult<T>) {
+        let current_event = std::mem::take(&mut self.current_event);
+        if let Some(road_event) = current_event {
+            if let ModeResults::Road(road_results) = result.mut_mode_results() {
+                road_results.route.push(road_event.into());
+            } else {
+                panic!("Got a road event for an agent with no RoadResults.");
             }
-        } else {
-            panic!("Got a road event for an agent with no RoadResults.");
         }
     }
 }
@@ -780,49 +839,37 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
             .get_mut_road_network()
             .expect("Got a vehicle event but there is no road network state.");
         let agent_result = result.expect("Got a vehicle event with no agent.");
-        self.record_event(agent_result);
         let choices =
             if let PreDayChoices::Road(choices) = agent_result.pre_day_results().get_choices() {
                 choices
             } else {
                 panic!("Got a vehicle event for an agent with no RoadChoices.");
             };
+        let vehicle_index = choices.vehicle;
+        let vehicle = &road_network[vehicle_index];
         match self.event_type {
             VehicleEventType::LeavesOrigin => {
                 debug_assert_eq!(self.position, 0);
                 // Set the current edge to the first edge of the route.
-                self.current_edge = Some(
-                    self.get_edge_at_current_position(choices)
-                        .expect("Cannot start route."),
-                );
-                self.event_type = VehicleEventType::EntersEdge;
+                self.current_edge = self
+                    .get_edge_at_current_position(choices)
+                    .expect("Cannot start route.");
+                agent_result.set_departure_time(self.at_time);
+                self.event_type = VehicleEventType::EntersInBottleneck;
                 // We can execute the next event directly because the time is the same.
                 self.execute(network, exp_skims, state, Some(agent_result), events);
             }
-            VehicleEventType::EntersEdge => {
-                let vehicle_index = choices.vehicle;
-                let vehicle = &road_network[vehicle_index];
-                let travel_time = road_network_state[self.current_edge.unwrap()]
-                    .enters_edge(vehicle, self.at_time);
-                self.event_type = VehicleEventType::EntersBottleneck;
-                if travel_time == Time::zero() {
-                    // We can execute the next event directly because the time is the same.
-                    self.execute(network, exp_skims, state, Some(agent_result), events);
-                } else {
-                    self.at_time = self.at_time + travel_time;
-                    events.push(self);
-                }
-            }
-            VehicleEventType::EntersBottleneck => {
-                let vehicle_index = choices.vehicle;
-                let vehicle = &road_network[vehicle_index];
-                self.event_type = VehicleEventType::ExitsBottleneck;
-                match road_network_state[self.current_edge.unwrap()]
-                    .enters_bottleneck(vehicle, self)
-                {
-                    BottleneckStatus::Open(mut vehicle_event) => {
+            VehicleEventType::EntersInBottleneck => {
+                // Record the event.
+                self.record_edge(agent_result);
+                self.current_event = Some(TemporaryRoadEvent::new(self.current_edge));
+                self.set_edge_entry(self.at_time);
+                // Update the event type for the next execution of the event.
+                self.event_type = VehicleEventType::EntersRoadSegment;
+                // Try to cross the bottleneck.
+                match road_network_state[self.current_edge].enters_in_bottleneck(vehicle, self) {
+                    BottleneckStatus::Open(vehicle_event) => {
                         // The bottleneck is open, the vehicle immediately exits it.
-                        vehicle_event.event_type = VehicleEventType::ExitsBottleneck;
                         // We can execute the next event directly because the time is the same.
                         vehicle_event.execute(
                             network,
@@ -843,14 +890,59 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                     }
                 }
             }
-            VehicleEventType::ExitsBottleneck => {
+            VehicleEventType::EntersRoadSegment => {
+                // Record the event.
+                self.set_segment_entry(self.at_time);
+                // Compute the road travel time.
+                let travel_time =
+                    road_network_state[self.current_edge].enters_road(vehicle, self.at_time);
+                self.event_type = VehicleEventType::EntersOutBottleneck;
+                if travel_time == Time::zero() {
+                    // We can execute the next event directly because the time is the same.
+                    self.execute(network, exp_skims, state, Some(agent_result), events);
+                } else {
+                    self.at_time += travel_time;
+                    events.push(self);
+                }
+            }
+            VehicleEventType::EntersOutBottleneck => {
+                // Record the event.
+                self.set_out_bottleneck_entry(self.at_time);
+                // Update the event type for the next execution of the event.
+                self.event_type = VehicleEventType::ExitsEdge;
+                // Try to cross the bottleneck.
+                match road_network_state[self.current_edge].enters_out_bottleneck(vehicle, self) {
+                    BottleneckStatus::Open(vehicle_event) => {
+                        vehicle_event.execute(
+                            network,
+                            exp_skims,
+                            state,
+                            Some(agent_result),
+                            events,
+                        );
+                    }
+                    BottleneckStatus::Closed(Some(bottleneck_event)) => {
+                        events.push(Box::new(bottleneck_event));
+                    }
+                    BottleneckStatus::Closed(None) => {}
+                }
+            }
+            VehicleEventType::ExitsEdge => {
+                // Record the event.
+                self.set_edge_exit(self.at_time);
+                // Switch to the next edge.
                 self.position += 1;
-                let current_edge = self.get_edge_at_current_position(choices);
-                if current_edge.is_none() {
+                if let Some(next_edge) = self.get_edge_at_current_position(choices) {
+                    self.current_edge = next_edge;
+                    self.event_type = VehicleEventType::EntersInBottleneck;
+                    // We can execute the next event directly because the time is the same.
+                    // TODO: This is no true when there is spillback.
+                    self.execute(network, exp_skims, state, Some(agent_result), events);
+                } else {
                     // The vehicle has reached its destination.
                     debug_assert!(
                         road_network
-                            .get_endpoints(self.current_edge.unwrap())
+                            .get_endpoints(self.current_edge)
                             .expect("Current edge is invalid.")
                             .1
                             == choices.destination
@@ -858,15 +950,13 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                     self.event_type = VehicleEventType::ReachesDestination;
                     // We can execute the next event directly because the time is the same.
                     self.execute(network, exp_skims, state, Some(agent_result), events);
-                    return;
                 }
-                self.current_edge = current_edge;
-                self.event_type = VehicleEventType::EntersEdge;
-                // We can execute the next event directly because the time is the same.
-                // TODO: This might no longer be true when spillback will be implemented.
-                self.execute(network, exp_skims, state, Some(agent_result), events);
             }
-            VehicleEventType::ReachesDestination => (),
+            VehicleEventType::ReachesDestination => {
+                // Save the last edge of the route.
+                self.record_edge(agent_result);
+                agent_result.set_arrival_time(self.at_time);
+            }
         }
     }
 

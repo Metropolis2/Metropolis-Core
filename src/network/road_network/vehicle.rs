@@ -12,7 +12,7 @@ use crate::units::{Length, Speed, PCE};
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum SpeedFunction<T> {
     /// The identity function.
     Base,
@@ -71,7 +71,7 @@ impl<T: TTFNum> SpeedFunction<T> {
 pub struct Vehicle<T> {
     /// Length of the vehicle, used to compute vehicle density on the edges.
     length: Length<T>,
-    /// Passenger car equivalent of the vehicle, used to compute bottleneck outflow.
+    /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
     pce: PCE<T>,
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
     #[serde(default)]

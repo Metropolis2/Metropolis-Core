@@ -115,7 +115,7 @@ impl<T: TTFNum> LogitModel<T> {
         let (choice_id, _) = exp_values
             .iter()
             .scan(T::zero(), |sum, &exp_v| {
-                *sum = *sum + exp_v / sigma;
+                *sum += exp_v / sigma;
                 Some(*sum)
             })
             .enumerate()
@@ -238,7 +238,7 @@ impl<T: TTFNum> LogitModel<T> {
             let (k, cum_prob) = cum_probs_parts
                 .iter()
                 .scan(T::zero(), |sum, &g| {
-                    *sum = *sum + g;
+                    *sum += g;
                     Some(*sum)
                 })
                 .enumerate()

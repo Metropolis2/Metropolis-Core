@@ -16,6 +16,7 @@ use ttf::TTFNum;
 
 use crate::agent::Agent;
 use crate::parameters::Parameters;
+use crate::units::Interval;
 
 pub mod road_network;
 
@@ -51,8 +52,15 @@ impl<T: TTFNum> Network<T> {
     }
 
     /// Returns a blank [NetworkState] from the network.
-    pub fn get_blank_state(&self) -> NetworkState<'_, T> {
-        NetworkState::new(self.road_network.as_ref().map(|rn| rn.get_blank_state()))
+    pub fn get_blank_state<'a>(
+        &'a self,
+        preprocess_data: &'a NetworkPreprocessingData<T>,
+    ) -> NetworkState<'a, T> {
+        NetworkState::new(
+            self.road_network
+                .as_ref()
+                .map(|rn| rn.get_blank_state(preprocess_data.road_network.as_ref().unwrap())),
+        )
     }
 
     /// Return the [NetworkSkim] of the network given the [NetworkWeights], the
@@ -60,7 +68,7 @@ impl<T: TTFNum> Network<T> {
     pub fn compute_skims(
         &self,
         weights: &NetworkWeights<T>,
-        preprocess_data: &NetworkPreprocessingData,
+        preprocess_data: &NetworkPreprocessingData<T>,
         parameters: &NetworkParameters<T>,
     ) -> Result<NetworkSkim<T>> {
         let rn_skims = self
@@ -93,8 +101,16 @@ impl<T: TTFNum> Network<T> {
 
     /// Return a [NetworkPreprocessingData] instance given the set of [agents](Agent) used for the
     /// simulation.
-    pub fn preprocess(&self, agents: &[Agent<T>]) -> NetworkPreprocessingData {
-        let rn_data = self.road_network.as_ref().map(|rn| rn.preprocess(agents));
+    pub fn preprocess(
+        &self,
+        agents: &[Agent<T>],
+        parameters: &NetworkParameters<T>,
+        period: Interval<T>,
+    ) -> NetworkPreprocessingData<T> {
+        let rn_data = self
+            .road_network
+            .as_ref()
+            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap(), period));
         NetworkPreprocessingData {
             road_network: rn_data,
         }
@@ -145,10 +161,9 @@ impl<'a, T> NetworkState<'a, T> {
 
 impl<T: TTFNum> NetworkState<'_, T> {
     /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
-    pub fn get_weights(&self, parameters: &Parameters<T>) -> NetworkWeights<T> {
-        let rn_weights = self.road_network.as_ref().map(|rn| {
-            rn.get_weights(
-                parameters.period,
+    pub fn into_weights(self, parameters: &Parameters<T>) -> NetworkWeights<T> {
+        let rn_weights = self.road_network.map(|rn| {
+            rn.into_weights(
                 parameters
                     .network
                     .road_network
@@ -222,13 +237,13 @@ impl<T: TTFNum> NetworkWeights<T> {
 /// Structure representing network data that is pre-computed before the first iteration of the
 /// simulation.
 #[derive(Clone, Debug)]
-pub struct NetworkPreprocessingData {
-    road_network: Option<RoadNetworkPreprocessingData>,
+pub struct NetworkPreprocessingData<T> {
+    road_network: Option<RoadNetworkPreprocessingData<T>>,
 }
 
-impl NetworkPreprocessingData {
+impl<T> NetworkPreprocessingData<T> {
     /// Return the [RoadNetworkPreprocessingData] of the [NetworkPreprocessingData].
-    pub const fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData> {
+    pub const fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData<T>> {
         self.road_network.as_ref()
     }
 }
@@ -237,13 +252,5 @@ impl NetworkPreprocessingData {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct NetworkParameters<T> {
     /// Parameters specific to the road network.
-    road_network: Option<RoadNetworkParameters<T>>,
-}
-
-impl<T> Default for NetworkParameters<T> {
-    fn default() -> Self {
-        NetworkParameters {
-            road_network: Some(RoadNetworkParameters::default()),
-        }
-    }
+    pub road_network: Option<RoadNetworkParameters<T>>,
 }

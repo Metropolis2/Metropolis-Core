@@ -16,11 +16,15 @@ use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
-use results::{AgentResults, AggregateResults, IterationResults, PreDayResult, SimulationResults};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use time::{Duration, Instant};
 use ttf::TTFNum;
 
+use self::results::{
+    AgentResults, AggregateResults, IterationResults, IterationRunningTimes, PreDayResult,
+    RunningTimes, SimulationResults,
+};
 use crate::agent::Agent;
 use crate::mode::road::AggregateRoadResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
@@ -84,60 +88,54 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let preprocess_data = self.preprocess();
         let mut weights = init_weights;
         let mut prev_agent_results = None;
-        let mut iteration_counter: u64 = 1;
+        let mut iteration_counter: u32 = 1;
         let mut sim_results = SimulationResults::new();
+        let mut running_times = RunningTimes::default();
         loop {
             info!("===== Iteration {} =====", iteration_counter);
-            info!("Computing skims");
-            let skims = self.network.compute_skims(
+            let iteration_output = self.run_iteration(
                 &weights,
-                &preprocess_data.network,
-                &self.parameters.network,
-            )?;
-            let iteration_results = self.run_iteration(
-                &weights,
-                skims,
                 prev_agent_results.as_ref(),
                 iteration_counter,
+                &preprocess_data,
             )?;
-            let aggregate_results =
-                self.compute_aggregate_results(&iteration_results, prev_agent_results.as_ref());
-            self.parameters.save_aggregate_results(
-                &aggregate_results,
+            results::save_aggregate_results(
+                &iteration_output.aggregate_results,
                 iteration_counter,
                 output_dir,
             )?;
-            sim_results.push_iteration(aggregate_results);
-            info!("Checking stopping rules");
-            if self.parameters.stop(
-                iteration_counter,
-                iteration_results.agent_results(),
-                prev_agent_results.as_ref(),
-            ) {
+            sim_results.push_iteration(iteration_output.aggregate_results);
+            running_times.update(&iteration_output.running_times);
+            if iteration_output.stop_simulation {
                 info!("Stopping simulation");
-                sim_results.last_iteration = Some(iteration_results);
+                sim_results.last_iteration = Some(iteration_output.iteration_results);
+                running_times.finish(iteration_counter);
                 info!("Writing report");
                 report::write_report(&sim_results, output_dir)?;
                 info!("Saving detailed results");
-                self.parameters
-                    .save_iteration_results(sim_results.last_iteration.unwrap(), output_dir)?;
+                results::save_running_times(running_times, output_dir)?;
+                results::save_iteration_results(sim_results.last_iteration.unwrap(), output_dir)?;
+                info!("Done");
                 break;
             }
-            iteration_counter += 1;
-            info!("Computing weights");
             (weights, prev_agent_results) = (
-                iteration_results.weights,
-                Some(iteration_results.agent_results),
+                iteration_output.iteration_results.weights,
+                Some(iteration_output.iteration_results.agent_results),
             );
+            iteration_counter += 1;
         }
         Ok(())
     }
 
     /// Compute everything that can be computed before the first iteration of the simulation and
     /// return a [PreprocessingData] instance with the results of these computations.
-    pub fn preprocess(&self) -> PreprocessingData {
+    pub fn preprocess(&self) -> PreprocessingData<T> {
         // Run the preprocessing stuff related to the network.
-        let network = self.network.preprocess(&self.agents);
+        let network = self.network.preprocess(
+            &self.agents,
+            &self.parameters.network,
+            self.parameters.period,
+        );
         PreprocessingData { network }
     }
 
@@ -149,18 +147,57 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     pub fn run_iteration(
         &self,
         weights: &NetworkWeights<T>,
-        skims: NetworkSkim<T>,
         previous_results_opt: Option<&AgentResults<T>>,
-        iteration_counter: u64,
-    ) -> Result<IterationResults<T>> {
-        let pre_day_results =
-            self.run_pre_day_model(&skims, previous_results_opt, iteration_counter)?;
+        iteration_counter: u32,
+        preprocess_data: &PreprocessingData<T>,
+    ) -> Result<IterationOutput<T>> {
+        let now = Instant::now();
+        info!("Computing skims");
+        let (skims, t1) = record_time(|| {
+            self.network
+                .compute_skims(weights, &preprocess_data.network, &self.parameters.network)
+        })?;
+        info!("Running pre-day model");
+        let (pre_day_results, t2) = record_time(|| {
+            self.run_pre_day_model(&skims, previous_results_opt, iteration_counter)
+        })?;
         info!("Running within-day model");
-        let (sim_weights, within_day_results) = self.run_within_day_model(pre_day_results, &skims);
+        let ((sim_weights, within_day_results), t3) = record_time(|| {
+            Ok(self.run_within_day_model(pre_day_results, &skims, preprocess_data))
+        })?;
         info!("Running day-to-day model");
-        let new_weights = self.run_day_to_day_model(weights, &sim_weights, iteration_counter);
+        let (new_weights, t4) = record_time(|| {
+            Ok(self.run_day_to_day_model(weights, &sim_weights, iteration_counter))
+        })?;
+        let iteration_results = IterationResults::new(within_day_results, new_weights);
+        info!("Computing aggregate results");
+        let (aggregate_results, t5) = record_time(|| {
+            Ok(self.compute_aggregate_results(&iteration_results, previous_results_opt))
+        })?;
+        info!("Checking stopping rules");
+        let (stop_simulation, t6) = record_time(|| {
+            Ok(self.parameters.stop(
+                iteration_counter,
+                iteration_results.agent_results(),
+                previous_results_opt,
+            ))
+        })?;
         crate::show_stats();
-        Ok(IterationResults::new(within_day_results, new_weights))
+        let running_times = IterationRunningTimes {
+            skims_computation: t1,
+            pre_day_model: t2,
+            within_day_model: t3,
+            day_to_day_model: t4,
+            aggregate_results_computation: t5,
+            stopping_rules_check: t6,
+            total: now.elapsed(),
+        };
+        Ok(IterationOutput {
+            iteration_results,
+            aggregate_results,
+            stop_simulation,
+            running_times,
+        })
     }
 
     /// Runs the pre-day model, using the given [NetworkSkim] and the [AgentResults] of the
@@ -173,10 +210,9 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         &self,
         exp_skims: &NetworkSkim<T>,
         previous_results_opt: Option<&AgentResults<T>>,
-        iteration_counter: u64,
+        iteration_counter: u32,
     ) -> Result<Vec<PreDayResult<T>>> {
         let pool = Pool::new(rayon::current_num_threads(), Default::default);
-        info!("Running pre-day model");
         let bp = if log_enabled!(Level::Info) {
             ProgressBar::new(self.agents.len() as u64)
         } else {
@@ -230,9 +266,10 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         &self,
         pre_day_results: Vec<PreDayResult<T>>,
         skims: &NetworkSkim<T>,
+        preprocess_data: &PreprocessingData<T>,
     ) -> (NetworkWeights<T>, AgentResults<T>) {
         debug!("Initializing variables");
-        let mut state = self.network.get_blank_state();
+        let mut state = self.network.get_blank_state(&preprocess_data.network);
         let mut results = self.init_agent_results(pre_day_results);
         let mut events = results.get_event_queue();
         let mut nb_events = 0;
@@ -265,12 +302,12 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
-        let weights = state.get_weights(&self.parameters);
-        // Compute agent utilities.
-        debug!("Computing agent utilities");
+        let weights = state.into_weights(&self.parameters);
+        // Process agent results.
+        debug!("Processing agent results");
         for (i, r) in results.iter_mut().enumerate() {
             let chosen_mode = r.pre_day_results().get_mode_index();
-            r.compute_utility(
+            r.process_results(
                 self.agents[i].schedule_utility(),
                 &self.agents[i][chosen_mode],
             );
@@ -285,7 +322,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         &self,
         old_weights: &NetworkWeights<T>,
         weights: &NetworkWeights<T>,
-        iteration_counter: u64,
+        iteration_counter: u32,
     ) -> NetworkWeights<T> {
         self.parameters
             .learn(old_weights, weights, iteration_counter)
@@ -363,14 +400,14 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 
     /// Builds a vector of boolean indicating the agents that can switch their choice for the next
     /// iteration.
-    fn get_update_vector(&self, iteration_counter: u64) -> Vec<bool> {
+    fn get_update_vector(&self, iteration_counter: u32) -> Vec<bool> {
         // To change the seed from one iteration to another, we add the iteration number to the
         // default seed.
         let mut rng = self
             .parameters
             .random_seed
             .map_or_else(XorShiftRng::from_entropy, |seed| {
-                XorShiftRng::seed_from_u64(seed + iteration_counter)
+                XorShiftRng::seed_from_u64(seed + iteration_counter as u64)
             });
         let mut updates = vec![true; self.agents.len()];
         // Number of agents that will be able to switch their choice.
@@ -383,7 +420,26 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 
 /// Additional input data for the simulation which is computed before running the simulation.
 #[derive(Clone, Debug)]
-pub struct PreprocessingData {
+pub struct PreprocessingData<T> {
     /// Network-specific pre-processing data.
-    pub network: NetworkPreprocessingData,
+    pub network: NetworkPreprocessingData<T>,
+}
+
+/// Output of an iteration run.
+#[derive(Clone, Debug)]
+pub struct IterationOutput<T> {
+    /// Detailed results of the iteration.
+    pub iteration_results: IterationResults<T>,
+    /// Aggregate results of the iteration.
+    pub aggregate_results: AggregateResults<T>,
+    /// If `true`, the simulation should be stop (one stopping criterion was activated).
+    pub stop_simulation: bool,
+    /// The running times of the iteration.
+    pub running_times: IterationRunningTimes,
+}
+
+fn record_time<T>(func: impl FnOnce() -> Result<T>) -> Result<(T, Duration)> {
+    let now = Instant::now();
+    let result = func()?;
+    Ok((result, now.elapsed()))
 }

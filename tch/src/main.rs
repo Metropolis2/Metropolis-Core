@@ -516,12 +516,10 @@ fn read_traffic_patterns(
                 let ttf = if speed.iter().all(|&s| s == speed[0]) {
                     nb_constants += 1;
                     let tt = 3.6 * edge.weight() / speed[0];
-                    TTF::Constant(tt as f64)
+                    TTF::Constant(tt)
                 } else {
-                    let travel_times: Vec<_> = speed
-                        .iter()
-                        .map(|s| (3.6 * edge.weight() / s) as f64)
-                        .collect();
+                    let travel_times: Vec<_> =
+                        speed.iter().map(|s| (3.6 * edge.weight() / s)).collect();
                     let mut ttf = PwlTTF::from_x_and_y(departure_times.clone(), travel_times);
                     ttf.ensure_fifo();
                     TTF::Piecewise(ttf)

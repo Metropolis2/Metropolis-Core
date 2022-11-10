@@ -9,12 +9,12 @@ pub mod state;
 pub mod vehicle;
 pub mod weights;
 
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::{Deref, Index};
 
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
 use log::debug;
-use num_traits::{Float, Zero};
+use num_traits::{Float, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ use weights::RoadNetworkWeights;
 use crate::agent::Agent;
 use crate::mode::Mode;
 use crate::serialization::DeserRoadGraph;
-use crate::units::{Length, Outflow, Speed, Time};
+use crate::units::{Flow, Interval, Length, Speed, Time};
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
@@ -39,7 +39,7 @@ pub struct RoadNode {}
 /// A speed-density function gives the speed on an edge, as a function of the density of vehicle on
 /// this edge.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum SpeedDensityFunction<T> {
     /// Vehicles always travel at free-flow speed.
     FreeFlow,
@@ -117,11 +117,11 @@ impl<T: TTFNum> ThreeRegimesSpeedDensityFunction<T> {
     }
 }
 
-fn default_outflow<T: TTFNum>() -> Outflow<T> {
-    Outflow::infinity()
+fn default_flow<T: TTFNum>() -> Flow<T> {
+    Flow::infinity()
 }
 
-fn default_outflow_schema() -> String {
+fn default_flow_schema() -> String {
     "Infinity".to_owned()
 }
 
@@ -159,10 +159,14 @@ pub struct RoadEdge<T> {
     /// Speed-density function for the running part of the edge.
     #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
+    /// Maximum inflow of vehicle at the beginning of the edge.
+    #[serde(default = "default_flow")]
+    #[schemars(default = "default_flow_schema")]
+    bottleneck_inflow: Flow<T>,
     /// Maximum outflow of vehicle at the end of the edge.
-    #[serde(default = "default_outflow")]
-    #[schemars(default = "default_outflow_schema")]
-    bottleneck_outflow: Outflow<T>,
+    #[serde(default = "default_flow")]
+    #[schemars(default = "default_flow_schema")]
+    bottleneck_outflow: Flow<T>,
 }
 
 impl<T: TTFNum> RoadEdge<T> {
@@ -172,13 +176,15 @@ impl<T: TTFNum> RoadEdge<T> {
         length: Length<T>,
         lanes: u8,
         speed_density: SpeedDensityFunction<T>,
-        bottleneck_outflow: Outflow<T>,
+        bottleneck_inflow: Flow<T>,
+        bottleneck_outflow: Flow<T>,
     ) -> Self {
         RoadEdge {
             base_speed,
             length,
             lanes,
             speed_density,
+            bottleneck_inflow,
             bottleneck_outflow,
         }
     }
@@ -189,14 +195,14 @@ impl<T: TTFNum> RoadEdge<T> {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
         match &self.speed_density {
             SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
-            &SpeedDensityFunction::Bottleneck(outflow) => {
-                // `outflow` is expressed in Length / Time.
+            &SpeedDensityFunction::Bottleneck(capacity) => {
+                // `capacity` is expressed in Length / Time.
                 // WARNING: The formula below is incorrect when there are vehicles with different
                 // speeds.
-                if occupied_length.0 <= outflow * (self.total_length() / self.base_speed).0 {
+                if occupied_length.0 <= capacity * (self.total_length() / self.base_speed).0 {
                     self.length / vehicle_speed
                 } else {
-                    Time(occupied_length.0 / (outflow * T::from_u8(self.lanes).unwrap()))
+                    Time(occupied_length.0 / (capacity * T::from_u8(self.lanes).unwrap()))
                 }
             }
             SpeedDensityFunction::ThreeRegimes(func) => {
@@ -224,8 +230,13 @@ impl<T: TTFNum> RoadEdge<T> {
         self.length * self.lanes
     }
 
+    /// Return the effective bottleneck inflow of the edge, i.e., the inflow for all the lanes.
+    pub fn get_effective_inflow(&self) -> Flow<T> {
+        self.bottleneck_inflow * self.lanes
+    }
+
     /// Return the effective bottleneck outflow of the edge, i.e., the outflow for all the lanes.
-    pub fn get_effective_outflow(&self) -> Outflow<T> {
+    pub fn get_effective_outflow(&self) -> Flow<T> {
         self.bottleneck_outflow * self.lanes
     }
 }
@@ -300,27 +311,56 @@ impl<T> RoadNetwork<T> {
     }
 }
 
+fn build_recording_intervals<T: TTFNum>(period: Interval<T>, interval: Time<T>) -> Vec<Time<T>> {
+    let mut intervals = Vec::with_capacity(
+        ((period.end() - period.start()) / interval)
+            .to_usize()
+            .unwrap()
+            + 2,
+    );
+    let mut current_time = period.start();
+    intervals.push(period.start());
+    loop {
+        current_time += interval;
+        if current_time >= period.end() {
+            break;
+        }
+        intervals.push(current_time);
+    }
+    intervals.push(period.end());
+    intervals
+}
+
 impl<T: TTFNum> RoadNetwork<T> {
     /// Return an empty [RoadNetworkState].
-    pub fn get_blank_state(&self) -> RoadNetworkState<'_, T> {
-        RoadNetworkState::from_network(self)
+    pub fn get_blank_state<'a>(
+        &'a self,
+        preprocess_data: &'a RoadNetworkPreprocessingData<T>,
+    ) -> RoadNetworkState<'a, T> {
+        RoadNetworkState::from_network(self, preprocess_data.recording_intervals())
     }
 
     /// Return a [RoadNetworkPreprocessingData] with all the unique origin-destination pairs, for
     /// each vehicle, for the given set of [agents](Agent).
-    pub fn preprocess(&self, agents: &[Agent<T>]) -> RoadNetworkPreprocessingData {
-        let mut od_data = RoadNetworkPreprocessingData {
+    pub fn preprocess(
+        &self,
+        agents: &[Agent<T>],
+        parameters: &RoadNetworkParameters<T>,
+        period: Interval<T>,
+    ) -> RoadNetworkPreprocessingData<T> {
+        let mut preprocess_data = RoadNetworkPreprocessingData {
             od_pairs: vec![ODPairs::default(); self.vehicles.len()],
+            recording_intervals: build_recording_intervals(period, parameters.recording_interval),
         };
         for agent in agents {
             for mode in agent.iter_modes() {
                 if let Mode::Road(road_mode) = mode {
-                    let od_pairs = &mut od_data[road_mode.vehicle_index()];
+                    let od_pairs = &mut preprocess_data.od_pairs[road_mode.vehicle_index().index()];
                     od_pairs.add_pair(road_mode.origin(), road_mode.destination());
                 }
             }
         }
-        od_data
+        preprocess_data
     }
 
     /// Compute and return the [RoadNetworkSkims] for the RoadNetwork, with the given
@@ -328,12 +368,12 @@ impl<T: TTFNum> RoadNetwork<T> {
     pub fn compute_skims(
         &self,
         weights: &RoadNetworkWeights<T>,
-        preprocess_data: &RoadNetworkPreprocessingData,
+        preprocess_data: &RoadNetworkPreprocessingData<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
         let mut skims = Vec::with_capacity(self.vehicles.len());
         for (vehicle_id, _vehicle) in self.iter_vehicles() {
-            if preprocess_data[vehicle_id].is_empty() {
+            if preprocess_data.od_pairs[vehicle_id.index()].is_empty() {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
             }
@@ -348,7 +388,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             );
             hierarchy.simplify(parameters.edge_simplification);
             let mut skim = RoadNetworkSkim::new(hierarchy);
-            let od_pairs = &preprocess_data[vehicle_id];
+            let od_pairs = &preprocess_data.od_pairs[vehicle_id.index()];
             skim.compute_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
             skim.simplify_search_spaces(parameters.search_space_simplification);
             skim.pre_compute_profile_queries(&od_pairs.pairs)?;
@@ -390,6 +430,13 @@ pub struct RoadNetworkParameters<T> {
         description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
     )]
     pub contraction: ContractionParameters,
+    /// Interval in time for which the bottleneck and road segment travel times are aggregated.
+    pub recording_interval: Time<T>,
+    /// [TTFSimplification] describing how the weights of the road network are simplified at the
+    /// beginning of the iteration.
+    #[serde(default = "TTFSimplification::<Time<T>>::default")]
+    #[schemars(description = "How to simplify the edges TTFs at the beginning of the iteration.")]
+    pub weight_simplification: TTFSimplification<Time<T>>,
     /// [TTFSimplification] describing how the edges' TTFs are simplified after the
     /// HierarchyOverlay is built.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
@@ -404,41 +451,35 @@ pub struct RoadNetworkParameters<T> {
         description = "How to simplify the TTFs of the forward and backward search spaces."
     )]
     pub search_space_simplification: TTFSimplification<Time<T>>,
-    /// [TTFSimplification] describing how the weights of the road network are simplified at the
-    /// beginning of the iteration.
-    #[serde(default = "TTFSimplification::<Time<T>>::default")]
-    #[schemars(description = "How to simplify the edges TTFs at the beginning of the iteration.")]
-    pub weight_simplification: TTFSimplification<Time<T>>,
 }
 
-impl<T> Default for RoadNetworkParameters<T> {
-    fn default() -> Self {
-        RoadNetworkParameters {
+impl<T> RoadNetworkParameters<T> {
+    /// Create a new [RoadNetworkParameters] from a recording time interval, leaving all the other
+    /// values to their default.
+    pub fn from_recording_interval(recording_interval: Time<T>) -> Self {
+        Self {
+            recording_interval,
             contraction: Default::default(),
+            weight_simplification: Default::default(),
             edge_simplification: Default::default(),
             search_space_simplification: Default::default(),
-            weight_simplification: Default::default(),
         }
     }
 }
 
-/// Structure containing, for each [Vehicle], an [ODPairs] instance representing the
-/// origin-destination pairs for which at least one agent can make a trip with this vehicle.
-#[derive(Clone, Debug, Default)]
-pub struct RoadNetworkPreprocessingData {
+/// Set of pre-processing data used for different road-network computation.
+#[derive(Clone, Debug)]
+pub struct RoadNetworkPreprocessingData<T> {
+    /// Vector with, for each [Vehicle], an [ODPairs] instance representing the origin-destination
+    /// pairs for which at least one agent can make a trip with this vehicle.
     od_pairs: Vec<ODPairs>,
+    /// Time intervals for which the simulated travel times are aggregated.
+    recording_intervals: Vec<Time<T>>,
 }
 
-impl Index<VehicleIndex> for RoadNetworkPreprocessingData {
-    type Output = ODPairs;
-    fn index(&self, index: VehicleIndex) -> &Self::Output {
-        &self.od_pairs[index.index()]
-    }
-}
-
-impl IndexMut<VehicleIndex> for RoadNetworkPreprocessingData {
-    fn index_mut(&mut self, index: VehicleIndex) -> &mut Self::Output {
-        &mut self.od_pairs[index.index()]
+impl<T> RoadNetworkPreprocessingData<T> {
+    fn recording_intervals(&self) -> &[Time<T>] {
+        &self.recording_intervals
     }
 }
 
@@ -491,7 +532,8 @@ mod tests {
             length: Length(1000.),  // 1 km
             lanes: 2,
             speed_density: SpeedDensityFunction::FreeFlow,
-            bottleneck_outflow: Outflow(f64::INFINITY),
+            bottleneck_inflow: Flow(f64::INFINITY),
+            bottleneck_outflow: Flow(f64::INFINITY),
         };
         let vehicle = Vehicle::new(Length(10.), PCE(1.), SpeedFunction::Base);
         // 1 km at 50 km/h is 40s.
@@ -499,7 +541,7 @@ mod tests {
         assert_eq!(edge.get_travel_time(Length(4000.), &vehicle), Time(40.));
 
         edge.speed_density = SpeedDensityFunction::Bottleneck(10.);
-        // The outflow is 2 veh. / s. (there are two lanes) and each veh. can travel through the
+        // The capacity is 2 veh. / s. (there are two lanes) and each veh. can travel through the
         // edge in 40 s. so the threshold is at 80 veh. on the edge = 800 m occupied.
         assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));
         assert_eq!(edge.get_travel_time(Length(800.), &vehicle), Time(40.));

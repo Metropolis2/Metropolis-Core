@@ -163,7 +163,7 @@ pub(crate) fn intersection_point_horizontal<T: TTFNum>(
     if p.x.approx_eq(&q.x) {
         // a and b form a vertical line.
         Point {
-            x: p.x.average(&q.x),
+            x: p.x.average(q.x),
             y: c,
         }
     } else {

@@ -12,7 +12,7 @@
 //! - [Speed]: in meter per second
 //! - [ValueOfTime]: in utility per second
 //! - [PCE] (Passenger Car Equivalent): in passenger car
-//! - [Outflow]: in PCE per second
+//! - [Flow]: in PCE per second
 //!
 //! Other units can be assumed but the coherence between units must be kept.
 //! For example, if one consider that lengths are expressed in miles, then speeds must be expressed
@@ -20,7 +20,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::FpCategory;
-use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
+use std::ops::*;
 
 use chrono::NaiveTime;
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
@@ -41,10 +41,22 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
+            impl<T: AddAssign> AddAssign for $t<T> {
+                fn add_assign(&mut self, rhs: Self) {
+                    self.0 += rhs.0;
+                }
+            }
+
             impl<T: Sub<Output = T>> Sub for $t<T> {
                 type Output = Self;
                 fn sub(self, rhs: Self) -> Self::Output {
                     Self(self.0 - rhs.0)
+                }
+            }
+
+            impl<T: SubAssign> SubAssign for $t<T> {
+                fn sub_assign(&mut self, rhs: Self) {
+                    self.0 -= rhs.0;
                 }
             }
 
@@ -55,6 +67,12 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
+            impl<T: MulAssign> MulAssign for $t<T> {
+                fn mul_assign(&mut self, rhs: Self) {
+                    self.0 *= rhs.0;
+                }
+            }
+
             impl<T: Div<Output = T>> Div for $t<T> {
                 type Output = Self;
                 fn div(self, rhs: Self) -> Self::Output {
@@ -62,10 +80,22 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
+            impl<T: DivAssign> DivAssign for $t<T> {
+                fn div_assign(&mut self, rhs: Self) {
+                    self.0 /= rhs.0;
+                }
+            }
+
             impl<T: Rem<Output = T>> Rem for $t<T> {
                 type Output = Self;
                 fn rem(self, rhs: Self) -> Self::Output {
                     Self(self.0 % rhs.0)
+                }
+            }
+
+            impl<T: RemAssign> RemAssign for $t<T> {
+                fn rem_assign(&mut self, rhs: Self) {
+                    self.0 %= rhs.0;
                 }
             }
 
@@ -304,8 +334,8 @@ macro_rules! impl_ttf_on_unit(
                 fn approx_lt(&self, other: &Self) -> bool {
                     self.0.approx_lt(&other.0)
                 }
-                fn average(&self, other: &Self) -> Self {
-                    Self(self.0.average(&other.0))
+                fn average(self, other: Self) -> Self {
+                    Self(self.0.average(other.0))
                 }
             }
 
@@ -453,26 +483,17 @@ impl<T: TTFNum> fmt::Display for PCE<T> {
 #[derive(
     Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
 )]
-pub struct Outflow<T>(pub T);
+pub struct Flow<T>(pub T);
 
-impl<T: TTFNum> fmt::Display for Outflow<T> {
+impl<T: TTFNum> fmt::Display for Flow<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} PCE/s", self.0)
     }
 }
 
-impl_ttf_on_unit!(
-    Time,
-    Utility,
-    ValueOfTime,
-    Length,
-    Speed,
-    PCE,
-    Outflow,
-    NoUnit
-);
+impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Flow, NoUnit);
 
-impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Outflow);
+impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Flow);
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
@@ -503,9 +524,9 @@ impl_ops!(ValueOfTime * Time = Utility);
 impl_ops!(Speed * Time = Length);
 impl_ops!(Length / Speed = Time);
 impl_ops!(Length / Time = Speed);
-impl_ops!(Outflow * Time = PCE);
-impl_ops!(PCE / Outflow = Time);
-impl_ops!(PCE / Time = Outflow);
+impl_ops!(Flow * Time = PCE);
+impl_ops!(PCE / Flow = Time);
+impl_ops!(PCE / Time = Flow);
 
 /// Length * lane number = Length.
 impl<T: TTFNum> Mul<u8> for Length<T> {
@@ -521,18 +542,18 @@ impl<T: TTFNum> Mul<Length<T>> for u8 {
         Length(T::from_u8(self).unwrap() * other.0)
     }
 }
-/// Outflow * lane number = Outflow.
-impl<T: TTFNum> Mul<u8> for Outflow<T> {
-    type Output = Outflow<T>;
+/// Flow * lane number = Flow.
+impl<T: TTFNum> Mul<u8> for Flow<T> {
+    type Output = Flow<T>;
     fn mul(self, other: u8) -> Self::Output {
-        Outflow(self.0 * T::from_u8(other).unwrap())
+        Flow(self.0 * T::from_u8(other).unwrap())
     }
 }
-/// Lane number * Outflow = Outflow.
-impl<T: TTFNum> Mul<Outflow<T>> for u8 {
-    type Output = Outflow<T>;
-    fn mul(self, other: Outflow<T>) -> Self::Output {
-        Outflow(T::from_u8(self).unwrap() * other.0)
+/// Lane number * Flow = Flow.
+impl<T: TTFNum> Mul<Flow<T>> for u8 {
+    type Output = Flow<T>;
+    fn mul(self, other: Flow<T>) -> Self::Output {
+        Flow(T::from_u8(self).unwrap() * other.0)
     }
 }
 
@@ -566,6 +587,14 @@ impl<T: Copy + PartialOrd> Interval<T> {
     }
 }
 
+impl<T: TTFNum> Interval<T> {
+    /// Returns the length of the interval, i.e., the time that elapses between the start and the
+    /// end of the interval.
+    pub fn length(&self) -> Time<T> {
+        self.0[1] - self.0[0]
+    }
+}
+
 /// Struct to describe statistics on a distribution.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Distribution<T> {
@@ -586,8 +615,8 @@ impl<T: TTFNum> Distribution<T> {
         let mut max = T::min_value();
         let mut count = 0;
         for value in iter {
-            sum = sum + value;
-            sum_squared = sum_squared + value.powi(2);
+            sum += value;
+            sum_squared += value.powi(2);
             if value < min {
                 min = value;
             }

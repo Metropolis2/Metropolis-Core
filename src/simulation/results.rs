@@ -9,8 +9,10 @@ use std::io::BufReader;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
+use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use time::Duration;
 use ttf::TTFNum;
 
 use crate::agent::{agent_index, AgentIndex};
@@ -22,6 +24,7 @@ use crate::units::{Distribution, Time, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
 #[derive(Clone, Debug, Default, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
 pub struct SimulationResults<T> {
     /// [AggregateResults] of each iteration.
     pub iterations: Vec<AggregateResults<T>>,
@@ -85,7 +88,7 @@ pub struct AggregateResults<T> {
 
 /// Detailed results of an iteration.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound(serialize = "T: TTFNum", deserialize = "T: TTFNum"))]
 pub struct IterationResults<T> {
     /// Agent-specific results.
     pub agent_results: AgentResults<T>,
@@ -123,6 +126,83 @@ impl<T> IterationResults<T> {
             .iter()
             .enumerate()
             .map(|(i, r)| (agent_index(i), r))
+    }
+}
+
+/// The running times for each model of an iteration.
+#[derive(Clone, Debug, Default)]
+pub struct IterationRunningTimes {
+    /// Total running time of the iteration.
+    pub total: Duration,
+    /// Running time of skims computation.
+    pub skims_computation: Duration,
+    /// Running time of pre-day model.
+    pub pre_day_model: Duration,
+    /// Running time of within-day model.
+    pub within_day_model: Duration,
+    /// Running time of day-to-day model.
+    pub day_to_day_model: Duration,
+    /// Running time of aggregate results computation.
+    pub aggregate_results_computation: Duration,
+    /// Running time to check the stopping rules.
+    pub stopping_rules_check: Duration,
+}
+
+/// Summary of the running times of a simulation.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct RunningTimes {
+    /// Total running time of the simulation.
+    pub total: Duration,
+    /// Total running time of skims computation.
+    pub total_skims_computation: Duration,
+    /// Total running time of pre-day model.
+    pub total_pre_day_model: Duration,
+    /// Total running time of within-day model.
+    pub total_within_day_model: Duration,
+    /// Total running time of day-to-day model.
+    pub total_day_to_day_model: Duration,
+    /// Total running time of aggregate results computation.
+    pub total_aggregate_results_computation: Duration,
+    /// Total running time to check the stopping rules.
+    pub total_stopping_rules_check: Duration,
+    /// Total running time per iteration.
+    pub per_iteration: Duration,
+    /// Running time of skims computation per iteration.
+    pub per_iteration_skims_computation: Duration,
+    /// Running time of pre-day model.
+    pub per_iteration_pre_day_model: Duration,
+    /// Running time of within-day model.
+    pub per_iteration_within_day_model: Duration,
+    /// Running time of day-to-day model.
+    pub per_iteration_day_to_day_model: Duration,
+    /// Running time of skims computation per iteration.
+    pub per_iteration_aggregate_results_computation: Duration,
+    /// Running time to check the stopping rules per iteration.
+    pub per_iteration_stopping_rules_check: Duration,
+}
+
+impl RunningTimes {
+    /// Updates the total running times with the running times of an iteration.
+    pub fn update(&mut self, iteration_running_times: &IterationRunningTimes) {
+        self.total += iteration_running_times.total;
+        self.total_skims_computation += iteration_running_times.skims_computation;
+        self.total_pre_day_model += iteration_running_times.pre_day_model;
+        self.total_within_day_model += iteration_running_times.within_day_model;
+        self.total_day_to_day_model += iteration_running_times.day_to_day_model;
+        self.total_aggregate_results_computation +=
+            iteration_running_times.aggregate_results_computation;
+        self.total_stopping_rules_check += iteration_running_times.stopping_rules_check;
+    }
+
+    /// Computes the running time per iteration.
+    pub fn finish(&mut self, iteration_counter: u32) {
+        self.per_iteration_skims_computation /= iteration_counter;
+        self.per_iteration_pre_day_model /= iteration_counter;
+        self.per_iteration_within_day_model /= iteration_counter;
+        self.per_iteration_day_to_day_model /= iteration_counter;
+        self.per_iteration_aggregate_results_computation /= iteration_counter;
+        self.per_iteration_stopping_rules_check /= iteration_counter;
+        self.per_iteration /= iteration_counter;
     }
 }
 
@@ -184,6 +264,7 @@ impl<T: TTFNum + 'static> PreDayResult<T> {
 
 /// Results of an agent, during a single iteration.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResult<T> {
     /// Id of the agent.
     id: usize,
@@ -270,11 +351,15 @@ impl<T: Copy> AgentResult<T> {
 }
 
 impl<T: TTFNum> AgentResult<T> {
-    /// Computes and sets the utility of the agent.
+    /// Process the results of the agent.
     ///
     /// The utility is computed from the given [ScheduleUtility] and [Mode] description, and the
     /// stored [ModeResults].
-    pub fn compute_utility(&mut self, schedule_utility: &ScheduleUtility<T>, mode: &Mode<T>) {
+    pub fn process_results(&mut self, schedule_utility: &ScheduleUtility<T>, mode: &Mode<T>) {
+        match &mut self.mode_results {
+            ModeResults::Road(road_results) => road_results.process_results(),
+            ModeResults::None => (),
+        }
         self.utility = Some(mode.get_utility(
             &self.mode_results,
             schedule_utility,
@@ -288,6 +373,7 @@ impl<T: TTFNum> AgentResult<T> {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
 #[schemars(title = "Agent Results")]
 #[schemars(description = "Results for each agent in the simulation.")]
+#[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResults<T>(Vec<AgentResult<T>>);
 
 impl<T> AgentResults<T> {
@@ -341,4 +427,53 @@ impl<T> DerefMut for AgentResults<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+/// Stores [AggregateResults] in the given output directory.
+///
+/// The AggregateResults are stored in the file `iteration[counter].json`.
+pub fn save_aggregate_results<T: TTFNum>(
+    aggregate_results: &AggregateResults<T>,
+    iteration_counter: u32,
+    output_dir: &Path,
+) -> Result<()> {
+    let filename: PathBuf = [
+        output_dir.to_str().unwrap(),
+        &format!("iteration{iteration_counter}.json"),
+    ]
+    .iter()
+    .collect();
+    Ok(serde_json::to_writer(
+        &File::create(filename)?,
+        &aggregate_results,
+    )?)
+}
+
+/// Stores [IterationResults] in the given output directory.
+///
+/// The IterationResults are stored in the file `results.json`.
+pub fn save_iteration_results<T: TTFNum>(
+    iteration_results: IterationResults<T>,
+    output_dir: &Path,
+) -> Result<()> {
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
+        .iter()
+        .collect();
+    Ok(serde_json::to_writer(
+        &File::create(filename)?,
+        &iteration_results,
+    )?)
+}
+
+/// Stores [RunningTimes] in the given output directory.
+///
+/// The RunningTimes are stored in the file `running_times.json`.
+pub fn save_running_times(running_times: RunningTimes, output_dir: &Path) -> Result<()> {
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "running_times.json"]
+        .iter()
+        .collect();
+    Ok(serde_json::to_writer(
+        &File::create(filename)?,
+        &running_times,
+    )?)
 }

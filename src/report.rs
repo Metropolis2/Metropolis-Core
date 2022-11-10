@@ -24,7 +24,7 @@ pub fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path
     let filename: PathBuf = [output_dir.to_str().unwrap(), "report.html"]
         .iter()
         .collect();
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     file.write_all(report_results.render().unwrap().as_bytes())?;
     Ok(())
 }

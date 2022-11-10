@@ -14,11 +14,11 @@ use crate::units::Time;
 
 /// Criterion that is used to check if a simulation must be stopped.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum StopCriterion<T> {
     /// Stop when the number of iterations has reached a given value.
     #[validate(range(min = 1))]
-    MaxIteration(u64),
+    MaxIteration(u32),
     /// Stop when the mean departure-time shift from one iteration to another is below a threshold
     /// value.
     ///
@@ -32,7 +32,7 @@ impl<T: TTFNum> StopCriterion<T> {
     /// Returns `true` if the simulation must be stopped according to the current `StopCriterion`.
     pub fn stop(
         &self,
-        iteration_counter: u64,
+        iteration_counter: u32,
         results: &AgentResults<T>,
         prev_results: Option<&AgentResults<T>>,
     ) -> bool {

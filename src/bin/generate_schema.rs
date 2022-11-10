@@ -39,31 +39,31 @@ fn main() -> Result<()> {
     // Agents.
     let schema = gen.clone().into_root_schema_for::<Vec<Agent<f64>>>();
     let filename = args.path.join("schema-agents.json");
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Road network.
     let schema = gen.clone().into_root_schema_for::<RoadNetwork<f64>>();
     let filename = args.path.join("schema-roadnetwork.json");
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Parameters.
     let schema = gen.clone().into_root_schema_for::<Parameters<f64>>();
     let filename = args.path.join("schema-parameters.json");
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Aggregate results.
     let schema = gen.clone().into_root_schema_for::<AggregateResults<f64>>();
     let filename = args.path.join("schema-iteration.json");
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Iteration results.
     let schema = gen.into_root_schema_for::<IterationResults<f64>>();
     let filename = args.path.join("schema-output.json");
-    let mut file = File::create(&filename)?;
+    let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     info!("Done");

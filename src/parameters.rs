@@ -4,17 +4,13 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to simulation parameters.
-use std::fs::File;
-use std::path::{Path, PathBuf};
-
-use anyhow::Result;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
-use crate::simulation::results::{AgentResults, AggregateResults, IterationResults};
+use crate::simulation::results::AgentResults;
 use crate::stop::StopCriterion;
 use crate::units::Interval;
 
@@ -37,7 +33,6 @@ pub struct Parameters<T> {
     /// earlier than the end of the period.
     pub period: Interval<T>,
     /// Set of parameters for the network.
-    #[serde(default)]
     pub network: NetworkParameters<T>,
     /// Learning model used to update the values between two iterations.
     #[serde(default)]
@@ -82,7 +77,7 @@ impl<T: TTFNum> Parameters<T> {
     /// The Simulation is stopped if at least one of the stopping criteria is active.
     pub fn stop(
         &self,
-        iteration_counter: u64,
+        iteration_counter: u32,
         results: &AgentResults<T>,
         prev_results: Option<&AgentResults<T>>,
     ) -> bool {
@@ -96,50 +91,10 @@ impl<T: TTFNum> Parameters<T> {
         &self,
         old_weights: &NetworkWeights<T>,
         weights: &NetworkWeights<T>,
-        iteration_counter: u64,
+        iteration_counter: u32,
     ) -> NetworkWeights<T> {
         // At this point, the iteration counter has not been increment yet.
         self.learning_model
             .learn(old_weights, weights, iteration_counter + 1)
-    }
-}
-
-impl<T: serde::Serialize> Parameters<T> {
-    /// Stores [AggregateResults] in the given output directory.
-    ///
-    /// The AggregateResults are stored in the file `iteration[counter].json`.
-    pub fn save_aggregate_results(
-        &self,
-        aggregate_results: &AggregateResults<T>,
-        iteration_counter: u64,
-        output_dir: &Path,
-    ) -> Result<()> {
-        let filename: PathBuf = [
-            output_dir.to_str().unwrap(),
-            &format!("iteration{iteration_counter}.json"),
-        ]
-        .iter()
-        .collect();
-        Ok(serde_json::to_writer(
-            &File::create(&filename)?,
-            &aggregate_results,
-        )?)
-    }
-
-    /// Stores [IterationResults] in the given output directory.
-    ///
-    /// The IterationResults are stored in the file `results.json`.
-    pub fn save_iteration_results(
-        &self,
-        iteration_results: IterationResults<T>,
-        output_dir: &Path,
-    ) -> Result<()> {
-        let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
-            .iter()
-            .collect();
-        Ok(serde_json::to_writer(
-            &File::create(&filename)?,
-            &iteration_results,
-        )?)
     }
 }

@@ -14,7 +14,7 @@ use crate::network::NetworkWeights;
 /// `x_t` and an update value `y`.
 /// value.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 pub enum LearningModel<T> {
     /// Exponential learning model.
     Exponential(ExponentialLearningModel<T>),
@@ -42,23 +42,23 @@ impl<T: TTFNum> LearningModel<T> {
         &self,
         old_weights: &NetworkWeights<T>,
         update_weights: &NetworkWeights<T>,
-        iteration_counter: u64,
+        iteration_counter: u32,
     ) -> NetworkWeights<T> {
         match self {
             Self::Exponential(model) => model.learn(old_weights, update_weights, iteration_counter),
             Self::Linear => {
-                let t = T::from_u64(iteration_counter)
+                let t = T::from_u32(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 let coef = t / (t + T::one());
                 old_weights.average(update_weights, coef)
             }
             Self::Genetic => {
-                let t = T::from_u64(iteration_counter)
+                let t = T::from_u32(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 old_weights.genetic_average(update_weights, t, T::one())
             }
             Self::Quadratic => {
-                let t = T::from_u64(iteration_counter)
+                let t = T::from_u32(iteration_counter)
                     .unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", iteration_counter));
                 let coef = t.sqrt() / (t.sqrt() + T::one());
                 old_weights.average(update_weights, coef)
@@ -94,7 +94,7 @@ impl<T: TTFNum> ExponentialLearningModel<T> {
         &self,
         old_weights: &NetworkWeights<T>,
         update_weights: &NetworkWeights<T>,
-        iteration_counter: u64,
+        iteration_counter: u32,
     ) -> NetworkWeights<T> {
         // Use the formula to correct the weight of the first value.
         let coef_update = if self.alpha == T::zero() {

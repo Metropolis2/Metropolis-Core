@@ -16,7 +16,7 @@ use crate::units::{Time, Utility, ValueOfTime};
 /// **Warning**: This is used to compute the travel *utility* (not the travel *cost*), which is
 /// usually negative.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "values")]
+#[serde(tag = "type", content = "value")]
 #[schemars(example = "crate::schema::example_travel_utility")]
 #[schemars(example = "crate::schema::example_travel_utility2")]
 pub enum TravelUtility<T> {
