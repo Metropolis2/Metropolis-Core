@@ -72,6 +72,7 @@ fn main() -> Result<()> {
         info!("Writing report");
         metropolis::write_report(&results, &args.output)
     } else {
+        std::fs::create_dir_all(&args.output)?;
         // Run the simulation.
         simulation.run(&args.output)
     }

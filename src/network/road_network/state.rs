@@ -101,7 +101,7 @@ impl<T: TTFNum> RoadSegment<T> {
     /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated Length.
     fn into_simulated_length_function(self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
         let pwl_xyf = self.length_history.finish();
-        if pwl_xyf.is_cst() {
+        if pwl_xyf.iter_y().all(|y| y == &pwl_xyf[0].y) {
             XYF::Constant(pwl_xyf[0].y)
         } else {
             XYF::Piecewise(pwl_xyf)
@@ -216,33 +216,27 @@ impl<T: TTFNum> Bottleneck<'_, T> {
         self.next_opening = self.get_next_opening(vehicle, current_time);
     }
 
+    fn update_weighted_waiting_time(&mut self, current_time: Time<T>) {
+        // Duration that elapsed since the last recording.
+        let duration = current_time - self.last_timing;
+        // From `last_timing` to `current_time`, the exit time is `next_opening`.
+        // The average waiting time during this period was thus `next_opening` - (`last_timing` +
+        // `current_time`) / 2. We multiply by the duration of the period.
+        self.weighted_waiting_time +=
+            duration * (self.next_opening - TTFNum::average(self.last_timing, current_time));
+    }
+
     /// Record the average observed waiting time during the interval that just elapsed.
     fn interval_is_completed(&mut self, interval: Interval<T>) {
         debug_assert!(interval.end() >= self.last_timing);
         if self.is_open {
             // No waiting time
-        } else if self.has_event {
-            debug_assert!(
-                self.next_opening >= interval.end(),
-                "The bottleneck is open?"
-            );
-            // Between `last_timing` and `interval_end`, the average waiting time was
-            // `next_opening` - (`interval_end` + `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                self.next_opening - TTFNum::average(interval.end(), self.last_timing);
         } else if self.next_opening <= interval.end() {
             // The bottleneck was closed but it is now open.
-            // Between `last_timing` and `next_opening`, the average waiting time was
-            // (`next_opening` - `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                TTFNum::average(self.next_opening - self.last_timing, Time::zero());
-            // Since `next_opening`, the waiting time is null.
+            self.update_weighted_waiting_time(self.next_opening);
             self.open();
         } else {
-            // Between `last_timing` and `interval_end`, the average waiting time was
-            // `next_opening` - (`interval_end` + `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                self.next_opening - TTFNum::average(interval.end(), self.last_timing);
+            self.update_weighted_waiting_time(interval.end());
         };
         self.waiting_time_history.push(
             Time::average(interval.start(), interval.end()),
@@ -255,7 +249,7 @@ impl<T: TTFNum> Bottleneck<'_, T> {
     /// Consumes the [Bottleneck] and returns a [PwlTTF] with the simulated waiting time.
     fn into_simulated_ttf(self) -> TTF<Time<T>> {
         let pwl_ttf = self.waiting_time_history.finish();
-        if pwl_ttf.is_cst() {
+        if pwl_ttf.iter_y().all(|y| y == &pwl_ttf[0].y) {
             TTF::Constant(pwl_ttf[0].y)
         } else {
             TTF::Piecewise(pwl_ttf)
@@ -285,28 +279,18 @@ impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
             debug_assert!(self.next_opening >= current_time, "The bottleneck is open?");
             // The bottleneck is closed and there is a BottleneckEvent in the event queue that will
             // trigger the next time it opens.
-            // Between `last_timing` and `current_time`, the average waiting time was
-            // `next_opening` - (`current_time` + `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                self.next_opening - TTFNum::average(current_time, self.last_timing);
+            self.update_weighted_waiting_time(current_time);
             self.set_next_opening(vehicle, self.next_opening);
             self.queue.push_back((event, vehicle));
             BottleneckStatus::Closed(None)
         } else if self.next_opening <= current_time {
             // The bottleneck was closed but it is now open.
-            // Between `last_timing` and `next_opening`, the average waiting time was
-            // (`next_opening` - `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                TTFNum::average(self.next_opening - self.last_timing, Time::zero());
-            // Since `next_opening`, the waiting time is null.
+            self.update_weighted_waiting_time(self.next_opening);
             self.set_next_opening(vehicle, current_time);
             BottleneckStatus::Open(event)
         } else {
             // The bottleneck is closed and there is no BottleneckEvent in the event queue yet.
-            // Between `last_timing` and `current_time`, the average waiting time was
-            // `next_opening` - (`current_time` + `last_timing`) / 2.
-            self.weighted_waiting_time +=
-                self.next_opening - TTFNum::average(current_time, self.last_timing);
+            self.update_weighted_waiting_time(current_time);
             // Create a BottleneckEvent with a queue to trigger the exit from the bottleneck at
             // the correct time.
             let event_time = self.next_opening;
@@ -615,6 +599,7 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
             events.push(self);
         } else {
             // The bottleneck is now open.
+            bottleneck.update_weighted_waiting_time(self.at_time);
             bottleneck.open();
         }
     }

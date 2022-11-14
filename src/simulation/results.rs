@@ -196,13 +196,15 @@ impl RunningTimes {
 
     /// Computes the running time per iteration.
     pub fn finish(&mut self, iteration_counter: u32) {
-        self.per_iteration_skims_computation /= iteration_counter;
-        self.per_iteration_pre_day_model /= iteration_counter;
-        self.per_iteration_within_day_model /= iteration_counter;
-        self.per_iteration_day_to_day_model /= iteration_counter;
-        self.per_iteration_aggregate_results_computation /= iteration_counter;
-        self.per_iteration_stopping_rules_check /= iteration_counter;
-        self.per_iteration /= iteration_counter;
+        self.per_iteration = self.total / iteration_counter;
+        self.per_iteration_skims_computation = self.total_skims_computation / iteration_counter;
+        self.per_iteration_pre_day_model = self.total_pre_day_model / iteration_counter;
+        self.per_iteration_within_day_model = self.total_within_day_model / iteration_counter;
+        self.per_iteration_day_to_day_model = self.total_day_to_day_model / iteration_counter;
+        self.per_iteration_aggregate_results_computation =
+            self.total_aggregate_results_computation / iteration_counter;
+        self.per_iteration_stopping_rules_check =
+            self.total_stopping_rules_check / iteration_counter;
     }
 }
 

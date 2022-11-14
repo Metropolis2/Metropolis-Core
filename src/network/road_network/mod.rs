@@ -386,11 +386,23 @@ impl<T: TTFNum> RoadNetwork<T> {
                 |edge_id| weights[(vehicle_id, edge_id)].clone(),
                 parameters.contraction.clone(),
             );
+            debug!("Simplifying Hierarchy Overlay");
             hierarchy.simplify(parameters.edge_simplification);
+            debug!(
+                "Number of edges in the Hierarchy Overlay: {}",
+                hierarchy.edge_count()
+            );
+            debug!(
+                "Complexity of the Hierarchy Overlay: {}",
+                hierarchy.complexity()
+            );
             let mut skim = RoadNetworkSkim::new(hierarchy);
             let od_pairs = &preprocess_data.od_pairs[vehicle_id.index()];
+            debug!("Computing search spaces");
             skim.compute_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
+            debug!("Simplifying search spaces");
             skim.simplify_search_spaces(parameters.search_space_simplification);
+            debug!("Computing profile queries");
             skim.pre_compute_profile_queries(&od_pairs.pairs)?;
             skims.push(Some(skim));
         }

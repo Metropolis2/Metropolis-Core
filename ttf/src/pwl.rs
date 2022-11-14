@@ -223,7 +223,7 @@ where
 
     /// Returns `true` if the function is constant.
     pub fn is_cst(&self) -> bool {
-        self.len() == 1
+        self.get_min().approx_eq(&self.get_max())
     }
 
     fn get_bucket(&self, x: X) -> usize {

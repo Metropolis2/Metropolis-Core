@@ -323,7 +323,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         };
         bp.set_style(
             ProgressStyle::default_bar()
-                .template("{bar:60} ETA: {eta}")
+                .template("{bar:60} {human_pos} / {human_len}")
                 .unwrap(),
         );
         while self.graph.node_count() > 0 {

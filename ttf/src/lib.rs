@@ -304,6 +304,10 @@ impl<T: TTFNum> TTF<T> {
     pub fn approximate(&mut self, error: T) {
         if let Self::Piecewise(pwl_ttf) = self {
             pwl_ttf.approximate(error);
+            if pwl_ttf.is_cst() {
+                // Convert TTF::Piecewise to TTF::Constant.
+                *self = TTF::Constant(pwl_ttf[0].y);
+            }
         }
     }
 
@@ -370,6 +374,10 @@ impl<T: TTFNum> TTFSimplification<T> {
                     let ys = pwl_ttf.average_y_in_intervals(&bins);
                     *pwl_ttf = PwlTTF::from_x_and_y(xs, ys);
                     pwl_ttf.ensure_fifo();
+                    if pwl_ttf.is_cst() {
+                        // Convert TTF::Piecewise to TTF::Constant.
+                        *ttf = TTF::Constant(pwl_ttf[0].y);
+                    }
                 }
             }
         }

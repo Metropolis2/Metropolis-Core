@@ -8,6 +8,8 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{log_enabled, Level};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
 use tch::algo;
@@ -93,6 +95,16 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         &mut self,
         od_pairs: &HashMap<NodeIndex, HashSet<NodeIndex>>,
     ) -> Result<()> {
+        let bp = if log_enabled!(Level::Info) {
+            ProgressBar::new(od_pairs.len() as u64)
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:60} ETA: {eta}")
+                .unwrap(),
+        );
         self.profile_query_cache = od_pairs
             .par_iter()
             .map(|(&source, targets)| {
@@ -107,9 +119,11 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
                         Ok((target, ttf))
                     })
                     .collect::<Result<CachedQueriesFromSource<T>>>()?;
+                bp.inc(1);
                 Ok((source, results))
             })
             .collect::<Result<HashMap<_, _>>>()?;
+        bp.finish_and_clear();
         Ok(())
     }
 
