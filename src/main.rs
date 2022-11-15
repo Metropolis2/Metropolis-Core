@@ -9,7 +9,13 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use log::info;
+use log::{info, LevelFilter};
+use log4rs::append::console::ConsoleAppender;
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Root};
+use log4rs::encode::pattern::PatternEncoder;
+use log4rs::filter::threshold::ThresholdFilter;
+use log4rs::Config;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::network::Network;
@@ -41,7 +47,33 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    env_logger::init();
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "{h([{d(%Y-%m-%d %H:%M:%S)} {l}] {m}{n})}",
+        )))
+        .build();
+    let log_filename: PathBuf = [args.output.to_str().unwrap(), "log.txt"].iter().collect();
+    let log_file = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "[{d(%Y-%m-%d %H:%M:%S)} {l}] {m}{n}",
+        )))
+        .build(log_filename)
+        .expect("Failed to initialize log file");
+    let log_config = Config::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(LevelFilter::Info)))
+                .build("log_file", Box::new(log_file)),
+        )
+        .build(
+            Root::builder()
+                .appender("stdout")
+                .appender("log_file")
+                .build(LevelFilter::Debug),
+        )
+        .expect("Failed to create log config");
+    log4rs::init_config(log_config).expect("Failed to initialize log");
 
     // Read input files.
     info!("Reading input files");

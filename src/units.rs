@@ -404,10 +404,11 @@ pub struct Time<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Time<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let t = NaiveTime::from_num_seconds_from_midnight(
+        let t = NaiveTime::from_num_seconds_from_midnight_opt(
             self.0.round().to_u32().ok_or(fmt::Error)?,
             0,
-        );
+        )
+        .unwrap();
         write!(f, "{}", t.format("%H:%M:%S"))
     }
 }

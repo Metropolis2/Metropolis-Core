@@ -9,7 +9,11 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use log::info;
+use log::{info, LevelFilter};
+use log4rs::append::console::ConsoleAppender;
+use log4rs::config::{Appender, Root};
+use log4rs::encode::pattern::PatternEncoder;
+use log4rs::Config;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::parameters::Parameters;
@@ -27,7 +31,16 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    env_logger::init();
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new(
+            "{h([{d(%Y-%m-%d %H:%M:%S)} {l}] {m}{n})}",
+        )))
+        .build();
+    let log_config = Config::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .build(Root::builder().appender("stdout").build(LevelFilter::Info))
+        .expect("Failed to create log config");
+    log4rs::init_config(log_config).expect("Failed to initialize log");
 
     info!("Generating JSON Schemas");
     let settings = SchemaSettings::draft07().with(|s| {
