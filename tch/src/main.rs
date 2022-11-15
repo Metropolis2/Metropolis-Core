@@ -61,7 +61,9 @@ pub fn main() -> Result<()> {
                     Path::new("/home/ljavaudin/GitRepositories/metrolib/hierarchy_overlay.bin");
                 let buffer = File::create(path).unwrap();
                 bincode::serialize_into(buffer, &ch).unwrap();
-                serde_json::to_writer(&File::create("node_order.json").unwrap(), &ch.get_order())
+                let mut writer = File::create("node_order.json").unwrap();
+                writer
+                    .write_all(&serde_json::to_vec(&ch.get_order()).unwrap())
                     .unwrap();
             }
             ch
@@ -621,10 +623,12 @@ fn read_order() -> HashMap<NodeIndex, usize> {
 
 #[allow(dead_code)]
 fn read_order_from(filename: &str) -> HashMap<NodeIndex, usize> {
-    let path = Path::new(filename);
-    let file = File::open(path).expect("Unable to open file");
-    let reader = BufReader::new(file);
-    let order: Vec<usize> = serde_json::from_reader(reader).expect("Unable to parse node ordering");
+    let mut bytes = Vec::new();
+    File::open(filename)
+        .expect("Unable to open file")
+        .read_to_end(&mut bytes)
+        .unwrap();
+    let order: Vec<usize> = serde_json::from_slice(&bytes).expect("Unable to parse node ordering");
     let mut map = HashMap::with_capacity(order.len());
     for (i, o) in order.into_iter().enumerate() {
         map.insert(node_index(i), o);

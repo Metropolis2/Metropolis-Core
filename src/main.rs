@@ -3,8 +3,8 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use std::fs;
-use std::io::BufReader;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -45,19 +45,28 @@ fn main() -> Result<()> {
 
     // Read input files.
     info!("Reading input files");
-    let file = fs::File::open(args.agents).expect("Unable to open agents file");
-    let reader = BufReader::new(file);
-    let agents: Vec<Agent<f64>> = serde_json::from_reader(reader).expect("Unable to parse agents");
+    let mut bytes = Vec::new();
+    File::open(args.agents)
+        .expect("Unable to open agents file")
+        .read_to_end(&mut bytes)
+        .expect("Unable to read agents file");
+    let agents: Vec<Agent<f64>> = serde_json::from_slice(&bytes).expect("Unable to parse agents");
 
-    let file = fs::File::open(args.parameters).expect("Unable to open parameters file");
-    let reader = BufReader::new(file);
+    let mut bytes = Vec::new();
+    File::open(args.parameters)
+        .expect("Unable to open parameters file")
+        .read_to_end(&mut bytes)
+        .expect("Unable to read parameters file");
     let parameters: Parameters<f64> =
-        serde_json::from_reader(reader).expect("Unable to parse parameters");
+        serde_json::from_slice(&bytes).expect("Unable to parse parameters");
 
     let road_network: Option<RoadNetwork<f64>> = if let Some(rn) = args.road_network {
-        let file = fs::File::open(rn).expect("Unable to open road-network file");
-        let reader = BufReader::new(file);
-        Some(serde_json::from_reader(reader).expect("Unable to parse road network"))
+        let mut bytes = Vec::new();
+        File::open(rn)
+            .expect("Unable to open road-network file")
+            .read_to_end(&mut bytes)
+            .expect("Unable to read road-network file");
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse road network"))
     } else {
         None
     };

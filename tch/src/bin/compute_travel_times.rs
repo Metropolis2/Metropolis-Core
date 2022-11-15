@@ -4,7 +4,7 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -204,34 +204,41 @@ fn main() -> Result<()> {
     let t0 = Instant::now();
 
     info!("Reading graph");
-    let file = File::open(args.graph).expect("Unable to open graph file");
-    let reader = BufReader::new(file);
-    let graph: DiGraph<Node, Edge> =
-        serde_json::from_reader(reader).expect("Unable to parse graph");
+    let mut bytes = Vec::new();
+    File::open(args.graph)
+        .expect("Unable to open graph file")
+        .read_to_end(&mut bytes)?;
+    let graph: DiGraph<Node, Edge> = serde_json::from_slice(&bytes).expect("Unable to parse graph");
 
     let weights: Option<Weights> = if let Some(filename) = args.weights {
         info!("Reading graph weights");
-        let file = File::open(filename).expect("Unable to open graph weights file");
-        let reader = BufReader::new(file);
-        Some(serde_json::from_reader(reader).expect("Unable to parse graph weights"))
+        let mut bytes = Vec::new();
+        File::open(filename)
+            .expect("Unable to open graph weights file")
+            .read_to_end(&mut bytes)?;
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse graph weights"))
     } else {
         None
     };
 
     let order: Option<Vec<usize>> = if let Some(filename) = args.input_order {
         info!("Reading node ordering");
-        let file = File::open(filename).expect("Unable to open node ordering file");
-        let reader = BufReader::new(file);
-        Some(serde_json::from_reader(reader).expect("Unable to parse node ordering"))
+        let mut bytes = Vec::new();
+        File::open(filename)
+            .expect("Unable to open node ordering file")
+            .read_to_end(&mut bytes)?;
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse node ordering"))
     } else {
         None
     };
 
     info!("Reading source-target pairs");
-    let file = File::open(args.pairs).expect("Unable to open source-target pairs file");
-    let reader = BufReader::new(file);
+    let mut bytes = Vec::new();
+    File::open(args.pairs)
+        .expect("Unable to open source-target pairs file")
+        .read_to_end(&mut bytes)?;
     let pairs: Vec<ODPair> =
-        serde_json::from_reader(reader).expect("Unable to parse source-target pairs");
+        serde_json::from_slice(&bytes).expect("Unable to parse source-target pairs");
 
     if pairs.is_empty() {
         warn!("No query to execute");
@@ -240,9 +247,11 @@ fn main() -> Result<()> {
 
     let parameters: Parameters<f64> = if let Some(filename) = args.parameters {
         info!("Reading parameters");
-        let file = File::open(filename).expect("Unable to open parameters file");
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).expect("Unable to parse parameters")
+        let mut bytes = Vec::new();
+        File::open(filename)
+            .expect("Unable to open parameters file")
+            .read_to_end(&mut bytes)?;
+        serde_json::from_slice(&bytes).expect("Unable to parse parameters")
     } else {
         Default::default()
     };
@@ -348,7 +357,10 @@ fn main() -> Result<()> {
         };
 
         if let Some(filename) = args.output_order {
-            serde_json::to_writer(&File::create(filename)?, &overlay.get_order())?
+            let mut writer = File::create(filename).unwrap();
+            writer
+                .write_all(&serde_json::to_vec(&overlay.get_order()).unwrap())
+                .unwrap();
         }
 
         info!("Simplifying hierarchy overlay");
@@ -485,6 +497,9 @@ fn main() -> Result<()> {
     let output = Output { details, results };
 
     info!("Saving results");
-    serde_json::to_writer(&File::create(&args.output)?, &output)?;
+    let mut writer = File::create(args.output).unwrap();
+    writer
+        .write_all(&serde_json::to_vec(&output).unwrap())
+        .unwrap();
     Ok(())
 }

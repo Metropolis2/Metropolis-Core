@@ -5,7 +5,7 @@
 
 //! Structs holding the results of a simulation.
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
@@ -49,9 +49,10 @@ impl<T: TTFNum> SimulationResults<T> {
             ]
             .iter()
             .collect();
-            if let Ok(file) = File::open(filename) {
-                let reader = BufReader::new(file);
-                let it = serde_json::from_reader(reader).expect("Unable to parse AggregateResults");
+            if let Ok(mut file) = File::open(filename) {
+                let mut bytes = Vec::new();
+                file.read_to_end(&mut bytes).unwrap();
+                let it = serde_json::from_slice(&bytes).expect("Unable to parse AggregateResults");
                 iterations.push(it);
             } else {
                 break;
@@ -61,10 +62,13 @@ impl<T: TTFNum> SimulationResults<T> {
         let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
             .iter()
             .collect();
-        let last_iteration = File::open(filename).map_or(None, |file| {
-            let reader = BufReader::new(file);
-            Some(serde_json::from_reader(reader).expect("Unable to parse IterationResults"))
-        });
+        let mut bytes = Vec::new();
+        File::open(filename)
+            .expect("Unable to read results.json file")
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let last_iteration =
+            serde_json::from_slice(&bytes).expect("Unable to parse IterationResults");
         SimulationResults {
             iterations,
             last_iteration,
@@ -445,10 +449,9 @@ pub fn save_aggregate_results<T: TTFNum>(
     ]
     .iter()
     .collect();
-    Ok(serde_json::to_writer(
-        &File::create(filename)?,
-        &aggregate_results,
-    )?)
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&aggregate_results)?;
+    Ok(writer.write_all(&buffer)?)
 }
 
 /// Stores [IterationResults] in the given output directory.
@@ -461,10 +464,9 @@ pub fn save_iteration_results<T: TTFNum>(
     let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
         .iter()
         .collect();
-    Ok(serde_json::to_writer(
-        &File::create(filename)?,
-        &iteration_results,
-    )?)
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&iteration_results)?;
+    Ok(writer.write_all(&buffer)?)
 }
 
 /// Stores [RunningTimes] in the given output directory.
@@ -474,8 +476,7 @@ pub fn save_running_times(running_times: RunningTimes, output_dir: &Path) -> Res
     let filename: PathBuf = [output_dir.to_str().unwrap(), "running_times.json"]
         .iter()
         .collect();
-    Ok(serde_json::to_writer(
-        &File::create(filename)?,
-        &running_times,
-    )?)
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&running_times)?;
+    Ok(writer.write_all(&buffer)?)
 }
