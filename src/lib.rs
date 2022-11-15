@@ -38,9 +38,11 @@ pub mod stop;
 pub mod travel_utility;
 pub mod units;
 
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
+#[cfg(feature = "jemalloc")]
 /// Displays statistics on allocated and resident memory.
 pub fn show_stats() {
     jemalloc_ctl::epoch::advance().unwrap();
@@ -53,6 +55,10 @@ pub fn show_stats() {
         indicatif::HumanBytes(resident as u64).to_string()
     );
 }
+
+#[cfg(not(feature = "jemalloc"))]
+/// Displays statistics on allocated and resident memory.
+pub fn show_stats() {}
 
 // Re-exports.
 // Dependencies only used in the bins.

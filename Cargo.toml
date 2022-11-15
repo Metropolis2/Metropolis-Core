@@ -23,8 +23,8 @@ env_logger = "0.9"
 hashbrown = { version = "0.12", features = ["rayon"] }
 indicatif = "0.17"
 itertools = "0.10"
-jemallocator = "0.5"
-jemalloc-ctl = "0.5"
+jemallocator = { version = "0.5", optional = true }
+jemalloc-ctl = { version = "0.5", optional = true }
 log = "0.4"
 num-traits = "0.2"
 object-pool = "0.5"
@@ -38,6 +38,9 @@ serde_derive = "1.0"
 serde_json = "1.0"
 schemars = "0.8"
 time = { version = "0.3", features = ["serde-human-readable"] }
+
+[features]
+jemalloc = ["jemallocator", "jemalloc-ctl"]
 
 [profile.release]
 opt-level = 3
