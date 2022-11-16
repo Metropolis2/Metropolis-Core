@@ -162,16 +162,9 @@ impl<'a, T> NetworkState<'a, T> {
 impl<T: TTFNum> NetworkState<'_, T> {
     /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
     pub fn into_weights(self, parameters: &Parameters<T>) -> NetworkWeights<T> {
-        let rn_weights = self.road_network.map(|rn| {
-            rn.into_weights(
-                parameters
-                    .network
-                    .road_network
-                    .as_ref()
-                    .unwrap()
-                    .weight_simplification,
-            )
-        });
+        let rn_weights = self
+            .road_network
+            .map(|rn| rn.into_weights(parameters.network.road_network.as_ref().unwrap()));
         NetworkWeights {
             road_network: rn_weights,
         }
@@ -191,7 +184,7 @@ impl<T> NetworkWeights<T> {
         NetworkWeights { road_network }
     }
 
-    /// Return a reference to the [RoadNetworkWeights] of the [NetworkWeights], as an option.
+    /// Returns a reference to the [RoadNetworkWeights] of the [NetworkWeights], as an option.
     ///
     /// If the NetworkWeights have no road-network weights, return `None`.
     pub const fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
@@ -200,7 +193,7 @@ impl<T> NetworkWeights<T> {
 }
 
 impl<T: TTFNum> NetworkWeights<T> {
-    /// Return the weighted average beteen two [NetworkWeights], where `coefficient` is the weight
+    /// Returns the weighted average beteen two [NetworkWeights], where `coefficient` is the weight
     /// of `self` and `1 - coefficient` is the weight of `other`.
     #[must_use]
     pub fn average(&self, other: &NetworkWeights<T>, coefficient: T) -> NetworkWeights<T> {
@@ -216,7 +209,7 @@ impl<T: TTFNum> NetworkWeights<T> {
         }
     }
 
-    /// Return the genetic average between two [NetworkWeights].
+    /// Returns the genetic average between two [NetworkWeights].
     ///
     /// The genetic average of `x` and `y` is `(x^a + y^b)^(1/(a+b))`.
     #[must_use]
@@ -230,6 +223,15 @@ impl<T: TTFNum> NetworkWeights<T> {
         };
         NetworkWeights {
             road_network: rn_weights,
+        }
+    }
+
+    /// Simplifies the weights.
+    pub fn simplify(&mut self, parameters: &NetworkParameters<T>) {
+        if let (Some(rn_weights), Some(rn_parameters)) =
+            (self.road_network.as_mut(), parameters.road_network.as_ref())
+        {
+            rn_weights.simplify(rn_parameters);
         }
     }
 }

@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::vehicle::VehicleIndex;
+use super::{vehicle::VehicleIndex, RoadNetworkParameters};
 use crate::units::Time;
 
 /// Structure to store the travel-time functions of each edge of a [RoadNetwork](super::RoadNetwork),
@@ -31,7 +31,7 @@ use crate::units::Time;
 pub struct RoadNetworkWeights<T>(Vec<Vec<TTF<Time<T>>>>);
 
 impl<T> RoadNetworkWeights<T> {
-    /// Initialize a new RoadNetworkWeights instance with enough capacity for the given number of
+    /// Initializes a new RoadNetworkWeights instance with enough capacity for the given number of
     /// vehicles and edges.
     pub fn with_capacity(nb_vehicles: usize, nb_edges: usize) -> Self {
         let mut vehicle_weights = Vec::new();
@@ -39,7 +39,7 @@ impl<T> RoadNetworkWeights<T> {
         RoadNetworkWeights(vehicle_weights)
     }
 
-    /// Return the shape of the RoadNetworkWeights, i.e., a tuple with the number of vehicles and
+    /// Returns the shape of the RoadNetworkWeights, i.e., a tuple with the number of vehicles and
     /// the number of edges.
     pub fn shape(&self) -> (usize, usize) {
         match self.0.len() {
@@ -50,7 +50,7 @@ impl<T> RoadNetworkWeights<T> {
 }
 
 impl<T: TTFNum> RoadNetworkWeights<T> {
-    /// Return the average between two RoadNetworkWeights, using the given coefficient.
+    /// Returns the average between two RoadNetworkWeights, using the given coefficient.
     ///
     /// For each vehicle `v` and edge `e`, the weight of the new RoadNetworkWeights is `w_ve = a *
     /// w1_ve + (1 - a) * w2_ve`, where `a` is the coefficient, `w1_ve` is the weight of `self` and
@@ -76,7 +76,7 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
         new_weights
     }
 
-    /// Return the genetic average between two RoadNetworkWeights, using the given exponents.
+    /// Returns the genetic average between two RoadNetworkWeights, using the given exponents.
     ///
     /// For each vehicle `v` and edge `e`, the weight of the new RoadNetworkWeights is `w_ve =
     /// (w1_ve^a + w2_ve^b)^(1/(a+b))`, where `a` and `b` are the exponents, `w1_ve` is the weight
@@ -100,6 +100,15 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
             }
         }
         new_weights
+    }
+
+    /// Simplifies the RoadNetworkWeights.
+    pub fn simplify(&mut self, parameters: &RoadNetworkParameters<T>) {
+        for weights in self.0.iter_mut() {
+            for ttf in weights.iter_mut() {
+                parameters.weight_simplification.simplify(ttf);
+            }
+        }
     }
 }
 

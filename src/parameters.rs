@@ -94,7 +94,10 @@ impl<T: TTFNum> Parameters<T> {
         iteration_counter: u32,
     ) -> NetworkWeights<T> {
         // At this point, the iteration counter has not been increment yet.
-        self.learning_model
-            .learn(old_weights, weights, iteration_counter + 1)
+        let mut new_weights =
+            self.learning_model
+                .learn(old_weights, weights, iteration_counter + 1);
+        new_weights.simplify(&self.network);
+        new_weights
     }
 }

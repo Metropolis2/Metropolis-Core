@@ -9,12 +9,12 @@ use std::ops::{Index, IndexMut};
 
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use ttf::{PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTFSimplification, TTF, XYF};
+use ttf::{PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
 
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{RoadEdge, RoadNetwork, RoadNode};
+use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNode};
 use crate::event::{Event, EventQueue};
 use crate::mode::road::VehicleEvent;
 use crate::simulation::results::AgentResult;
@@ -496,7 +496,7 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
     ///
     /// The travel times are only stored for the given time interval and are simplified using the
     /// given [TTFSimplification] method.
-    pub fn into_weights(self, simplification: TTFSimplification<Time<T>>) -> RoadNetworkWeights<T> {
+    pub fn into_weights(self, parameters: &RoadNetworkParameters<T>) -> RoadNetworkWeights<T> {
         let mut weights =
             RoadNetworkWeights::with_capacity(self.network.vehicles.len(), self.graph.edge_count());
         let (_, edge_states) = self.graph.into_nodes_edges();
@@ -516,7 +516,7 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
                     .in_bottleneck
                     .link(&road_ttf)
                     .link(&funcs.out_bottleneck);
-                simplification.simplify(&mut ttf);
+                parameters.simulated_simplification.simplify(&mut ttf);
                 vehicle_weights.push(ttf);
             }
         }

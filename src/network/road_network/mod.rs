@@ -387,7 +387,7 @@ impl<T: TTFNum> RoadNetwork<T> {
                 parameters.contraction.clone(),
             );
             debug!("Simplifying Hierarchy Overlay");
-            hierarchy.simplify(parameters.edge_simplification);
+            hierarchy.simplify(parameters.overlay_simplification);
             debug!(
                 "Number of edges in the Hierarchy Overlay: {}",
                 hierarchy.edge_count()
@@ -444,6 +444,11 @@ pub struct RoadNetworkParameters<T> {
     pub contraction: ContractionParameters,
     /// Interval in time for which the bottleneck and road segment travel times are aggregated.
     pub recording_interval: Time<T>,
+    /// [TTFSimplification] describing how the simulated edges' TTFs are simplified at the end of
+    /// an iteration.
+    #[serde(default = "TTFSimplification::<Time<T>>::default")]
+    #[schemars(description = "How to simplify the edges TTFs at the end of the within-day model.")]
+    pub simulated_simplification: TTFSimplification<Time<T>>,
     /// [TTFSimplification] describing how the weights of the road network are simplified at the
     /// beginning of the iteration.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
@@ -455,7 +460,7 @@ pub struct RoadNetworkParameters<T> {
     #[schemars(
         description = "How to simplify the edges TTFs after the hierarchy overlay is built."
     )]
-    pub edge_simplification: TTFSimplification<Time<T>>,
+    pub overlay_simplification: TTFSimplification<Time<T>>,
     /// [TTFSimplification] describing how the TTFs of the forward and backward search spaces
     /// are simplified.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
@@ -472,8 +477,9 @@ impl<T> RoadNetworkParameters<T> {
         Self {
             recording_interval,
             contraction: Default::default(),
+            simulated_simplification: Default::default(),
             weight_simplification: Default::default(),
-            edge_simplification: Default::default(),
+            overlay_simplification: Default::default(),
             search_space_simplification: Default::default(),
         }
     }
