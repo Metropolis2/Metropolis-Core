@@ -65,4 +65,3 @@ pub fn show_stats() {}
 use clap as _;
 use log4rs as _;
 pub use report::write_report;
-use rmp_serde as _;

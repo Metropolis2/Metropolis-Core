@@ -451,22 +451,34 @@ pub fn save_aggregate_results<T: TTFNum>(
     .collect();
     let mut writer = File::create(filename)?;
     let buffer = serde_json::to_vec(&aggregate_results)?;
-    Ok(writer.write_all(&buffer)?)
+    writer.write_all(&buffer)?;
+    Ok(())
 }
 
 /// Stores [IterationResults] in the given output directory.
 ///
-/// The IterationResults are stored in the file `results.json`.
+/// The IterationResults are stored in the files `agent_results.json` and `weight_results.json`.
 pub fn save_iteration_results<T: TTFNum>(
     iteration_results: IterationResults<T>,
     output_dir: &Path,
 ) -> Result<()> {
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
+    // Save agent results.
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "agent_results.json.zst"]
         .iter()
         .collect();
     let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&iteration_results)?;
-    Ok(writer.write_all(&buffer)?)
+    let buffer = serde_json::to_vec(&iteration_results.agent_results)?;
+    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+    writer.write_all(&encoded_buffer)?;
+    // Save weight results.
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "weight_results.json.zst"]
+        .iter()
+        .collect();
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&iteration_results.weights)?;
+    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+    writer.write_all(&encoded_buffer)?;
+    Ok(())
 }
 
 /// Stores [RunningTimes] in the given output directory.
@@ -478,5 +490,6 @@ pub fn save_running_times(running_times: RunningTimes, output_dir: &Path) -> Res
         .collect();
     let mut writer = File::create(filename)?;
     let buffer = serde_json::to_vec(&running_times)?;
-    Ok(writer.write_all(&buffer)?)
+    writer.write_all(&buffer)?;
+    Ok(())
 }
