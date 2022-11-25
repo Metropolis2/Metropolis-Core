@@ -283,7 +283,7 @@ impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
             self.set_next_opening(vehicle, self.next_opening);
             self.queue.push_back((event, vehicle));
             BottleneckStatus::Closed(None)
-        } else if self.next_opening <= current_time {
+        } else if self.next_opening.approx_le(&current_time) {
             // The bottleneck was closed but it is now open.
             self.update_weighted_waiting_time(self.next_opening);
             self.set_next_opening(vehicle, current_time);
