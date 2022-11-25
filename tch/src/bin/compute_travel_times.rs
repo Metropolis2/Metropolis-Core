@@ -65,6 +65,10 @@ struct Args {
     /// If not specified, the node ordering is not saved.
     #[clap(long)]
     output_order: Option<PathBuf>,
+    /// Path to the file where the hierarchy overlay should be stored (only for intersect and tch).
+    /// If not specified, the hierarchy overlay is not saved.
+    #[clap(long)]
+    output_overlay: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -360,6 +364,13 @@ fn main() -> Result<()> {
             let mut writer = File::create(filename).unwrap();
             writer
                 .write_all(&serde_json::to_vec(&overlay.get_order()).unwrap())
+                .unwrap();
+        }
+
+        if let Some(filename) = args.output_overlay {
+            let mut writer = File::create(filename).unwrap();
+            writer
+                .write_all(&serde_json::to_vec(&overlay).unwrap())
                 .unwrap();
         }
 
