@@ -854,16 +854,16 @@ impl<T: TTFNum + 'static> Event<T> for VehicleEvent<T> {
                 self.current_edge = self
                     .get_edge_at_current_position(choices)
                     .expect("Cannot start route.");
-                agent_result.set_departure_time(self.at_time);
                 self.event_type = VehicleEventType::EntersInBottleneck;
                 // We can execute the next event directly because the time is the same.
                 self.execute(network, exp_skims, state, Some(agent_result), events);
             }
             VehicleEventType::EntersInBottleneck => {
                 // Record the event.
-                self.record_edge(agent_result);
-                self.current_event = Some(TemporaryRoadEvent::new(self.current_edge));
-                self.set_edge_entry(self.at_time);
+                // TODO: Move this somewhere else.
+                // self.record_edge(agent_result);
+                // self.current_event = Some(TemporaryRoadEvent::new(self.current_edge));
+                // self.set_edge_entry(self.at_time);
                 // Update the event type for the next execution of the event.
                 self.event_type = VehicleEventType::EntersRoadSegment;
                 // Try to cross the bottleneck.

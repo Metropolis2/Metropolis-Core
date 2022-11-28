@@ -167,6 +167,8 @@ pub struct RoadEdge<T> {
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
     bottleneck_outflow: Flow<T>,
+    /// If `true`, the length of vehicles on this road is limited by the length of the road.
+    spillback: bool,
 }
 
 impl<T: TTFNum> RoadEdge<T> {
@@ -178,6 +180,7 @@ impl<T: TTFNum> RoadEdge<T> {
         speed_density: SpeedDensityFunction<T>,
         bottleneck_inflow: Flow<T>,
         bottleneck_outflow: Flow<T>,
+        spillback: bool,
     ) -> Self {
         RoadEdge {
             base_speed,
@@ -186,6 +189,7 @@ impl<T: TTFNum> RoadEdge<T> {
             speed_density,
             bottleneck_inflow,
             bottleneck_outflow,
+            spillback,
         }
     }
 
@@ -552,6 +556,7 @@ mod tests {
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_inflow: Flow(f64::INFINITY),
             bottleneck_outflow: Flow(f64::INFINITY),
+            spillback: false,
         };
         let vehicle = Vehicle::new(Length(10.), PCE(1.), SpeedFunction::Base);
         // 1 km at 50 km/h is 40s.

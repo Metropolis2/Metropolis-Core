@@ -126,6 +126,7 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
         )),
         Flow(0.4),
         Flow(0.4),
+        true,
     )
 }
 

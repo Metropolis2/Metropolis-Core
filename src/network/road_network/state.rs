@@ -267,14 +267,27 @@ impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
         &mut self,
         event: Box<VehicleEvent<T>>,
         vehicle: &'a Vehicle<T>,
-        edge_index: EdgeIndex,
+        road_state: &mut RoadEdgeState<'a, T>,
     ) -> BottleneckStatus<T> {
         let current_time = event.get_time();
         debug_assert!(current_time >= self.last_timing);
+        // TODO: Can `is_open` be replaced by `next_opening`?
         let status = if self.is_open {
-            // The bottleneck is open, the vehicle can cross immediately.
-            self.set_next_opening(vehicle, current_time);
-            BottleneckStatus::Open(event)
+            if road_state.has_room_for(vehicle) {
+                // === Case 1. ===
+                // The bottleneck is open, the queue is empty and there is room for the vehicle on
+                // the edge.
+                // The vehicle can cross immediately and the timing of the next opening of the
+                // bottleneck is updated.
+                self.set_next_opening(vehicle, current_time);
+                BottleneckStatus::Open(event)
+            } else {
+                // The link is full.
+                // The bottleneck stays open but the vehicle does not enter yet and is pushed to
+                // the bottleneck queue.
+                self.queue.push_back((event, vehicle));
+                BottleneckStatus::Closed(None)
+            }
         } else if self.has_event {
             debug_assert!(self.next_opening >= current_time, "The bottleneck is open?");
             // The bottleneck is closed and there is a BottleneckEvent in the event queue that will
@@ -299,7 +312,7 @@ impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
             self.has_event = true;
             BottleneckStatus::Closed(Some(BottleneckEvent::new(
                 event_time,
-                edge_index,
+                road_state.edge_index,
                 self.position,
             )))
         };
@@ -328,8 +341,8 @@ pub struct RoadEdgeState<'a, T> {
     /// Bottleneck representing the state of the bottleneck at the end of the edge, or `None` if
     /// the edge has no out-bottleneck (i.e., outflow is infinite).
     out_bottleneck: Option<Bottleneck<'a, T>>,
-    /// Total length of vehicles which entered the road edge since the beginning of the period.
-    total_length: Length<T>,
+    /// Length currently available on the edge for new vehicles to enter.
+    available_length: Length<T>,
     /// Timing intervals between which the average road travel time needs to be computed.
     recording_intervals: &'a [Time<T>],
     /// Next time threshold when a new interval will begin and index of the next time interval.
@@ -349,7 +362,7 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             *recording_intervals.last().unwrap(),
         ]);
         let effective_inflow = reference.get_effective_inflow();
-        let in_bottleneck = if effective_inflow.is_infinite() {
+        let in_bottleneck = if effective_inflow.is_infinite() && !reference.spillback {
             None
         } else {
             Some(Bottleneck::new(
@@ -374,7 +387,7 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
             road: RoadSegment::new(recording_period),
             in_bottleneck,
             out_bottleneck,
-            total_length: Default::default(),
+            available_length: reference.total_length(),
             next_threshold: Some((recording_intervals[1], 1)),
             recording_intervals,
         }
@@ -405,11 +418,10 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
         }
     }
 
-    /// Record the entry of a new vehicle on the edge and return the travel time of this vehicle up
-    /// to the Bottleneck.
+    /// Records the entry of a new vehicle on the edge and returns the travel time of this vehicle
+    /// up to the Bottleneck.
     pub fn enters_road(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) -> Time<T> {
         self.check_recording_interval(current_time);
-        self.total_length += vehicle.get_length();
         self.road.enters(vehicle, current_time);
         self.get_travel_time(vehicle)
     }
@@ -418,6 +430,11 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
     fn get_travel_time(&self, vehicle: &Vehicle<T>) -> Time<T> {
         self.reference
             .get_travel_time(self.road.occupied_length, vehicle)
+    }
+
+    /// Returns `true` if there is enough room for the given vehicle on this road edge.
+    fn has_room_for(&self, vehicle: &Vehicle<T>) -> bool {
+        vehicle.get_length().approx_lt(&self.available_length)
     }
 
     fn into_simulated_functions(mut self) -> SimulatedFunctions<T> {
@@ -447,7 +464,7 @@ impl<'a, T: TTFNum + 'static> RoadEdgeState<'a, T> {
     ) -> BottleneckStatus<T> {
         self.check_recording_interval(event.get_time());
         if let Some(bottleneck) = &mut self.in_bottleneck {
-            bottleneck.enters(event, vehicle, self.edge_index)
+            bottleneck.enters(event, vehicle, self)
         } else {
             // There is no bottleneck, just act like if the bottleneck was open.
             BottleneckStatus::Open(event)
@@ -466,7 +483,7 @@ impl<'a, T: TTFNum + 'static> RoadEdgeState<'a, T> {
         // Remove the vehicle from the road part of the edge.
         self.road.exits(vehicle, event.get_time());
         if let Some(bottleneck) = &mut self.out_bottleneck {
-            bottleneck.enters(event, vehicle, self.edge_index)
+            bottleneck.enters(event, vehicle, &mut self)
         } else {
             // There is no bottleneck, just act like if the bottleneck was open.
             BottleneckStatus::Open(event)
