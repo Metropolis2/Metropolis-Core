@@ -399,11 +399,12 @@ impl<T: TTFNum> RoadNetwork<T> {
             let mut skim = RoadNetworkSkim::new(hierarchy);
             let od_pairs = &preprocess_data.od_pairs[vehicle_id.index()];
             debug!("Computing search spaces");
-            skim.compute_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
+            let mut search_spaces =
+                skim.get_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
             debug!("Simplifying search spaces");
-            skim.simplify_search_spaces(parameters.search_space_simplification);
+            search_spaces.simplify(parameters.search_space_simplification);
             debug!("Computing profile queries");
-            skim.pre_compute_profile_queries(&od_pairs.pairs)?;
+            skim.pre_compute_profile_queries(&od_pairs.pairs, search_spaces)?;
             skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))

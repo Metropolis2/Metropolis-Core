@@ -445,29 +445,14 @@ pub struct RoadEvent<T> {
     edge: EdgeIndex,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
     edge_entry: Time<T>,
-    /// Time at which the vehicle enters the road segment of the edge (i.e., it exits the
-    /// in-bottleneck).
-    segment_entry: Time<T>,
-    /// Time at which the vehicle enters the out-bottleneck of the edge (i.e., it exits the road
-    /// segment).
-    out_bottleneck_entry: Time<T>,
-    /// Time at which the vehicle exits the out-bottleneck of the edge (note that the vehicle might
-    /// still be pending on the edge).
-    edge_exit: Time<T>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-struct TransparentRoadEvent<T>(EdgeIndex, Time<T>, Time<T>, Time<T>, Time<T>);
+struct TransparentRoadEvent<T>(EdgeIndex, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
     fn from(v: RoadEvent<T>) -> Self {
-        Self(
-            v.edge,
-            v.edge_entry,
-            v.segment_entry,
-            v.out_bottleneck_entry,
-            v.edge_exit,
-        )
+        Self(v.edge, v.edge_entry)
     }
 }
 
@@ -547,13 +532,7 @@ impl<T: TTFNum> RoadResults<T> {
     }
 
     /// Compute the travel time by type.
-    pub fn process_results(&mut self) {
-        for road_event in self.route.iter() {
-            self.in_bottleneck_time += road_event.segment_entry - road_event.edge_entry;
-            self.road_time += road_event.out_bottleneck_entry - road_event.segment_entry;
-            self.out_bottleneck_time += road_event.edge_exit - road_event.out_bottleneck_entry;
-        }
-    }
+    pub fn process_results(&mut self) {}
 }
 
 /// Struct to store aggregate results specific to road modes of transportation.
@@ -740,9 +719,6 @@ impl<T> From<TemporaryRoadEvent<T>> for RoadEvent<T> {
         Self {
             edge: v.edge,
             edge_entry: v.edge_entry.unwrap(),
-            segment_entry: v.segment_entry.unwrap(),
-            out_bottleneck_entry: v.out_bottleneck_entry.unwrap(),
-            edge_exit: v.edge_exit.unwrap(),
         }
     }
 }
@@ -809,12 +785,20 @@ impl<T> VehicleEvent<T> {
     fn set_edge_exit(&mut self, time: Time<T>) {
         self.current_event.as_mut().unwrap().edge_exit = Some(time);
     }
+}
 
+impl<T: TTFNum> VehicleEvent<T> {
     /// Record the last edge taken by the vehicle.
     fn record_edge(&mut self, result: &mut AgentResult<T>) {
         let current_event = std::mem::take(&mut self.current_event);
         if let Some(road_event) = current_event {
             if let ModeResults::Road(road_results) = result.mut_mode_results() {
+                road_results.in_bottleneck_time +=
+                    road_event.segment_entry.unwrap() - road_event.edge_entry.unwrap();
+                road_results.road_time +=
+                    road_event.out_bottleneck_entry.unwrap() - road_event.segment_entry.unwrap();
+                road_results.out_bottleneck_time +=
+                    road_event.edge_exit.unwrap() - road_event.out_bottleneck_entry.unwrap();
                 road_results.route.push(road_event.into());
             } else {
                 panic!("Got a road event for an agent with no RoadResults.");

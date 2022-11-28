@@ -14,7 +14,7 @@ use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
 use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
-use ttf::{TTFNum, TTFSimplification, TTF};
+use ttf::{TTFNum, TTF};
 
 use super::vehicle::VehicleIndex;
 use crate::units::Time;
@@ -39,7 +39,6 @@ type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
 #[derive(Clone, Default, Debug)]
 pub struct RoadNetworkSkim<T> {
     hierarchy_overlay: HierarchyOverlay<Time<T>>,
-    search_spaces: Option<SearchSpaces<Time<T>>>,
     profile_query_cache: HashMap<NodeIndex, CachedQueriesFromSource<T>>,
 }
 
@@ -48,7 +47,6 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     pub fn new(hierarchy_overlay: HierarchyOverlay<Time<T>>) -> Self {
         RoadNetworkSkim {
             hierarchy_overlay,
-            search_spaces: None,
             profile_query_cache: HashMap::new(),
         }
     }
@@ -56,23 +54,13 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     /// Compute the forward and backward search spaces for a set of origins and destinations.
     /// This will speed-up the following profile queries from one of the origins to one of the
     /// destinations.
-    pub fn compute_search_spaces(
+    pub fn get_search_spaces(
         &mut self,
         origins: &HashSet<NodeIndex>,
         destinations: &HashSet<NodeIndex>,
-    ) {
-        self.search_spaces = Some(
-            self.hierarchy_overlay
-                .get_search_spaces(origins, destinations),
-        );
-    }
-
-    /// Simplify all the travel-time functions in the search spaces, using the given
-    /// [TTFSimplification].
-    pub fn simplify_search_spaces(&mut self, simplification: TTFSimplification<Time<T>>) {
-        if let Some(search_space) = &mut self.search_spaces {
-            search_space.simplify(simplification);
-        }
+    ) -> SearchSpaces<Time<T>> {
+        self.hierarchy_overlay
+            .get_search_spaces(origins, destinations)
     }
 
     /// Compute profile queries for a set of origin-destination pairs using the Intersect algorithm
@@ -94,6 +82,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     pub fn pre_compute_profile_queries(
         &mut self,
         od_pairs: &HashMap<NodeIndex, HashSet<NodeIndex>>,
+        search_spaces: SearchSpaces<Time<T>>,
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
             ProgressBar::new(od_pairs.len() as u64)
@@ -111,11 +100,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
                 let results = targets
                     .iter()
                     .map(|&target| {
-                        let ttf = algo::intersect_profile_query(
-                            source,
-                            target,
-                            self.search_spaces.as_ref().unwrap(),
-                        )?;
+                        let ttf = algo::intersect_profile_query(source, target, &search_spaces)?;
                         Ok((target, ttf))
                     })
                     .collect::<Result<CachedQueriesFromSource<T>>>()?;
