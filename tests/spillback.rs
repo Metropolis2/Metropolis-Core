@@ -40,6 +40,7 @@ fn get_network() -> Network<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Flow(1.0),
+                true,
             ),
         ),
         (
@@ -52,6 +53,7 @@ fn get_network() -> Network<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow(0.5),
                 Flow::infinity(),
+                true,
             ),
         ),
     ]);
