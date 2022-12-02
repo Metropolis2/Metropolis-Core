@@ -125,6 +125,10 @@ fn default_flow_schema() -> String {
     "Infinity".to_owned()
 }
 
+fn default_time_schema() -> String {
+    "0".to_owned()
+}
+
 const fn default_lanes() -> u8 {
     1
 }
@@ -167,6 +171,10 @@ pub struct RoadEdge<T> {
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
     bottleneck_outflow: Flow<T>,
+    /// Constant travel time penalty for the runnning part of the edge.
+    #[serde(default = "Time::zero")]
+    #[schemars(default = "default_time_schema")]
+    constant_travel_time: Time<T>,
 }
 
 impl<T: TTFNum> RoadEdge<T> {
@@ -178,6 +186,7 @@ impl<T: TTFNum> RoadEdge<T> {
         speed_density: SpeedDensityFunction<T>,
         bottleneck_inflow: Flow<T>,
         bottleneck_outflow: Flow<T>,
+        constant_travel_time: Time<T>,
     ) -> Self {
         RoadEdge {
             base_speed,
@@ -186,6 +195,7 @@ impl<T: TTFNum> RoadEdge<T> {
             speed_density,
             bottleneck_inflow,
             bottleneck_outflow,
+            constant_travel_time,
         }
     }
 
@@ -193,7 +203,7 @@ impl<T: TTFNum> RoadEdge<T> {
     /// total length of the vehicles currently on the edge.
     pub fn get_travel_time(&self, occupied_length: Length<T>, vehicle: &Vehicle<T>) -> Time<T> {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
-        match &self.speed_density {
+        let variable_tt = match &self.speed_density {
             SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
             &SpeedDensityFunction::Bottleneck(capacity) => {
                 // `capacity` is expressed in Length / Time.
@@ -210,7 +220,8 @@ impl<T: TTFNum> RoadEdge<T> {
                 let speed = func.get_speed(vehicle_speed, density);
                 self.length / speed
             }
-        }
+        };
+        variable_tt + self.constant_travel_time
     }
 
     /// Return the free-flow travel time on the road for the given vehicle.
@@ -553,20 +564,36 @@ mod tests {
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_inflow: Flow(f64::INFINITY),
             bottleneck_outflow: Flow(f64::INFINITY),
+            constant_travel_time: Time(10.),
         };
         let vehicle = Vehicle::new(Length(10.), PCE(1.), SpeedFunction::Base);
         // 1 km at 50 km/h is 40s.
-        assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));
-        assert_eq!(edge.get_travel_time(Length(4000.), &vehicle), Time(40.));
+        assert_eq!(
+            edge.get_travel_time(Length(0.), &vehicle),
+            Time(40.) + Time(10.)
+        );
+        assert_eq!(
+            edge.get_travel_time(Length(4000.), &vehicle),
+            Time(40.) + Time(10.)
+        );
 
         edge.speed_density = SpeedDensityFunction::Bottleneck(10.);
         // The capacity is 2 veh. / s. (there are two lanes) and each veh. can travel through the
         // edge in 40 s. so the threshold is at 80 veh. on the edge = 800 m occupied.
-        assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));
-        assert_eq!(edge.get_travel_time(Length(800.), &vehicle), Time(40.));
-        assert!(edge.get_travel_time(Length(801.), &vehicle) > Time(40.));
+        assert_eq!(
+            edge.get_travel_time(Length(0.), &vehicle),
+            Time(40.) + Time(10.)
+        );
+        assert_eq!(
+            edge.get_travel_time(Length(800.), &vehicle),
+            Time(40.) + Time(10.)
+        );
+        assert!(edge.get_travel_time(Length(801.), &vehicle) > Time(40.) + Time(10.));
         // Double value of the threshold -> travel time is double.
-        assert_eq!(edge.get_travel_time(Length(1600.), &vehicle), Time(80.));
+        assert_eq!(
+            edge.get_travel_time(Length(1600.), &vehicle),
+            Time(80.) + Time(10.)
+        );
 
         edge.speed_density = SpeedDensityFunction::ThreeRegimes(ThreeRegimesSpeedDensityFunction {
             min_density: 0.2,
@@ -575,29 +602,43 @@ mod tests {
             beta: 2.,
         });
         // Free-flow regime.
-        assert_eq!(edge.get_travel_time(Length(0.), &vehicle), Time(40.));
-        assert_eq!(edge.get_travel_time(Length(400.), &vehicle), Time(40.));
+        assert_eq!(
+            edge.get_travel_time(Length(0.), &vehicle),
+            Time(40.) + Time(10.)
+        );
+        assert_eq!(
+            edge.get_travel_time(Length(400.), &vehicle),
+            Time(40.) + Time(10.)
+        );
         // Congested regime.
         let tt = edge.get_travel_time(Length(401.), &vehicle);
-        assert!(tt > Time(40.), "{tt:?} <= Time(40.)");
+        assert!(tt > Time(40.) + Time(10.), "{tt:?} <= Time(50.)");
         // With occupied length 800.0, density is 0.4.
         // coef = (.2 / .6)^2 = 1/9.
         // speed = 25 * (1 - 1/9) + 5 * 1/9 ~= 22.7777.
         // tt ~= 1000 / 22.7777 ~= 43.9024.
+        // + constant tt 10.0.
         let tt = edge.get_travel_time(Length(800.), &vehicle);
-        assert!(tt.approx_eq(&Time(43.9024)), "{tt:?} != 43.9024");
+        assert!(tt.approx_eq(&Time(53.9024)), "{tt:?} != 53.9024");
         // With occupied length 1200.0, density is 0.6.
         // coef = (.4 / .6)^2 = 4/9.
         // speed = 25 * (1 - 4/9) + 5 * 4/9 ~= 16.1111.
         // tt ~= 1000 / 16.1111 ~= 62.0690.
+        // + constant tt 10.0.
         let tt = edge.get_travel_time(Length(1200.), &vehicle);
-        assert!(tt.approx_eq(&Time(62.0690)), "{tt:?} != 62.0690");
+        assert!(tt.approx_eq(&Time(72.0690)), "{tt:?} != 72.0690");
         // With occupied length 1599.99, density is close to 0.8.
         let tt = edge.get_travel_time(Length(1599.99999999), &vehicle);
-        assert!(tt.approx_eq(&Time(200.)), "{tt:?} != 200.0");
+        assert!(tt.approx_eq(&Time(210.)), "{tt:?} != 210.0");
         // Traffic jam.
         // 1 km at 18 km/h is 200s.
-        assert_eq!(edge.get_travel_time(Length(1600.), &vehicle), Time(200.));
-        assert_eq!(edge.get_travel_time(Length(3200.), &vehicle), Time(200.));
+        assert_eq!(
+            edge.get_travel_time(Length(1600.), &vehicle),
+            Time(200.) + Time(10.)
+        );
+        assert_eq!(
+            edge.get_travel_time(Length(3200.), &vehicle),
+            Time(200.) + Time(10.)
+        );
     }
 }

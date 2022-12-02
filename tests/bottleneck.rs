@@ -44,6 +44,7 @@ fn get_simulation() -> Simulation<f64> {
             SpeedDensityFunction::FreeFlow,
             Flow(0.5),
             Flow(0.25),
+            Time(0.),
         ),
     )]);
     let vehicle = Vehicle::new(Length(1.0), PCE(1.0), SpeedFunction::Base);
