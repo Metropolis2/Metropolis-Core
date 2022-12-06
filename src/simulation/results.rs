@@ -486,6 +486,14 @@ pub fn save_iteration_results<T: TTFNum>(
     let buffer = serde_json::to_vec(&iteration_results.weights)?;
     let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
     writer.write_all(&encoded_buffer)?;
+    // Save skims results.
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "skim_results.json.zst"]
+        .iter()
+        .collect();
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&iteration_results.skims)?;
+    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+    writer.write_all(&encoded_buffer)?;
     Ok(())
 }
 
