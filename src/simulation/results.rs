@@ -18,7 +18,7 @@ use ttf::TTFNum;
 use crate::agent::{agent_index, AgentIndex};
 use crate::event::{Event, EventQueue};
 use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
-use crate::network::NetworkWeights;
+use crate::network::{NetworkSkim, NetworkWeights};
 use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
 
@@ -98,14 +98,22 @@ pub struct IterationResults<T> {
     pub agent_results: AgentResults<T>,
     /// Simulated weights of the network.
     pub weights: NetworkWeights<T>,
+    /// Skims of the network.
+    #[schemars(skip)]
+    pub skims: NetworkSkim<T>,
 }
 
 impl<T> IterationResults<T> {
     /// Creates a new IterationResults.
-    pub const fn new(agent_results: AgentResults<T>, weights: NetworkWeights<T>) -> Self {
+    pub const fn new(
+        agent_results: AgentResults<T>,
+        weights: NetworkWeights<T>,
+        skims: NetworkSkim<T>,
+    ) -> Self {
         IterationResults {
             agent_results,
             weights,
+            skims,
         }
     }
 
@@ -476,6 +484,14 @@ pub fn save_iteration_results<T: TTFNum>(
         .collect();
     let mut writer = File::create(filename)?;
     let buffer = serde_json::to_vec(&iteration_results.weights)?;
+    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+    writer.write_all(&encoded_buffer)?;
+    // Save skims results.
+    let filename: PathBuf = [output_dir.to_str().unwrap(), "skim_results.json.zst"]
+        .iter()
+        .collect();
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&iteration_results.skims)?;
     let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
     writer.write_all(&encoded_buffer)?;
     Ok(())

@@ -12,6 +12,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
@@ -21,7 +22,8 @@ use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle](super::vehicle::Vehicle) of a
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
 
 impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
@@ -36,9 +38,13 @@ type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct RoadNetworkSkim<T> {
+    /// Hierarchy overlay of the road-network graph.
+    #[serde(skip)]
     hierarchy_overlay: HierarchyOverlay<Time<T>>,
+    /// Travel time functions for each used OD pair.
     profile_query_cache: HashMap<NodeIndex, CachedQueriesFromSource<T>>,
 }
 

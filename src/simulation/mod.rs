@@ -169,7 +169,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         let (new_weights, t4) = record_time(|| {
             Ok(self.run_day_to_day_model(weights, &sim_weights, iteration_counter))
         })?;
-        let iteration_results = IterationResults::new(within_day_results, new_weights);
+        let iteration_results = IterationResults::new(within_day_results, new_weights, skims);
         info!("Computing aggregate results");
         let (aggregate_results, t5) = record_time(|| {
             Ok(self.compute_aggregate_results(&iteration_results, previous_results_opt))
