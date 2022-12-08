@@ -366,7 +366,7 @@ pub struct RoadChoices<T> {
     #[serde(default)]
     #[schemars(skip)]
     destination: NodeIndex,
-    /// Index of the [Vehicle].
+    /// Index of the [Vehicle](crate::network::road_network::vehicle::Vehicle).
     #[serde(skip_serializing)]
     #[serde(default)]
     #[schemars(skip)]

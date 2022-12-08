@@ -493,9 +493,6 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
 
     /// Return a [RoadNetworkWeights] (i.e., travel times) from the observations recorded in the
     /// [RoadNetworkState].
-    ///
-    /// The travel times are only stored for the given time interval and are simplified using the
-    /// given [TTFSimplification] method.
     pub fn into_weights(self, parameters: &RoadNetworkParameters<T>) -> RoadNetworkWeights<T> {
         let mut weights =
             RoadNetworkWeights::with_capacity(self.network.vehicles.len(), self.graph.edge_count());
