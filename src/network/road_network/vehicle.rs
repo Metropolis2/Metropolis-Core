@@ -18,9 +18,13 @@ pub enum SpeedFunction<T> {
     Base,
     /// A linear function: `f(s) = a * s`.
     Multiplicator(T),
-    /// A piecewise-linear function, represented by a vector of breakpoints `(x, y)`.
+    /// A piecewise-linear function, represented by a vector of breakpoints `(x, y)`, where `x` is
+    /// the base speed on the edge and `y` is the effective speed.
     ///
-    /// The breakpoints `(x, y)` must be ordered by increasing `x` (the base speeds).
+    /// The breakpoints `(x, y)` must be ordered by increasing `x`.
+    ///
+    /// If the edge's base speed is out of bound (i.e., smaller than the smaller `x` value or
+    /// larger than the largest `x` value), the base speed is used as the effective speed.
     Piecewise(Vec<[Speed<T>; 2]>),
 }
 
@@ -69,7 +73,7 @@ impl<T: TTFNum> SpeedFunction<T> {
 #[schemars(example = "crate::schema::example_vehicle")]
 #[schemars(example = "crate::schema::example_vehicle2")]
 pub struct Vehicle<T> {
-    /// Length of the vehicle, used to compute vehicle density on the edges.
+    /// Headway length of the vehicle, used to compute vehicle density on the edges.
     length: Length<T>,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
     pce: PCE<T>,

@@ -1,7 +1,6 @@
 target/
 extra/
 runs/
-schemas/
 examples/**/*.txt
 examples/**/report.html
 examples/**/results.json
