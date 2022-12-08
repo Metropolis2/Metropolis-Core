@@ -1,0 +1,1006 @@
+# Parameters_for_double
+
+- [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > learning_model`](#learning_model)
+  - [Property `Parameters_for_double > learning_model > oneOf > item 0`](#learning_model_oneOf_i0)
+    - [Property `Parameters_for_double > learning_model > oneOf > item 0 > type`](#learning_model_oneOf_i0_type)
+    - [Property `Parameters_for_double > learning_model > oneOf > item 0 > value`](#learning_model_oneOf_i0_value)
+      - [Property `Parameters_for_double > learning_model > oneOf > item 0 > value > alpha`](#learning_model_oneOf_i0_value_alpha)
+  - [Property `Parameters_for_double > learning_model > oneOf > item 1`](#learning_model_oneOf_i1)
+    - [Property `Parameters_for_double > learning_model > oneOf > item 1 > type`](#learning_model_oneOf_i1_type)
+  - [Property `Parameters_for_double > learning_model > oneOf > item 2`](#learning_model_oneOf_i2)
+    - [Property `Parameters_for_double > learning_model > oneOf > item 2 > type`](#learning_model_oneOf_i2_type)
+  - [Property `Parameters_for_double > learning_model > oneOf > item 3`](#learning_model_oneOf_i3)
+    - [Property `Parameters_for_double > learning_model > oneOf > item 3 > type`](#learning_model_oneOf_i3_type)
+- [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network`](#network)
+  - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network`](#network_road_network)
+    - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > contraction`](#network_road_network_contraction)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > complexity_quotient_weight`](#network_road_network_contraction_complexity_quotient_weight)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > edge_quotient_weight`](#network_road_network_contraction_edge_quotient_weight)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > hierarchy_depth_weight`](#network_road_network_contraction_hierarchy_depth_weight)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > num_threads`](#network_road_network_contraction_num_threads)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > thin_profile_interval_hop_limit`](#network_road_network_contraction_thin_profile_interval_hop_limit)
+      - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > unpacked_edges_quotient_weight`](#network_road_network_contraction_unpacked_edges_quotient_weight)
+    - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > overlay_simplification`](#network_road_network_overlay_simplification)
+      - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 0`](#network_road_network_overlay_simplification_oneOf_i0)
+        - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 0 > type`](#network_road_network_overlay_simplification_oneOf_i0_type)
+      - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1`](#network_road_network_overlay_simplification_oneOf_i1)
+        - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1 > type`](#network_road_network_overlay_simplification_oneOf_i1_type)
+        - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1 > value`](#network_road_network_overlay_simplification_oneOf_i1_value)
+      - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2`](#network_road_network_overlay_simplification_oneOf_i2)
+        - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2 > type`](#network_road_network_overlay_simplification_oneOf_i2_type)
+        - [Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2 > value`](#network_road_network_overlay_simplification_oneOf_i2_value)
+    - [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > recording_interval`](#network_road_network_recording_interval)
+    - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > search_space_simplification`](#network_road_network_search_space_simplification)
+      - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 0`](#network_road_network_search_space_simplification_oneOf_i0)
+        - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 0 > type`](#network_road_network_search_space_simplification_oneOf_i0_type)
+      - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1`](#network_road_network_search_space_simplification_oneOf_i1)
+        - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1 > type`](#network_road_network_search_space_simplification_oneOf_i1_type)
+        - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1 > value`](#network_road_network_search_space_simplification_oneOf_i1_value)
+      - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2`](#network_road_network_search_space_simplification_oneOf_i2)
+        - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2 > type`](#network_road_network_search_space_simplification_oneOf_i2_type)
+        - [Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2 > value`](#network_road_network_search_space_simplification_oneOf_i2_value)
+    - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > simulated_simplification`](#network_road_network_simulated_simplification)
+      - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 0`](#network_road_network_simulated_simplification_oneOf_i0)
+        - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 0 > type`](#network_road_network_simulated_simplification_oneOf_i0_type)
+      - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1`](#network_road_network_simulated_simplification_oneOf_i1)
+        - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1 > type`](#network_road_network_simulated_simplification_oneOf_i1_type)
+        - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1 > value`](#network_road_network_simulated_simplification_oneOf_i1_value)
+      - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2`](#network_road_network_simulated_simplification_oneOf_i2)
+        - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2 > type`](#network_road_network_simulated_simplification_oneOf_i2_type)
+        - [Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2 > value`](#network_road_network_simulated_simplification_oneOf_i2_value)
+    - [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > weight_simplification`](#network_road_network_weight_simplification)
+      - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 0`](#network_road_network_weight_simplification_oneOf_i0)
+        - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 0 > type`](#network_road_network_weight_simplification_oneOf_i0_type)
+      - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1`](#network_road_network_weight_simplification_oneOf_i1)
+        - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1 > type`](#network_road_network_weight_simplification_oneOf_i1_type)
+        - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1 > value`](#network_road_network_weight_simplification_oneOf_i1_value)
+      - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2`](#network_road_network_weight_simplification_oneOf_i2)
+        - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2 > type`](#network_road_network_weight_simplification_oneOf_i2_type)
+        - [Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2 > value`](#network_road_network_weight_simplification_oneOf_i2_value)
+- [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > period`](#period)
+  - [Parameters_for_double > period > Time_for_double](#autogenerated_heading_2)
+- [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > random_seed`](#random_seed)
+- [![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > stopping_criteria`](#stopping_criteria)
+  - [Parameters_for_double > stopping_criteria > StopCriterion_for_double](#autogenerated_heading_3)
+    - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0`](#stopping_criteria_items_oneOf_i0)
+      - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0 > type`](#stopping_criteria_items_oneOf_i0_type)
+      - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0 > value`](#stopping_criteria_items_oneOf_i0_value)
+    - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1`](#stopping_criteria_items_oneOf_i1)
+      - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > type`](#stopping_criteria_items_oneOf_i1_type)
+      - [Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value`](#stopping_criteria_items_oneOf_i1_value)
+        - [Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value > Time_for_double](#autogenerated_heading_4)
+        - [Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value > Time_for_double](#autogenerated_heading_5)
+- [![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > update_ratio`](#update_ratio)
+
+**Title:** Parameters_for_double
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
+
+**Example:** 
+
+```json
+{
+    "learning_model": {
+        "type": "Exponential",
+        "value": {
+            "alpha": 0.9
+        }
+    },
+    "network": {
+        "road_network": {
+            "contraction": {
+                "complexity_quotient_weight": 2.0,
+                "edge_quotient_weight": 2.0,
+                "hierarchy_depth_weight": 1.0,
+                "num_threads": 8,
+                "thin_profile_interval_hop_limit": 16,
+                "unpacked_edges_quotient_weight": 1.0
+            },
+            "overlay_simplification": {
+                "type": "Raw"
+            },
+            "recording_interval": 60.0,
+            "search_space_simplification": {
+                "type": "Raw"
+            },
+            "simulated_simplification": {
+                "type": "Raw"
+            },
+            "weight_simplification": {
+                "type": "Raw"
+            }
+        }
+    },
+    "period": [
+        21600.0,
+        43200.0
+    ],
+    "random_seed": 13081996,
+    "stopping_criteria": [
+        {
+            "type": "MaxIteration",
+            "value": 100
+        },
+        {
+            "type": "DepartureTime",
+            "value": [
+                2.0,
+                3600.0
+            ]
+        }
+    ],
+    "update_ratio": 1.0
+}
+```
+
+| Property                                   | Pattern | Type    | Deprecated | Definition | Title/Description                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------ | ------- | ------- | ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| - [learning_model](#learning_model )       | No      | object  | No         | In         | Learning model used to update the values between two iterations.                                                                                                                                                                                                                                                                                                                                                            |
+| + [network](#network )                     | No      | object  | No         | In         | Set of parameters for the network.                                                                                                                                                                                                                                                                                                                                                                                          |
+| + [period](#period )                       | No      | array   | No         | In         | Time interval used to restrict the travel-time functions of the edges.<br /><br />The departure-time intervals of the agents must be included in this interval.<br /><br />Agents can still travel on the network when the period is exceeded but the edges' travel times are no longer recorded. The departure time chosen by any agent must be such that the expected arrival time is earlier than the end of the period. |
+| - [random_seed](#random_seed )             | No      | integer | No         | -          | Random seed used for all the draws.<br /><br />If \`null\`, the seed is generated by entropy.                                                                                                                                                                                                                                                                                                                               |
+| + [stopping_criteria](#stopping_criteria ) | No      | array   | No         | -          | Set of stopping criteria used to decide when the iterative process should stop.                                                                                                                                                                                                                                                                                                                                             |
+| - [update_ratio](#update_ratio )           | No      | number  | No         | -          | Share of agents that can update their pre-day choices at each iteration.                                                                                                                                                                                                                                                                                                                                                    |
+
+## <a name="learning_model"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > learning_model`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** Learning model used to update the values between two iterations.
+
+| One of(Option)                     |
+| ---------------------------------- |
+| [item 0](#learning_model_oneOf_i0) |
+| [item 1](#learning_model_oneOf_i1) |
+| [item 2](#learning_model_oneOf_i2) |
+| [item 3](#learning_model_oneOf_i3) |
+
+### <a name="learning_model_oneOf_i0"></a>Property `Parameters_for_double > learning_model > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Exponential learning model.
+
+| Property                                   | Pattern | Type             | Deprecated | Definition                                           | Title/Description                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------ | ------- | ---------------- | ---------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| + [type](#learning_model_oneOf_i0_type )   | No      | enum (of string) | No         | -                                                    | -                                                                                                                                                                                                                                                                                                                                                                                            |
+| + [value](#learning_model_oneOf_i0_value ) | No      | object           | No         | In #/definitions/ExponentialLearningModel_for_double | An exponential learning model.<br /><br />The average value at iteration \`T\`, \`x_T\`, is a mean of the update values \`y_t\` at each iteration \`t\`, where the coefficient of the update value \`y_t\` is \`(1 - alpha) * alpha^(T - t) / (1 - alpha^T)\`.<br /><br />When \`T\` is large, the exponential learning model is such that \`x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}\` |
+
+#### <a name="learning_model_oneOf_i0_type"></a>Property `Parameters_for_double > learning_model > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Exponential"
+
+#### <a name="learning_model_oneOf_i0_value"></a>Property `Parameters_for_double > learning_model > oneOf > item 0 > value`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            | #/definitions/ExponentialLearningModel_for_double                                                                                 |
+
+**Description:** An exponential learning model.
+
+The average value at iteration `T`, `x_T`, is a mean of the update values `y_t` at each iteration `t`, where the coefficient of the update value `y_t` is `(1 - alpha) * alpha^(T - t) / (1 - alpha^T)`.
+
+When `T` is large, the exponential learning model is such that `x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}`
+
+| Property                                         | Pattern | Type   | Deprecated | Definition | Title/Description                         |
+| ------------------------------------------------ | ------- | ------ | ---------- | ---------- | ----------------------------------------- |
+| + [alpha](#learning_model_oneOf_i0_value_alpha ) | No      | number | No         | -          | Weight of the old value, between 0 and 1. |
+
+##### <a name="learning_model_oneOf_i0_value_alpha"></a>Property `Parameters_for_double > learning_model > oneOf > item 0 > value > alpha`
+
+|            |          |
+| ---------- | -------- |
+| **Type**   | `number` |
+| **Format** | `double` |
+
+**Description:** Weight of the old value, between 0 and 1.
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+| **Maximum**  | &le; 1.0 |
+
+### <a name="learning_model_oneOf_i1"></a>Property `Parameters_for_double > learning_model > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
+
+| Property                                 | Pattern | Type             | Deprecated | Definition | Title/Description |
+| ---------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#learning_model_oneOf_i1_type ) | No      | enum (of string) | No         | -          | -                 |
+
+#### <a name="learning_model_oneOf_i1_type"></a>Property `Parameters_for_double > learning_model > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Linear"
+
+### <a name="learning_model_oneOf_i2"></a>Property `Parameters_for_double > learning_model > oneOf > item 2`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
+
+| Property                                 | Pattern | Type             | Deprecated | Definition | Title/Description |
+| ---------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#learning_model_oneOf_i2_type ) | No      | enum (of string) | No         | -          | -                 |
+
+#### <a name="learning_model_oneOf_i2_type"></a>Property `Parameters_for_double > learning_model > oneOf > item 2 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Genetic"
+
+### <a name="learning_model_oneOf_i3"></a>Property `Parameters_for_double > learning_model > oneOf > item 3`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Quadratic learning model: `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where `w = t^(1/2)`
+
+| Property                                 | Pattern | Type             | Deprecated | Definition | Title/Description |
+| ---------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#learning_model_oneOf_i3_type ) | No      | enum (of string) | No         | -          | -                 |
+
+#### <a name="learning_model_oneOf_i3_type"></a>Property `Parameters_for_double > learning_model > oneOf > item 3 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Quadratic"
+
+## <a name="network"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** Set of parameters for the network.
+
+| Property                                 | Pattern | Type   | Deprecated | Definition | Title/Description                        |
+| ---------------------------------------- | ------- | ------ | ---------- | ---------- | ---------------------------------------- |
+| - [road_network](#network_road_network ) | No      | object | No         | In         | Parameters specific to the road network. |
+
+### <a name="network_road_network"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** Parameters specific to the road network.
+
+| Property                                                                            | Pattern | Type   | Deprecated | Definition | Title/Description                                                                       |
+| ----------------------------------------------------------------------------------- | ------- | ------ | ---------- | ---------- | --------------------------------------------------------------------------------------- |
+| - [contraction](#network_road_network_contraction )                                 | No      | object | No         | In         | Parameters controlling how a hierarchy overlay is built from a road network graph.      |
+| - [overlay_simplification](#network_road_network_overlay_simplification )           | No      | object | No         | In         | How to simplify the edges TTFs after the hierarchy overlay is built.                    |
+| + [recording_interval](#network_road_network_recording_interval )                   | No      | number | No         | In         | Interval in time for which the bottleneck and road segment travel times are aggregated. |
+| - [search_space_simplification](#network_road_network_search_space_simplification ) | No      | object | No         | In         | How to simplify the TTFs of the forward and backward search spaces.                     |
+| - [simulated_simplification](#network_road_network_simulated_simplification )       | No      | object | No         | In         | How to simplify the edges TTFs at the end of the within-day model.                      |
+| - [weight_simplification](#network_road_network_weight_simplification )             | No      | object | No         | In         | How to simplify the edges TTFs at the beginning of the iteration.                       |
+
+#### <a name="network_road_network_contraction"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > contraction`
+
+|                           |                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.")                                                                 |
+| **Default**               | `{"complexity_quotient_weight": 2.0, "edge_quotient_weight": 2.0, "hierarchy_depth_weight": 1.0, "num_threads": 8, "thin_profile_interval_hop_limit": 16, "unpacked_edges_quotient_weight": 1.0}` |
+| **Defined in**            |                                                                                                                                                                                                   |
+
+**Description:** Parameters controlling how a hierarchy overlay is built from a road network graph.
+
+| Property                                                                                                | Pattern | Type    | Deprecated | Definition | Title/Description                                                |
+| ------------------------------------------------------------------------------------------------------- | ------- | ------- | ---------- | ---------- | ---------------------------------------------------------------- |
+| + [complexity_quotient_weight](#network_road_network_contraction_complexity_quotient_weight )           | No      | number  | No         | -          | -                                                                |
+| + [edge_quotient_weight](#network_road_network_contraction_edge_quotient_weight )                       | No      | number  | No         | -          | -                                                                |
+| + [hierarchy_depth_weight](#network_road_network_contraction_hierarchy_depth_weight )                   | No      | number  | No         | -          | -                                                                |
+| + [num_threads](#network_road_network_contraction_num_threads )                                         | No      | integer | No         | -          | Number of threads to use for the parallelized parts of the code. |
+| + [thin_profile_interval_hop_limit](#network_road_network_contraction_thin_profile_interval_hop_limit ) | No      | integer | No         | -          | -                                                                |
+| + [unpacked_edges_quotient_weight](#network_road_network_contraction_unpacked_edges_quotient_weight )   | No      | number  | No         | -          | -                                                                |
+
+##### <a name="network_road_network_contraction_complexity_quotient_weight"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > complexity_quotient_weight`
+
+|            |          |
+| ---------- | -------- |
+| **Type**   | `number` |
+| **Format** | `double` |
+
+##### <a name="network_road_network_contraction_edge_quotient_weight"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > edge_quotient_weight`
+
+|            |          |
+| ---------- | -------- |
+| **Type**   | `number` |
+| **Format** | `double` |
+
+##### <a name="network_road_network_contraction_hierarchy_depth_weight"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > hierarchy_depth_weight`
+
+|            |          |
+| ---------- | -------- |
+| **Type**   | `number` |
+| **Format** | `double` |
+
+##### <a name="network_road_network_contraction_num_threads"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > num_threads`
+
+|            |           |
+| ---------- | --------- |
+| **Type**   | `integer` |
+| **Format** | `uint`    |
+
+**Description:** Number of threads to use for the parallelized parts of the code.
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+
+##### <a name="network_road_network_contraction_thin_profile_interval_hop_limit"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > thin_profile_interval_hop_limit`
+
+|            |           |
+| ---------- | --------- |
+| **Type**   | `integer` |
+| **Format** | `uint8`   |
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+
+##### <a name="network_road_network_contraction_unpacked_edges_quotient_weight"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > contraction > unpacked_edges_quotient_weight`
+
+|            |          |
+| ---------- | -------- |
+| **Type**   | `number` |
+| **Format** | `double` |
+
+#### <a name="network_road_network_overlay_simplification"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > overlay_simplification`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** How to simplify the edges TTFs after the hierarchy overlay is built.
+
+| One of(Option)                                                  |
+| --------------------------------------------------------------- |
+| [item 0](#network_road_network_overlay_simplification_oneOf_i0) |
+| [item 1](#network_road_network_overlay_simplification_oneOf_i1) |
+| [item 2](#network_road_network_overlay_simplification_oneOf_i2) |
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i0"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** No simplification is done.
+
+| Property                                                              | Pattern | Type             | Deprecated | Definition | Title/Description |
+| --------------------------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#network_road_network_overlay_simplification_oneOf_i0_type ) | No      | enum (of string) | No         | -          | -                 |
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i0_type"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Raw"
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i1"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Allow for a given error bound.
+
+| Property                                                                | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ----------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_overlay_simplification_oneOf_i1_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_overlay_simplification_oneOf_i1_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i1_type"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Bound"
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i1_value"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 1 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i2"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Compute the values at fixed intervals.
+
+| Property                                                                | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ----------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_overlay_simplification_oneOf_i2_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_overlay_simplification_oneOf_i2_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i2_type"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Interval"
+
+##### <a name="network_road_network_overlay_simplification_oneOf_i2_value"></a>Property `Parameters_for_double > network > road_network > overlay_simplification > oneOf > item 2 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+#### <a name="network_road_network_recording_interval"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > network > road_network > recording_interval`
+
+|                |          |
+| -------------- | -------- |
+| **Type**       | `number` |
+| **Defined in** |          |
+
+**Description:** Interval in time for which the bottleneck and road segment travel times are aggregated.
+
+#### <a name="network_road_network_search_space_simplification"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > search_space_simplification`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** How to simplify the TTFs of the forward and backward search spaces.
+
+| One of(Option)                                                       |
+| -------------------------------------------------------------------- |
+| [item 0](#network_road_network_search_space_simplification_oneOf_i0) |
+| [item 1](#network_road_network_search_space_simplification_oneOf_i1) |
+| [item 2](#network_road_network_search_space_simplification_oneOf_i2) |
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i0"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** No simplification is done.
+
+| Property                                                                   | Pattern | Type             | Deprecated | Definition | Title/Description |
+| -------------------------------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#network_road_network_search_space_simplification_oneOf_i0_type ) | No      | enum (of string) | No         | -          | -                 |
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i0_type"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Raw"
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i1"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Allow for a given error bound.
+
+| Property                                                                     | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ---------------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_search_space_simplification_oneOf_i1_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_search_space_simplification_oneOf_i1_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i1_type"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Bound"
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i1_value"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 1 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i2"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Compute the values at fixed intervals.
+
+| Property                                                                     | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ---------------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_search_space_simplification_oneOf_i2_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_search_space_simplification_oneOf_i2_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i2_type"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Interval"
+
+##### <a name="network_road_network_search_space_simplification_oneOf_i2_value"></a>Property `Parameters_for_double > network > road_network > search_space_simplification > oneOf > item 2 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+#### <a name="network_road_network_simulated_simplification"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > simulated_simplification`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** How to simplify the edges TTFs at the end of the within-day model.
+
+| One of(Option)                                                    |
+| ----------------------------------------------------------------- |
+| [item 0](#network_road_network_simulated_simplification_oneOf_i0) |
+| [item 1](#network_road_network_simulated_simplification_oneOf_i1) |
+| [item 2](#network_road_network_simulated_simplification_oneOf_i2) |
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i0"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** No simplification is done.
+
+| Property                                                                | Pattern | Type             | Deprecated | Definition | Title/Description |
+| ----------------------------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#network_road_network_simulated_simplification_oneOf_i0_type ) | No      | enum (of string) | No         | -          | -                 |
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i0_type"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Raw"
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i1"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Allow for a given error bound.
+
+| Property                                                                  | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ------------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_simulated_simplification_oneOf_i1_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_simulated_simplification_oneOf_i1_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i1_type"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Bound"
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i1_value"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 1 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i2"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Compute the values at fixed intervals.
+
+| Property                                                                  | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ------------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_simulated_simplification_oneOf_i2_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_simulated_simplification_oneOf_i2_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i2_type"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Interval"
+
+##### <a name="network_road_network_simulated_simplification_oneOf_i2_value"></a>Property `Parameters_for_double > network > road_network > simulated_simplification > oneOf > item 2 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+#### <a name="network_road_network_weight_simplification"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > network > road_network > weight_simplification`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            |                                                                                                                                   |
+
+**Description:** How to simplify the edges TTFs at the beginning of the iteration.
+
+| One of(Option)                                                 |
+| -------------------------------------------------------------- |
+| [item 0](#network_road_network_weight_simplification_oneOf_i0) |
+| [item 1](#network_road_network_weight_simplification_oneOf_i1) |
+| [item 2](#network_road_network_weight_simplification_oneOf_i2) |
+
+##### <a name="network_road_network_weight_simplification_oneOf_i0"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** No simplification is done.
+
+| Property                                                             | Pattern | Type             | Deprecated | Definition | Title/Description |
+| -------------------------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#network_road_network_weight_simplification_oneOf_i0_type ) | No      | enum (of string) | No         | -          | -                 |
+
+##### <a name="network_road_network_weight_simplification_oneOf_i0_type"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Raw"
+
+##### <a name="network_road_network_weight_simplification_oneOf_i1"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Allow for a given error bound.
+
+| Property                                                               | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ---------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_weight_simplification_oneOf_i1_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_weight_simplification_oneOf_i1_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_weight_simplification_oneOf_i1_type"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Bound"
+
+##### <a name="network_road_network_weight_simplification_oneOf_i1_value"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 1 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+##### <a name="network_road_network_weight_simplification_oneOf_i2"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Compute the values at fixed intervals.
+
+| Property                                                               | Pattern | Type             | Deprecated | Definition                       | Title/Description                                                   |
+| ---------------------------------------------------------------------- | ------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------- |
+| + [type](#network_road_network_weight_simplification_oneOf_i2_type )   | No      | enum (of string) | No         | -                                | -                                                                   |
+| + [value](#network_road_network_weight_simplification_oneOf_i2_value ) | No      | number           | No         | In #/definitions/Time_for_double | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="network_road_network_weight_simplification_oneOf_i2_type"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "Interval"
+
+##### <a name="network_road_network_weight_simplification_oneOf_i2_value"></a>Property `Parameters_for_double > network > road_network > weight_simplification > oneOf > item 2 > value`
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+## <a name="period"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > period`
+
+|                |         |
+| -------------- | ------- |
+| **Type**       | `array` |
+| **Defined in** |         |
+
+**Description:** Time interval used to restrict the travel-time functions of the edges.
+
+The departure-time intervals of the agents must be included in this interval.
+
+Agents can still travel on the network when the period is exceeded but the edges' travel times are no longer recorded. The departure time chosen by any agent must be such that the expected arrival time is earlier than the end of the period.
+
+|                      | Array restrictions |
+| -------------------- | ------------------ |
+| **Min items**        | 2                  |
+| **Max items**        | 2                  |
+| **Items unicity**    | False              |
+| **Additional items** | False              |
+| **Tuple validation** | See below          |
+
+| Each item of this array must be  | Description                                                         |
+| -------------------------------- | ------------------------------------------------------------------- |
+| [Time_for_double](#period_items) | Representation of time duration or timestamp, expressed in seconds. |
+
+### <a name="autogenerated_heading_2"></a>Parameters_for_double > period > Time_for_double
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+## <a name="random_seed"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > random_seed`
+
+|             |           |
+| ----------- | --------- |
+| **Type**    | `integer` |
+| **Format**  | `uint64`  |
+| **Default** | `null`    |
+
+**Description:** Random seed used for all the draws.
+
+If `null`, the seed is generated by entropy.
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+
+## <a name="stopping_criteria"></a>![Required](https://img.shields.io/badge/Required-blue) Property `Parameters_for_double > stopping_criteria`
+
+|          |         |
+| -------- | ------- |
+| **Type** | `array` |
+
+**Description:** Set of stopping criteria used to decide when the iterative process should stop.
+
+|                      | Array restrictions |
+| -------------------- | ------------------ |
+| **Min items**        | N/A                |
+| **Max items**        | N/A                |
+| **Items unicity**    | False              |
+| **Additional items** | False              |
+| **Tuple validation** | See below          |
+
+| Each item of this array must be                      | Description                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| [StopCriterion_for_double](#stopping_criteria_items) | Criterion that is used to check if a simulation must be stopped. |
+
+### <a name="autogenerated_heading_3"></a>Parameters_for_double > stopping_criteria > StopCriterion_for_double
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `combining`                                                                                                                       |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+| **Defined in**            | #/definitions/StopCriterion_for_double                                                                                            |
+
+**Description:** Criterion that is used to check if a simulation must be stopped.
+
+| One of(Option)                              |
+| ------------------------------------------- |
+| [item 0](#stopping_criteria_items_oneOf_i0) |
+| [item 1](#stopping_criteria_items_oneOf_i1) |
+
+#### <a name="stopping_criteria_items_oneOf_i0"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Stop when the number of iterations has reached a given value.
+
+| Property                                            | Pattern | Type             | Deprecated | Definition | Title/Description |
+| --------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#stopping_criteria_items_oneOf_i0_type )   | No      | enum (of string) | No         | -          | -                 |
+| + [value](#stopping_criteria_items_oneOf_i0_value ) | No      | integer          | No         | -          | -                 |
+
+##### <a name="stopping_criteria_items_oneOf_i0_type"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "MaxIteration"
+
+##### <a name="stopping_criteria_items_oneOf_i0_value"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 0 > value`
+
+|            |           |
+| ---------- | --------- |
+| **Type**   | `integer` |
+| **Format** | `uint32`  |
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+
+#### <a name="stopping_criteria_items_oneOf_i1"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1`
+
+|                           |                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**                  | `object`                                                                                                                          |
+| **Additional properties** | [![Any type: allowed](https://img.shields.io/badge/Any%20type-allowed-green)](# "Additional Properties of any type are allowed.") |
+
+**Description:** Stop when the mean departure-time shift from one iteration to another is below a threshold value.
+
+The first value represents the threshold value. The second value represents the backup value to use when an agent switch from a mode to another mode.
+
+| Property                                            | Pattern | Type             | Deprecated | Definition | Title/Description |
+| --------------------------------------------------- | ------- | ---------------- | ---------- | ---------- | ----------------- |
+| + [type](#stopping_criteria_items_oneOf_i1_type )   | No      | enum (of string) | No         | -          | -                 |
+| + [value](#stopping_criteria_items_oneOf_i1_value ) | No      | array            | No         | -          | -                 |
+
+##### <a name="stopping_criteria_items_oneOf_i1_type"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > type`
+
+|          |                    |
+| -------- | ------------------ |
+| **Type** | `enum (of string)` |
+
+Must be one of:
+* "DepartureTime"
+
+##### <a name="stopping_criteria_items_oneOf_i1_value"></a>Property `Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value`
+
+|          |         |
+| -------- | ------- |
+| **Type** | `array` |
+
+|                      | Array restrictions |
+| -------------------- | ------------------ |
+| **Min items**        | 2                  |
+| **Max items**        | 2                  |
+| **Items unicity**    | False              |
+| **Additional items** | False              |
+| **Tuple validation** | See below          |
+
+| Each item of this array must be                                     | Description                                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [Time_for_double](#stopping_criteria_items_oneOf_i1_value_items_i0) | Representation of time duration or timestamp, expressed in seconds. |
+| [Time_for_double](#stopping_criteria_items_oneOf_i1_value_items_i1) | Representation of time duration or timestamp, expressed in seconds. |
+
+##### <a name="autogenerated_heading_4"></a>Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value > Time_for_double
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+##### <a name="autogenerated_heading_5"></a>Parameters_for_double > stopping_criteria > stopping_criteria items > oneOf > item 1 > value > Time_for_double
+
+|                |                               |
+| -------------- | ----------------------------- |
+| **Type**       | `number`                      |
+| **Defined in** | #/definitions/Time_for_double |
+
+**Description:** Representation of time duration or timestamp, expressed in seconds.
+
+## <a name="update_ratio"></a>![Optional](https://img.shields.io/badge/Optional-yellow) Property `Parameters_for_double > update_ratio`
+
+|             |          |
+| ----------- | -------- |
+| **Type**    | `number` |
+| **Format**  | `double` |
+| **Default** | `1.0`    |
+
+**Description:** Share of agents that can update their pre-day choices at each iteration.
+
+| Restrictions |          |
+| ------------ | -------- |
+| **Minimum**  | &ge; 0.0 |
+| **Maximum**  | &le; 1.0 |
+
+----------------------------------------------------------------------------------------------------------------------------

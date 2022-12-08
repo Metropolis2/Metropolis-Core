@@ -1,0 +1,445 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IterationResults_for_double",
+  "description": "Detailed results of an iteration.",
+  "type": "object",
+  "required": [
+    "agent_results",
+    "weights"
+  ],
+  "properties": {
+    "agent_results": {
+      "description": "Agent-specific results.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AgentResults_for_double"
+        }
+      ]
+    },
+    "weights": {
+      "description": "Simulated weights of the network.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/NetworkWeights_for_double"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "AgentResult_for_double": {
+      "description": "Results of an agent, during a single iteration.",
+      "type": "object",
+      "required": [
+        "id",
+        "mode_results",
+        "pre_day_results"
+      ],
+      "properties": {
+        "arrival_time": {
+          "description": "Arrival time at destination.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "departure_time": {
+          "description": "Departure time from origin.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "id": {
+          "description": "Id of the agent.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "mode_results": {
+          "description": "Mode-specific results.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModeResults_for_double"
+            }
+          ]
+        },
+        "pre_day_results": {
+          "description": "Results from the pre-day model.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PreDayResult_for_double"
+            }
+          ]
+        },
+        "utility": {
+          "description": "Utility resulting from the trip.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Utility_for_double"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "AgentResults_for_double": {
+      "title": "Agent Results",
+      "description": "Results for each agent in the simulation.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AgentResult_for_double"
+      }
+    },
+    "EdgeIndex": {
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "ModeIndex": {
+      "description": "Mode identifier.\n\nThe `n` modes of an [Agent](crate::agent::Agent) are indexed from `0` to `n-1`.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0.0
+    },
+    "ModeResults_for_double": {
+      "description": "Results of the within-day model specific to a mode of transportation.",
+      "oneOf": [
+        {
+          "description": "Results for road modes.",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Road"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/RoadResults_for_double"
+            }
+          }
+        },
+        {
+          "description": "Alternative for modes with no additional results.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "None"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "NetworkWeights_for_double": {
+      "description": "Simplified representation of the state of a network during a whole day.",
+      "type": "object",
+      "properties": {
+        "road_network": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoadNetworkWeights_for_double"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "Point_for_Time_for_double_and_Time_for_double": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "$ref": "#/definitions/Time_for_double"
+        },
+        "y": {
+          "$ref": "#/definitions/Time_for_double"
+        }
+      }
+    },
+    "PreDayChoices_for_double": {
+      "description": "Enum representing the pre-day choices for a given mode.",
+      "oneOf": [
+        {
+          "description": "Choices when a road mode is chosen.",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Road"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/RoadChoices_for_double"
+            }
+          }
+        },
+        {
+          "description": "Alternative for a mode with no pre-day choice.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "None"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "PreDayResult_for_double": {
+      "description": "Results from the pre-day choices of an agent.",
+      "type": "object",
+      "required": [
+        "choices",
+        "expected_utility",
+        "mode"
+      ],
+      "properties": {
+        "choices": {
+          "description": "Mode-specific pre-day results.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PreDayChoices_for_double"
+            }
+          ]
+        },
+        "expected_utility": {
+          "description": "Expected utility from the trip.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Utility_for_double"
+            }
+          ]
+        },
+        "mode": {
+          "description": "Index of the chosen mode.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModeIndex"
+            }
+          ]
+        }
+      }
+    },
+    "PwlXYF_for_Time_for_double_and_Time_for_double_and_Time_for_double": {
+      "title": "PwlXYF",
+      "description": "Piecewise-linear function represented by an array of points `(x, y)`.",
+      "type": "object",
+      "required": [
+        "period",
+        "points"
+      ],
+      "properties": {
+        "max": {
+          "description": "Maximum `y` value of the function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "min": {
+          "description": "Minimum `y` value of the function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "period": {
+          "description": "Array `[x0, x1]` representing the domain of the function.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Time_for_double"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        },
+        "points": {
+          "description": "Breakpoints representing the function.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Point_for_Time_for_double_and_Time_for_double"
+          }
+        }
+      }
+    },
+    "RoadChoices_for_double": {
+      "title": "Road Choices",
+      "description": "Results from the pre-day model, for a road mode of transportation.",
+      "type": "object",
+      "required": [
+        "departure_time",
+        "expected_arrival_time",
+        "route"
+      ],
+      "properties": {
+        "departure_time": {
+          "description": "Departure time from origin chosen.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "expected_arrival_time": {
+          "description": "Expected arrival time at destination.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "route": {
+          "description": "Ids of edges representing the route chosen.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeIndex"
+            }
+          ]
+        }
+      }
+    },
+    "RoadEvent_for_double": {
+      "description": "Timings for the event of an edge being taken by a vehicle.",
+      "type": "object",
+      "required": [
+        "edge",
+        "edge_entry"
+      ],
+      "properties": {
+        "edge": {
+          "description": "Id of the edge taken.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeIndex"
+            }
+          ]
+        },
+        "edge_entry": {
+          "description": "Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        }
+      }
+    },
+    "RoadNetworkWeights_for_double": {
+      "title": "Road Network Weights",
+      "description": "Travel-time functions of each edge of road network (inner array), for each vehicle (outer array).",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/XYF_for_Time_for_double_and_Time_for_double_and_Time_for_double"
+        }
+      }
+    },
+    "RoadResults_for_double": {
+      "title": "Road Results",
+      "description": "Results from the within-day model, for a road mode of transportation.",
+      "type": "object",
+      "required": [
+        "in_bottleneck_time",
+        "out_bottleneck_time",
+        "road_time",
+        "route"
+      ],
+      "properties": {
+        "in_bottleneck_time": {
+          "description": "Total time spent waiting at the in-bottleneck of an edge.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "out_bottleneck_time": {
+          "description": "Total time spent waiting at the out-bottleneck of an edge.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "road_time": {
+          "description": "Total time spent traveling on an edge.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "route": {
+          "description": "The route taken by the vehicle, together with the timings of the events.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RoadEvent_for_double"
+          }
+        }
+      }
+    },
+    "Time_for_double": {
+      "description": "Representation of time duration or timestamp, expressed in seconds.",
+      "type": "number",
+      "format": "double"
+    },
+    "Utility_for_double": {
+      "description": "Representation of a utility (or monetary) amount.",
+      "type": "number",
+      "format": "double"
+    },
+    "XYF_for_Time_for_double_and_Time_for_double_and_Time_for_double": {
+      "title": "XYF",
+      "description": "Constant or piecewise-linear function.",
+      "anyOf": [
+        {
+          "description": "A piecewise-linear function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PwlXYF_for_Time_for_double_and_Time_for_double_and_Time_for_double"
+            }
+          ]
+        },
+        {
+          "description": "A constant function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

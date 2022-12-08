@@ -1,0 +1,399 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Road Network",
+  "description": "Description of the vehicles and the road-network graph.",
+  "type": "object",
+  "required": [
+    "graph",
+    "vehicles"
+  ],
+  "properties": {
+    "graph": {
+      "$ref": "#/definitions/RoadGraph"
+    },
+    "vehicles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Vehicle_for_double"
+      },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "Flow_for_double": {
+      "description": "Representation of a flow of vehicle, in PCE (passenger car equivalent) per second.",
+      "type": "number",
+      "format": "double"
+    },
+    "Length_for_double": {
+      "description": "Representation of a length, expressed in meters.",
+      "type": "number",
+      "format": "double"
+    },
+    "PCE_for_double": {
+      "description": "Unit type for passenger car equivalent.",
+      "type": "number",
+      "format": "double"
+    },
+    "RoadEdge_for_double": {
+      "title": "Road Edge",
+      "description": "An edge of a road network that connects two nodes.",
+      "examples": [
+        {
+          "base_speed": 13.88888888888889,
+          "bottleneck_inflow": 0.4,
+          "bottleneck_outflow": 0.4,
+          "constant_travel_time": 4.0,
+          "lanes": 2,
+          "length": 100.0,
+          "speed_density": {
+            "type": "ThreeRegimes",
+            "value": {
+              "beta": 2.0,
+              "jam_density": 0.8,
+              "jam_speed": 2.7777777777777777,
+              "min_density": 0.3
+            }
+          }
+        }
+      ],
+      "type": "object",
+      "required": [
+        "base_speed",
+        "length"
+      ],
+      "properties": {
+        "base_speed": {
+          "description": "The base speed of the edge.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Speed_for_double"
+            }
+          ],
+          "minimum": 0.0
+        },
+        "bottleneck_inflow": {
+          "description": "Maximum inflow of vehicle at the beginning of the edge.",
+          "default": "Infinity",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Flow_for_double"
+            }
+          ]
+        },
+        "bottleneck_outflow": {
+          "description": "Maximum outflow of vehicle at the end of the edge.",
+          "default": "Infinity",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Flow_for_double"
+            }
+          ]
+        },
+        "constant_travel_time": {
+          "description": "Constant travel time penalty for the runnning part of the edge.",
+          "default": "0",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        },
+        "lanes": {
+          "description": "The number of lanes on the edge.",
+          "default": 1,
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1.0
+        },
+        "length": {
+          "description": "The length of the edge, from source node to target node.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Length_for_double"
+            }
+          ],
+          "minimum": 0.0
+        },
+        "speed_density": {
+          "description": "Speed-density function for the running part of the edge.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SpeedDensityFunction_for_double"
+            }
+          ]
+        }
+      }
+    },
+    "RoadGraph": {
+      "type": "object",
+      "required": [
+        "edges"
+      ],
+      "properties": {
+        "edges": {
+          "description": "Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source node, `t` is the id of the target node and `e` is the description of the edge.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "$ref": "#/definitions/RoadEdge_for_double"
+              }
+            ],
+            "maxItems": 3,
+            "minItems": 3
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "SpeedDensityFunction_for_double": {
+      "description": "Speed-density function that can be used for the running part of edges.\n\nA speed-density function gives the speed on an edge, as a function of the density of vehicle on this edge.",
+      "oneOf": [
+        {
+          "description": "Vehicles always travel at free-flow speed.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "FreeFlow"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Vehicles travel at free-flow speed when flow is below edge capacity. Then, speed is inversely proportional to flow.\n\nThe parameter represents the capacity of each lane of the edge, in length unit per time unit.",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Bottleneck"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "A speed-density function with three regimes: free flow, congested and traffic jam.",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ThreeRegimes"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/ThreeRegimesSpeedDensityFunction_for_double"
+            }
+          }
+        }
+      ]
+    },
+    "SpeedFunction_for_double": {
+      "description": "Enumerator representing a function that maps a baseline speed to an effective speed.",
+      "oneOf": [
+        {
+          "description": "The identity function.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Base"
+              ]
+            }
+          }
+        },
+        {
+          "description": "A linear function: `f(s) = a * s`.",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Multiplicator"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "A piecewise-linear function, represented by a vector of breakpoints `(x, y)`.\n\nThe breakpoints `(x, y)` must be ordered by increasing `x` (the base speeds).",
+          "type": "object",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Piecewise"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/Speed_for_double"
+                },
+                "maxItems": 2,
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Speed_for_double": {
+      "description": "Representation of a speed, expressed in meters per second.",
+      "type": "number",
+      "format": "double"
+    },
+    "ThreeRegimesSpeedDensityFunction_for_double": {
+      "description": "A speed-density function with three regimes.\n\nThe three regimes are:\n\n1. **Free-flow regime.** If density on the edge is smaller than `min_density`, travel time is equal to free-flow travel time.\n\n2. **Congested regime.** If density on the edge is between `min_density` and `jam_density`, speed is equal to `v = v0 * (1 - c) + jam_speed * c`, where `v0` is the free-flow speed and `c = ((density - min_density) / (jam_density - min_density))^beta`.\n\n3. **Traffic jam.** If density on the edge is larger than `jam_density`, travel time is equal to `tt = distance / jam_speed`.",
+      "type": "object",
+      "required": [
+        "beta",
+        "jam_density",
+        "jam_speed",
+        "min_density"
+      ],
+      "properties": {
+        "beta": {
+          "description": "Parameter to compute the speed in the congested regime.",
+          "type": "number",
+          "format": "double"
+        },
+        "jam_density": {
+          "description": "Density on the edge (between `0.0` and `1.0`) above which the speed is equal to jam speed.",
+          "type": "number",
+          "format": "double"
+        },
+        "jam_speed": {
+          "description": "Speed at which the vehicle travel in case of traffic jam.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Speed_for_double"
+            }
+          ]
+        },
+        "min_density": {
+          "description": "Density on the edge (between `0.0` and `1.0`) below which the speed is equal to free-flow speed.",
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "Time_for_double": {
+      "description": "Representation of time duration or timestamp, expressed in seconds.",
+      "type": "number",
+      "format": "double"
+    },
+    "Vehicle_for_double": {
+      "title": "Vehicle",
+      "description": "A road vehicle with a given length, passenger car equivalent and speed function.",
+      "examples": [
+        {
+          "length": 8.0,
+          "pce": 1.0,
+          "speed_function": {
+            "type": "Multiplicator",
+            "value": 0.8
+          }
+        },
+        {
+          "length": 20.0,
+          "pce": 3.0,
+          "speed_function": {
+            "type": "Piecewise",
+            "value": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                90.0,
+                90.0
+              ],
+              [
+                130.0,
+                90.0
+              ]
+            ]
+          }
+        }
+      ],
+      "type": "object",
+      "required": [
+        "length",
+        "pce"
+      ],
+      "properties": {
+        "length": {
+          "description": "Length of the vehicle, used to compute vehicle density on the edges.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Length_for_double"
+            }
+          ]
+        },
+        "pce": {
+          "description": "Passenger car equivalent of the vehicle, used to compute bottleneck flow.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PCE_for_double"
+            }
+          ]
+        },
+        "speed_function": {
+          "description": "Speed function that gives the vehicle speed as a function of the edge base speed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SpeedFunction_for_double"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
