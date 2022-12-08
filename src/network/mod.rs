@@ -122,8 +122,12 @@ impl<T: TTFNum> Network<T> {
 /// A skim can be composed of the following parts (all of them are optional):
 ///
 /// - a [RoadNetworkSkims].
-#[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[serde(bound = "T: TTFNum")]
+#[schemars(title = "NetworkSkim")]
+#[schemars(
+    description = "Simplified representation of the state of a network, as perceived by the agents."
+)]
 pub struct NetworkSkim<T> {
     road_network: Option<RoadNetworkSkims<T>>,
 }

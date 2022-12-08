@@ -12,7 +12,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+use serde::Serialize;
 use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
@@ -22,9 +23,15 @@ use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle](super::vehicle::Vehicle) of a
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
-pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
+#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
+#[serde(into = "SerializedRoadNetworkSkims<T>")]
+#[schemars(
+    description = "Travel-time function for each OD pair (inner array), for each vehicle type (outer array)"
+)]
+pub struct RoadNetworkSkims<T>(
+    #[schemars(with = "SerializedRoadNetworkSkims<T>")] pub Vec<Option<RoadNetworkSkim<T>>>,
+);
 
 impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
     type Output = Option<RoadNetworkSkim<T>>;
@@ -38,11 +45,9 @@ type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
-#[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[derive(Clone, Default, Debug)]
 pub struct RoadNetworkSkim<T> {
     /// Hierarchy overlay of the road-network graph.
-    #[serde(skip)]
     hierarchy_overlay: HierarchyOverlay<Time<T>>,
     /// Travel time functions for each used OD pair.
     profile_query_cache: HashMap<NodeIndex, CachedQueriesFromSource<T>>,
@@ -157,6 +162,43 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
             &mut alloc.ea_alloc,
             &mut alloc.candidate_map,
         )
+    }
+}
+
+#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+struct SerializedRoadNetworkSkims<T>(Vec<Vec<ODPairTTF<T>>>);
+
+#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+struct ODPairTTF<T> {
+    /// Index of the origin node.
+    origin: usize,
+    /// Index of the destination node.
+    destination: usize,
+    /// Travel-time function from origin to destination.
+    ///
+    /// `None` if destination cannot be reached from origin.
+    ttf: Option<TTF<Time<T>>>,
+}
+
+impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
+    fn from(skims: RoadNetworkSkims<T>) -> Self {
+        let mut serialized_skims = Vec::with_capacity(skims.0.len());
+        for vehicle_skims in skims.0 {
+            let mut serialized_vehicle_skims = Vec::new();
+            if let Some(vehicle_skims) = vehicle_skims {
+                for (origin, origin_skims) in vehicle_skims.profile_query_cache.into_iter() {
+                    for (destination, ttf) in origin_skims.into_iter() {
+                        serialized_vehicle_skims.push(ODPairTTF {
+                            origin: origin.index(),
+                            destination: destination.index(),
+                            ttf,
+                        });
+                    }
+                }
+            }
+            serialized_skims.push(serialized_vehicle_skims);
+        }
+        SerializedRoadNetworkSkims(serialized_skims)
     }
 }
 

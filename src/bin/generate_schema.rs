@@ -16,8 +16,9 @@ use log4rs::encode::pattern::PatternEncoder;
 use log4rs::Config;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
+use metropolis::network::{NetworkSkim, NetworkWeights};
 use metropolis::parameters::Parameters;
-use metropolis::simulation::results::{AggregateResults, IterationResults};
+use metropolis::simulation::results::{AgentResults, AggregateResults};
 use schemars::gen::SchemaSettings;
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
@@ -69,13 +70,25 @@ fn main() -> Result<()> {
 
     // Aggregate results.
     let schema = gen.clone().into_root_schema_for::<AggregateResults<f64>>();
-    let filename = args.path.join("schema-iteration.json");
+    let filename = args.path.join("schema-aggregate-results.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
-    // Iteration results.
-    let schema = gen.into_root_schema_for::<IterationResults<f64>>();
-    let filename = args.path.join("schema-output.json");
+    // Agent-specific results.
+    let schema = gen.clone().into_root_schema_for::<AgentResults<f64>>();
+    let filename = args.path.join("schema-agent-results.json");
+    let mut file = File::create(filename)?;
+    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
+
+    // Network weights results.
+    let schema = gen.clone().into_root_schema_for::<NetworkWeights<f64>>();
+    let filename = args.path.join("schema-weight-results.json");
+    let mut file = File::create(filename)?;
+    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
+
+    // Network skim results.
+    let schema = gen.into_root_schema_for::<NetworkSkim<f64>>();
+    let filename = args.path.join("schema-skim-results.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 

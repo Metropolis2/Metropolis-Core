@@ -8,14 +8,6 @@
     "surplus"
   ],
   "properties": {
-    "mode_results": {
-      "description": "Mode-specific aggregate results.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/AggregateModeResults_for_double"
-        }
-      ]
-    },
     "surplus": {
       "description": "Distribution of the surplus of the agents.",
       "allOf": [
@@ -23,51 +15,64 @@
           "$ref": "#/definitions/Distribution_for_Utility_for_double"
         }
       ]
+    },
+    "mode_results": {
+      "description": "Mode-specific aggregate results.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AggregateModeResults_for_double"
+        }
+      ]
     }
   },
   "definitions": {
-    "AggregateConstantResults_for_double": {
-      "description": "Aggregate results of an iteration specific to constant modes.",
+    "Distribution_for_Utility_for_double": {
+      "description": "Struct to describe statistics on a distribution.",
       "type": "object",
       "required": [
-        "count",
-        "utility"
+        "max",
+        "mean",
+        "min",
+        "std"
       ],
       "properties": {
-        "count": {
-          "description": "Number of agents who chose a constant mode.",
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
+        "mean": {
+          "$ref": "#/definitions/Utility_for_double"
         },
-        "utility": {
-          "description": "Distribution of the utility of the agents who chose a constant mode.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_Utility_for_double"
-            }
-          ]
+        "std": {
+          "$ref": "#/definitions/Utility_for_double"
+        },
+        "min": {
+          "$ref": "#/definitions/Utility_for_double"
+        },
+        "max": {
+          "$ref": "#/definitions/Utility_for_double"
         }
       }
+    },
+    "Utility_for_double": {
+      "description": "Representation of a utility (or monetary) amount.",
+      "type": "number",
+      "format": "double"
     },
     "AggregateModeResults_for_double": {
       "description": "Aggregate results of an iteration that are mode-specific.",
       "type": "object",
       "properties": {
-        "constant": {
-          "description": "Results specific to constant modes.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/AggregateConstantResults_for_double"
-            }
-          ],
-          "nullable": true
-        },
         "road": {
           "description": "Results specific to road modes.",
           "allOf": [
             {
               "$ref": "#/definitions/AggregateRoadResults_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "constant": {
+          "description": "Results specific to constant modes.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AggregateConstantResults_for_double"
             }
           ],
           "nullable": true
@@ -93,13 +98,11 @@
         "utilities"
       ],
       "properties": {
-        "arrival_times": {
-          "description": "Distribution of arrival times.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_Time_for_double"
-            }
-          ]
+        "count": {
+          "description": "Number of trips taken with a road mode of transportation.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
         },
         "congestion": {
           "description": "The relative difference between average actual travel time and average free-flow travel time.",
@@ -109,21 +112,6 @@
             }
           ]
         },
-        "count": {
-          "description": "Number of trips taken with a road mode of transportation.",
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "dep_time_shift": {
-          "description": "Distribution of departure time shift compared to previous iteration (except for the first iteration; excluding agents who chose a different mode in the previous iteration).",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_Time_for_double"
-            }
-          ],
-          "nullable": true
-        },
         "departure_times": {
           "description": "Distribution of departure times.",
           "allOf": [
@@ -132,40 +120,8 @@
             }
           ]
         },
-        "edge_counts": {
-          "description": "Distribution of number of edges taken.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_double"
-            }
-          ]
-        },
-        "exp_travel_time_diff": {
-          "description": "Distribution of relative difference between expected travel time and actual travel time.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_double"
-            }
-          ]
-        },
-        "in_bottleneck_times": {
-          "description": "Distribution of in-bottleneck times.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_Time_for_double"
-            }
-          ]
-        },
-        "lengths": {
-          "description": "Distribution of route length.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Distribution_for_Length_for_double"
-            }
-          ]
-        },
-        "out_bottleneck_times": {
-          "description": "Distribution of out-bottleneck times.",
+        "arrival_times": {
+          "description": "Distribution of arrival times.",
           "allOf": [
             {
               "$ref": "#/definitions/Distribution_for_Time_for_double"
@@ -180,8 +136,16 @@
             }
           ]
         },
-        "route_free_flow_travel_times": {
-          "description": "Distribution of route free-flow travel times times.",
+        "in_bottleneck_times": {
+          "description": "Distribution of in-bottleneck times.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_Time_for_double"
+            }
+          ]
+        },
+        "out_bottleneck_times": {
+          "description": "Distribution of out-bottleneck times.",
           "allOf": [
             {
               "$ref": "#/definitions/Distribution_for_Time_for_double"
@@ -196,6 +160,30 @@
             }
           ]
         },
+        "route_free_flow_travel_times": {
+          "description": "Distribution of route free-flow travel times times.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_Time_for_double"
+            }
+          ]
+        },
+        "lengths": {
+          "description": "Distribution of route length.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_Length_for_double"
+            }
+          ]
+        },
+        "edge_counts": {
+          "description": "Distribution of number of edges taken.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_double"
+            }
+          ]
+        },
         "utilities": {
           "description": "Distribution of total utility.",
           "allOf": [
@@ -203,78 +191,23 @@
               "$ref": "#/definitions/Distribution_for_Utility_for_double"
             }
           ]
-        }
-      }
-    },
-    "Distribution_for_Length_for_double": {
-      "description": "Struct to describe statistics on a distribution.",
-      "type": "object",
-      "required": [
-        "max",
-        "mean",
-        "min",
-        "std"
-      ],
-      "properties": {
-        "max": {
-          "$ref": "#/definitions/Length_for_double"
         },
-        "mean": {
-          "$ref": "#/definitions/Length_for_double"
+        "exp_travel_time_diff": {
+          "description": "Distribution of relative difference between expected travel time and actual travel time.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_double"
+            }
+          ]
         },
-        "min": {
-          "$ref": "#/definitions/Length_for_double"
-        },
-        "std": {
-          "$ref": "#/definitions/Length_for_double"
-        }
-      }
-    },
-    "Distribution_for_Time_for_double": {
-      "description": "Struct to describe statistics on a distribution.",
-      "type": "object",
-      "required": [
-        "max",
-        "mean",
-        "min",
-        "std"
-      ],
-      "properties": {
-        "max": {
-          "$ref": "#/definitions/Time_for_double"
-        },
-        "mean": {
-          "$ref": "#/definitions/Time_for_double"
-        },
-        "min": {
-          "$ref": "#/definitions/Time_for_double"
-        },
-        "std": {
-          "$ref": "#/definitions/Time_for_double"
-        }
-      }
-    },
-    "Distribution_for_Utility_for_double": {
-      "description": "Struct to describe statistics on a distribution.",
-      "type": "object",
-      "required": [
-        "max",
-        "mean",
-        "min",
-        "std"
-      ],
-      "properties": {
-        "max": {
-          "$ref": "#/definitions/Utility_for_double"
-        },
-        "mean": {
-          "$ref": "#/definitions/Utility_for_double"
-        },
-        "min": {
-          "$ref": "#/definitions/Utility_for_double"
-        },
-        "std": {
-          "$ref": "#/definitions/Utility_for_double"
+        "dep_time_shift": {
+          "description": "Distribution of departure time shift compared to previous iteration (except for the first iteration; excluding agents who chose a different mode in the previous iteration).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_Time_for_double"
+            }
+          ],
+          "nullable": true
         }
       }
     },
@@ -288,11 +221,11 @@
         "std"
       ],
       "properties": {
-        "max": {
+        "mean": {
           "type": "number",
           "format": "double"
         },
-        "mean": {
+        "std": {
           "type": "number",
           "format": "double"
         },
@@ -300,9 +233,62 @@
           "type": "number",
           "format": "double"
         },
-        "std": {
+        "max": {
           "type": "number",
           "format": "double"
+        }
+      }
+    },
+    "Distribution_for_Time_for_double": {
+      "description": "Struct to describe statistics on a distribution.",
+      "type": "object",
+      "required": [
+        "max",
+        "mean",
+        "min",
+        "std"
+      ],
+      "properties": {
+        "mean": {
+          "$ref": "#/definitions/Time_for_double"
+        },
+        "std": {
+          "$ref": "#/definitions/Time_for_double"
+        },
+        "min": {
+          "$ref": "#/definitions/Time_for_double"
+        },
+        "max": {
+          "$ref": "#/definitions/Time_for_double"
+        }
+      }
+    },
+    "Time_for_double": {
+      "description": "Representation of time duration or timestamp, expressed in seconds.",
+      "type": "number",
+      "format": "double"
+    },
+    "Distribution_for_Length_for_double": {
+      "description": "Struct to describe statistics on a distribution.",
+      "type": "object",
+      "required": [
+        "max",
+        "mean",
+        "min",
+        "std"
+      ],
+      "properties": {
+        "mean": {
+          "$ref": "#/definitions/Length_for_double"
+        },
+        "std": {
+          "$ref": "#/definitions/Length_for_double"
+        },
+        "min": {
+          "$ref": "#/definitions/Length_for_double"
+        },
+        "max": {
+          "$ref": "#/definitions/Length_for_double"
         }
       }
     },
@@ -311,15 +297,29 @@
       "type": "number",
       "format": "double"
     },
-    "Time_for_double": {
-      "description": "Representation of time duration or timestamp, expressed in seconds.",
-      "type": "number",
-      "format": "double"
-    },
-    "Utility_for_double": {
-      "description": "Representation of a utility (or monetary) amount.",
-      "type": "number",
-      "format": "double"
+    "AggregateConstantResults_for_double": {
+      "description": "Aggregate results of an iteration specific to constant modes.",
+      "type": "object",
+      "required": [
+        "count",
+        "utility"
+      ],
+      "properties": {
+        "count": {
+          "description": "Number of agents who chose a constant mode.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "utility": {
+          "description": "Distribution of the utility of the agents who chose a constant mode.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Distribution_for_Utility_for_double"
+            }
+          ]
+        }
+      }
     }
   }
 }

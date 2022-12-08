@@ -20,7 +20,7 @@ use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::network::Network;
 use metropolis::parameters::Parameters;
-use metropolis::simulation::{results::SimulationResults, Simulation};
+use metropolis::simulation::Simulation;
 
 /// METROPOLIS simulator.
 #[derive(Parser, Debug)]
@@ -38,10 +38,6 @@ struct Args {
     /// Output directory
     #[clap(short, long, default_value = ".")]
     output: PathBuf,
-    /// Only write the report, without running the simulator (the output directory must contain the
-    /// results of a previous run)
-    #[clap(long)]
-    report: bool,
 }
 
 fn main() -> Result<()> {
@@ -106,15 +102,7 @@ fn main() -> Result<()> {
     let network = Network::new(road_network);
     let simulation = Simulation::new(agents, network, parameters);
 
-    if args.report {
-        // Write the report.
-        info!("Reading output files");
-        let results: SimulationResults<f64> = SimulationResults::from_output_dir(&args.output);
-        info!("Writing report");
-        metropolis::write_report(&results, &args.output)
-    } else {
-        std::fs::create_dir_all(&args.output)?;
-        // Run the simulation.
-        simulation.run(&args.output)
-    }
+    std::fs::create_dir_all(&args.output)?;
+    // Run the simulation.
+    simulation.run(&args.output)
 }

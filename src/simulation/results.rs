@@ -5,7 +5,7 @@
 
 //! Structs holding the results of a simulation.
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
@@ -23,8 +23,7 @@ use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
-#[derive(Clone, Debug, Default, Serialize, JsonSchema)]
-#[serde(bound(serialize = "T: TTFNum"))]
+#[derive(Clone, Debug, Default)]
 pub struct SimulationResults<T> {
     /// [AggregateResults] of each iteration.
     pub iterations: Vec<AggregateResults<T>>,
@@ -36,43 +35,6 @@ impl<T: TTFNum> SimulationResults<T> {
     /// Create an empty SimulationResults.
     pub fn new() -> Self {
         SimulationResults::default()
-    }
-
-    /// Reads [SimulationResults] from an output directory.
-    pub fn from_output_dir(output_dir: &Path) -> Self {
-        let mut iterations = Vec::new();
-        let mut iteration_counter = 1;
-        loop {
-            let filename: PathBuf = [
-                output_dir.to_str().unwrap(),
-                &format!("iteration{iteration_counter}.json"),
-            ]
-            .iter()
-            .collect();
-            if let Ok(mut file) = File::open(filename) {
-                let mut bytes = Vec::new();
-                file.read_to_end(&mut bytes).unwrap();
-                let it = serde_json::from_slice(&bytes).expect("Unable to parse AggregateResults");
-                iterations.push(it);
-            } else {
-                break;
-            }
-            iteration_counter += 1;
-        }
-        let filename: PathBuf = [output_dir.to_str().unwrap(), "results.json"]
-            .iter()
-            .collect();
-        let mut bytes = Vec::new();
-        File::open(filename)
-            .expect("Unable to read results.json file")
-            .read_to_end(&mut bytes)
-            .unwrap();
-        let last_iteration =
-            serde_json::from_slice(&bytes).expect("Unable to parse IterationResults");
-        SimulationResults {
-            iterations,
-            last_iteration,
-        }
     }
 
     /// Appends the [AggregateResults] of an iteration to the [SimulationResults].
@@ -91,15 +53,13 @@ pub struct AggregateResults<T> {
 }
 
 /// Detailed results of an iteration.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(serialize = "T: TTFNum", deserialize = "T: TTFNum"))]
+#[derive(Debug, Clone)]
 pub struct IterationResults<T> {
     /// Agent-specific results.
     pub agent_results: AgentResults<T>,
     /// Simulated weights of the network.
     pub weights: NetworkWeights<T>,
     /// Skims of the network.
-    #[schemars(skip)]
     pub skims: NetworkSkim<T>,
 }
 

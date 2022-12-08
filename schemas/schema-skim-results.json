@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NetworkSkim",
+  "description": "Simplified representation of the state of a network, as perceived by the agents.",
+  "type": "object",
+  "properties": {
+    "road_network": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/RoadNetworkSkims_for_double"
+        }
+      ],
+      "nullable": true
+    }
+  },
+  "definitions": {
+    "RoadNetworkSkims_for_double": {
+      "description": "Travel-time function for each OD pair (inner array), for each vehicle type (outer array)",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SerializedRoadNetworkSkims_for_double"
+        }
+      ]
+    },
+    "SerializedRoadNetworkSkims_for_double": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/ODPairTTF_for_double"
+        }
+      }
+    },
+    "ODPairTTF_for_double": {
+      "type": "object",
+      "required": [
+        "destination",
+        "origin"
+      ],
+      "properties": {
+        "origin": {
+          "description": "Index of the origin node.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "destination": {
+          "description": "Index of the destination node.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "ttf": {
+          "description": "Travel-time function from origin to destination.\n\n`None` if destination cannot be reached from origin.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/XYF_for_Time_for_double_and_Time_for_double_and_Time_for_double"
+            }
+          ],
+          "nullable": true
+        }
+      }
+    },
+    "XYF_for_Time_for_double_and_Time_for_double_and_Time_for_double": {
+      "title": "XYF",
+      "description": "Constant or piecewise-linear function.",
+      "anyOf": [
+        {
+          "description": "A piecewise-linear function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PwlXYF_for_Time_for_double_and_Time_for_double_and_Time_for_double"
+            }
+          ]
+        },
+        {
+          "description": "A constant function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ]
+        }
+      ]
+    },
+    "PwlXYF_for_Time_for_double_and_Time_for_double_and_Time_for_double": {
+      "title": "PwlXYF",
+      "description": "Piecewise-linear function represented by an array of points `(x, y)`.",
+      "type": "object",
+      "required": [
+        "period",
+        "points"
+      ],
+      "properties": {
+        "points": {
+          "description": "Breakpoints representing the function.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Point_for_Time_for_double_and_Time_for_double"
+          }
+        },
+        "min": {
+          "description": "Minimum `y` value of the function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "max": {
+          "description": "Maximum `y` value of the function.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Time_for_double"
+            }
+          ],
+          "nullable": true
+        },
+        "period": {
+          "description": "Array `[x0, x1]` representing the domain of the function.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Time_for_double"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        }
+      }
+    },
+    "Point_for_Time_for_double_and_Time_for_double": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "$ref": "#/definitions/Time_for_double"
+        },
+        "y": {
+          "$ref": "#/definitions/Time_for_double"
+        }
+      }
+    },
+    "Time_for_double": {
+      "description": "Representation of time duration or timestamp, expressed in seconds.",
+      "type": "number",
+      "format": "double"
+    }
+  }
+}
