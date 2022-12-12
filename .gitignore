@@ -1,9 +1,7 @@
 target/
 extra/
 runs/
-examples/**/*.txt
-examples/**/report.html
-examples/**/results.json
-examples/**/iteration*.json
+release/
+examples/**/output/
 .gdb_history
 flamegraph.svg
