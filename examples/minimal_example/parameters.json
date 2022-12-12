@@ -6,7 +6,12 @@
     "stopping_criteria": [
         {
             "type": "MaxIteration",
-            "values": 1
+            "value": 1
         }
-    ]
+    ],
+    "network": {
+        "road_network": {
+            "recording_interval": 60
+        }
+    }
 }
