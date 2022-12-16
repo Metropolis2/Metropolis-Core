@@ -144,7 +144,7 @@ struct QueryResult {
 }
 
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct DetailedOutput {
     nb_queries: usize,
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
@@ -159,7 +159,7 @@ struct DetailedOutput {
     total_time_per_query: Duration,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct Output {
     details: DetailedOutput,
     results: Vec<QueryResult>,
@@ -267,7 +267,7 @@ fn main() -> Result<()> {
         return Err(anyhow!("Invalid query found. The source or target id is larger than the number of nodes in the graph."));
     }
 
-    let ttf_func_id = |edge_id| {
+    let ttf_func_id = |edge_id: EdgeIndex| {
         if let Some(w) = &weights {
             w.get(&edge_id)
                 .unwrap_or_else(|| panic!("No weight for edge id {}", edge_id.index()))

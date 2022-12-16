@@ -22,7 +22,6 @@ use std::fmt;
 use std::num::FpCategory;
 use std::ops::*;
 
-use chrono::NaiveTime;
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -404,12 +403,11 @@ pub struct Time<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Time<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let t = NaiveTime::from_num_seconds_from_midnight_opt(
-            self.0.round().to_u32().ok_or(fmt::Error)?,
-            0,
-        )
-        .unwrap();
-        write!(f, "{}", t.format("%H:%M:%S"))
+        let seconds = self.0.round().to_u64().ok_or(fmt::Error)?;
+        let hour = seconds / 3600;
+        let minute = seconds % 3600 / 60;
+        let second = seconds % 60;
+        write!(f, "{:02}:{:02}:{:02}", hour, minute, second)
     }
 }
 

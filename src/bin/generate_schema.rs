@@ -10,16 +10,13 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use log::{info, LevelFilter};
-use log4rs::append::console::ConsoleAppender;
-use log4rs::config::{Appender, Root};
-use log4rs::encode::pattern::PatternEncoder;
-use log4rs::Config;
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
 use metropolis::network::{NetworkSkim, NetworkWeights};
 use metropolis::parameters::Parameters;
 use metropolis::simulation::results::{AgentResults, AggregateResults};
 use schemars::gen::SchemaSettings;
+use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
 #[derive(Parser, Debug)]
@@ -32,16 +29,13 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(
-            "{h([{d(%Y-%m-%d %H:%M:%S)} {l}] {m}{n})}",
-        )))
-        .build();
-    let log_config = Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .build(Root::builder().appender("stdout").build(LevelFilter::Info))
-        .expect("Failed to create log config");
-    log4rs::init_config(log_config).expect("Failed to initialize log");
+    TermLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .expect("Failed to initialize logging");
 
     info!("Generating JSON Schemas");
     let settings = SchemaSettings::draft07().with(|s| {

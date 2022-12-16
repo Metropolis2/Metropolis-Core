@@ -63,5 +63,5 @@ pub fn show_stats() {}
 // Re-exports.
 // Dependencies only used in the bins.
 use clap as _;
-use log4rs as _;
 pub use report::write_report;
+use simplelog as _;
