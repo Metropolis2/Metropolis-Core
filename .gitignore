@@ -3,5 +3,7 @@ extra/
 runs/
 release/
 examples/**/output/
+docs/
+tch/data/
 .gdb_history
 flamegraph.svg
