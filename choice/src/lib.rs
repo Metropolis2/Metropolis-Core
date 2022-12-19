@@ -22,6 +22,8 @@
     unused_lifetimes,
     unused_qualifications
 )]
+#![warn(clippy::all)]
+#![doc(html_no_source)]
 
 mod deterministic_choice;
 mod logit;

@@ -23,6 +23,7 @@
     unused_qualifications
 )]
 #![warn(clippy::all)]
+#![doc(html_no_source)]
 
 pub mod algo;
 pub mod bidirectional_ops;

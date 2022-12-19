@@ -378,7 +378,8 @@ macro_rules! impl_from_into_no_unit(
 /// Representation of a value with no particular unit.
 ///
 /// This type is used to implement the conversion between any unit type and the `NoUnit` type
-/// because it is not possible to implement the conversion between a type Unit<T> and T.
+/// because it is not possible to implement the conversion directly between a type `Unit<T>` and
+/// `T`.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(
     Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,

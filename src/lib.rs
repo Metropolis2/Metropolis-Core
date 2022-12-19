@@ -22,6 +22,7 @@
     unused_qualifications
 )]
 #![warn(clippy::all)]
+#![doc(html_no_source)]
 
 pub mod agent;
 pub mod event;
