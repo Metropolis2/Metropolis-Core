@@ -38,11 +38,11 @@ pub mod stop;
 pub mod travel_utility;
 pub mod units;
 
-#[cfg(feature = "jemalloc")]
+#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-#[cfg(feature = "jemalloc")]
+#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
 /// Displays statistics on allocated and resident memory.
 pub fn show_stats() {
     jemalloc_ctl::epoch::advance().unwrap();
@@ -56,7 +56,7 @@ pub fn show_stats() {
     );
 }
 
-#[cfg(not(feature = "jemalloc"))]
+#[cfg(any(not(feature = "jemalloc"), target_env = "msvc"))]
 /// Displays statistics on allocated and resident memory.
 pub fn show_stats() {}
 
