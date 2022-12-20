@@ -3,7 +3,6 @@ CARGO_MAKE_DOCS_README_FILE = "README.md"
 CARGO_MAKE_DOCS_ROOT_FOLDER = "."
 CARGO_MAKE_DOCS_SUB_FOLDER = ""
 CARGO_MAKE_CI = true
-CARGO_MAKE_RELEASE_FLOW_TARGET = "x86_64-unknown-linux-gnu"
 CARGO_MAKE_PROJECT_NAME = "metrolib"
 CARGO_MAKE_PROJECT_VERSION = "0.1.0"
 CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis"
@@ -27,3 +26,11 @@ args = [
 
 [tasks.setup-release-build-env-vars]
 env.CARGO_MAKE_BINARY_RELEASE_ENV_INSTALL_MUSL = false
+
+[tasks.build-release-for-target-base]
+args = [
+  "build",
+  "--release",
+  "--target",
+  "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
+]
