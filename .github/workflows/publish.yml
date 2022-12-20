@@ -35,6 +35,11 @@ jobs:
         toolchain: stable-x86_64-pc-windows-msvc
         profile: minimal
         override: true
+    - name: Install cargo-make
+      uses: actions-rs/cargo@v1
+      with:
+        command: install
+        args: --debug cargo-make
     - name: Build Binary
       uses: actions-rs/cargo@v1
       with:
