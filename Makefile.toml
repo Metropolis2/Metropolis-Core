@@ -1,7 +1,6 @@
 [env]
 CARGO_MAKE_DOCS_README_FILE = "README.md"
 CARGO_MAKE_DOCS_ROOT_FOLDER = "."
-CARGO_MAKE_DOCS_SUB_FOLDER = ""
 CARGO_MAKE_CI = true
 CARGO_MAKE_PROJECT_NAME = "metrolib"
 CARGO_MAKE_PROJECT_VERSION = "0.1.0"
@@ -12,6 +11,7 @@ CARKO_MAKE_BUILD_EXAMPLES = true
 CARGO_MAKE_BUILD_BENCH = true
 CARGO_MAKE_RUN_BENCH = true
 CARGO_MAKE_CHECK_OUTDATED = true
+CARGO_MAKE_CRATE_CURRENT_WORKSPACE_MEMBER = ""
 
 [tasks.format]
 toolchain = "nightly"
@@ -34,3 +34,99 @@ args = [
   "--target",
   "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
 ]
+
+[tasks.zip-release-ci-flow]
+dependencies = [
+  "print-env-flow",
+  "clean",
+  "setup-release-build-env",
+  "build-release-for-binary-upload",
+  "docs-flow",
+  "schemas-flow",
+  "zip-release-binary-for-target",
+]
+
+[tasks.zip-release-binary-for-target]
+description = "Zips up the release binary, docs, README, and license(s)"
+condition = { env_set = [
+  "CARGO_MAKE_RELEASE_FLOW_TARGET",
+  "CARGO_MAKE_PROJECT_NAME",
+  "CARGO_MAKE_PROJECT_VERSION",
+  "CARGO_MAKE_BINARY_EXECUTABLE_NAME",
+], env_true = [
+  "CARGO_MAKE_CI",
+] }
+env.OUTPUT_NAME = "${CARGO_MAKE_PROJECT_NAME}-v${CARGO_MAKE_PROJECT_VERSION}-${CARGO_MAKE_RELEASE_FLOW_TARGET}"
+env.TARGET_RELEASE_DIRECTORY = "target/${CARGO_MAKE_RELEASE_FLOW_TARGET}/release"
+script = '''
+#!@duckscript
+executable_file = set ${CARGO_MAKE_BINARY_EXECUTABLE_NAME}
+additional_executable_file = set "${CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME}"
+additional_executable_file_len = length ${additional_executable_file}
+additional_executable_file_defined = set true
+if eq ${additional_executable_file_len} 0
+    additional_executable_file_defined = set false
+end
+if is_windows
+    executable_file = set "${executable_file}.exe"
+    additional_executable_file = set "${additional_executable_file}.exe"
+end
+
+rm -r ${OUTPUT_NAME}
+mkdir ${OUTPUT_NAME}
+
+cp ${TARGET_RELEASE_DIRECTORY}/${executable_file} ${OUTPUT_NAME}/${executable_file}
+if ${additional_executable_file_defined}
+    if is_path_exists ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file}
+        cp ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file} ${OUTPUT_NAME}/${additional_executable_file}
+    end
+end
+cp ./README.md ${OUTPUT_NAME}/README.md
+glob_cp ./LICENSE* ${OUTPUT_NAME}/
+cp ./docs/ ${OUTPUT_NAME}/
+cp ./examples/ ${OUTPUT_NAME}/
+cp ./schemas/ ${OUTPUT_NAME}/
+
+ls -l ${OUTPUT_NAME}/
+
+if is_windows
+    exec --fail-on-error powershell Compress-Archive -Path ${OUTPUT_NAME}/* -DestinationPath ${OUTPUT_NAME}.zip
+else
+    exec --fail-on-error zip -r ${OUTPUT_NAME}.zip ${OUTPUT_NAME}
+end
+
+rm -r ${OUTPUT_NAME}
+'''
+
+[tasks.schemas-flow]
+description = "Generate I/O schemas (with human-readable versions)."
+category = "Documentation"
+dependencies = [
+  "schemas",
+  "human-schemas",
+]
+
+[tasks.schemas]
+description = "Generate I/O schemas."
+category = "Documentation"
+install_crate = false
+toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
+command = "cargo"
+args = ["run", "--release", "--bin", "generate_schema", "./schemas"]
+
+[tasks.human-schemas]
+description = "Generate I/O schemas."
+category = "Documentation"
+dependencies = ["install-python"]
+command = "python3"
+args = ["python/generate_schemas.py"]
+
+[tasks.install-python]
+description = "Installs Python executable"
+category = "Tools"
+condition = { platforms = ["linux"] }
+dependencies = ["setup-sudo-env"]
+install_script = '''
+which python3 || (${CARGO_MAKE_SUDO_COMMAND} apt-get update && ${CARGO_MAKE_SUDO_COMMAND} apt-get install -y python)
+pip3 install json_schema_for_humans
+'''
