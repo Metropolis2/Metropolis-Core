@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2022-12-21
+
+### Added
+
+- The Changelog is automatically added to the GitHub releases.
+
+### Changed
+
+- Do not compile all features by default with `cargo-make`.
+
+### Fixed
+
+- Fix compiling with `cargo-make` on Windows and MacOS.
+- Fix links to releases in the Changelog.
+
 ## [0.1.4] - 2022-12-20
 
 ### Added
@@ -49,5 +64,10 @@
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/v0.1.4...HEAD
-[0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/v0.1.4
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.5...HEAD
+[0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5
+[0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.4
+[0.1.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.3
+[0.1.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.2
+[0.1.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.1
+[0.1.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.0
