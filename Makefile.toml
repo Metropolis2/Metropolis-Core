@@ -117,16 +117,13 @@ args = ["run", "--release", "--bin", "generate_schema", "./schemas"]
 [tasks.human-schemas]
 description = "Generate I/O schemas."
 category = "Documentation"
-dependencies = ["install-python"]
+dependencies = ["install-python-package"]
 command = "python3"
 args = ["python/generate_schemas.py"]
 
-[tasks.install-python]
+[tasks.install-python-package]
 description = "Installs Python executable"
 category = "Tools"
-condition = { platforms = ["linux"] }
-dependencies = ["setup-sudo-env"]
 install_script = '''
-which python3 || (${CARGO_MAKE_SUDO_COMMAND} apt-get update && ${CARGO_MAKE_SUDO_COMMAND} apt-get install -y python)
 pip3 install json_schema_for_humans
 '''
