@@ -1,7 +1,4 @@
 target/
-extra/
-runs/
-release/
 examples/**/output/
 docs/
 tch/data/
