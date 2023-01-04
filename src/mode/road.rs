@@ -358,7 +358,7 @@ pub struct RoadChoices<T> {
     /// Expected arrival time at destination.
     expected_arrival_time: Time<T>,
     /// The route chosen, as a Vec of [EdgeIndex].
-    #[schemars(with = "EdgeIndexDef")]
+    #[schemars(with = "Vec<EdgeIndexDef>")]
     #[schemars(description = "Ids of edges representing the route chosen.")]
     route: Vec<EdgeIndex>,
     /// Destination of the vehicle.
