@@ -5,7 +5,12 @@ authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "A dynamic multi-modal traffic-assignment simulator"
 repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
-keywords = ["transportation", "simulation", "traffic-assignment", "public-transit"]
+keywords = [
+  "transportation",
+  "simulation",
+  "traffic-assignment",
+  "public-transit",
+]
 categories = ["science", "simulation"]
 publish = false
 

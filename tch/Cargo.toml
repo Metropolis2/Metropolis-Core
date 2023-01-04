@@ -5,7 +5,13 @@ authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "Time-dependent contraction hierarchies"
 repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
-keywords = ["contraction-hierarchies", "routing", "shortest-path", "time-dependent", "graph"]
+keywords = [
+  "contraction-hierarchies",
+  "routing",
+  "shortest-path",
+  "time-dependent",
+  "graph",
+]
 categories = ["algorithms"]
 publish = false
 
@@ -29,5 +35,7 @@ ordered-float = { version = "3.3", features = ["serde"] }
 rayon = "1.5"
 serde = "1.0"
 serde_json = "1.0"
-serde_with = { version = "2.0", default-features = false, features = ["macros"] }
+serde_with = { version = "2.0", default-features = false, features = [
+  "macros",
+] }
 schemars = "0.8"
