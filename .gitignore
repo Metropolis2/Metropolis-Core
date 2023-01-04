@@ -2,5 +2,6 @@ target/
 examples/**/output/
 docs/
 tch/data/
+schemas/
 .gdb_history
 flamegraph.svg

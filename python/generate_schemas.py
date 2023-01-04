@@ -1,5 +1,10 @@
+import os
+
 from json_schema_for_humans.generate import generate_from_filename
 from json_schema_for_humans.generation_configuration import GenerationConfiguration
+
+if not os.path.isdir("schemas/"):
+    os.makedirs("schemas")
 
 config = GenerationConfiguration(
     expand_buttons=True,
