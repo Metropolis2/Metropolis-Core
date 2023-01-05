@@ -4,14 +4,17 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
+use hashbrown::HashSet;
+use petgraph::prelude::EdgeIndex;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
+use crate::schema::EdgeIndexDef;
 use crate::units::{Length, Speed, PCE};
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "value")]
 pub enum SpeedFunction<T> {
     /// The identity function.
@@ -80,16 +83,45 @@ pub struct Vehicle<T> {
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
     #[serde(default)]
     speed_function: SpeedFunction<T>,
+    /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
+    /// unlesse specified in `restricted_edges`).
+    #[serde(default)]
+    #[schemars(with = "Vec<EdgeIndexDef>")]
+    allowed_edges: HashSet<EdgeIndex>,
+    /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
+    /// if `allowed_edges` is specified.
+    #[serde(default)]
+    #[schemars(with = "Vec<EdgeIndexDef>")]
+    restricted_edges: HashSet<EdgeIndex>,
 }
 
 impl<T> Vehicle<T> {
-    /// Create a new vehicle with a given [Length], [PCE] and [SpeedFunction].
-    pub const fn new(length: Length<T>, pce: PCE<T>, speed_function: SpeedFunction<T>) -> Self {
+    /// Creates a new vehicle with a given [Length], [PCE] and [SpeedFunction].
+    pub const fn new(
+        length: Length<T>,
+        pce: PCE<T>,
+        speed_function: SpeedFunction<T>,
+        allowed_edges: HashSet<EdgeIndex>,
+        restricted_edges: HashSet<EdgeIndex>,
+    ) -> Self {
         Vehicle {
             length,
             pce,
             speed_function,
+            allowed_edges,
+            restricted_edges,
         }
+    }
+
+    /// Returns `true` if the vehicle type has access to the given edge.
+    pub fn can_access(&self, edge_id: EdgeIndex) -> bool {
+        // Edge is allowed explicitly.
+        let is_allowed = self.allowed_edges.contains(&edge_id);
+        // Edge is not allowed but other edges are explicitly allowed.
+        let is_not_allowed = !is_allowed && !self.allowed_edges.is_empty();
+        // Edge is restricted explicitly.
+        let is_restricted = self.restricted_edges.contains(&edge_id);
+        is_allowed || (!is_restricted && !is_not_allowed)
     }
 }
 
@@ -109,6 +141,19 @@ impl<T: TTFNum> Vehicle<T> {
     /// Returns the effective speed of the vehicle given the baseline speed on the road.
     pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
         self.speed_function.get_speed(base_speed)
+    }
+
+    /// Returns `true` if the two given vehicles can share the same
+    /// [RoadNetworkWeights](super::weights::RoadNetworkWeights).
+    ///
+    /// Two vehicle types can share the same weights if
+    /// 1. They have the same speed function.
+    /// 2. They have acces to the same edges (i.e., the sets of allowed edges and restricted edges
+    ///    are equal).
+    pub fn share_weights(&self, other: &Vehicle<T>) -> bool {
+        self.speed_function == other.speed_function
+            && self.allowed_edges == other.allowed_edges
+            && self.restricted_edges == other.restricted_edges
     }
 }
 

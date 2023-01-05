@@ -5,10 +5,9 @@
 
 //! Description of the supply side of a simulation.
 use anyhow::Result;
-use road_network::skim::RoadNetworkSkims;
 use road_network::{
-    state::RoadNetworkState, weights::RoadNetworkWeights, RoadNetwork, RoadNetworkParameters,
-    RoadNetworkPreprocessingData,
+    RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData, RoadNetworkSkims,
+    RoadNetworkState, RoadNetworkWeights,
 };
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -89,11 +88,14 @@ impl<T: TTFNum> Network<T> {
 
     /// Return a [NetworkWeights] instance representing the weights of the Network under free-flow
     /// conditions.
-    pub fn get_free_flow_weights(&self) -> NetworkWeights<T> {
+    pub fn get_free_flow_weights(
+        &self,
+        preprocess_data: &NetworkPreprocessingData<T>,
+    ) -> NetworkWeights<T> {
         let rn_weights = self
             .road_network
             .as_ref()
-            .map(|rn| rn.get_free_flow_weights());
+            .map(|rn| rn.get_free_flow_weights(preprocess_data.road_network.as_ref().unwrap()));
         NetworkWeights {
             road_network: rn_weights,
         }
@@ -106,14 +108,15 @@ impl<T: TTFNum> Network<T> {
         agents: &[Agent<T>],
         parameters: &NetworkParameters<T>,
         period: Interval<T>,
-    ) -> NetworkPreprocessingData<T> {
+    ) -> Result<NetworkPreprocessingData<T>> {
         let rn_data = self
             .road_network
             .as_ref()
-            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap(), period));
-        NetworkPreprocessingData {
+            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap(), period))
+            .transpose()?;
+        Ok(NetworkPreprocessingData {
             road_network: rn_data,
-        }
+        })
     }
 }
 
@@ -166,10 +169,17 @@ impl<'a, T> NetworkState<'a, T> {
 
 impl<T: TTFNum> NetworkState<'_, T> {
     /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
-    pub fn into_weights(self, parameters: &Parameters<T>) -> NetworkWeights<T> {
-        let rn_weights = self
-            .road_network
-            .map(|rn| rn.into_weights(parameters.network.road_network.as_ref().unwrap()));
+    pub fn into_weights(
+        self,
+        preprocess_data: &NetworkPreprocessingData<T>,
+        parameters: &Parameters<T>,
+    ) -> NetworkWeights<T> {
+        let rn_weights = self.road_network.map(|rn| {
+            rn.into_weights(
+                preprocess_data.road_network.as_ref().unwrap(),
+                parameters.network.road_network.as_ref().unwrap(),
+            )
+        });
         NetworkWeights {
             road_network: rn_weights,
         }
@@ -243,7 +253,7 @@ impl<T: TTFNum> NetworkWeights<T> {
 
 /// Structure representing network data that is pre-computed before the first iteration of the
 /// simulation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct NetworkPreprocessingData<T> {
     road_network: Option<RoadNetworkPreprocessingData<T>>,
 }

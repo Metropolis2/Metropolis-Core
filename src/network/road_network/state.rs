@@ -14,7 +14,7 @@ use ttf::{PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNode};
+use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData, RoadNode};
 use crate::event::{Event, EventQueue};
 use crate::mode::road::VehicleEvent;
 use crate::simulation::results::AgentResult;
@@ -493,17 +493,23 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
 
     /// Return a [RoadNetworkWeights] (i.e., travel times) from the observations recorded in the
     /// [RoadNetworkState].
-    pub fn into_weights(self, parameters: &RoadNetworkParameters<T>) -> RoadNetworkWeights<T> {
-        let mut weights =
-            RoadNetworkWeights::with_capacity(self.network.vehicles.len(), self.graph.edge_count());
+    pub fn into_weights(
+        self,
+        preprocess_data: &RoadNetworkPreprocessingData<T>,
+        parameters: &RoadNetworkParameters<T>,
+    ) -> RoadNetworkWeights<T> {
+        let mut weights = RoadNetworkWeights::with_capacity(
+            preprocess_data.nb_unique_vehicles(),
+            self.graph.edge_count(),
+        );
         let (_, edge_states) = self.graph.into_nodes_edges();
         let edge_refs: Vec<_> = edge_states.iter().map(|e| e.weight.reference).collect();
         let edge_simulated_functions: Vec<SimulatedFunctions<T>> = edge_states
             .into_iter()
             .map(|e| e.weight.into_simulated_functions())
             .collect();
-        for (vehicle_id, vehicle) in self.network.iter_vehicles() {
-            let vehicle_weights = &mut weights[vehicle_id];
+        for (uvehicle_id, vehicle) in preprocess_data.iter_unique_vehicles(&self.network.vehicles) {
+            let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs.iter()) {
                 let road_ttf = funcs
                     .road

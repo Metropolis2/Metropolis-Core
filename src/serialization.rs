@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use ttf::TTFNum;
 
-use crate::network::road_network::{ODPairs, RoadEdge, RoadGraph};
+use crate::network::road_network::{preprocess::ODPairs, RoadEdge, RoadGraph};
 
 impl<'de, T> Deserialize<'de> for RoadGraph<T>
 where

@@ -18,7 +18,6 @@ use tch::algo;
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
 
-use super::vehicle::VehicleIndex;
 use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each [Vehicle](super::vehicle::Vehicle) of a
@@ -33,10 +32,10 @@ pub struct RoadNetworkSkims<T>(
     #[schemars(with = "SerializedRoadNetworkSkims<T>")] pub Vec<Option<RoadNetworkSkim<T>>>,
 );
 
-impl<T> Index<VehicleIndex> for RoadNetworkSkims<T> {
+impl<T> Index<usize> for RoadNetworkSkims<T> {
     type Output = Option<RoadNetworkSkim<T>>;
-    fn index(&self, index: VehicleIndex) -> &Self::Output {
-        &self.0[index.index()]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 

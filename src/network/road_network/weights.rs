@@ -11,13 +11,13 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::{vehicle::VehicleIndex, RoadNetworkParameters};
+use super::RoadNetworkParameters;
 use crate::units::Time;
 
-/// Structure to store the travel-time functions of each edge of a [RoadNetwork](super::RoadNetwork),
-/// for each [Vehicle](super::vehicle::Vehicle).
+/// Structure to store the travel-time functions of each edge of a
+/// [RoadNetwork](super::RoadNetwork), for each unique vehicle type.
 ///
-/// The outer vector has the same length as the number of vehicles of the associated
+/// The outer vector has the same length as the number of unique vehicles of the associated
 /// [RoadNetwork](super::RoadNetwork).
 /// The inner vectors have all the same length (i.e., the RoadNetworkWeights represent a matrix)
 /// which is equal to the number of edges of the associated [RoadNetwork](super::RoadNetwork).
@@ -26,21 +26,21 @@ use crate::units::Time;
 #[schemars(title = "Road Network Weights")]
 #[schemars(
     description = "Travel-time functions of each edge of road network (inner array), for each \
-    vehicle (outer array)."
+    unique vehicle (outer array)."
 )]
 pub struct RoadNetworkWeights<T>(Vec<Vec<TTF<Time<T>>>>);
 
 impl<T> RoadNetworkWeights<T> {
     /// Initializes a new RoadNetworkWeights instance with enough capacity for the given number of
-    /// vehicles and edges.
-    pub fn with_capacity(nb_vehicles: usize, nb_edges: usize) -> Self {
+    /// unique vehicles and edges.
+    pub fn with_capacity(nb_unique_vehicles: usize, nb_edges: usize) -> Self {
         let mut vehicle_weights = Vec::new();
-        vehicle_weights.resize_with(nb_vehicles, || Vec::with_capacity(nb_edges));
+        vehicle_weights.resize_with(nb_unique_vehicles, || Vec::with_capacity(nb_edges));
         RoadNetworkWeights(vehicle_weights)
     }
 
-    /// Returns the shape of the RoadNetworkWeights, i.e., a tuple with the number of vehicles and
-    /// the number of edges.
+    /// Returns the shape of the RoadNetworkWeights, i.e., a tuple with the number of unique
+    /// vehicles and the number of edges.
     pub fn shape(&self) -> (usize, usize) {
         match self.0.len() {
             0 => (0, 0),
@@ -112,23 +112,23 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
     }
 }
 
-impl<T> Index<VehicleIndex> for RoadNetworkWeights<T> {
+impl<T> Index<usize> for RoadNetworkWeights<T> {
     type Output = Vec<TTF<Time<T>>>;
-    fn index(&self, x: VehicleIndex) -> &Self::Output {
-        &self.0[x.index()]
+    fn index(&self, x: usize) -> &Self::Output {
+        &self.0[x]
     }
 }
 
-impl<T> IndexMut<VehicleIndex> for RoadNetworkWeights<T> {
-    fn index_mut(&mut self, x: VehicleIndex) -> &mut Self::Output {
-        &mut self.0[x.index()]
+impl<T> IndexMut<usize> for RoadNetworkWeights<T> {
+    fn index_mut(&mut self, x: usize) -> &mut Self::Output {
+        &mut self.0[x]
     }
 }
 
-impl<T> Index<(VehicleIndex, EdgeIndex)> for RoadNetworkWeights<T> {
+impl<T> Index<(usize, EdgeIndex)> for RoadNetworkWeights<T> {
     type Output = TTF<Time<T>>;
-    fn index(&self, (vehicle, edge): (VehicleIndex, EdgeIndex)) -> &Self::Output {
-        &self.0[vehicle.index()][edge.index()]
+    fn index(&self, (vehicle_id, edge): (usize, EdgeIndex)) -> &Self::Output {
+        &self.0[vehicle_id][edge.index()]
     }
 }
 

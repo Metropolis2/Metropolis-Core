@@ -1,3 +1,9 @@
+// Copyright 2022 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
+use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::road::{DepartureTimeModel, RoadMode};
@@ -47,7 +53,13 @@ fn get_simulation() -> Simulation<f64> {
             Time(0.),
         ),
     )]);
-    let vehicle = Vehicle::new(Length(1.0), PCE(1.0), SpeedFunction::Base);
+    let vehicle = Vehicle::new(
+        Length(1.0),
+        PCE(1.0),
+        SpeedFunction::Base,
+        HashSet::new(),
+        HashSet::new(),
+    );
     let road_network = RoadNetwork::new(graph, vec![vehicle]);
     let network = Network::new(Some(road_network));
 
@@ -69,8 +81,10 @@ fn get_simulation() -> Simulation<f64> {
 #[test]
 fn bottleneck_test() {
     let simulation = get_simulation();
-    let weights = simulation.get_network().get_free_flow_weights();
-    let preprocess_data = simulation.preprocess();
+    let preprocess_data = simulation.preprocess().unwrap();
+    let weights = simulation
+        .get_network()
+        .get_free_flow_weights(&preprocess_data.network);
     let results = simulation
         .run_iteration(&weights, None, 1, &preprocess_data)
         .unwrap();
@@ -139,7 +153,7 @@ fn bottleneck_test() {
         .network_weights()
         .get_road_network()
         .unwrap();
-    let edge_weight = &weights[(vehicle_index(0), edge_index(0))];
+    let edge_weight = &weights[(0, edge_index(0))];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
     };

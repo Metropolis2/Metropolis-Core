@@ -14,7 +14,7 @@ use ttf::TTFNum;
 
 use crate::agent::AgentIndex;
 use crate::event::Event;
-use crate::network::NetworkSkim;
+use crate::network::{NetworkPreprocessingData, NetworkSkim};
 use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::results::AgentResult;
 use crate::units::{Distribution, Time, Utility};
@@ -85,6 +85,7 @@ impl<T: TTFNum> Mode<T> {
         &'a self,
         exp_skims: &'a NetworkSkim<T>,
         schedule_utility: &ScheduleUtility<T>,
+        preprocess_data: &NetworkPreprocessingData<T>,
     ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
         match self {
             Self::Constant(u) => Ok((*u, Box::new(|_| Ok(PreDayChoices::None)))),
@@ -94,7 +95,11 @@ impl<T: TTFNum> Mode<T> {
                 "Cannot make pre-day choice for road mode when there is no skims for the road network"
             )
         })?;
-                mode.make_pre_day_choice(rn_skims, schedule_utility)
+                mode.make_pre_day_choice(
+                    rn_skims,
+                    schedule_utility,
+                    preprocess_data.get_road_network().unwrap(),
+                )
             }
         }
     }

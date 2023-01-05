@@ -73,20 +73,20 @@ impl<T> Simulation<T> {
 }
 
 impl<T: TTFNum + Serialize + 'static> Simulation<T> {
-    /// Run the simulation, starting from free-flow weights.
-    pub fn run(&self, output_dir: &Path) -> Result<()> {
-        let weights = self.network.get_free_flow_weights();
-        self.run_from_weights(weights, output_dir)
-    }
-
     /// Run the simulation, using the given [NetworkWeights] as initial weights of the network.
+    ///
+    /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
     pub fn run_from_weights(
         &self,
-        init_weights: NetworkWeights<T>,
+        init_weights: Option<NetworkWeights<T>>,
         output_dir: &Path,
     ) -> Result<()> {
-        let preprocess_data = self.preprocess();
-        let mut weights = init_weights;
+        let preprocess_data = self.preprocess()?;
+        let mut weights = if let Some(weights) = init_weights {
+            weights
+        } else {
+            self.network.get_free_flow_weights(&preprocess_data.network)
+        };
         let mut prev_agent_results = None;
         let mut iteration_counter: u32 = 1;
         let mut sim_results = SimulationResults::new();
@@ -129,14 +129,14 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 
     /// Compute everything that can be computed before the first iteration of the simulation and
     /// return a [PreprocessingData] instance with the results of these computations.
-    pub fn preprocess(&self) -> PreprocessingData<T> {
+    pub fn preprocess(&self) -> Result<PreprocessingData<T>> {
         // Run the preprocessing stuff related to the network.
         let network = self.network.preprocess(
             &self.agents,
             &self.parameters.network,
             self.parameters.period,
-        );
-        PreprocessingData { network }
+        )?;
+        Ok(PreprocessingData { network })
     }
 
     /// Runs an iteration given the current [NetworkWeights], the associated [NetworkSkim] and the
@@ -159,7 +159,12 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         })?;
         info!("Running pre-day model");
         let (pre_day_results, t2) = record_time(|| {
-            self.run_pre_day_model(&skims, previous_results_opt, iteration_counter)
+            self.run_pre_day_model(
+                &skims,
+                preprocess_data,
+                previous_results_opt,
+                iteration_counter,
+            )
         })?;
         info!("Running within-day model");
         let ((sim_weights, within_day_results), t3) = record_time(|| {
@@ -209,6 +214,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     pub fn run_pre_day_model(
         &self,
         exp_skims: &NetworkSkim<T>,
+        preprocess_data: &PreprocessingData<T>,
         previous_results_opt: Option<&AgentResults<T>>,
         iteration_counter: u32,
     ) -> Result<Vec<PreDayResult<T>>> {
@@ -233,6 +239,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                         bp.inc(1);
                         agent.make_pre_day_choice(
                             exp_skims,
+                            preprocess_data,
                             Some(prev_agent_result.pre_day_results()),
                             update,
                             alloc,
@@ -248,7 +255,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                     || pool.pull(Default::default),
                     |alloc, agent| {
                         bp.inc(1);
-                        agent.make_pre_day_choice(exp_skims, None, true, alloc)
+                        agent.make_pre_day_choice(exp_skims, preprocess_data, None, true, alloc)
                     },
                 )
                 .collect::<Result<Vec<_>, _>>()?
@@ -302,7 +309,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
-        let weights = state.into_weights(&self.parameters);
+        let weights = state.into_weights(&preprocess_data.network, &self.parameters);
         // Process agent results.
         debug!("Processing agent results");
         for (i, r) in results.iter_mut().enumerate() {
@@ -419,7 +426,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 }
 
 /// Additional input data for the simulation which is computed before running the simulation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PreprocessingData<T> {
     /// Network-specific pre-processing data.
     pub network: NetworkPreprocessingData<T>,

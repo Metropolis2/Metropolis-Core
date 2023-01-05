@@ -4,29 +4,31 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! The part of the network dedicated to road vehicles.
+pub mod preprocess;
 pub mod skim;
 pub mod state;
 pub mod vehicle;
-pub mod weights;
+mod weights;
 
 use std::ops::{Deref, Index};
 
 use anyhow::Result;
-use hashbrown::{HashMap, HashSet};
 use log::debug;
-use num_traits::{Float, ToPrimitive, Zero};
+use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
+use petgraph::visit::EdgeRef;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use skim::{RoadNetworkSkim, RoadNetworkSkims};
-use state::RoadNetworkState;
 use tch::{ContractionParameters, HierarchyOverlay};
 use ttf::{TTFNum, TTFSimplification, TTF};
-use vehicle::{vehicle_index, Vehicle, VehicleIndex};
-use weights::RoadNetworkWeights;
 
+pub use self::preprocess::RoadNetworkPreprocessingData;
+use self::skim::RoadNetworkSkim;
+pub use self::skim::RoadNetworkSkims;
+pub use self::state::RoadNetworkState;
+use self::vehicle::{vehicle_index, Vehicle, VehicleIndex};
+pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
-use crate::mode::Mode;
 use crate::serialization::DeserRoadGraph;
 use crate::units::{Flow, Interval, Length, Speed, Time};
 
@@ -322,28 +324,8 @@ impl<T> RoadNetwork<T> {
     }
 }
 
-fn build_recording_intervals<T: TTFNum>(period: Interval<T>, interval: Time<T>) -> Vec<Time<T>> {
-    let mut intervals = Vec::with_capacity(
-        ((period.end() - period.start()) / interval)
-            .to_usize()
-            .unwrap()
-            + 2,
-    );
-    let mut current_time = period.start();
-    intervals.push(period.start());
-    loop {
-        current_time += interval;
-        if current_time >= period.end() {
-            break;
-        }
-        intervals.push(current_time);
-    }
-    intervals.push(period.end());
-    intervals
-}
-
 impl<T: TTFNum> RoadNetwork<T> {
-    /// Return an empty [RoadNetworkState].
+    /// Returns an empty [RoadNetworkState].
     pub fn get_blank_state<'a>(
         &'a self,
         preprocess_data: &'a RoadNetworkPreprocessingData<T>,
@@ -351,27 +333,15 @@ impl<T: TTFNum> RoadNetwork<T> {
         RoadNetworkState::from_network(self, preprocess_data.recording_intervals())
     }
 
-    /// Return a [RoadNetworkPreprocessingData] with all the unique origin-destination pairs, for
-    /// each vehicle, for the given set of [agents](Agent).
+    /// Returns the [RoadNetworkPreprocessingData] for the given set of [agents](Agent), the given
+    /// [RoadNetworkParameters] and the period interval.
     pub fn preprocess(
         &self,
         agents: &[Agent<T>],
         parameters: &RoadNetworkParameters<T>,
         period: Interval<T>,
-    ) -> RoadNetworkPreprocessingData<T> {
-        let mut preprocess_data = RoadNetworkPreprocessingData {
-            od_pairs: vec![ODPairs::default(); self.vehicles.len()],
-            recording_intervals: build_recording_intervals(period, parameters.recording_interval),
-        };
-        for agent in agents {
-            for mode in agent.iter_modes() {
-                if let Mode::Road(road_mode) = mode {
-                    let od_pairs = &mut preprocess_data.od_pairs[road_mode.vehicle_index().index()];
-                    od_pairs.add_pair(road_mode.origin(), road_mode.destination());
-                }
-            }
-        }
-        preprocess_data
+    ) -> Result<RoadNetworkPreprocessingData<T>> {
+        RoadNetworkPreprocessingData::preprocess(self, agents, parameters, period)
     }
 
     /// Compute and return the [RoadNetworkSkims] for the RoadNetwork, with the given
@@ -382,19 +352,20 @@ impl<T: TTFNum> RoadNetwork<T> {
         preprocess_data: &RoadNetworkPreprocessingData<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
-        let mut skims = Vec::with_capacity(self.vehicles.len());
-        for (vehicle_id, _vehicle) in self.iter_vehicles() {
-            if preprocess_data.od_pairs[vehicle_id.index()].is_empty() {
+        let mut skims = Vec::with_capacity(preprocess_data.nb_unique_vehicles());
+        for uvehicle_id in 0..preprocess_data.nb_unique_vehicles() {
+            let od_pairs = preprocess_data.od_pairs(uvehicle_id);
+            if od_pairs.is_empty() {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
             }
-            let nb_breakpoints: usize = weights[vehicle_id].iter().map(|w| w.complexity()).sum();
+            let nb_breakpoints: usize = weights[uvehicle_id].iter().map(|w| w.complexity()).sum();
             debug!("Total number of breakpoints: {nb_breakpoints}");
             // TODO: In some cases, it might be faster to re-use the same order from one iteration
             // to another.
             let mut hierarchy = HierarchyOverlay::order(
                 &self.graph,
-                |edge_id| weights[(vehicle_id, edge_id)].clone(),
+                |edge_id| weights[(uvehicle_id, edge_id)].clone(),
                 parameters.contraction.clone(),
             );
             debug!("Simplifying Hierarchy Overlay");
@@ -408,28 +379,36 @@ impl<T: TTFNum> RoadNetwork<T> {
                 hierarchy.complexity()
             );
             let mut skim = RoadNetworkSkim::new(hierarchy);
-            let od_pairs = &preprocess_data.od_pairs[vehicle_id.index()];
             debug!("Computing search spaces");
             let mut search_spaces =
-                skim.get_search_spaces(&od_pairs.unique_origins, &od_pairs.unique_destinations);
+                skim.get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
             debug!("Simplifying search spaces");
             search_spaces.simplify(parameters.search_space_simplification);
             debug!("Computing profile queries");
-            skim.pre_compute_profile_queries(&od_pairs.pairs, search_spaces)?;
+            skim.pre_compute_profile_queries(od_pairs.pairs(), search_spaces)?;
             skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))
     }
 
-    /// Return the free-flow travel time for each edge and each vehicle of the RoadNetwork.
-    pub fn get_free_flow_weights(&self) -> RoadNetworkWeights<T> {
-        let mut weights_vec =
-            RoadNetworkWeights::with_capacity(self.vehicles.len(), self.graph.edge_count());
-        for (vehicle_id, vehicle) in self.iter_vehicles() {
-            let weights = &mut weights_vec[vehicle_id];
+    /// Return the free-flow travel time for each edge and each unique vehicle of the RoadNetwork.
+    pub fn get_free_flow_weights(
+        &self,
+        preprocess_data: &RoadNetworkPreprocessingData<T>,
+    ) -> RoadNetworkWeights<T> {
+        let mut weights_vec = RoadNetworkWeights::with_capacity(
+            preprocess_data.nb_unique_vehicles(),
+            self.graph.edge_count(),
+        );
+        for (uvehicle_id, vehicle) in preprocess_data.iter_unique_vehicles(&self.vehicles) {
+            let weights = &mut weights_vec[uvehicle_id];
             for edge in self.graph.edge_references() {
-                let tt = edge.weight().get_free_flow_travel_time(vehicle);
-                weights.push(TTF::Constant(tt));
+                if vehicle.can_access(edge.id()) {
+                    let tt = edge.weight().get_free_flow_travel_time(vehicle);
+                    weights.push(TTF::Constant(tt));
+                } else {
+                    weights.push(TTF::Constant(Time::infinity()));
+                }
             }
         }
         weights_vec
@@ -497,60 +476,10 @@ impl<T> RoadNetworkParameters<T> {
     }
 }
 
-/// Set of pre-processing data used for different road-network computation.
-#[derive(Clone, Debug)]
-pub struct RoadNetworkPreprocessingData<T> {
-    /// Vector with, for each [Vehicle], an [ODPairs] instance representing the origin-destination
-    /// pairs for which at least one agent can make a trip with this vehicle.
-    od_pairs: Vec<ODPairs>,
-    /// Time intervals for which the simulated travel times are aggregated.
-    recording_intervals: Vec<Time<T>>,
-}
-
-impl<T> RoadNetworkPreprocessingData<T> {
-    fn recording_intervals(&self) -> &[Time<T>] {
-        &self.recording_intervals
-    }
-}
-
-/// Structure representing the origin-destination pairs for which at least one agent can make a
-/// trip, with a given vehicle.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(from = "crate::serialization::DeserODPairs")]
-pub struct ODPairs {
-    unique_origins: HashSet<NodeIndex>,
-    unique_destinations: HashSet<NodeIndex>,
-    pairs: HashMap<NodeIndex, HashSet<NodeIndex>>,
-}
-
-impl ODPairs {
-    /// Create a new ODPairs from a Vec of tuples `(o, d)`, where `o` is the [NodeIndex] of the
-    /// origin and `d` is the [NodeIndex] of the destination.
-    pub fn from_vec(raw_pairs: Vec<(NodeIndex, NodeIndex)>) -> Self {
-        let mut pairs = ODPairs::default();
-        for (origin, destination) in raw_pairs {
-            pairs.add_pair(origin, destination);
-        }
-        pairs
-    }
-
-    fn is_empty(&self) -> bool {
-        self.unique_origins.is_empty() && self.unique_destinations.is_empty()
-    }
-
-    /// Add an origin-destination pair to the ODPairs.
-    fn add_pair(&mut self, origin: NodeIndex, destination: NodeIndex) {
-        self.unique_origins.insert(origin);
-        self.unique_destinations.insert(destination);
-        self.pairs
-            .entry(origin)
-            .or_insert_with(HashSet::new)
-            .insert(destination);
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use hashbrown::HashSet;
+
     use super::vehicle::SpeedFunction;
     use super::*;
     use crate::units::PCE;
@@ -566,7 +495,13 @@ mod tests {
             bottleneck_outflow: Flow(f64::INFINITY),
             constant_travel_time: Time(10.),
         };
-        let vehicle = Vehicle::new(Length(10.), PCE(1.), SpeedFunction::Base);
+        let vehicle = Vehicle::new(
+            Length(10.),
+            PCE(1.),
+            SpeedFunction::Base,
+            HashSet::new(),
+            HashSet::new(),
+        );
         // 1 km at 50 km/h is 40s.
         assert_eq!(
             edge.get_travel_time(Length(0.), &vehicle),

@@ -20,7 +20,7 @@ use crate::mode::PreDayChoiceAllocation;
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
 use crate::network::road_network::state::BottleneckStatus;
 use crate::network::road_network::vehicle::VehicleIndex;
-use crate::network::road_network::RoadNetwork;
+use crate::network::road_network::{RoadNetwork, RoadNetworkPreprocessingData};
 use crate::network::{Network, NetworkSkim, NetworkState};
 use crate::schedule_utility::ScheduleUtility;
 use crate::schema::{EdgeIndexDef, NodeIndexDef};
@@ -155,8 +155,9 @@ impl<T: TTFNum> RoadMode<T> {
         &'a self,
         rn_skims: &'b RoadNetworkSkims<T>,
         schedule_utility: &ScheduleUtility<T>,
+        preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
-        let skims = rn_skims[self.vehicle]
+        let skims = rn_skims[preprocess_data.get_unique_vehicle_index(self.vehicle)]
             .as_ref()
             .ok_or_else(|| anyhow!("No skims were computed for the vehicle of the agent"))?;
         if let Some(ttf) = skims.profile_query(self.origin, self.destination)? {

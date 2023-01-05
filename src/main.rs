@@ -85,5 +85,5 @@ fn main() -> Result<()> {
     let simulation = Simulation::new(agents, network, parameters);
 
     // Run the simulation.
-    simulation.run(&args.output)
+    simulation.run_from_weights(None, &args.output)
 }

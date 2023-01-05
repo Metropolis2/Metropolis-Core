@@ -17,6 +17,7 @@ use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
 use crate::network::NetworkSkim;
 use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::results::PreDayResult;
+use crate::simulation::PreprocessingData;
 use crate::units::NoUnit;
 
 /// Representation of an independent and intelligent agent that makes one trip per day.
@@ -88,6 +89,7 @@ impl<T: TTFNum> Agent<T> {
     pub fn make_pre_day_choice(
         &self,
         exp_skims: &NetworkSkim<T>,
+        preprocess_data: &PreprocessingData<T>,
         previous_pre_day_result: Option<&PreDayResult<T>>,
         update: bool,
         alloc: &mut PreDayChoiceAllocation<T>,
@@ -96,9 +98,13 @@ impl<T: TTFNum> Agent<T> {
             if let Some(choice_model) = &self.mode_choice {
                 // Compute the mode-specific expected utilities and get the callback functions.
                 let (expected_utilities, mut callbacks) = itertools::process_results(
-                    self.modes
-                        .iter()
-                        .map(|mode| mode.make_pre_day_choice(exp_skims, &self.schedule_utility)),
+                    self.modes.iter().map(|mode| {
+                        mode.make_pre_day_choice(
+                            exp_skims,
+                            &self.schedule_utility,
+                            &preprocess_data.network,
+                        )
+                    }),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
                 )?;
                 // Get the id of the chosen mode and the global expected utility, from the mode choice
@@ -115,8 +121,11 @@ impl<T: TTFNum> Agent<T> {
             } else {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
-                let (expected_utility, callback) =
-                    chosen_mode.make_pre_day_choice(exp_skims, &self.schedule_utility)?;
+                let (expected_utility, callback) = chosen_mode.make_pre_day_choice(
+                    exp_skims,
+                    &self.schedule_utility,
+                    &preprocess_data.network,
+                )?;
                 let mode_result = callback(alloc)?;
                 Ok(PreDayResult::new(
                     mode_index(0),
@@ -192,11 +201,23 @@ mod tests {
     fn make_pre_day_choice_test() {
         let mut agent = get_agent();
         assert!(agent
-            .make_pre_day_choice(&Default::default(), None, false, &mut Default::default())
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                false,
+                &mut Default::default()
+            )
             .is_err());
 
         let result = agent
-            .make_pre_day_choice(&Default::default(), None, true, &mut Default::default())
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                true,
+                &mut Default::default(),
+            )
             .unwrap();
         assert_eq!(result.get_mode_index(), mode_index(0));
         assert_eq!(result.get_expected_utility(), Utility(10.));
@@ -205,6 +226,7 @@ mod tests {
         assert_eq!(
             agent
                 .make_pre_day_choice(
+                    &Default::default(),
                     &Default::default(),
                     Some(&result),
                     false,
@@ -216,7 +238,13 @@ mod tests {
 
         agent.modes.push(Mode::Constant(Utility(15.)));
         let result = agent
-            .make_pre_day_choice(&Default::default(), None, true, &mut Default::default())
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                true,
+                &mut Default::default(),
+            )
             .unwrap();
         assert_eq!(result.get_mode_index(), mode_index(1));
         assert_eq!(result.get_expected_utility(), Utility(15.));

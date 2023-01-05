@@ -4,7 +4,8 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
-use petgraph::graph::{EdgeIndex, NodeIndex};
+use hashbrown::HashSet;
+use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -100,8 +101,14 @@ pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {
     ))
 }
 
-pub(crate) const fn example_vehicle() -> Vehicle<f64> {
-    Vehicle::new(Length(8.0), PCE(1.0), SpeedFunction::Multiplicator(0.8))
+pub(crate) fn example_vehicle() -> Vehicle<f64> {
+    Vehicle::new(
+        Length(8.0),
+        PCE(1.0),
+        SpeedFunction::Multiplicator(0.8),
+        HashSet::new(),
+        HashSet::new(),
+    )
 }
 
 pub(crate) fn example_vehicle2() -> Vehicle<f64> {
@@ -110,7 +117,14 @@ pub(crate) fn example_vehicle2() -> Vehicle<f64> {
         [Speed(90.0), Speed(90.0)],
         [Speed(130.0), Speed(90.0)],
     ]);
-    Vehicle::new(Length(20.0), PCE(3.0), func)
+    let restricted_edges = [edge_index(0), edge_index(1)].into_iter().collect();
+    Vehicle::new(
+        Length(20.0),
+        PCE(3.0),
+        func,
+        HashSet::new(),
+        restricted_edges,
+    )
 }
 
 pub(crate) fn example_road_edge() -> RoadEdge<f64> {
