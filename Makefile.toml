@@ -137,6 +137,7 @@ pip3 install json_schema_for_humans
 dependencies = [
   "init-build-flow",
   "pre-clean",
+  "delete-lock",
   "clean-apidocs",
   "clean",
   "post-clean",
