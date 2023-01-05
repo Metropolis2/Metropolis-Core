@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2023-01-05
+
+### Added
+
+- Allowed / restricted edges can be specified for each vehicle type through fields `allowed_edges`
+  and `restricted_edges`.
+
+### Modified
+
+- In the pre-processing of the road network, a set of unique vehicle types is computed (two vehicle
+  types are considered identical if they can share the same network weights and skims, i.e., they
+  have the same speed function, allowed edges and restricted edges).
+- Road network weights and skims are stored and computed for each _unique_ vehicle type
+  (previously, this was done for each vehicle type).
+- Some tweaks were done for `cargo-make` (e.g., no verbose output, Clippy by default).
+
+### Fixed
+
+- Various fixes for GitHub Actions.
+- Fix `EdgeIndex` not properly document in the JSON Schemas.
+
 ## [0.1.5] - 2022-12-21
 
 ### Added
@@ -64,7 +85,8 @@
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.5...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.6...HEAD
+[0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
 [0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5
 [0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.4
 [0.1.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.3
