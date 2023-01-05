@@ -37,6 +37,8 @@ fn main() -> Result<()> {
     )
     .expect("Failed to initialize logging");
 
+    std::fs::create_dir_all(&args.path)?;
+
     info!("Generating JSON Schemas");
     let settings = SchemaSettings::draft07().with(|s| {
         s.option_nullable = true;

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2023-01-05
+
+### Modify
+
+- When generating JSON schemas, output directory is automatically created if it does not exist.
+
 ## [0.1.6] - 2023-01-05
 
 ### Added
@@ -85,7 +91,8 @@
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.6...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.7...HEAD
+[0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7
 [0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
 [0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5
 [0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.4
