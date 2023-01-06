@@ -35,7 +35,7 @@ use either::Either;
 use num_traits::Zero;
 pub use pwl::{PwlTTF, PwlTTFBuilder, PwlXYF, PwlXYFBuilder};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 pub use ttf_num::TTFNum;
 
 /// Descriptor used when merging two TTFs `f` and `g`.
@@ -70,6 +70,7 @@ pub enum XYF<X, Y, T> {
     /// A piecewise-linear function.
     Piecewise(PwlXYF<X, Y, T>),
     /// A constant function.
+    #[serde(deserialize_with = "parse_constant")]
     Constant(Y),
 }
 
@@ -384,4 +385,13 @@ impl<T: TTFNum> TTFSimplification<T> {
             }
         }
     }
+}
+
+/// Deserializes a [TTFNum] value such that `null` values are parsed as Infinity.
+fn parse_constant<'de, Y, D>(deserializer: D) -> Result<Y, D::Error>
+where
+    D: Deserializer<'de>,
+    Y: TTFNum,
+{
+    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or(Y::infinity()))
 }

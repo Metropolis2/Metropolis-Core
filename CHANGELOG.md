@@ -10,6 +10,11 @@
   simulation (variable `init_iteration_counter`).
 - Add `CHANGELOG.md` to release zips.
 
+### Fixed
+
+- Deserialize `null` values for constant travel-time functions as `Infinity`, consistently with how
+  the such values are serialized.
+
 ## [0.1.7] - 2023-01-05
 
 ### Modify

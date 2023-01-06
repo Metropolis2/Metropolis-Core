@@ -1,6 +1,6 @@
 [package]
 name = "ttf"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "Travel-time functions and other utilities"
