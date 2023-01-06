@@ -12,7 +12,7 @@ use clap::Parser;
 use log::{info, LevelFilter};
 use metropolis::agent::Agent;
 use metropolis::network::road_network::RoadNetwork;
-use metropolis::network::Network;
+use metropolis::network::{Network, NetworkWeights};
 use metropolis::parameters::Parameters;
 use metropolis::simulation::Simulation;
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
@@ -30,6 +30,10 @@ struct Args {
     /// Path of the input JSON file with the parameters' data
     #[clap(short, long)]
     parameters: PathBuf,
+    /// Path of the input JSON file with the network weights to use when initializing the
+    /// simulation (if empty, free-flow network weights are used)
+    #[clap(short, long)]
+    weights: Option<PathBuf>,
     /// Output directory
     #[clap(short, long, default_value = ".")]
     output: PathBuf,
@@ -81,9 +85,20 @@ fn main() -> Result<()> {
         None
     };
 
+    let weights: Option<NetworkWeights<f64>> = if let Some(weights) = args.weights {
+        let mut bytes = Vec::new();
+        File::open(weights)
+            .expect("Unable to open network weights file")
+            .read_to_end(&mut bytes)
+            .expect("Unable to read network weights file");
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse network weights"))
+    } else {
+        None
+    };
+
     let network = Network::new(road_network);
     let simulation = Simulation::new(agents, network, parameters);
 
     // Run the simulation.
-    simulation.run_from_weights(None, &args.output)
+    simulation.run_from_weights(weights, &args.output)
 }

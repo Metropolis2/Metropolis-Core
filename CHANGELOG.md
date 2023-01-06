@@ -4,6 +4,8 @@
 
 ### Added
 
+- The simulation can be run with other initial weights than free flow, with the new `--weights`
+  command line argument.
 - Add `CHANGELOG.md` to release zips.
 
 ## [0.1.7] - 2023-01-05
