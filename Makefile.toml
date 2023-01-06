@@ -55,7 +55,7 @@ dependencies = [
 ]
 
 [tasks.zip-release-binary-for-target]
-description = "Zips up the release binary, docs, README, and license(s)"
+description = "Zips up the release binary, docs, README, CHANGELOG, and license(s)"
 condition = { env_set = [
   "CARGO_MAKE_RELEASE_FLOW_TARGET",
   "CARGO_MAKE_PROJECT_NAME",
@@ -90,6 +90,7 @@ if ${additional_executable_file_defined}
     end
 end
 cp ./README.md ${OUTPUT_NAME}/README.md
+cp ./CHANGELOG.md ${OUTPUT_NAME}/CHANGELOG.md
 glob_cp ./LICENSE* ${OUTPUT_NAME}/
 cp ./docs/ ${OUTPUT_NAME}/
 cp ./examples/ ${OUTPUT_NAME}/

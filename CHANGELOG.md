@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add `CHANGELOG.md` to release zips.
+
 ## [0.1.7] - 2023-01-05
 
 ### Modify
