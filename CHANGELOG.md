@@ -6,6 +6,8 @@
 
 - The simulation can be run with other initial weights than free flow, with the new `--weights`
   command line argument.
+- The initial iteration counter to use for the simulation can be specified in the parameters of the
+  simulation (variable `init_iteration_counter`).
 - Add `CHANGELOG.md` to release zips.
 
 ## [0.1.7] - 2023-01-05

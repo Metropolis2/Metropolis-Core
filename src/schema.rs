@@ -147,6 +147,7 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
 pub(crate) fn example_parameters() -> Parameters<f64> {
     Parameters::new(
         Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
+        1,
         NetworkParameters {
             road_network: Some(RoadNetworkParameters::from_recording_interval(Time(60.0))),
         },

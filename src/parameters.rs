@@ -14,6 +14,10 @@ use crate::simulation::results::AgentResults;
 use crate::stop::StopCriterion;
 use crate::units::Interval;
 
+const fn default_iteration_counter() -> u32 {
+    1
+}
+
 const fn default_update_ratio() -> f64 {
     1.0
 }
@@ -32,6 +36,14 @@ pub struct Parameters<T> {
     /// The departure time chosen by any agent must be such that the expected arrival time is
     /// earlier than the end of the period.
     pub period: Interval<T>,
+    /// Initial iteration counter to use for the simulation.
+    ///
+    /// This is useful when running a simulation "step-by-step" (i.e., the input is modified
+    /// partially from one iteration to another) so that, for example, the coefficients for the
+    /// learning model are correctly computed.
+    #[serde(default = "default_iteration_counter")]
+    #[validate(range(min = 1))]
+    pub init_iteration_counter: u32,
     /// Set of parameters for the network.
     pub network: NetworkParameters<T>,
     /// Learning model used to update the values between two iterations.
@@ -54,6 +66,7 @@ impl<T> Parameters<T> {
     /// Creates a new set of parameters.
     pub fn new(
         period: Interval<T>,
+        init_iteration_counter: u32,
         network: NetworkParameters<T>,
         learning_model: LearningModel<T>,
         stopping_criteria: Vec<StopCriterion<T>>,
@@ -62,6 +75,7 @@ impl<T> Parameters<T> {
     ) -> Self {
         Parameters {
             period,
+            init_iteration_counter,
             network,
             learning_model,
             stopping_criteria,

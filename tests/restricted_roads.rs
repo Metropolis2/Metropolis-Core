@@ -150,6 +150,7 @@ fn get_simulation() -> Simulation<f64> {
     };
     let parameters = Parameters::new(
         Interval([Time(0.0), Time(50.0)]),
+        1,
         network_parameters,
         LearningModel::Exponential(ExponentialLearningModel::new(0.0)),
         vec![StopCriterion::MaxIteration(1)],

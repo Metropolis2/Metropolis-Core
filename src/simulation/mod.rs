@@ -88,7 +88,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             self.network.get_free_flow_weights(&preprocess_data.network)
         };
         let mut prev_agent_results = None;
-        let mut iteration_counter: u32 = 1;
+        let mut iteration_counter: u32 = self.parameters.init_iteration_counter;
         let mut sim_results = SimulationResults::new();
         let mut running_times = RunningTimes::default();
         loop {
