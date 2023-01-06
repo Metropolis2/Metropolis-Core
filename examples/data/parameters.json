@@ -1,0 +1,50 @@
+{
+  "period": [0.0, 200.0],
+  "network": {
+    "road_network": {
+      "recording_interval": 20.0,
+      "simulated_simplification": {
+        "type": "Interval",
+        "value": 5.0
+      },
+      "weight_simplification": {
+        "type": "Bound",
+        "value": 1.0
+      },
+      "overlay_simplification": {
+        "type": "Bound",
+        "value": 0.5
+      },
+      "search_space_simplification": {
+        "type": "Raw"
+      },
+      "contraction": {
+        "complexity_quotient_weight": 2.0,
+        "edge_quotient_weight": 2.0,
+        "hierarchy_depth_weight": 1.0,
+        "num_threads": 8,
+        "thin_profile_interval_hop_limit": 16,
+        "unpacked_edges_quotient_weight": 1.0
+      }
+    }
+  },
+  "learning_model": {
+    "type": "Exponential",
+    "value": {
+      "alpha": 0.99
+    }
+  },
+  "init_iteration_counter": 1,
+  "stopping_criteria": [
+    {
+      "type": "MaxIteration",
+      "value": 2
+    },
+    {
+      "type": "DepartureTime",
+      "value": [0.01, 100.0]
+    }
+  ],
+  "update_ratio": 1.0,
+  "random_seed": 19960813
+}

@@ -6,18 +6,21 @@
 //! Everything related to simulations.
 pub mod results;
 
+use std::fs::File;
+use std::io::Read;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, log_enabled, Level};
+use log::{debug, info, log_enabled, Level, LevelFilter};
 use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 use time::{Duration, Instant};
 use ttf::TTFNum;
 
@@ -28,6 +31,7 @@ use self::results::{
 use crate::agent::Agent;
 use crate::mode::road::AggregateRoadResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
+use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::parameters::Parameters;
 use crate::report;
@@ -423,6 +427,88 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         updates.shuffle(&mut rng);
         updates
     }
+}
+
+/// Deserialize a simulation from JSON input files, run it and store the results to a given output
+/// directory.
+pub fn run_simulation_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+    weights: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(&output)?;
+
+    // Initialize logging.
+    let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
+    let log_file = File::create(log_filename).expect("Failed to create log file");
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
+    ])
+    .expect("Failed to initialize logging");
+
+    // Read input files.
+    info!("Reading input files");
+    let mut bytes = Vec::new();
+    File::open(agents)
+        .unwrap_or_else(|err| panic!("Unable to open agents file `{:?}`: {}", agents, err))
+        .read_to_end(&mut bytes)
+        .unwrap_or_else(|err| panic!("Unable to read agents file `{:?}`: {}", agents, err));
+    let agents: Vec<Agent<f64>> = serde_json::from_slice(&bytes).expect("Unable to parse agents");
+
+    let mut bytes = Vec::new();
+    File::open(parameters)
+        .unwrap_or_else(|err| panic!("Unable to open parameters file `{:?}`: {}", parameters, err))
+        .read_to_end(&mut bytes)
+        .unwrap_or_else(|err| panic!("Unable to read parameters file `{:?}`: {}", parameters, err));
+    let parameters: Parameters<f64> =
+        serde_json::from_slice(&bytes).expect("Unable to parse parameters");
+
+    let road_network: Option<RoadNetwork<f64>> = if let Some(rn) = road_network {
+        let mut bytes = Vec::new();
+        File::open(rn)
+            .unwrap_or_else(|err| panic!("Unable to open road network file `{:?}`: {}", rn, err))
+            .read_to_end(&mut bytes)
+            .unwrap_or_else(|err| panic!("Unable to read road network file `{:?}`: {}", rn, err));
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse road network"))
+    } else {
+        None
+    };
+
+    let weights: Option<NetworkWeights<f64>> = if let Some(weights) = weights {
+        let mut bytes = Vec::new();
+        File::open(weights)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Unable to open network weights file `{:?}`: {}",
+                    weights, err
+                )
+            })
+            .read_to_end(&mut bytes)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Unable to read network weights file `{:?}`: {}",
+                    weights, err
+                )
+            });
+        Some(serde_json::from_slice(&bytes).expect("Unable to parse network weights"))
+    } else {
+        None
+    };
+
+    let network = Network::new(road_network);
+    let simulation = Simulation::new(agents, network, parameters);
+
+    // Run the simulation.
+    simulation.run_from_weights(weights, &output)
 }
 
 /// Additional input data for the simulation which is computed before running the simulation.

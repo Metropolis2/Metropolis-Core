@@ -1,0 +1,135 @@
+[
+  {
+    "modes": [
+      {
+        "type": "Constant",
+        "value": 0.0
+      }
+    ]
+  },
+  {
+    "id": 1,
+    "mode_choice": {
+      "type": "Deterministic",
+      "value": {
+        "u": 0.5
+      }
+    },
+    "schedule_utility": {
+      "type": "None"
+    },
+    "modes": [
+      {
+        "type": "Road",
+        "value": {
+          "origin": 0,
+          "destination": 1,
+          "vehicle": 0,
+          "departure_time_model": {
+            "type": "Constant",
+            "value": 0.0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "mode_choice": {
+      "type": "Logit",
+      "value": {
+        "u": 0.5,
+        "mu": 1.0
+      }
+    },
+    "schedule_utility": {
+      "type": "AlphaBetaGamma",
+      "value": {
+        "t_star_low": 50.0,
+        "t_star_high": 150.0,
+        "beta": 1.0,
+        "gamma": 4.0,
+        "desired_arrival": false
+      }
+    },
+    "modes": [
+      {
+        "type": "Road",
+        "value": {
+          "origin": 0,
+          "destination": 3,
+          "vehicle": 1,
+          "departure_time_model": {
+            "type": "ContinuousChoice",
+            "value": {
+              "period": [0.0, 200.0],
+              "choice_model": {
+                "type": "Logit",
+                "value": {
+                  "u": 0.5,
+                  "mu": 1.0
+                }
+              }
+            }
+          },
+          "utility_model": {
+            "type": "None"
+          }
+        }
+      },
+      {
+        "type": "Road",
+        "value": {
+          "origin": 0,
+          "destination": 3,
+          "vehicle": 1,
+          "departure_time_model": {
+            "type": "ContinuousChoice",
+            "value": {
+              "period": [0.0, 200.0],
+              "choice_model": {
+                "type": "Logit",
+                "value": {
+                  "u": 0.5,
+                  "mu": 1.0
+                }
+              }
+            }
+          },
+          "utility_model": {
+            "type": "Proportional",
+            "value": -2.0
+          }
+        }
+      },
+      {
+        "type": "Road",
+        "value": {
+          "origin": 0,
+          "destination": 3,
+          "vehicle": 1,
+          "departure_time_model": {
+            "type": "ContinuousChoice",
+            "value": {
+              "period": [0.0, 200.0],
+              "choice_model": {
+                "type": "Logit",
+                "value": {
+                  "u": 0.5,
+                  "mu": 1.0
+                }
+              }
+            }
+          },
+          "utility_model": {
+            "type": "Quadratic",
+            "value": {
+              "a": 0.0,
+              "b": -0.5
+            }
+          }
+        }
+      }
+    ]
+  }
+]

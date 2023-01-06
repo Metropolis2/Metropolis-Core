@@ -1,0 +1,92 @@
+{
+  "graph": {
+    "edges": [
+      [
+        0,
+        1,
+        {
+          "base_speed": 10.0,
+          "length": 100.0
+        }
+      ],
+      [
+        1,
+        3,
+        {
+          "base_speed": 10.0,
+          "length": 100.0,
+          "lanes": 2,
+          "speed_density": {
+            "type": "FreeFlow"
+          },
+          "bottleneck_inflow": 1.0,
+          "bottleneck_outflow": 1.0
+        }
+      ],
+      [
+        0,
+        2,
+        {
+          "base_speed": 10.0,
+          "length": 100.0,
+          "speed_density": {
+            "type": "ThreeRegimes",
+            "value": {
+              "min_density": 0.2,
+              "jam_density": 0.8,
+              "jam_speed": 1.0,
+              "beta": 1.0
+            }
+          },
+          "constant_travel_time": 5.0
+        }
+      ],
+      [
+        2,
+        3,
+        {
+          "base_speed": 10.0,
+          "length": 100.0,
+          "speed_density": {
+            "type": "Bottleneck",
+            "value": 1.0
+          }
+        }
+      ]
+    ]
+  },
+  "vehicles": [
+    {
+      "length": 8.0,
+      "pce": 1.0
+    },
+    {
+      "length": 8.0,
+      "pce": 1.0,
+      "speed_function": {
+        "type": "Base"
+      },
+      "allowed_edges": [0, 1]
+    },
+    {
+      "length": 8.0,
+      "pce": 1.0,
+      "speed_function": {
+        "type": "Multiplicator",
+        "value": 0.9
+      },
+      "restricted_edges": [2, 3]
+    },
+    {
+      "length": 8.0,
+      "pce": 1.0,
+      "speed_function": {
+        "type": "Piecewise",
+        "value": [
+          [0.0, 0.0],
+          [30.0, 25.0]
+        ]
+      }
+    }
+  ]
+}

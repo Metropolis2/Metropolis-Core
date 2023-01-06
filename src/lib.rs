@@ -62,7 +62,9 @@ pub fn show_stats() {
 pub fn show_stats() {}
 
 // Re-exports.
+pub use report::write_report;
+pub use simulation::run_simulation_from_json_files;
+
 // Dependencies only used in the bins.
 use clap as _;
-pub use report::write_report;
 use simplelog as _;
