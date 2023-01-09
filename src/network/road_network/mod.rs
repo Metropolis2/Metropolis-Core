@@ -165,11 +165,11 @@ pub struct RoadEdge<T> {
     /// Speed-density function for the running part of the edge.
     #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
-    /// Maximum inflow of vehicle at the beginning of the edge.
+    /// Maximum inflow of vehicle at the beginning of the edge (in PCE per second).
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
     bottleneck_inflow: Flow<T>,
-    /// Maximum outflow of vehicle at the end of the edge.
+    /// Maximum outflow of vehicle at the end of the edge (in PCE per second).
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
     bottleneck_outflow: Flow<T>,
