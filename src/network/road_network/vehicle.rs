@@ -67,17 +67,21 @@ impl<T: TTFNum> SpeedFunction<T> {
     }
 }
 
-/// A road vehicle with a given [Length], [PCE] and [SpeedFunction].
+/// A road vehicle with a given headway, [PCE] and [SpeedFunction].
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[schemars(title = "Vehicle")]
 #[schemars(
-    description = "A road vehicle with a given length, passenger car equivalent and speed function."
+    description = "A road vehicle with a given (headway) length, passenger car equivalent and speed function."
 )]
 #[schemars(example = "crate::schema::example_vehicle")]
 #[schemars(example = "crate::schema::example_vehicle2")]
 pub struct Vehicle<T> {
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
-    length: Length<T>,
+    #[serde(alias = "length")]
+    #[schemars(
+        description = "Headway length of the vehicle, used to compute vehicle density on the edges.\nAlias: `length`"
+    )]
+    headway: Length<T>,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
     pce: PCE<T>,
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
@@ -96,16 +100,16 @@ pub struct Vehicle<T> {
 }
 
 impl<T> Vehicle<T> {
-    /// Creates a new vehicle with a given [Length], [PCE] and [SpeedFunction].
+    /// Creates a new vehicle with a given headway, [PCE] and [SpeedFunction].
     pub const fn new(
-        length: Length<T>,
+        headway: Length<T>,
         pce: PCE<T>,
         speed_function: SpeedFunction<T>,
         allowed_edges: HashSet<EdgeIndex>,
         restricted_edges: HashSet<EdgeIndex>,
     ) -> Self {
         Vehicle {
-            length,
+            headway,
             pce,
             speed_function,
             allowed_edges,
@@ -126,9 +130,9 @@ impl<T> Vehicle<T> {
 }
 
 impl<T: Copy> Vehicle<T> {
-    /// Returns the length of the vehicle.
-    pub const fn get_length(&self) -> Length<T> {
-        self.length
+    /// Returns the headway of the vehicle.
+    pub const fn get_headway(&self) -> Length<T> {
+        self.headway
     }
 
     /// Returns the PCE of the vehicle.

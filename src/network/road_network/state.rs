@@ -65,13 +65,13 @@ impl<T: TTFNum> RoadSegment<T> {
 
     /// Record the entry of a new vehicle on the segment.
     fn enters(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) {
-        let new_length = self.occupied_length + vehicle.get_length();
+        let new_length = self.occupied_length + vehicle.get_headway();
         self.set_length(new_length, current_time);
     }
 
     /// Record the exit of a vehicle from the segment.
     fn exits(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) {
-        let new_length = self.occupied_length - vehicle.get_length();
+        let new_length = self.occupied_length - vehicle.get_headway();
         self.set_length(new_length, current_time);
     }
 
@@ -409,7 +409,7 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
     /// to the Bottleneck.
     pub fn enters_road(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) -> Time<T> {
         self.check_recording_interval(current_time);
-        self.total_length += vehicle.get_length();
+        self.total_length += vehicle.get_headway();
         self.road.enters(vehicle, current_time);
         self.get_travel_time(vehicle)
     }
