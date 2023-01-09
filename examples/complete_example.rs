@@ -1,6 +1,7 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use metropolis::run_simulation_from_json_files;
-use std::path::PathBuf;
 
 fn main() -> Result<()> {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

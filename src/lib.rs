@@ -39,6 +39,10 @@ pub mod stop;
 pub mod travel_utility;
 pub mod units;
 
+// Re-exports.
+pub use report::write_report;
+pub use simulation::run_simulation_from_json_files;
+
 #[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -60,10 +64,6 @@ pub fn show_stats() {
 #[cfg(any(not(feature = "jemalloc"), target_env = "msvc"))]
 /// Displays statistics on allocated and resident memory.
 pub fn show_stats() {}
-
-// Re-exports.
-pub use report::write_report;
-pub use simulation::run_simulation_from_json_files;
 
 // Dependencies only used in the bins.
 use clap as _;
