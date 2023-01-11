@@ -8,6 +8,7 @@
   command line argument.
 - The initial iteration counter to use for the simulation can be specified in the parameters of the
   simulation (variable `init_iteration_counter`).
+- Add arrival-times distribution for the last iteration in the HTML report.
 - Add `CHANGELOG.md` to release zips.
 
 ### Modified

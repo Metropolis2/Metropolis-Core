@@ -33,14 +33,17 @@ pub fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path
 fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResults<T>> {
     if let Some(last_iteration) = &results.last_iteration {
         let mut road_departure_times = Vec::with_capacity(last_iteration.agent_results().len());
+        let mut road_arrival_times = Vec::with_capacity(last_iteration.agent_results().len());
         for (_, agent_result) in last_iteration.iter_agent_results() {
             if let ModeResults::Road(_) = agent_result.mode_results() {
                 road_departure_times.push(agent_result.departure_time().unwrap());
+                road_arrival_times.push(agent_result.arrival_time().unwrap());
             }
         }
 
         let last_iteration = IterationStatistics {
             road_departure_times,
+            road_arrival_times,
         };
         Ok(ReportResults {
             iterations: results.iterations.clone(),
@@ -55,6 +58,8 @@ fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResul
 struct IterationStatistics<T> {
     /// Vec with the departure time of each agent.
     road_departure_times: Vec<Time<T>>,
+    /// Vec with the arrival time of each agent.
+    road_arrival_times: Vec<Time<T>>,
 }
 
 /// Results used to build the HTML report of a simulation.
