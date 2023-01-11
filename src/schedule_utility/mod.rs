@@ -17,6 +17,7 @@ pub mod alpha_beta_gamma;
 /// Model used to represent the schedule utility of an agent.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "value")]
+#[serde(bound(deserialize = "T: TTFNum"))]
 #[schemars(example = "crate::schema::example_schedule_utility")]
 pub enum ScheduleUtility<T> {
     /// The schedule utility is always null.

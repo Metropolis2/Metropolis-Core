@@ -187,13 +187,16 @@ mod tests {
         let modes = vec![Mode::Constant(Utility(10.))];
         let choice_model =
             ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)));
-        let schedule_utility = ScheduleUtility::AlphaBetaGamma(AlphaBetaGammaModel::new(
-            Time(8. * 60. * 60.),
-            Time(8. * 60. * 60.),
-            ValueOfTime(5.),
-            ValueOfTime(20.),
-            true,
-        ));
+        let schedule_utility = ScheduleUtility::AlphaBetaGamma(
+            AlphaBetaGammaModel::new(
+                Time(8. * 60. * 60.),
+                Time(8. * 60. * 60.),
+                ValueOfTime(5.),
+                ValueOfTime(20.),
+                true,
+            )
+            .unwrap(),
+        );
         Agent::new(1, modes, Some(choice_model), schedule_utility)
     }
 

@@ -92,13 +92,16 @@ pub(crate) const fn example_travel_utility2() -> TravelUtility<f64> {
 }
 
 pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {
-    ScheduleUtility::AlphaBetaGamma(AlphaBetaGammaModel::new(
-        Time(7.75 * 3600.0),
-        Time(8.25 * 3800.0),
-        ValueOfTime(5.0),
-        ValueOfTime(20.0),
-        true,
-    ))
+    ScheduleUtility::AlphaBetaGamma(
+        AlphaBetaGammaModel::new(
+            Time(7.75 * 3600.0),
+            Time(8.25 * 3800.0),
+            ValueOfTime(5.0),
+            ValueOfTime(20.0),
+            true,
+        )
+        .unwrap(),
+    )
 }
 
 pub(crate) fn example_vehicle() -> Vehicle<f64> {

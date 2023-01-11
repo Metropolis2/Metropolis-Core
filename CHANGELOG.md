@@ -16,6 +16,8 @@
 - Completed the example so that it include all possible input formats.
 - Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an alias for
   backward compatibility).
+- Validate that value `t_star_high` is not smaller than value `t_star_low` for the alpha-beta-gamma
+  model.
 
 ### Fixed
 

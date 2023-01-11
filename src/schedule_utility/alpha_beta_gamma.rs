@@ -4,6 +4,7 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! The alpha-beta-gamma schedule-delay cost model.
+use anyhow::anyhow;
 use num_traits::Zero;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -17,10 +18,12 @@ use crate::units::{Time, Utility, ValueOfTime};
 #[schemars(
     description = "Compute the schedule-delay utility using Vickrey's alpha-beta-gamma model"
 )]
+#[serde(try_from = "UncheckedAlphaBetaGammaModel<T>")]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct AlphaBetaGammaModel<T> {
     /// The earliest desired arrival (or departure) time.
     t_star_low: Time<T>,
-    /// The latest desired arrival (or departure) time.
+    /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
     t_star_high: Time<T>,
     /// The penalty for early arrivals (or departures), in utility per second.
     beta: ValueOfTime<T>,
@@ -32,26 +35,25 @@ pub struct AlphaBetaGammaModel<T> {
     desired_arrival: bool,
 }
 
-impl<T> AlphaBetaGammaModel<T> {
+impl<T: TTFNum> AlphaBetaGammaModel<T> {
     /// Creates a new AlphaBetaGammaModel.
-    pub const fn new(
+    pub fn new(
         t_star_low: Time<T>,
         t_star_high: Time<T>,
         beta: ValueOfTime<T>,
         gamma: ValueOfTime<T>,
         desired_arrival: bool,
-    ) -> AlphaBetaGammaModel<T> {
-        AlphaBetaGammaModel {
+    ) -> anyhow::Result<AlphaBetaGammaModel<T>> {
+        let model = UncheckedAlphaBetaGammaModel {
             t_star_low,
             t_star_high,
             beta,
             gamma,
             desired_arrival,
-        }
+        };
+        AlphaBetaGammaModel::try_from(model)
     }
-}
 
-impl<T: TTFNum> AlphaBetaGammaModel<T> {
     /// Return the schedule-delay utility given the departure time (if `desired_arrival` is
     /// `false`) or the arrival time (otherwise).
     ///
@@ -108,6 +110,42 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     }
 }
 
+/// [AlphaBetaGammaModel] before validation, for deserialization.
+#[derive(Clone, Debug, Deserialize)]
+pub struct UncheckedAlphaBetaGammaModel<T> {
+    /// The earliest desired arrival (or departure) time.
+    t_star_low: Time<T>,
+    /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
+    t_star_high: Time<T>,
+    /// The penalty for early arrivals (or departures), in utility per second.
+    beta: ValueOfTime<T>,
+    /// The penalty for late arrivals (or departures), in utility per second.
+    gamma: ValueOfTime<T>,
+    /// If `true`, `tstar_low` and `t_star_high` represent the desired arrival-time interval,
+    /// otherwise they represent the desired departure-time interval.
+    #[serde(default = "default_is_true")]
+    desired_arrival: bool,
+}
+
+impl<T: TTFNum> TryFrom<UncheckedAlphaBetaGammaModel<T>> for AlphaBetaGammaModel<T> {
+    type Error = anyhow::Error;
+
+    fn try_from(value: UncheckedAlphaBetaGammaModel<T>) -> Result<Self, Self::Error> {
+        if value.t_star_high < value.t_star_low {
+            return Err(anyhow!(
+                "Value of t* high cannot be smaller than value of t* low"
+            ));
+        }
+        Ok(AlphaBetaGammaModel {
+            t_star_low: value.t_star_low,
+            t_star_high: value.t_star_high,
+            beta: value.beta,
+            gamma: value.gamma,
+            desired_arrival: value.desired_arrival,
+        })
+    }
+}
+
 const fn default_is_true() -> bool {
     true
 }
@@ -124,6 +162,46 @@ mod tests {
             gamma: ValueOfTime(20.),
             desired_arrival,
         }
+    }
+
+    #[test]
+    fn new_model_test() {
+        let model = AlphaBetaGammaModel::new(
+            Time(10.),
+            Time(20.),
+            ValueOfTime(5.),
+            ValueOfTime(5.),
+            false,
+        );
+        assert!(model.is_ok());
+        let model = AlphaBetaGammaModel::new(
+            Time(20.),
+            Time(10.),
+            ValueOfTime(5.),
+            ValueOfTime(5.),
+            false,
+        );
+        assert!(model.is_err());
+    }
+
+    #[test]
+    fn deser_model_test() {
+        let js = "{
+            \"t_star_low\": 10.0,
+            \"t_star_high\": 20.0,
+            \"beta\": 5.0,
+            \"gamma\": 5.0
+        }";
+        let model = serde_json::from_str::<AlphaBetaGammaModel<f64>>(js);
+        assert!(model.is_ok());
+        let js = "{
+            \"t_star_low\": 20.0,
+            \"t_star_high\": 10.0,
+            \"beta\": 5.0,
+            \"gamma\": 5.0
+        }";
+        let model = serde_json::from_str::<AlphaBetaGammaModel<f64>>(js);
+        assert!(model.is_err());
     }
 
     #[test]
