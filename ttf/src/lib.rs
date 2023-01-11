@@ -394,5 +394,5 @@ where
     D: Deserializer<'de>,
     Y: TTFNum,
 {
-    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or(Y::infinity()))
+    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or_else(Y::infinity))
 }

@@ -439,7 +439,7 @@ pub fn run_simulation_from_json_files(
     output: &Path,
 ) -> Result<()> {
     // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(&output)?;
+    std::fs::create_dir_all(output)?;
 
     // Initialize logging.
     let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
@@ -508,7 +508,7 @@ pub fn run_simulation_from_json_files(
     let simulation = Simulation::new(agents, network, parameters);
 
     // Run the simulation.
-    simulation.run_from_weights(weights, &output)
+    simulation.run_from_weights(weights, output)
 }
 
 /// Additional input data for the simulation which is computed before running the simulation.

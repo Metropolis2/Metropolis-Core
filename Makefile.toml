@@ -7,7 +7,6 @@ CARGO_MAKE_PROJECT_NAME = "metrolib"
 CARGO_MAKE_PROJECT_VERSION = "0.1.0"
 CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
-CARGO_MAKE_RUN_CLIPPY = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
 CARGO_MAKE_BUILD_BENCH = true
@@ -20,7 +19,7 @@ dependencies = [
   "format-flow",
   "format-toml-conditioned-flow",
   "pre-build",
-  "clippy-ci-flow",
+  "clippy-flow",
   "build",
   "post-build",
   "test-flow",
@@ -146,7 +145,7 @@ dependencies = [
   "format-toml-conditioned-flow",
   "pre-build",
   "check-format-ci-flow",
-  "clippy-ci-flow",
+  "clippy-flow",
   "build",
   "post-build",
   "test-flow",
