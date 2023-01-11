@@ -195,7 +195,7 @@ pub struct PreDayChoiceAllocation<T: TTFNum> {
 }
 
 /// Results of the within-day model specific to a mode of transportation.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "value")]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub enum ModeResults<T> {

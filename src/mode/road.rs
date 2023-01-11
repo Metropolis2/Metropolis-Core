@@ -10,7 +10,7 @@ use hashbrown::HashSet;
 use num_traits::{Float, Zero};
 use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
 
 use super::{ModeCallback, ModeResults, PreDayChoices};
@@ -437,33 +437,38 @@ impl<T: TTFNum> RoadChoices<T> {
 }
 
 /// Timings for the event of an edge being taken by a vehicle.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
-// #[serde(into = "TransparentRoadEvent<T>")]
-// #[serde(bound(serialize = "T: TTFNum"))]
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(into = "TransparentRoadEvent<T>")]
+#[serde(bound(serialize = "T: Clone + Serialize"))]
 pub struct RoadEvent<T> {
     /// Id of the edge taken.
-    #[schemars(with = "EdgeIndexDef")]
     edge: EdgeIndex,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
     edge_entry: Time<T>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-struct TransparentRoadEvent<T>(EdgeIndex, Time<T>);
+#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: Clone + Serialize"))]
+#[schemars(title = "RoadEvent")]
+#[schemars(
+    description = "Array `[e, t]`, where `e` is the index of the edge taken and `t` is the entry time of the vehicle on this edges"
+)]
+struct TransparentRoadEvent<T>(usize, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
     fn from(v: RoadEvent<T>) -> Self {
-        Self(v.edge, v.edge_entry)
+        Self(v.edge.index(), v.edge_entry)
     }
 }
 
 /// Struct used to store the results from a [RoadMode] in the within-day model.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Default, Clone, Serialize, JsonSchema)]
 #[schemars(title = "Road Results")]
 #[schemars(description = "Results from the within-day model, for a road mode of transportation.")]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadResults<T> {
     /// The route taken by the vehicle, together with the timings of the events.
+    #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
     route: Vec<RoadEvent<T>>,
     /// Total time spent traveling on an edge.
     road_time: Time<T>,

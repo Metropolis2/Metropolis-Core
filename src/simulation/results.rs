@@ -237,7 +237,7 @@ impl<T: TTFNum + 'static> PreDayResult<T> {
 }
 
 /// Results of an agent, during a single iteration.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResult<T> {
     /// Id of the agent.
@@ -344,7 +344,7 @@ impl<T: TTFNum> AgentResult<T> {
 }
 
 /// Struct to store the [AgentResult] of each agent in the Simulation.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Default, Clone, Serialize, JsonSchema)]
 #[schemars(title = "Agent Results")]
 #[schemars(description = "Results for each agent in the simulation.")]
 #[serde(bound(serialize = "T: TTFNum"))]

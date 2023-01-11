@@ -18,8 +18,11 @@ Changes starting with tag [DEV] are of interest to developers only.
 
 ### Modified
 
-- [USER] The list of points for the piecewise-linear functions is now serialized / deserialized as
-  an array of arrays `[x, y]` (previously, it was an array of objects with keys `x` and `y`).
+- [USER] The list of points for the piecewise-linear functions is serialized / deserialized as an
+  array of arrays `[x, y]` (previously, it was an array of objects with keys `x` and `y`).
+- [USER] The route taken by the agent (in the agent results) is serialized as an array of arrays
+  `[e, t]`, where `e` is the edge index and `t` is the entry time on the edge (previously it was an
+  array of objects with keys `edge` and `edge_entry`).
 - [USER] Completed the example so that it include all possible input formats.
 - [USER] Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an alias for
   backward compatibility).
