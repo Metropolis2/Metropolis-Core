@@ -22,7 +22,7 @@ use crate::units::Time;
 /// The inner vectors have all the same length (i.e., the RoadNetworkWeights represent a matrix)
 /// which is equal to the number of edges of the associated [RoadNetwork](super::RoadNetwork).
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 #[schemars(title = "Road Network Weights")]
 #[schemars(
     description = "Travel-time functions of each edge of road network (inner array), for each \

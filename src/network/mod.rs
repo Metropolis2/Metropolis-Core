@@ -188,7 +188,7 @@ impl<T: TTFNum> NetworkState<'_, T> {
 
 /// Simplified representation of the state of a network during a whole day.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,
 }

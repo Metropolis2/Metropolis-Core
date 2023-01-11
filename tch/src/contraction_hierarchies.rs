@@ -71,7 +71,7 @@ pub enum HierarchyEdgeClass<T> {
 
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 pub struct HierarchyEdge<T> {
     ttf: TTF<T>,
     direction: HierarchyDirection,
@@ -113,7 +113,7 @@ impl<T> HierarchyEdge<T> {
 
 /// Structure representing a graph with a hierarchy of nodes.
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,

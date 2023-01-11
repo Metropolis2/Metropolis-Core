@@ -788,6 +788,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkg-config"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ac9a59f73473f1b8d852421e59e64809f025994837ef743615c6d0c5b305160"
+
+[[package]]
 name = "portable-atomic"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1039,9 +1045,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25bf4a5a814902cd1014dbccfa4d4560fb8432c779471e96e035602519f82eef"
+checksum = "30d904179146de381af4c93d3af6ca4984b3152db687dacb9c3c35e86f39809c"
 dependencies = [
  "serde",
  "serde_with_macros",
@@ -1049,9 +1055,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3452b4c0f6c1e357f73fdb87cd1efabaa12acf328c7a528e252893baeb3f4aa"
+checksum = "a1966009f3c05f095697c537312f5415d1e3ed31ce0a56942bac4c771c5c335e"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1095,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1189,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "ttf"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "either",
  "itertools",
@@ -1340,10 +1346,11 @@ dependencies = [
 
 [[package]]
 name = "zstd-sys"
-version = "2.0.4+zstd.1.5.2"
+version = "2.0.5+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fa202f2ef00074143e219d15b62ffc317d17cc33909feac471c044087cad7b0"
+checksum = "edc50ffce891ad571e9f9afe5039c4837bede781ac4bb13052ed7ae695518596"
 dependencies = [
  "cc",
  "libc",
+ "pkg-config",
 ]

@@ -22,10 +22,12 @@ const BUCKET_SIZE: usize = 8;
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(bound(serialize = "X: Clone + Serialize, Y: Clone + Serialize"))]
 #[schemars(title = "PwlXYF")]
 #[schemars(description = "Piecewise-linear function represented by an array of points `(x, y)`.")]
 pub struct PwlXYF<X, Y, T> {
     /// Breakpoints representing the function.
+    #[schemars(with = "Vec<RawPoint<X, Y>>")]
     points: Vec<Point<X, Y>>,
     /// Minimum `y` value of the function.
     min: Option<Y>,

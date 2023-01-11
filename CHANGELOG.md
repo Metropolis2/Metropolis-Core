@@ -13,6 +13,8 @@
 
 ### Modified
 
+- The list of points for the piecewise-linear functions is now serialized / deserialized as an
+  array of arrays `[x, y]` (previously, it was an array of objects with keys `x` and `y`).
 - Completed the example so that it include all possible input formats.
 - Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an alias for
   backward compatibility).

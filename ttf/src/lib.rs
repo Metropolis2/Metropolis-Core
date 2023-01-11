@@ -63,6 +63,7 @@ impl UndercutDescriptor {
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "X: TTFNum, Y: TTFNum + From<T>, T: TTFNum + From<X> + From<Y>"))]
+#[serde(bound(serialize = "X: Clone + Serialize, Y: Clone + Serialize"))]
 #[serde(untagged)]
 #[schemars(title = "XYF")]
 #[schemars(description = "Constant or piecewise-linear function.")]

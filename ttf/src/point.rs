@@ -12,9 +12,29 @@ use serde::{Deserialize, Serialize};
 use crate::TTFNum;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(into = "RawPoint<X, Y>")]
+#[serde(from = "RawPoint<X, Y>")]
+#[serde(bound(serialize = "X: Clone + Serialize, Y: Clone + Serialize"))]
 pub struct Point<X, Y> {
     pub x: X,
     pub y: Y,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
+#[schemars(title = "A 2-D point")]
+#[schemars(description = "An array `[x, y]`.")]
+pub struct RawPoint<X, Y>(X, Y);
+
+impl<X, Y> From<RawPoint<X, Y>> for Point<X, Y> {
+    fn from(p: RawPoint<X, Y>) -> Self {
+        Self { x: p.0, y: p.1 }
+    }
+}
+
+impl<X, Y> From<Point<X, Y>> for RawPoint<X, Y> {
+    fn from(p: Point<X, Y>) -> Self {
+        Self(p.x, p.y)
+    }
 }
 
 impl<X: Num, Y: Num> ops::Add for Point<X, Y> {

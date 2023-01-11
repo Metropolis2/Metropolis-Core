@@ -135,7 +135,7 @@ impl ToContractNode {
 
 /// Structure for edges in a [ContractionGraph].
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 pub(crate) struct ToContractEdge<T> {
     /// Current metric of the edge.
     ttf: TTF<T>,

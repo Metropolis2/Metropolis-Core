@@ -165,9 +165,11 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
 }
 
 #[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[serde(bound = "T: TTFNum")]
 struct SerializedRoadNetworkSkims<T>(Vec<Vec<ODPairTTF<T>>>);
 
 #[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[serde(bound = "T: TTFNum")]
 struct ODPairTTF<T> {
     /// Index of the origin node.
     origin: usize,
