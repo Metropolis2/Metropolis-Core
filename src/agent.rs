@@ -29,9 +29,10 @@ use crate::units::NoUnit;
 /// mode.
 /// - A [ScheduleUtility] model describing his/her schedule preferences.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 #[schemars(title = "Agent")]
 #[schemars(description = "Abstract representation of an individual that makes one trip per day.")]
+#[schemars(bound = "T: TTFNum + JsonSchema")]
 #[schemars(example = "crate::schema::example_agent")]
 pub struct Agent<T> {
     /// Id used when writing the results of the agents.

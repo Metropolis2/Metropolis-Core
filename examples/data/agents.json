@@ -73,7 +73,10 @@
             }
           },
           "utility_model": {
-            "type": "None"
+            "type": "Polynomial",
+            "value": {
+              "a": 1.0
+            }
           }
         }
       },
@@ -97,8 +100,10 @@
             }
           },
           "utility_model": {
-            "type": "Proportional",
-            "value": -2.0
+            "type": "Polynomial",
+            "value": {
+              "b": 2.0
+            }
           }
         }
       },
@@ -122,10 +127,13 @@
             }
           },
           "utility_model": {
-            "type": "Quadratic",
+            "type": "Polynomial",
             "value": {
-              "a": 0.0,
-              "b": -0.5
+              "a": 5.0,
+              "b": -4.0,
+              "c": 3.0,
+              "d": -2.0,
+              "e": 1.0
             }
           }
         }

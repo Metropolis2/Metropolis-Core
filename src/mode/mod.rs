@@ -59,9 +59,10 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 
 /// Mode of transportation available to an agent.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 #[serde(tag = "type", content = "value")]
 #[schemars(title = "Mode")]
+#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub enum Mode<T> {
     /// A mode of transportation that always provide the same utility level.
     Constant(Utility<T>),

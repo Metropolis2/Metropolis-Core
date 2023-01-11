@@ -32,7 +32,7 @@ fn get_simulation() -> Simulation<f64> {
             node_index(1),
             vehicle_index(0),
             DepartureTimeModel::Constant(Time(dt)),
-            TravelUtility::None,
+            TravelUtility::default(),
         );
         let agent = Agent::new(i, vec![Mode::Road(road)], None, ScheduleUtility::None);
         agents.push(agent);

@@ -20,7 +20,7 @@ use crate::network::NetworkParameters;
 use crate::parameters::Parameters;
 use crate::schedule_utility::ScheduleUtility;
 use crate::stop::StopCriterion;
-use crate::travel_utility::TravelUtility;
+use crate::travel_utility::{PolynomialFunction, TravelUtility};
 use crate::units::*;
 use crate::{agent::Agent, schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel};
 
@@ -80,15 +80,19 @@ pub(crate) fn example_road_mode() -> RoadMode<f64> {
     )
 }
 
-pub(crate) const fn example_travel_utility() -> TravelUtility<f64> {
-    TravelUtility::Proportional(ValueOfTime(-10.0))
+pub(crate) fn example_travel_utility() -> TravelUtility<f64> {
+    TravelUtility::Polynomial(PolynomialFunction {
+        b: -10.,
+        ..Default::default()
+    })
 }
 
-pub(crate) const fn example_travel_utility2() -> TravelUtility<f64> {
-    TravelUtility::Quadratic {
-        a: ValueOfTime(-5.0),
-        b: ValueOfTime(-2.0),
-    }
+pub(crate) fn example_travel_utility2() -> TravelUtility<f64> {
+    TravelUtility::Polynomial(PolynomialFunction {
+        b: -5.,
+        c: -2.,
+        ..Default::default()
+    })
 }
 
 pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {

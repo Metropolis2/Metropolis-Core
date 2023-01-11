@@ -11,12 +11,15 @@ Changes starting with tag [DEV] are of interest to developers only.
   `--weights` command line argument.
 - [USER] The initial iteration counter to use for the simulation can be specified in the parameters
   of the simulation (variable `init_iteration_counter`).
+- [USER] New type for the field `utility_model` for road modes: `Polynomial`, which takes as values
+  degree 0, 1, 2, 3 and 4 coefficients of a polynomial function (constant, linear, quadratic and
+  cubic functions are special cases of the `Polynomial` type).
 - [USER] Add arrival-times distribution for the last iteration in the HTML report.
 - [USER] Add `CHANGELOG.md` to release zips.
 - [USER] Add tags [USER] and [DEV] in the Changelog to specify the concerned individuals (end-users
   or developers).
 
-### Modified
+### Changed
 
 - [USER] The list of points for the piecewise-linear functions is serialized / deserialized as an
   array of arrays `[x, y]` (previously, it was an array of objects with keys `x` and `y`).
@@ -28,6 +31,11 @@ Changes starting with tag [DEV] are of interest to developers only.
   backward compatibility).
 - [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the alpha-beta-gamma
   model.
+
+### Deprecated
+
+- [USER] The types `None`, `Proportional` and `Quadratic` for field `utility_model` raise a
+  deprecated warning when used.
 
 ### Fixed
 
@@ -49,7 +57,7 @@ Changes starting with tag [DEV] are of interest to developers only.
 - [USER] Allowed / restricted edges can be specified for each vehicle type through fields
   `allowed_edges` and `restricted_edges`.
 
-### Modified
+### Changed
 
 - [DEV] In the pre-processing of the road network, a set of unique vehicle types is computed (two
   vehicle types are considered identical if they can share the same network weights and skims,

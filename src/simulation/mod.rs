@@ -45,9 +45,10 @@ use crate::units::Distribution;
 /// - A representation of the [Network], where trips can take place.
 /// - A [Parameters] instance.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
+#[serde(bound = "T: TTFNum")]
 #[schemars(title = "Simulation")]
 #[schemars(description = "")]
+#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct Simulation<T> {
     #[serde(default)]
     agents: Vec<Agent<T>>,

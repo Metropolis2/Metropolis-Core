@@ -55,8 +55,10 @@ pub enum DepartureTimeModel<T> {
 /// - A [TravelUtility] object that represents the way the travel utility of the agent is
 ///   computed for this mode.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(bound = "T: TTFNum")]
 #[schemars(title = "Road Mode")]
 #[schemars(description = "Mode of transportation for a vehicle that travels on the road network.")]
+#[schemars(bound = "T: TTFNum + JsonSchema")]
 #[schemars(example = "crate::schema::example_road_mode")]
 pub struct RoadMode<T> {
     /// Id of the origin node on the road network graph.
