@@ -46,6 +46,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   alias for backward compatibility).
 - [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the
   alpha-beta-gamma model.
+- [USER] Add attribute `readOnly` to parameters `min` and `max` of `PwlXYF` in the JSON Schemas, so
+  that the schema is consistent with the actual deserialization process.
 - [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
   terminology for the `XYF` functions.
 

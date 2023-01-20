@@ -30,8 +30,10 @@ pub struct PwlXYF<X, Y, T, S = Simplification> {
     #[schemars(with = "Vec<RawPoint<X, Y>>")]
     points: Vec<Point<X, Y>>,
     /// Minimum `y` value of the function.
+    #[schemars(skip_deserializing)]
     min: Option<Y>,
     /// Maximum `y` value of the function.
+    #[schemars(skip_deserializing)]
     max: Option<Y>,
     /// Array `[x0, x1]` representing the domain of the function.
     period: [X; 2],
