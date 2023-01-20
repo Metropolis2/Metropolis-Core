@@ -111,7 +111,7 @@ impl<T: Default> From<DeserTravelUtility<T>> for TravelUtility<T> {
     fn from(value: DeserTravelUtility<T>) -> Self {
         match value {
             DeserTravelUtility::None => {
-                warn!("Type `None` is deprecated for `utility_model` and will be removed in the future");
+                warn!("Type `None` is deprecated for `travel_utility` and will be removed in the future");
                 Self::Polynomial(PolynomialFunction {
                     a: T::default(),
                     b: T::default(),
@@ -121,7 +121,7 @@ impl<T: Default> From<DeserTravelUtility<T>> for TravelUtility<T> {
                 })
             }
             DeserTravelUtility::Proportional(a) => {
-                warn!("Type `Proportional` is deprecated for `utility_model` and will be removed in the future");
+                warn!("Type `Proportional` is deprecated for `travel_utility` and will be removed in the future");
                 Self::Polynomial(PolynomialFunction {
                     a: T::default(),
                     b: a.0,
@@ -131,7 +131,7 @@ impl<T: Default> From<DeserTravelUtility<T>> for TravelUtility<T> {
                 })
             }
             DeserTravelUtility::Quadratic { a, b } => {
-                warn!("Type `Quadratic` is deprecated for `utility_model` and will be removed in the future");
+                warn!("Type `Quadratic` is deprecated for `travel_utility` and will be removed in the future");
                 Self::Polynomial(PolynomialFunction {
                     a: T::default(),
                     b: a.0,

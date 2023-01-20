@@ -72,7 +72,7 @@
               }
             }
           },
-          "utility_model": {
+          "travel_utility": {
             "type": "Polynomial",
             "value": {
               "a": 1.0
@@ -99,7 +99,7 @@
               }
             }
           },
-          "utility_model": {
+          "travel_utility": {
             "type": "Polynomial",
             "value": {
               "b": 2.0
@@ -126,7 +126,7 @@
               }
             }
           },
-          "utility_model": {
+          "travel_utility": {
             "type": "Polynomial",
             "value": {
               "a": 5.0,

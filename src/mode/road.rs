@@ -58,9 +58,9 @@ pub struct RoadMode<T> {
     /// Model used for the departure-time choice.
     departure_time_model: DepartureTimeModel<T>,
     /// Travel-utility model describing how travel utility is computed.
-    // TODO: Rename this to `travel_utility` (with an alias for `utility_model`).
     #[serde(default)]
-    utility_model: TravelUtility<T>,
+    #[serde(alias = "utility_model")]
+    travel_utility: TravelUtility<T>,
     /// Schedule utility at origin of the trip (a function of the departure time from origin).
     #[serde(default)]
     origin_schedule_utility: ScheduleUtility<T>,
@@ -77,7 +77,7 @@ impl<T> RoadMode<T> {
         destination: NodeIndex,
         vehicle: VehicleIndex,
         departure_time_model: DepartureTimeModel<T>,
-        utility_model: TravelUtility<T>,
+        travel_utility: TravelUtility<T>,
         origin_schedule_utility: ScheduleUtility<T>,
         destination_schedule_utility: ScheduleUtility<T>,
     ) -> Self {
@@ -86,7 +86,7 @@ impl<T> RoadMode<T> {
             destination,
             vehicle,
             departure_time_model,
-            utility_model,
+            travel_utility,
             origin_schedule_utility,
             destination_schedule_utility,
         }
@@ -111,7 +111,7 @@ impl<T> RoadMode<T> {
 impl<T: TTFNum> RoadMode<T> {
     /// Return the travel utility for this mode, given the total travel time.
     pub fn get_travel_utility(&self, tt: Time<T>) -> Utility<T> {
-        self.utility_model.get_travel_utility(tt)
+        self.travel_utility.get_travel_utility(tt)
     }
 
     /// Return the total utility of a trip given the departure time, arrival time and travel time.

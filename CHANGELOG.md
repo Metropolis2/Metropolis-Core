@@ -42,6 +42,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   `[e, t]`, where `e` is the edge index and `t` is the entry time on the edge (previously it was an
   array of objects with keys `edge` and `edge_entry`).
 - [USER] Complete the example so that it include all possible input formats.
+- [INPUT] Rename attribute `utility_model` of `Road` mode to `travel_utility` for clarity
+  (`utility_model` is set as an alias for backward compatibility).
 - [INPUT] Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an
   alias for backward compatibility).
 - [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the
