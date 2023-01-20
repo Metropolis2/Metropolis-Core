@@ -15,7 +15,6 @@ use ttf::TTFNum;
 
 use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
 use crate::network::NetworkSkim;
-use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::results::PreDayResult;
 use crate::simulation::PreprocessingData;
 use crate::units::NoUnit;
@@ -27,7 +26,6 @@ use crate::units::NoUnit;
 /// - A set of [modes](Mode) that he/she can take to perform his/her trip.
 /// - A [ChoiceModel] describing how his/her mode is chosen, given the expected utilities for each
 /// mode.
-/// - A [ScheduleUtility] model describing his/her schedule preferences.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound = "T: TTFNum")]
 #[schemars(title = "Agent")]
@@ -46,9 +44,6 @@ pub struct Agent<T> {
     /// When not specified, the first mode is always chosen.
     #[serde(default)]
     mode_choice: Option<ChoiceModel<NoUnit<T>>>,
-    /// Schedule-utility preferences.
-    #[serde(default)]
-    schedule_utility: ScheduleUtility<T>,
 }
 
 impl<T> Agent<T> {
@@ -57,24 +52,17 @@ impl<T> Agent<T> {
         id: usize,
         modes: Vec<Mode<T>>,
         mode_choice: Option<ChoiceModel<NoUnit<T>>>,
-        schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         Agent {
             id,
             modes,
             mode_choice,
-            schedule_utility,
         }
     }
 
     /// Returns an iterator over the modes of the agent.
     pub fn iter_modes(&self) -> impl Iterator<Item = &Mode<T>> {
         self.modes.iter()
-    }
-
-    /// Returns the schedule-utility preferences of the agent.
-    pub const fn schedule_utility(&self) -> &ScheduleUtility<T> {
-        &self.schedule_utility
     }
 }
 
@@ -99,13 +87,9 @@ impl<T: TTFNum> Agent<T> {
             if let Some(choice_model) = &self.mode_choice {
                 // Compute the mode-specific expected utilities and get the callback functions.
                 let (expected_utilities, mut callbacks) = itertools::process_results(
-                    self.modes.iter().map(|mode| {
-                        mode.make_pre_day_choice(
-                            exp_skims,
-                            &self.schedule_utility,
-                            &preprocess_data.network,
-                        )
-                    }),
+                    self.modes
+                        .iter()
+                        .map(|mode| mode.make_pre_day_choice(exp_skims, &preprocess_data.network)),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
                 )?;
                 // Get the id of the chosen mode and the global expected utility, from the mode choice
@@ -122,11 +106,8 @@ impl<T: TTFNum> Agent<T> {
             } else {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
-                let (expected_utility, callback) = chosen_mode.make_pre_day_choice(
-                    exp_skims,
-                    &self.schedule_utility,
-                    &preprocess_data.network,
-                )?;
+                let (expected_utility, callback) =
+                    chosen_mode.make_pre_day_choice(exp_skims, &preprocess_data.network)?;
                 let mode_result = callback(alloc)?;
                 Ok(PreDayResult::new(
                     mode_index(0),
@@ -181,24 +162,13 @@ mod tests {
     use super::*;
     use crate::mode::mode_index;
     use crate::mode::PreDayChoices;
-    use crate::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
-    use crate::units::{Time, Utility, ValueOfTime};
+    use crate::units::Utility;
 
     fn get_agent() -> Agent<f64> {
         let modes = vec![Mode::Constant(Utility(10.))];
         let choice_model =
             ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)));
-        let schedule_utility = ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(
-                Time(8. * 60. * 60.),
-                Time(8. * 60. * 60.),
-                ValueOfTime(5.),
-                ValueOfTime(20.),
-                true,
-            )
-            .unwrap(),
-        );
-        Agent::new(1, modes, Some(choice_model), schedule_utility)
+        Agent::new(1, modes, Some(choice_model))
     }
 
     #[test]

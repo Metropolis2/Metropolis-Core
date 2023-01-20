@@ -3,38 +3,63 @@
 Changes starting with tag [USER] are of interest to end-users.
 Changes starting with tag [DEV] are of interest to developers only.
 
+The tag [INPUT] indicates changes affecting the input files.
+The tag [OUTPUT] indicates changes affecting the output files.
+
 ## [Unreleased]
 
 ### Added
 
+- [INPUT] New mode: `FixedTTF`. This mode is useful for modes without congestion (or with exogenous
+  congestion), when the travel-time function between the start and end points are known. The
+  departure time of a trip with this mode can be exogenous or endogenous. The trip can be composed
+  of multiple legs (with optionnaly, different travel and schedule utility for each leg).
+- [INPUT] For `Road` mode, the schedule utility can now be specified with parameters
+  `origin_schedule_utility` and `destination_schedule_utility`. Previously, the schedule utility was
+  specified at the agent level, with parameter `schedule_utility`.
 - [USER] The simulation can be run with other initial weights than free flow, with the new
   `--weights` command line argument.
-- [USER] The initial iteration counter to use for the simulation can be specified in the parameters
-  of the simulation (variable `init_iteration_counter`).
-- [USER] New type for the field `utility_model` for road modes: `Polynomial`, which takes as values
-  degree 0, 1, 2, 3 and 4 coefficients of a polynomial function (constant, linear, quadratic and
-  cubic functions are special cases of the `Polynomial` type).
-- [USER] Add arrival-times distribution for the last iteration in the HTML report.
+- [INPUT] The initial iteration counter to use for the simulation can be specified in the
+  parameters of the simulation (variable `init_iteration_counter`).
+- [INPUT] New type for the field `utility_model` for road modes: `Polynomial`, which takes as
+  values degree 0, 1, 2, 3 and 4 coefficients of a polynomial function (constant, linear, quadratic
+  and cubic functions are special cases of the `Polynomial` type).
+- [OUTPUT] Add arrival-times distribution for the last iteration in the HTML report.
 - [USER] Add `CHANGELOG.md` to release zips.
 - [USER] Add tags [USER] and [DEV] in the Changelog to specify the concerned individuals (end-users
-  or developers).
+- [USER] Add tags [INPUT] and [OUTPUT] in the Changelog to indicate that input or output files are
+  affected.
+- [DEV] Add a way not to simplify a `PwlXYF` when building it so that all breakpoints are kept.
+- [DEV] Add functions `constrain_to_domain`, `add_x_breakpoints`, `add_z_breakpoints`,
+  `into_points`, `into_xs_and_ys` and `iter_eval` to `PwlXYF`.
 
 ### Changed
 
-- [USER] The list of points for the piecewise-linear functions is serialized / deserialized as an
-  array of arrays `[x, y]` (previously, it was an array of objects with keys `x` and `y`).
-- [USER] The route taken by the agent (in the agent results) is serialized as an array of arrays
+- [INPUT] [OUTPUT] The list of points for the piecewise-linear functions is serialized /
+  deserialized as an array of arrays `[x, y]` (previously, it was an array of objects with keys `x`
+  and `y`).
+- [OUTPUT] The route taken by the agent (in the agent results) is serialized as an array of arrays
   `[e, t]`, where `e` is the edge index and `t` is the entry time on the edge (previously it was an
   array of objects with keys `edge` and `edge_entry`).
-- [USER] Completed the example so that it include all possible input formats.
-- [USER] Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an alias for
-  backward compatibility).
-- [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the alpha-beta-gamma
-  model.
+- [USER] Complete the example so that it include all possible input formats.
+- [INPUT] Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an
+  alias for backward compatibility).
+- [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the
+  alpha-beta-gamma model.
+- [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
+  terminology for the `XYF` functions.
+
+### Removed
+
+- [INPUT] Parameters `schedule_utility` for an Agent is removed. The schedule utility is now
+  specified at the mode-level.
+- [Input] The parameter `desired_arrival` for `AlphaBetaGammaModel` is removed. The schedule utility
+  is now explicitely specified for either the origin or destination (or intermediary stop) making
+  this parameter useless.
 
 ### Deprecated
 
-- [USER] The types `None`, `Proportional` and `Quadratic` for field `utility_model` raise a
+- [INPUT] The types `None`, `Proportional` and `Quadratic` for field `utility_model` raise a
   deprecated warning when used.
 
 ### Fixed

@@ -29,6 +29,7 @@ use self::results::{
     RunningTimes, SimulationResults,
 };
 use crate::agent::Agent;
+use crate::mode::fixed_ttf::AggregateFixedTTFResults;
 use crate::mode::road::AggregateRoadResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
 use crate::network::road_network::RoadNetwork;
@@ -319,10 +320,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         debug!("Processing agent results");
         for (i, r) in results.iter_mut().enumerate() {
             let chosen_mode = r.pre_day_results().get_mode_index();
-            r.process_results(
-                self.agents[i].schedule_utility(),
-                &self.agents[i][chosen_mode],
-            );
+            r.process_results(&self.agents[i][chosen_mode]);
         }
         (weights, results)
     }
@@ -354,6 +352,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         )
         .unwrap();
         let mut road_entries = Vec::with_capacity(self.agents.len());
+        let mut fixed_ttf_entries = Vec::with_capacity(self.agents.len());
         let mut cst_entries = Vec::with_capacity(self.agents.len());
         if let Some(prev_agent_results) = prev_agent_results_opt {
             for ((agent_id, agent_result), prev_agent_result) in
@@ -364,6 +363,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                     Mode::Road(road_mode) => {
                         road_entries.push((road_mode, agent_result, Some(prev_agent_result)))
                     }
+                    Mode::FixedTTF(mode) => fixed_ttf_entries.push((mode, agent_result)),
                     Mode::Constant(_) => cst_entries.push(agent_result),
                 }
             }
@@ -372,6 +372,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 let mode_id = agent_result.pre_day_results().get_mode_index();
                 match &self.agents[agent_id.index()][mode_id] {
                     Mode::Road(road_mode) => road_entries.push((road_mode, agent_result, None)),
+                    Mode::FixedTTF(mode) => fixed_ttf_entries.push((mode, agent_result)),
                     Mode::Constant(_) => cst_entries.push(agent_result),
                 }
             }
@@ -386,6 +387,13 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                     .expect("Found RoadResults but no road network"),
             ))
         };
+        let fixed_ttf_results = if fixed_ttf_entries.is_empty() {
+            None
+        } else {
+            Some(AggregateFixedTTFResults::from_agent_results(
+                fixed_ttf_entries,
+            ))
+        };
         let cst_results = if cst_entries.is_empty() {
             None
         } else {
@@ -393,6 +401,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         };
         let mode_results = AggregateModeResults {
             road: road_results,
+            fixed_ttf: fixed_ttf_results,
             constant: cst_results,
         };
         AggregateResults {

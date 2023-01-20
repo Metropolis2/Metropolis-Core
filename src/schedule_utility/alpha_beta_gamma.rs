@@ -8,11 +8,17 @@ use anyhow::anyhow;
 use num_traits::Zero;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use ttf::{TTFNum, TTF};
+use ttf::TTFNum;
 
 use crate::units::{Time, Utility, ValueOfTime};
 
 /// Structure to compute the schedule-delay utility from Vickrey's alpha-beta-gamma model.
+///
+/// The schedule utility is:
+///
+/// - Zero if the threshold time `t` is between the lower and higher t*.
+/// - Equal to `-beta * (t_star_low - t)` if `t` is smaller than the lower t*.
+/// - Equal to `-gamma * (t - t_star_high)` if `t` is larger than the higher t*.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[schemars(title = "Alpha-Beta-Gamma Model")]
 #[schemars(
@@ -29,10 +35,6 @@ pub struct AlphaBetaGammaModel<T> {
     beta: ValueOfTime<T>,
     /// The penalty for late arrivals (or departures), in utility per second.
     gamma: ValueOfTime<T>,
-    /// If `true`, `tstar_low` and `t_star_high` represent the desired arrival-time interval,
-    /// otherwise they represent the desired departure-time interval.
-    #[serde(default = "default_is_true")]
-    desired_arrival: bool,
 }
 
 impl<T: TTFNum> AlphaBetaGammaModel<T> {
@@ -42,24 +44,21 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
         t_star_high: Time<T>,
         beta: ValueOfTime<T>,
         gamma: ValueOfTime<T>,
-        desired_arrival: bool,
     ) -> anyhow::Result<AlphaBetaGammaModel<T>> {
         let model = UncheckedAlphaBetaGammaModel {
             t_star_low,
             t_star_high,
             beta,
             gamma,
-            desired_arrival,
         };
         AlphaBetaGammaModel::try_from(model)
     }
 
-    /// Return the schedule-delay utility given the departure time (if `desired_arrival` is
-    /// `false`) or the arrival time (otherwise).
+    /// Returns the schedule-delay utility given the threshold time.
     ///
     /// The schedule-delay cost is `c = beta * [t_star_low - t]_+ + gamma * [t - t_star_high]_+`
     /// The schedule-delay utility is `-c`.
-    fn get_utility_from_time(&self, at_time: Time<T>) -> Utility<T> {
+    pub fn get_utility(&self, at_time: Time<T>) -> Utility<T> {
         let cost = if at_time < self.t_star_low {
             self.beta * (self.t_star_low - at_time)
         } else if at_time > self.t_star_high {
@@ -70,42 +69,16 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
         -cost
     }
 
-    /// Return the point (departure time, travel time) such that arrival time is equal to `t_star`
-    /// (for desired arrival time) or such that departure time is equal to `t_star` (for desired
-    /// departure time).
-    fn get_kink_at(&self, t_star: Time<T>, ttf: &TTF<Time<T>>) -> Option<(Time<T>, Time<T>)> {
-        if self.desired_arrival {
-            ttf.departure_time_with_arrival(t_star)
-                .map(|dt| (dt, t_star - dt))
-        } else {
-            Some((t_star, ttf.eval(t_star)))
-        }
-    }
-
-    /// Return the breakpoints (departure time, travel time) at the kinks of the schedule-utility
+    /// Returns the breakpoints (departure time, travel time) at the kinks of the schedule-utility
     /// function.
     ///
     /// The kinks are the points such that arrival time is equal to desired arrival time or
     /// departure time is equal to desired departure time.
-    pub fn get_breakpoints(&self, ttf: &TTF<Time<T>>) -> Vec<(Time<T>, Time<T>)> {
-        let mut breakpoints = Vec::with_capacity(2);
-        if let Some(kink) = self.get_kink_at(self.t_star_low, ttf) {
-            breakpoints.push(kink);
-        }
-        if self.t_star_low != self.t_star_high {
-            if let Some(kink) = self.get_kink_at(self.t_star_high, ttf) {
-                breakpoints.push(kink);
-            }
-        }
-        breakpoints
-    }
-
-    /// Return the schedule-utility given the departure time and arrival time.
-    pub fn get_utility(&self, departure_time: Time<T>, arrival_time: Time<T>) -> Utility<T> {
-        if self.desired_arrival {
-            self.get_utility_from_time(arrival_time)
+    pub fn get_breakpoints(&self) -> Vec<Time<T>> {
+        if self.t_star_low.approx_ne(&self.t_star_high) {
+            vec![self.t_star_low, self.t_star_high]
         } else {
-            self.get_utility_from_time(departure_time)
+            vec![self.t_star_low]
         }
     }
 }
@@ -121,10 +94,6 @@ pub struct UncheckedAlphaBetaGammaModel<T> {
     beta: ValueOfTime<T>,
     /// The penalty for late arrivals (or departures), in utility per second.
     gamma: ValueOfTime<T>,
-    /// If `true`, `tstar_low` and `t_star_high` represent the desired arrival-time interval,
-    /// otherwise they represent the desired departure-time interval.
-    #[serde(default = "default_is_true")]
-    desired_arrival: bool,
 }
 
 impl<T: TTFNum> TryFrom<UncheckedAlphaBetaGammaModel<T>> for AlphaBetaGammaModel<T> {
@@ -141,46 +110,30 @@ impl<T: TTFNum> TryFrom<UncheckedAlphaBetaGammaModel<T>> for AlphaBetaGammaModel
             t_star_high: value.t_star_high,
             beta: value.beta,
             gamma: value.gamma,
-            desired_arrival: value.desired_arrival,
         })
     }
-}
-
-const fn default_is_true() -> bool {
-    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn get_model(desired_arrival: bool) -> AlphaBetaGammaModel<f64> {
+    fn get_model() -> AlphaBetaGammaModel<f64> {
         AlphaBetaGammaModel {
             t_star_low: Time(10.),
             t_star_high: Time(20.),
             beta: ValueOfTime(5.),
             gamma: ValueOfTime(20.),
-            desired_arrival,
         }
     }
 
     #[test]
     fn new_model_test() {
-        let model = AlphaBetaGammaModel::new(
-            Time(10.),
-            Time(20.),
-            ValueOfTime(5.),
-            ValueOfTime(5.),
-            false,
-        );
+        let model =
+            AlphaBetaGammaModel::new(Time(10.), Time(20.), ValueOfTime(5.), ValueOfTime(5.));
         assert!(model.is_ok());
-        let model = AlphaBetaGammaModel::new(
-            Time(20.),
-            Time(10.),
-            ValueOfTime(5.),
-            ValueOfTime(5.),
-            false,
-        );
+        let model =
+            AlphaBetaGammaModel::new(Time(20.), Time(10.), ValueOfTime(5.), ValueOfTime(5.));
         assert!(model.is_err());
     }
 
@@ -205,66 +158,29 @@ mod tests {
     }
 
     #[test]
-    fn get_utility_from_time_test() {
-        let model = get_model(true);
-        assert_eq!(model.get_utility_from_time(Time(5.)), Utility(-25.));
-        assert_eq!(model.get_utility_from_time(Time(15.)), Utility(0.));
-        assert_eq!(model.get_utility_from_time(Time(25.)), Utility(-100.));
-    }
-
-    #[test]
     fn get_utility_test() {
-        let model = get_model(true);
-        // Early arrival by 5 seconds.
-        assert_eq!(model.get_utility(Time(5.), Time(5.)), Utility(-25.));
-        // On-time arrival.
-        assert_eq!(model.get_utility(Time(5.), Time(10.)), Utility(0.));
-        // On-time arrival.
-        assert_eq!(model.get_utility(Time(10.), Time(15.)), Utility(0.));
-        // On-time arrival.
-        assert_eq!(model.get_utility(Time(25.), Time(20.)), Utility(0.));
-        // Late arrival by 5 seconds.
-        assert_eq!(model.get_utility(Time(15.), Time(25.)), Utility(-100.));
-        let model = get_model(false);
-        // Early departure by 5 seconds.
-        assert_eq!(model.get_utility(Time(5.), Time(10.)), Utility(-25.));
-        // On-time departure.
-        assert_eq!(model.get_utility(Time(10.), Time(15.)), Utility(0.));
-        // On-time departure.
-        assert_eq!(model.get_utility(Time(15.), Time(25.)), Utility(0.));
-        // On-time departure.
-        assert_eq!(model.get_utility(Time(20.), Time(25.)), Utility(0.));
-        // Late departure by 5 seconds.
-        assert_eq!(model.get_utility(Time(25.), Time(15.)), Utility(-100.));
-    }
-
-    #[test]
-    fn get_kink_at_test() {
-        let ttf = TTF::Constant(Time(10.));
-        let model = get_model(true);
-        assert_eq!(
-            model.get_kink_at(Time(15.), &ttf),
-            Some((Time(5.), Time(10.)))
-        );
-        let model = get_model(false);
-        assert_eq!(
-            model.get_kink_at(Time(15.), &ttf),
-            Some((Time(15.), Time(10.)))
-        );
+        let model = get_model();
+        assert_eq!(model.get_utility(Time(5.)), Utility(-25.));
+        assert_eq!(model.get_utility(Time(15.)), Utility(0.));
+        assert_eq!(model.get_utility(Time(25.)), Utility(-100.));
     }
 
     #[test]
     fn get_breakpoints_test() {
-        let ttf = TTF::Constant(Time(10.));
-        let model = get_model(true);
-        assert_eq!(
-            model.get_breakpoints(&ttf),
-            vec![(Time(0.), Time(10.)), (Time(10.), Time(10.))]
-        );
-        let model = get_model(false);
-        assert_eq!(
-            model.get_breakpoints(&ttf),
-            vec![(Time(10.), Time(10.)), (Time(20.), Time(10.))]
-        );
+        let model = AlphaBetaGammaModel {
+            t_star_low: Time(10.),
+            t_star_high: Time(20.),
+            beta: ValueOfTime(5.),
+            gamma: ValueOfTime(20.),
+        };
+        assert_eq!(model.get_breakpoints(), vec![Time(10.), Time(20.)]);
+
+        let model = AlphaBetaGammaModel {
+            t_star_low: Time(10.),
+            t_star_high: Time(10.),
+            beta: ValueOfTime(5.),
+            gamma: ValueOfTime(20.),
+        };
+        assert_eq!(model.get_breakpoints(), vec![Time(10.)]);
     }
 }

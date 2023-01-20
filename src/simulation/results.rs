@@ -19,7 +19,6 @@ use crate::agent::{agent_index, AgentIndex};
 use crate::event::{Event, EventQueue};
 use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
 use crate::network::{NetworkSkim, NetworkWeights};
-use crate::schedule_utility::ScheduleUtility;
 use crate::units::{Distribution, Time, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
@@ -325,21 +324,26 @@ impl<T: Copy> AgentResult<T> {
 }
 
 impl<T: TTFNum> AgentResult<T> {
+    /// Returns the travel time of the agent.
+    pub fn travel_time(&self) -> Option<Time<T>> {
+        if let (Some(td), Some(ta)) = (self.departure_time, self.arrival_time) {
+            Some(ta - td)
+        } else {
+            None
+        }
+    }
+
     /// Process the results of the agent.
     ///
     /// The utility is computed from the given [ScheduleUtility] and [Mode] description, and the
     /// stored [ModeResults].
-    pub fn process_results(&mut self, schedule_utility: &ScheduleUtility<T>, mode: &Mode<T>) {
+    pub fn process_results(&mut self, mode: &Mode<T>) {
         match &mut self.mode_results {
             ModeResults::Road(road_results) => road_results.process_results(),
             ModeResults::None => (),
         }
-        self.utility = Some(mode.get_utility(
-            &self.mode_results,
-            schedule_utility,
-            self.departure_time,
-            self.arrival_time,
-        ));
+        self.utility =
+            Some(mode.get_utility(&self.mode_results, self.departure_time, self.arrival_time));
     }
 }
 

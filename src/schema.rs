@@ -8,10 +8,12 @@ use hashbrown::HashSet;
 use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use ttf::{PwlTTF, TTF};
 
 use crate::learning::{ExponentialLearningModel, LearningModel};
-use crate::mode::road::{DepartureTimeModel, RoadMode};
-use crate::mode::Mode;
+use crate::mode::fixed_ttf::{FixedTTFLeg, FixedTTFMode};
+use crate::mode::road::RoadMode;
+use crate::mode::{DepartureTimeModel, Mode};
 use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
@@ -63,7 +65,6 @@ pub(crate) fn example_agent() -> Agent<f64> {
             NoUnit(0.5),
             NoUnit(2.0),
         ))),
-        example_schedule_utility(),
     )
 }
 
@@ -77,6 +78,46 @@ pub(crate) fn example_road_mode() -> RoadMode<f64> {
             choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(4.0))),
         },
         example_travel_utility(),
+        ScheduleUtility::None,
+        example_schedule_utility(),
+    )
+}
+
+pub(crate) fn example_fixed_ttf_mode() -> FixedTTFMode<f64> {
+    let leg0 = FixedTTFLeg::new(
+        TTF::Constant(Time(10.0)),
+        Time(5.0),
+        TravelUtility::default(),
+        ScheduleUtility::None,
+    );
+    let leg1 = FixedTTFLeg::new(
+        TTF::Piecewise(PwlTTF::from_x_and_y(
+            vec![Time(0.0), Time(100.0), Time(200.0)],
+            vec![Time(10.0), Time(15.0), Time(10.0)],
+        )),
+        Time(0.0),
+        TravelUtility::default(),
+        ScheduleUtility::AlphaBetaGamma(
+            AlphaBetaGammaModel::new(
+                Time(120.0),
+                Time(120.0),
+                ValueOfTime(5.0),
+                ValueOfTime(20.0),
+            )
+            .unwrap(),
+        ),
+    );
+    FixedTTFMode::new(
+        vec![leg0, leg1],
+        DepartureTimeModel::ContinuousChoice {
+            period: Interval([Time(0.0), Time(200.0)]),
+            choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(1.0))),
+        },
+        TravelUtility::Polynomial(PolynomialFunction {
+            b: -10.0,
+            ..Default::default()
+        }),
+        ScheduleUtility::None,
     )
 }
 
@@ -102,7 +143,6 @@ pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {
             Time(8.25 * 3800.0),
             ValueOfTime(5.0),
             ValueOfTime(20.0),
-            true,
         )
         .unwrap(),
     )

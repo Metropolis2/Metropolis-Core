@@ -137,6 +137,55 @@
             }
           }
         }
+      },
+      {
+        "type": "FixedTTF",
+        "value": {
+          "legs": [
+            {
+              "ttf": 5.0
+            },
+            {
+              "ttf": {
+                "points": [
+                  [0.0, 10.0],
+                  [50.0, 15.0],
+                  [100.0, 10.0]
+                ],
+                "period": [0.0, 100.0]
+              },
+              "stopping_time": 5.0,
+              "travel_utility": {
+                "type": "Polynomial",
+                "value": {
+                  "b": -2.0
+                }
+              },
+              "schedule_utility": {
+                "type": "AlphaBetaGamma",
+                "value": {
+                  "t_star_low": 30.0,
+                  "t_star_high": 30.0,
+                  "beta": 1.0,
+                  "gamma": 4.0
+                }
+              }
+            }
+          ],
+          "departure_time_model": {
+            "type": "Constant",
+            "value": 10.0
+          },
+          "origin_schedule_utility": {
+            "type": "AlphaBetaGamma",
+            "value": {
+              "t_star_low": 5.0,
+              "t_star_high": 15.0,
+              "beta": 1.0,
+              "gamma": 4.0
+            }
+          }
+        }
       }
     ]
   }

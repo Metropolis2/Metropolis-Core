@@ -19,6 +19,7 @@
 //! in miles per second.
 use std::cmp::Ordering;
 use std::fmt;
+use std::iter;
 use std::num::FpCategory;
 use std::ops::*;
 
@@ -351,6 +352,14 @@ macro_rules! impl_ttf_on_unit(
             impl<T> From<T> for $t<T> {
                 fn from(value: T) -> $t<T> {
                     $t(value)
+                }
+            }
+
+            impl<T: TTFNum> iter::Sum for $t<T> {
+                fn sum<I>(iter: I) -> Self
+                    where I: Iterator<Item = $t<T>>
+                {
+                    iter.fold($t::zero(), |a, b| a + b)
                 }
             }
         )*

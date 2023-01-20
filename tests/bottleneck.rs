@@ -6,8 +6,8 @@
 use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
-use metropolis::mode::road::{DepartureTimeModel, RoadMode};
-use metropolis::mode::Mode;
+use metropolis::mode::road::RoadMode;
+use metropolis::mode::{DepartureTimeModel, Mode};
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
@@ -33,8 +33,10 @@ fn get_simulation() -> Simulation<f64> {
             vehicle_index(0),
             DepartureTimeModel::Constant(Time(dt)),
             TravelUtility::default(),
+            ScheduleUtility::None,
+            ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Road(road)], None, ScheduleUtility::None);
+        let agent = Agent::new(i, vec![Mode::Road(road)], None);
         agents.push(agent);
     }
 

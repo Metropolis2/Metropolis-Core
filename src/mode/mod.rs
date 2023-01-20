@@ -7,18 +7,20 @@
 use std::fmt;
 
 use anyhow::{anyhow, Result};
-use road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
+use choice::ContinuousChoiceModel;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
+use self::fixed_ttf::{AggregateFixedTTFResults, FixedTTFMode};
+use self::road::{AggregateRoadResults, RoadChoiceAllocation, RoadChoices, RoadMode, RoadResults};
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::{NetworkPreprocessingData, NetworkSkim};
-use crate::schedule_utility::ScheduleUtility;
 use crate::simulation::results::AgentResult;
-use crate::units::{Distribution, Time, Utility};
+use crate::units::{Distribution, Interval, NoUnit, Time, Utility};
 
+pub mod fixed_ttf;
 pub mod road;
 
 /// Mode identifier.
@@ -66,6 +68,12 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 pub enum Mode<T> {
     /// A mode of transportation that always provide the same utility level.
     Constant(Utility<T>),
+    /// A mode of transportation with a fixed travel time function.
+    ///
+    /// This can represent modes with no congestion or with exogenous congestion (i.e., the
+    /// travel-time function does not vary from iteration to iteration), but where the travel time
+    /// can (optionnaly) vary according to the departure time.
+    FixedTTF(FixedTTFMode<T>),
     /// A trip with a vehicle on the road network, with potential congestion.
     Road(RoadMode<T>),
 }
@@ -74,6 +82,7 @@ impl<T> fmt::Display for Mode<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Constant(_) => write!(f, "Constant"),
+            Self::FixedTTF(_) => write!(f, "FixedTTF"),
             Self::Road(_) => write!(f, "Road"),
         }
     }
@@ -85,22 +94,21 @@ impl<T: TTFNum> Mode<T> {
     pub fn make_pre_day_choice<'a>(
         &'a self,
         exp_skims: &'a NetworkSkim<T>,
-        schedule_utility: &ScheduleUtility<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
         match self {
             Self::Constant(u) => Ok((*u, Box::new(|_| Ok(PreDayChoices::None)))),
+            Self::FixedTTF(mode) => {
+                let (u, dt) = mode.get_pre_day_choice()?;
+                Ok((u, Box::new(move |_| Ok(PreDayChoices::FixedTTF(dt)))))
+            }
             Self::Road(mode) => {
                 let rn_skims = &exp_skims.get_road_network().ok_or_else(|| {
             anyhow!(
                 "Cannot make pre-day choice for road mode when there is no skims for the road network"
             )
         })?;
-                mode.make_pre_day_choice(
-                    rn_skims,
-                    schedule_utility,
-                    preprocess_data.get_road_network().unwrap(),
-                )
+                mode.make_pre_day_choice(rn_skims, preprocess_data.get_road_network().unwrap())
             }
         }
     }
@@ -114,12 +122,15 @@ impl<T: TTFNum> Mode<T> {
     pub fn get_utility(
         &self,
         results: &ModeResults<T>,
-        schedule_utility: &ScheduleUtility<T>,
         departure_time: Option<Time<T>>,
         arrival_time: Option<Time<T>>,
     ) -> Utility<T> {
         match self {
             Self::Constant(u) => *u,
+            Self::FixedTTF(mode) => mode
+                .get_total_utility(departure_time.expect(
+                    "Cannot compute utility of mode with fixed TTF with no departure time",
+                )),
             Self::Road(mode) => {
                 if let ModeResults::Road(road_results) = results {
                     debug_assert!(
@@ -132,7 +143,6 @@ impl<T: TTFNum> Mode<T> {
                     );
                     mode.get_utility_from_results(
                         road_results,
-                        schedule_utility,
                         departure_time.expect("Cannot compute road utility with no departure time"),
                         arrival_time.expect("Cannot compute road utility with no arrival time"),
                     )
@@ -155,12 +165,29 @@ impl<T: TTFNum> Mode<T> {
 pub type ModeCallback<'a, T> =
     Box<dyn FnOnce(&mut PreDayChoiceAllocation<T>) -> Result<PreDayChoices<T>> + 'a>;
 
+/// Model used to compute the chosen departure time.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "value")]
+pub enum DepartureTimeModel<T> {
+    /// The departure time is always equal to the given value.
+    Constant(Time<T>),
+    /// The departure time is chosen according to a continuous choice model.
+    ContinuousChoice {
+        /// Interval in which the departure time is chosen.
+        period: Interval<T>,
+        /// Continuous choice model.
+        choice_model: ContinuousChoiceModel<NoUnit<T>>,
+    },
+}
+
 /// Enum representing the pre-day choices for a given mode.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "value")]
 pub enum PreDayChoices<T> {
     /// Choices when a road mode is chosen.
     Road(RoadChoices<T>),
+    /// Departure time chosen for a [FixedTTFMode].
+    FixedTTF(Time<T>),
     /// Alternative for a mode with no pre-day choice.
     None,
 }
@@ -171,6 +198,7 @@ impl<T: TTFNum + 'static> PreDayChoices<T> {
     pub fn get_event(&self, agent: AgentIndex) -> Option<Box<dyn Event<T>>> {
         match self {
             Self::Road(choices) => choices.get_event(agent),
+            Self::FixedTTF(_) => None,
             Self::None => None,
         }
     }
@@ -184,6 +212,7 @@ impl<T: TTFNum> PreDayChoices<T> {
     pub fn init_mode_results(&self) -> ModeResults<T> {
         match self {
             Self::Road(choices) => ModeResults::Road(choices.init_mode_results()),
+            Self::FixedTTF(_) => ModeResults::None,
             Self::None => ModeResults::None,
         }
     }
@@ -211,6 +240,8 @@ pub enum ModeResults<T> {
 pub struct AggregateModeResults<T> {
     /// Results specific to road modes.
     pub road: Option<AggregateRoadResults<T>>,
+    /// Results specific to modes with fixed TTF.
+    pub fixed_ttf: Option<AggregateFixedTTFResults<T>>,
     /// Results specific to constant modes.
     pub constant: Option<AggregateConstantResults<T>>,
 }

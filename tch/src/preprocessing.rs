@@ -744,7 +744,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             // The two intervals overlap.
             let corridor = self.get_profile_interval_corridor(to, &mut alloc.interval_search);
             // Sample search.
-            if let Some(departure_time) = edge_score.middle_departure_time() {
+            if let Some(departure_time) = edge_score.middle_x() {
                 self.run_sample_search(from, to, departure_time, &corridor, alloc);
                 if let Some(alt_arrival_time) = alloc.sample_search.get_label(&to) {
                     if alt_arrival_time

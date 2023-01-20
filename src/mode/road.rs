@@ -5,15 +5,14 @@
 
 //! Everything related to road modes of transportation.
 use anyhow::{anyhow, Result};
-use choice::ContinuousChoiceModel;
 use hashbrown::HashSet;
 use num_traits::{Float, Zero};
 use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ttf::{PwlTTF, PwlXYF, TTFNum, TTF};
+use ttf::{PwlXYF, TTFNum, TTF};
 
-use super::{ModeCallback, ModeResults, PreDayChoices};
+use super::{DepartureTimeModel, ModeCallback, ModeResults, PreDayChoices};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventQueue};
 use crate::mode::PreDayChoiceAllocation;
@@ -28,21 +27,6 @@ use crate::simulation::results::AgentResult;
 use crate::travel_utility::TravelUtility;
 use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
 
-/// Model used to compute the chosen departure time.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "value")]
-pub enum DepartureTimeModel<T> {
-    /// The departure time is always equal to the given value.
-    Constant(Time<T>),
-    /// The departure time is chosen according to a continuous choice model.
-    ContinuousChoice {
-        /// Interval in which the departure time is chosen.
-        period: Interval<T>,
-        /// Continuous choice model.
-        choice_model: ContinuousChoiceModel<NoUnit<T>>,
-    },
-}
-
 /// Representation of the mode of transportation for a vehicle that travels on the road network.
 ///
 /// A road mode of transportation has the following attributes:
@@ -54,6 +38,8 @@ pub enum DepartureTimeModel<T> {
 ///   this mode.
 /// - A [TravelUtility] object that represents the way the travel utility of the agent is
 ///   computed for this mode.
+/// - A [ScheduleUtility] object to compute the schedule utility at origin of the trip.
+/// - A [ScheduleUtility] object to compute the schedule utility at destination of the trip.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound = "T: TTFNum")]
 #[schemars(title = "Road Mode")]
@@ -72,8 +58,16 @@ pub struct RoadMode<T> {
     /// Model used for the departure-time choice.
     departure_time_model: DepartureTimeModel<T>,
     /// Travel-utility model describing how travel utility is computed.
+    // TODO: Rename this to `travel_utility` (with an alias for `utility_model`).
     #[serde(default)]
     utility_model: TravelUtility<T>,
+    /// Schedule utility at origin of the trip (a function of the departure time from origin).
+    #[serde(default)]
+    origin_schedule_utility: ScheduleUtility<T>,
+    /// Schedule utility at destination of the trip (a function of the arrival time at
+    /// destination).
+    #[serde(default)]
+    destination_schedule_utility: ScheduleUtility<T>,
 }
 
 impl<T> RoadMode<T> {
@@ -84,6 +78,8 @@ impl<T> RoadMode<T> {
         vehicle: VehicleIndex,
         departure_time_model: DepartureTimeModel<T>,
         utility_model: TravelUtility<T>,
+        origin_schedule_utility: ScheduleUtility<T>,
+        destination_schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         RoadMode {
             origin,
@@ -91,6 +87,8 @@ impl<T> RoadMode<T> {
             vehicle,
             departure_time_model,
             utility_model,
+            origin_schedule_utility,
+            destination_schedule_utility,
         }
     }
 
@@ -121,13 +119,13 @@ impl<T: TTFNum> RoadMode<T> {
     /// The total utility is the sum of the travel utility and the schedule utility.
     pub fn get_utility(
         &self,
-        schedule_utility: &ScheduleUtility<T>,
         departure_time: Time<T>,
         arrival_time: Time<T>,
         travel_time: Time<T>,
     ) -> Utility<T> {
-        schedule_utility.get_utility(departure_time, arrival_time)
+        self.origin_schedule_utility.get_utility(departure_time)
             + self.get_travel_utility(travel_time)
+            + self.destination_schedule_utility.get_utility(arrival_time)
     }
 
     /// Return the total utility of a trip for this mode, given the [RoadResults], the
@@ -135,16 +133,42 @@ impl<T: TTFNum> RoadMode<T> {
     pub fn get_utility_from_results(
         &self,
         results: &RoadResults<T>,
-        schedule_utility: &ScheduleUtility<T>,
         departure_time: Time<T>,
         arrival_time: Time<T>,
     ) -> Utility<T> {
-        self.get_utility(
-            schedule_utility,
-            departure_time,
-            arrival_time,
-            results.total_travel_time(),
-        )
+        self.get_utility(departure_time, arrival_time, results.total_travel_time())
+    }
+
+    /// Returns a [PwlXYF] that yields the utility for each possible departure time, given a
+    /// travel-time function.
+    pub fn get_utility_function(
+        &self,
+        mut ttf: TTF<Time<T>>,
+        period: Interval<T>,
+    ) -> PwlXYF<Time<T>, Utility<T>, NoUnit<T>> {
+        // TODO: reduce repetition with same function for FixedTTFMode.
+        ttf.add_x_breakpoints(self.origin_schedule_utility.get_breakpoints(), period.0);
+        ttf.add_z_breakpoints(
+            self.destination_schedule_utility.get_breakpoints(),
+            period.0,
+        );
+        // Constrain the TTF to the given period.
+        ttf.constrain_to_domain(period.0);
+
+        // Convert the ttf to vectors of departure times and travel times.
+        let (tds, tts) = match ttf {
+            TTF::Constant(tt) => (period.to_vec(), vec![tt; 2]),
+            TTF::Piecewise(pwl_ttf) => pwl_ttf.into_xs_and_ys(),
+        };
+        debug_assert_eq!(tds[0], period.start());
+        debug_assert_eq!(tds[tds.len() - 1], period.end());
+
+        let utilities = tds
+            .iter()
+            .zip(tts.into_iter())
+            .map(|(&td, tt)| self.get_utility(td, td + tt, tt))
+            .collect();
+        PwlXYF::from_x_and_y(tds, utilities)
     }
 
     /// Return the pre-day choice for this mode.
@@ -156,7 +180,6 @@ impl<T: TTFNum> RoadMode<T> {
     pub fn make_pre_day_choice<'a: 'b, 'b>(
         &'a self,
         rn_skims: &'b RoadNetworkSkims<T>,
-        schedule_utility: &ScheduleUtility<T>,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
         let skims = rn_skims[preprocess_data.get_unique_vehicle_index(self.vehicle)]
@@ -166,7 +189,7 @@ impl<T: TTFNum> RoadMode<T> {
             match &self.departure_time_model {
                 &DepartureTimeModel::Constant(dt) => {
                     let tt = ttf.eval(dt);
-                    let utility = self.get_utility(schedule_utility, dt, dt + tt, tt);
+                    let utility = self.get_utility(dt, dt + tt, tt);
                     let callback =
                         move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
                             let (arrival_time, route) = get_arrival_time_and_route(
@@ -193,32 +216,7 @@ impl<T: TTFNum> RoadMode<T> {
                     period,
                     choice_model,
                 } => {
-                    // Create a `PwlXYF` that yields the utility for each departure time breakpoint in the
-                    // TTF and for each departure time breakpoint from the schedule utility model.
-                    let new_breakpoints = schedule_utility.get_breakpoints(ttf);
-                    let breakpoints = match ttf {
-                        TTF::Constant(c) => {
-                            let mut breakpoints = Vec::with_capacity(2 + new_breakpoints.len());
-                            breakpoints.push((period.start(), *c));
-                            breakpoints.extend(
-                                new_breakpoints
-                                    .into_iter()
-                                    .skip_while(|&(dt, _)| dt <= period.start())
-                                    .take_while(|&(dt, _)| dt <= period.end()),
-                            );
-                            breakpoints.push((period.end(), *c));
-                            breakpoints
-                        }
-                        TTF::Piecewise(pwl_ttf) => {
-                            add_breakpoints_to_pwl_ttf(pwl_ttf, new_breakpoints)
-                        }
-                    };
-                    let utilities = PwlXYF::from_iterator(
-                        breakpoints.into_iter().map(|(dt, tt)| {
-                            (dt, self.get_utility(schedule_utility, dt, dt + tt, tt))
-                        }),
-                        [period.start(), period.end()],
-                    );
+                    let utilities = self.get_utility_function(ttf.clone(), *period);
                     let (time_callback, expected_utility) = choice_model.get_choice(utilities)?;
                     let callback =
                         move |alloc: &mut PreDayChoiceAllocation<T>| -> Result<PreDayChoices<T>> {
@@ -303,49 +301,6 @@ fn check_route<T: TTFNum>(
         tt,
         departure_time + tt
     );
-}
-
-/// Add new breakpoints `(td, ta)` to a [PwlTTF].
-fn add_breakpoints_to_pwl_ttf<T: TTFNum>(
-    pwl_ttf: &PwlTTF<Time<T>>,
-    new_breakpoints: Vec<(Time<T>, Time<T>)>,
-) -> Vec<(Time<T>, Time<T>)> {
-    let mut breakpoints = Vec::with_capacity(pwl_ttf.len() + new_breakpoints.len() + 1);
-    let &[first, last] = pwl_ttf.period();
-    if new_breakpoints.is_empty() {
-        for point in pwl_ttf.iter() {
-            breakpoints.push((point.x, point.y));
-        }
-    } else {
-        let mut ttf_iter = pwl_ttf.iter().peekable();
-        for (dt, tt) in new_breakpoints.into_iter() {
-            while let Some(point) = ttf_iter.peek() {
-                if point.x.approx_eq(&dt) {
-                    ttf_iter.next();
-                    continue;
-                }
-                if point.x > dt {
-                    break;
-                }
-                breakpoints.push((point.x, point.y));
-                ttf_iter.next();
-            }
-            if dt < first {
-                continue;
-            }
-            if dt > last {
-                break;
-            }
-            breakpoints.push((dt, tt));
-        }
-    }
-    debug_assert!(!breakpoints.is_empty());
-    if breakpoints.last().unwrap().0.approx_ne(&last) {
-        // Add a breakpoint for the last period.
-        debug_assert!(breakpoints.last().unwrap().0 < last,);
-        breakpoints.push((last, pwl_ttf.eval(last)));
-    }
-    breakpoints
 }
 
 /// Struct to store the pre-day choices (departure time, expected arrival time and route) from a

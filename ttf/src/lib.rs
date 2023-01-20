@@ -30,6 +30,7 @@ mod pwl;
 mod ttf_num;
 
 use std::cmp::Ordering;
+use std::iter;
 
 use either::Either;
 use num_traits::Zero;
@@ -58,6 +59,34 @@ impl UndercutDescriptor {
     }
 }
 
+/// Descriptor to use when the piecewise-linear function must be simplified whenever possible,
+/// i.e., if a point can be removed without modifying the function, it is removed.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
+pub struct Simplification;
+/// Descriptor to use when the piecewise-linear function must not be simplified.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
+pub struct NoSimplification;
+
+/// Trait to describe if the piecewise-linear function must be simplified.
+///
+/// See [Simplification] and [NoSimplification].
+pub trait Simplify {
+    /// Returns `true` if the piecewise-linear function must be simplified whenever possible.
+    fn simplify() -> bool;
+}
+
+impl Simplify for Simplification {
+    fn simplify() -> bool {
+        true
+    }
+}
+
+impl Simplify for NoSimplification {
+    fn simplify() -> bool {
+        false
+    }
+}
+
 /// A function that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
@@ -67,9 +96,9 @@ impl UndercutDescriptor {
 #[serde(untagged)]
 #[schemars(title = "XYF")]
 #[schemars(description = "Constant or piecewise-linear function.")]
-pub enum XYF<X, Y, T> {
+pub enum XYF<X, Y, T, S = Simplification> {
     /// A piecewise-linear function.
-    Piecewise(PwlXYF<X, Y, T>),
+    Piecewise(PwlXYF<X, Y, T, S>),
     /// A constant function.
     #[serde(deserialize_with = "parse_constant")]
     Constant(Y),
@@ -78,22 +107,39 @@ pub enum XYF<X, Y, T> {
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-pub type TTF<T> = XYF<T, T, T>;
+pub type TTF<T, S = Simplification> = XYF<T, T, T, S>;
 
-impl<X, Y: Zero, T> Default for XYF<X, Y, T> {
+impl<X, Y: Zero, T, S> Default for XYF<X, Y, T, S> {
     fn default() -> Self {
         XYF::Constant(Y::zero())
     }
 }
 
-impl<X, Y, T> XYF<X, Y, T>
+impl<X, Y, T, S> XYF<X, Y, T, S> {
+    /// Converts a `XYF<X, Y, T, S>` to `XYF<X, Y, T, Simplification>`.
+    pub fn with_simplification(self) -> XYF<X, Y, T, Simplification> {
+        match self {
+            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.with_simplification()),
+            Self::Constant(c) => XYF::Constant(c),
+        }
+    }
+
+    /// Converts a `XYF<X, Y, T, S>` to `XYF<X, Y, T, NoSimplification>`.
+    pub fn without_simplification(self) -> XYF<X, Y, T, NoSimplification> {
+        match self {
+            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.without_simplification()),
+            Self::Constant(c) => XYF::Constant(c),
+        }
+    }
+}
+
+impl<X, Y, T, S> XYF<X, Y, T, S>
 where
     X: TTFNum,
     Y: TTFNum + From<T>,
     T: TTFNum + From<X> + From<Y>,
 {
-    /// Returns the minimum travel time observed over the departure-time period, i.e., return `min_x
-    /// f(x)`.
+    /// Returns the minimum `y` value observed over the `x`-domain, i.e., return `min_x f(x)`.
     pub fn get_min(&self) -> Y {
         match self {
             Self::Piecewise(pwl_xyf) => pwl_xyf.get_min(),
@@ -101,8 +147,7 @@ where
         }
     }
 
-    /// Returns the maximum travel time observed over the departure-time period, i.e., return `max_x
-    /// f(x)`.
+    /// Returns the maximum `y` value observed over the `x`-domain, i.e., return `max_x f(x)`.
     pub fn get_max(&self) -> Y {
         match self {
             Self::Piecewise(pwl_xyf) => pwl_xyf.get_max(),
@@ -122,21 +167,33 @@ where
         }
     }
 
-    /// Returns the departure time at the middle of the departure-time period of the XYF.
+    /// Returns the `x` value at the middle of the `x`-domain of the XYF.
     ///
-    /// If the XYF is constant, the departure-time period is unknown so `None` is returned instead.
-    pub fn middle_departure_time(&self) -> Option<X> {
+    /// If the XYF is constant, the `x`-domain is unknown so `None` is returned instead.
+    pub fn middle_x(&self) -> Option<X> {
         match self {
             Self::Piecewise(pwl_xyf) => Some(pwl_xyf.middle_x()),
             Self::Constant(_) => None,
         }
     }
 
-    /// Returns the travel time at the given departure time.
+    /// Returns the `y` value at the given `x` value.
     pub fn eval(&self, x: X) -> Y {
         match self {
             Self::Piecewise(pwl_xyf) => pwl_xyf.eval(x),
             Self::Constant(c) => *c,
+        }
+    }
+
+    /// Takes an iterator of `x` values that needs to be evaluated and returns an iterator of the
+    /// computed `y` values.
+    pub fn iter_eval<'a>(
+        &'a self,
+        iter: impl Iterator<Item = X> + 'a,
+    ) -> Box<dyn Iterator<Item = Y> + 'a> {
+        match self {
+            Self::Constant(c) => Box::new(iter.map(|_| *c)),
+            Self::Piecewise(pwl_xyf) => Box::new(pwl_xyf.iter_eval(iter)),
         }
     }
 
@@ -151,7 +208,7 @@ where
 
     /// Returns a new XYF equal to the input XYF after applying a function to all the `y` values.
     #[must_use]
-    pub fn map<F, W>(&self, func: F) -> XYF<X, W, T>
+    pub fn map<F, W>(&self, func: F) -> XYF<X, W, T, S>
     where
         F: Fn(Y) -> W,
         W: TTFNum + Into<T> + From<T>,
@@ -161,11 +218,46 @@ where
             Self::Constant(c) => XYF::Constant(func(*c)),
         }
     }
+
+    /// Constrains the [XYF] to a given `x`-domain.
+    pub fn constrain_to_domain(&mut self, domain: [X; 2]) {
+        match self {
+            Self::Piecewise(pwl_xyf) => pwl_xyf.constrain_to_domain(domain),
+            Self::Constant(_) => (),
+        }
+    }
 }
 
-impl<T, U> XYF<T, T, U> {
-    /// Convenient way to transform a `XYF<T, T, U>` in a `TTF<T>`.
-    pub fn to_ttf(self) -> TTF<T> {
+impl<X, Y, T, S> XYF<X, Y, T, S>
+where
+    X: TTFNum,
+    Y: TTFNum + From<T>,
+    T: TTFNum + From<X> + From<Y>,
+    S: Simplify,
+{
+    /// Add `x` breakpoints to the [XYF].
+    pub fn add_x_breakpoints(&mut self, xs: Vec<X>, domain: [X; 2]) {
+        if xs.is_empty() {
+            return;
+        }
+        match self {
+            Self::Piecewise(pwl_xyf) => pwl_xyf.add_x_breakpoints(xs),
+            Self::Constant(c) => {
+                let xs_iter = iter::once(domain[0]).chain(
+                    xs.into_iter()
+                        .skip_while(|x| x.approx_le(&domain[0]))
+                        .take_while(|x| x.approx_le(&domain[1])),
+                );
+                let ys_iter = iter::repeat(*c);
+                *self = Self::Piecewise(PwlXYF::from_iterator(xs_iter.zip(ys_iter), domain))
+            }
+        }
+    }
+}
+
+impl<T, U, S> XYF<T, T, U, S> {
+    /// Convenient way to transform a `XYF<T, T, U, S>` in a `TTF<T, S>`.
+    pub fn to_ttf(self) -> TTF<T, S> {
         match self {
             Self::Piecewise(pwl_xyf) => TTF::Piecewise(pwl_xyf.to_ttf()),
             Self::Constant(c) => TTF::Constant(c),
@@ -173,7 +265,7 @@ impl<T, U> XYF<T, T, U> {
     }
 }
 
-impl<T: TTFNum> TTF<T> {
+impl<T: TTFNum, S> TTF<T, S> {
     /// Returns the departure time `x` such that `f(x) = z`.
     ///
     /// Returns None if it is not possible to arrive at `z`.
@@ -182,88 +274,13 @@ impl<T: TTFNum> TTF<T> {
     ///
     /// ```
     /// use ttf::TTF;
-    /// let ttf = TTF::Constant(1.0f64);
+    /// let ttf: TTF<f64> = TTF::Constant(1.0);
     /// assert_eq!(ttf.departure_time_with_arrival(3.0), Some(2.0));
     /// ```
     pub fn departure_time_with_arrival(&self, z: T) -> Option<T> {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
             Self::Constant(c) => Some(z - *c),
-        }
-    }
-
-    /// Links the TTF with another TTF.
-    ///
-    /// The link operation returns the TTF `h` such that `h(x) = f(x) + g(f(x))`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use ttf::TTF;
-    /// let f = TTF::Constant(1.0f64);
-    /// let g = TTF::Constant(2.0f64);
-    /// assert_eq!(f.link(&g), TTF::Constant(3.0));
-    /// ```
-    #[must_use]
-    pub fn link(&self, other: &Self) -> Self {
-        match (self, other) {
-            (Self::Piecewise(f), Self::Piecewise(g)) => Self::Piecewise(pwl::link(f, g)),
-            (Self::Piecewise(f), Self::Constant(c)) => Self::Piecewise(f.add(*c)),
-            (Self::Constant(c), Self::Piecewise(g)) => Self::Piecewise(pwl::link_cst_before(g, *c)),
-            (Self::Constant(a), Self::Constant(b)) => Self::Constant(*a + *b),
-        }
-    }
-
-    /// Merges the TTF with another TTF.
-    ///
-    /// The merge operation returns the TTF `h` such that `h(x) = min(f(x), g(x))`.
-    /// It also returns an [UndercutDescriptor] that describes if `f` is strictly below `g` and if
-    /// `g` is strictly below `f` at some point.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use ttf::{UndercutDescriptor, TTF};
-    /// let f = TTF::Constant(2.0f64);
-    /// let g = TTF::Constant(1.0f64);
-    /// let descr = UndercutDescriptor {
-    ///     f_undercuts_strictly: false,
-    ///     g_undercuts_strictly: true,
-    /// };
-    /// assert_eq!(f.merge(&g), (g, descr));
-    /// ```
-    #[must_use]
-    pub fn merge(&self, other: &Self) -> (Self, UndercutDescriptor) {
-        match (self, other) {
-            (Self::Piecewise(f), Self::Piecewise(g)) => {
-                let (h, descr) = pwl::merge(f, g);
-                (Self::Piecewise(h), descr)
-            }
-            (Self::Piecewise(f), &Self::Constant(c)) => {
-                let (h, descr) = pwl::merge_cst(f, c);
-                let h = if h.is_cst() {
-                    Self::Constant(h[0].y)
-                } else {
-                    Self::Piecewise(h)
-                };
-                (h, descr)
-            }
-            (&Self::Constant(c), Self::Piecewise(g)) => {
-                let (h, rev_descr) = pwl::merge_cst(g, c);
-                let h = if h.is_cst() {
-                    Self::Constant(h[0].y)
-                } else {
-                    Self::Piecewise(h)
-                };
-                (h, rev_descr.reverse())
-            }
-            (&Self::Constant(a), &Self::Constant(b)) => {
-                let descr = UndercutDescriptor {
-                    f_undercuts_strictly: a.approx_lt(&b),
-                    g_undercuts_strictly: b.approx_lt(&a),
-                };
-                (Self::Constant(a.min(b)), descr)
-            }
         }
     }
 
@@ -314,6 +331,83 @@ impl<T: TTFNum> TTF<T> {
             }
         }
     }
+}
+
+impl<T: TTFNum, S: Simplify> TTF<T, S> {
+    /// Links the TTF with another TTF.
+    ///
+    /// The link operation returns the TTF `h` such that `h(x) = f(x) + g(f(x))`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ttf::TTF;
+    /// let f: TTF<f64> = TTF::Constant(1.0);
+    /// let g: TTF<f64> = TTF::Constant(2.0);
+    /// assert_eq!(f.link(&g), TTF::Constant(3.0));
+    /// ```
+    #[must_use]
+    pub fn link<S1>(&self, other: &TTF<T, S1>) -> Self {
+        match (self, other) {
+            (TTF::Piecewise(f), TTF::Piecewise(g)) => Self::Piecewise(pwl::link(f, g)),
+            (TTF::Piecewise(f), TTF::Constant(c)) => Self::Piecewise(f.add(*c)),
+            (TTF::Constant(c), TTF::Piecewise(g)) => Self::Piecewise(pwl::link_cst_before(g, *c)),
+            (TTF::Constant(a), TTF::Constant(b)) => Self::Constant(*a + *b),
+        }
+    }
+
+    /// Merges the TTF with another TTF.
+    ///
+    /// The merge operation returns the TTF `h` such that `h(x) = min(f(x), g(x))`.
+    /// It also returns an [UndercutDescriptor] that describes if `f` is strictly below `g` and if
+    /// `g` is strictly below `f` at some point.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ttf::{UndercutDescriptor, TTF};
+    /// let f: TTF<f64> = TTF::Constant(2.0);
+    /// let g: TTF<f64> = TTF::Constant(1.0);
+    /// let descr = UndercutDescriptor {
+    ///     f_undercuts_strictly: false,
+    ///     g_undercuts_strictly: true,
+    /// };
+    /// assert_eq!(f.merge(&g), (g, descr));
+    /// ```
+    #[must_use]
+    pub fn merge(&self, other: &Self) -> (Self, UndercutDescriptor) {
+        match (self, other) {
+            (Self::Piecewise(f), Self::Piecewise(g)) => {
+                let (h, descr) = pwl::merge(f, g);
+                (Self::Piecewise(h), descr)
+            }
+            (Self::Piecewise(f), &Self::Constant(c)) => {
+                let (h, descr) = pwl::merge_cst(f, c);
+                let h = if h.is_cst() {
+                    Self::Constant(h[0].y)
+                } else {
+                    Self::Piecewise(h)
+                };
+                (h, descr)
+            }
+            (&Self::Constant(c), Self::Piecewise(g)) => {
+                let (h, rev_descr) = pwl::merge_cst(g, c);
+                let h = if h.is_cst() {
+                    Self::Constant(h[0].y)
+                } else {
+                    Self::Piecewise(h)
+                };
+                (h, rev_descr.reverse())
+            }
+            (&Self::Constant(a), &Self::Constant(b)) => {
+                let descr = UndercutDescriptor {
+                    f_undercuts_strictly: a.approx_lt(&b),
+                    g_undercuts_strictly: b.approx_lt(&a),
+                };
+                (Self::Constant(a.min(b)), descr)
+            }
+        }
+    }
 
     /// Returns a new TTF by applying a given function on the `y` values of the two input TTFs.
     #[must_use]
@@ -326,6 +420,20 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => Self::Piecewise(f.map(|f_y| func(f_y, c))),
             (&Self::Constant(c), Self::Piecewise(g)) => Self::Piecewise(g.map(|g_y| func(c, g_y))),
             (&Self::Constant(a), &Self::Constant(b)) => Self::Constant(func(a, b)),
+        }
+    }
+
+    /// Add `x` breakpoints corresponding to `z` values to the [XYF].
+    pub fn add_z_breakpoints(&mut self, mut zs: Vec<T>, domain: [T; 2]) {
+        if zs.is_empty() {
+            return;
+        }
+        match self {
+            Self::Piecewise(pwl_xyf) => pwl_xyf.add_z_breakpoints(zs),
+            &mut Self::Constant(c) => {
+                zs.iter_mut().for_each(|z| *z -= c);
+                self.add_x_breakpoints(zs, domain)
+            }
         }
     }
 }
@@ -350,7 +458,7 @@ impl<T> Default for TTFSimplification<T> {
 
 impl<T: TTFNum> TTFSimplification<T> {
     /// Applies the simplification method to a TTF.
-    pub fn simplify(self, ttf: &mut TTF<T>) {
+    pub fn simplify<S: Simplify>(self, ttf: &mut TTF<T, S>) {
         match self {
             Self::Raw => (),
             Self::Bound(bound) => ttf.approximate(bound),
