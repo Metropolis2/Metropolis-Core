@@ -26,3 +26,8 @@ fn main() -> Result<()> {
         &[&dir, &PathBuf::from("output")].iter().collect::<PathBuf>(),
     )
 }
+
+#[test]
+fn complete_example_test() {
+    main().unwrap();
+}

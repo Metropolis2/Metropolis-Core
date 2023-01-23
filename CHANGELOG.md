@@ -71,6 +71,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Deserialize `null` values for constant travel-time functions as `Infinity`, consistently
   with how the such values are serialized.
 - [DEV] Run Clippy with `cargo-make`.
+- [DEV] Run the examples with `cargo-make`.
 
 ## [0.1.7] - 2023-01-05
 

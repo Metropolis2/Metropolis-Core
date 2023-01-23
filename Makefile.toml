@@ -133,6 +133,14 @@ install_script = '''
 pip3 install json_schema_for_humans
 '''
 
+[tasks.test-examples]
+description = "Runs cargo test for project examples."
+category = "Test"
+install_crate = false
+toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
+command = "cargo"
+args = ["test", "--examples"]
+
 [tasks.build-flow]
 dependencies = [
   "init-build-flow",
@@ -149,7 +157,7 @@ dependencies = [
   "build",
   "post-build",
   "test-flow",
-  "examples-ci-flow",
+  "test-examples",
   "bench-ci-flow",
   "pre-verify-project",
   "verify-project",
