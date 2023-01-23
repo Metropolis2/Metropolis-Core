@@ -34,7 +34,7 @@ use crate::units::{Distribution, Interval, Length, NoUnit, Time, Utility};
 /// - A vehicle, represented as a [VehicleIndex] for the [RoadNetwork].
 /// - A departure-time period `[t0, t1]` that represents the earliest and latest possible departure
 ///   times.
-/// - A [ContinuousChoiceModel] that represents the departure-time choice model of the agent for
+/// - A [DepartureTimeModel] that represents the departure-time choice model of the agent for
 ///   this mode.
 /// - A [TravelUtility] object that represents the way the travel utility of the agent is
 ///   computed for this mode.

@@ -90,7 +90,7 @@ impl<T> fmt::Display for Mode<T> {
 
 impl<T: TTFNum> Mode<T> {
     /// This method returns the results of the pre-day model (expected utility and [ModeCallback])
-    /// for a given [Mode], [NetworkSkim] and [ScheduleUtility].
+    /// for a given [Mode], [NetworkSkim] and [NetworkPreprocessingData].
     pub fn make_pre_day_choice<'a>(
         &'a self,
         exp_skims: &'a NetworkSkim<T>,
@@ -113,8 +113,8 @@ impl<T: TTFNum> Mode<T> {
         }
     }
 
-    /// Return the realized utility of the trip, given the [Mode], the [ModeResults], the
-    /// [ScheduleUtility], and (optionally) the departure and arrival time.
+    /// Return the realized utility of the trip, given the [Mode], the [ModeResults], and
+    /// (optionally) the departure and arrival time.
     ///
     /// **Panics** if the [Mode] and [ModeResults] are incompatible.
     ///

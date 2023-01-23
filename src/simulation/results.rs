@@ -335,8 +335,7 @@ impl<T: TTFNum> AgentResult<T> {
 
     /// Process the results of the agent.
     ///
-    /// The utility is computed from the given [ScheduleUtility] and [Mode] description, and the
-    /// stored [ModeResults].
+    /// The utility is computed from the given [Mode] description, and the stored [ModeResults].
     pub fn process_results(&mut self, mode: &Mode<T>) {
         match &mut self.mode_results {
             ModeResults::Road(road_results) => road_results.process_results(),
