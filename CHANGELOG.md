@@ -30,6 +30,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Add tags [INPUT] and [OUTPUT] in the Changelog to indicate that input or output files are
   affected.
 - [USER] Add JSON Schemas for the `compute_travel_times` script in the directory `schemas/tch/`.
+- [USER] Add `book` directory with a documentation for Metropolis (in progress).
 - [DEV] Add a way not to simplify a `PwlXYF` when building it so that all breakpoints are kept.
 - [DEV] Add functions `constrain_to_domain`, `add_x_breakpoints`, `add_z_breakpoints`,
   `into_points`, `into_xs_and_ys` and `iter_eval` to `PwlXYF`.

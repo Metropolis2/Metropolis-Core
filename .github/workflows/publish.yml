@@ -59,6 +59,11 @@ jobs:
       with:
         command: install
         args: --debug cargo-make
+    - name: Install mdbook
+      uses: actions-rs/cargo@v1
+      with:
+        command: install
+        args: mdbook --no-default-features --features search
     - name: Build Binary
       uses: actions-rs/cargo@v1
       with:
