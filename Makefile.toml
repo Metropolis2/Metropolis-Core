@@ -6,6 +6,7 @@ CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
 CARGO_MAKE_PROJECT_NAME = "metrolib"
 CARGO_MAKE_PROJECT_VERSION = "0.1.0"
 CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis"
+CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
@@ -40,7 +41,7 @@ args = [
 env.CARGO_MAKE_BINARY_RELEASE_ENV_INSTALL_MUSL = false
 
 [tasks.build-release-for-target-base]
-args = ["build", "--release", "--target", "${CARGO_MAKE_RELEASE_FLOW_TARGET}"]
+args = ["build", "--release", "--workspace", "--target", "${CARGO_MAKE_RELEASE_FLOW_TARGET}"]
 
 [tasks.book-flow]
 description = "Generate book."
@@ -90,11 +91,12 @@ end
 
 rm -r ${OUTPUT_NAME}
 mkdir ${OUTPUT_NAME}
+mkdir ${OUTPUT_NAME}/execs
 
-cp ${TARGET_RELEASE_DIRECTORY}/${executable_file} ${OUTPUT_NAME}/${executable_file}
+cp ${TARGET_RELEASE_DIRECTORY}/${executable_file} ${OUTPUT_NAME}/execs/${executable_file}
 if ${additional_executable_file_defined}
     if is_path_exists ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file}
-        cp ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file} ${OUTPUT_NAME}/${additional_executable_file}
+        cp ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file} ${OUTPUT_NAME}/execs/${additional_executable_file}
     end
 end
 cp ./README.md ${OUTPUT_NAME}/README.md

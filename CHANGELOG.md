@@ -29,6 +29,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Add tags [USER] and [DEV] in the Changelog to specify the concerned individuals (end-users
 - [USER] Add tags [INPUT] and [OUTPUT] in the Changelog to indicate that input or output files are
   affected.
+- [USER] Add `compute_travel_times` executable (script to run many time-dependent routing queries).
 - [USER] Add JSON Schemas for the `compute_travel_times` script in the directory `schemas/tch/`.
 - [USER] Add `book` directory with a documentation for Metropolis (in progress).
 - [DEV] Add a way not to simplify a `PwlXYF` when building it so that all breakpoints are kept.
@@ -56,6 +57,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   algorithm to use, etc.).
 - [USER] JSON Schema files are organized in the directory `schemas/metropolis/` and named
   differently.
+- [USER] Metropolis executable is now stored in the `execs` directory.
 - [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
   terminology for the `XYF` functions.
 
