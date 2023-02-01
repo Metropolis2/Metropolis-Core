@@ -37,6 +37,7 @@ pub mod ops;
 mod preprocessing;
 pub mod query;
 mod search;
+pub mod tools;
 
 pub use bidirectional_search::BidirectionalDijkstraSearch;
 pub use contraction_hierarchies::{
@@ -85,10 +86,8 @@ pub struct DefaultTCHProfileAllocation<T: ttf::TTFNum> {
 // Dependencies only used in the bins.
 // TODO: Remove them when the bin will no longer be useful.
 use bincode as _;
-// Dependencies only used in the bins.
 use clap as _;
 use csv as _;
-use env_logger as _;
 use geojson as _;
 use serde_json as _;
-use serde_with as _;
+use simplelog as _;

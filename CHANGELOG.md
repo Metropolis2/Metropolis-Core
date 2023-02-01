@@ -50,6 +50,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   alpha-beta-gamma model.
 - [USER] Add attribute `readOnly` to parameters `min` and `max` of `PwlXYF` in the JSON Schemas, so
   that the schema is consistent with the actual deserialization process.
+- [USER] Various improvements to the `compute_travel_times` script (can output route, can guess best
+  algorithm to use, etc.).
 - [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
   terminology for the `XYF` functions.
 

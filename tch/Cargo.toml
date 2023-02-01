@@ -22,7 +22,6 @@ bincode = "1.3"
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
-env_logger = "0.10"
 fixedbitset = "0.4"
 geojson = "0.24"
 hashbrown = { version = "0.13", features = ["rayon", "serde"] }
@@ -39,3 +38,4 @@ serde_with = { version = "2.0", default-features = false, features = [
   "macros",
 ] }
 schemars = "0.8"
+simplelog = "0.12"
