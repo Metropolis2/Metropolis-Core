@@ -29,6 +29,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Add tags [USER] and [DEV] in the Changelog to specify the concerned individuals (end-users
 - [USER] Add tags [INPUT] and [OUTPUT] in the Changelog to indicate that input or output files are
   affected.
+- [USER] Add JSON Schemas for the `compute_travel_times` script in the directory `schemas/tch/`.
 - [DEV] Add a way not to simplify a `PwlXYF` when building it so that all breakpoints are kept.
 - [DEV] Add functions `constrain_to_domain`, `add_x_breakpoints`, `add_z_breakpoints`,
   `into_points`, `into_xs_and_ys` and `iter_eval` to `PwlXYF`.
@@ -52,6 +53,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   that the schema is consistent with the actual deserialization process.
 - [USER] Various improvements to the `compute_travel_times` script (can output route, can guess best
   algorithm to use, etc.).
+- [USER] JSON Schema files are organized in the directory `schemas/metropolis/` and named
+  differently.
 - [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
   terminology for the `XYF` functions.
 

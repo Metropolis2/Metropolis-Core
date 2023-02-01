@@ -10,13 +10,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use log::{info, LevelFilter};
-use metropolis::agent::Agent;
-use metropolis::network::road_network::RoadNetwork;
-use metropolis::network::{NetworkSkim, NetworkWeights};
-use metropolis::parameters::Parameters;
-use metropolis::simulation::results::{AgentResults, AggregateResults};
 use schemars::gen::SchemaSettings;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+use tch::tools::{Graph, Output, Parameters, Query};
+use ttf::TTF;
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
 #[derive(Parser, Debug)]
@@ -46,15 +43,23 @@ fn main() -> Result<()> {
     });
     let gen = settings.into_generator();
 
-    // Agents.
-    let schema = gen.clone().into_root_schema_for::<Vec<Agent<f64>>>();
-    let filename = args.path.join("agents.json");
+    // Queries.
+    let schema = gen.clone().into_root_schema_for::<Vec<Query>>();
+    let filename = args.path.join("queries.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
-    // Road network.
-    let schema = gen.clone().into_root_schema_for::<RoadNetwork<f64>>();
-    let filename = args.path.join("roadnetwork.json");
+    // Graph.
+    let schema = gen.clone().into_root_schema_for::<Graph>();
+    let filename = args.path.join("graph.json");
+    let mut file = File::create(filename)?;
+    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
+
+    // Weights.
+    let schema = gen
+        .clone()
+        .into_root_schema_for::<std::collections::HashMap<usize, TTF<f64>>>();
+    let filename = args.path.join("weights.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
@@ -64,27 +69,15 @@ fn main() -> Result<()> {
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
-    // Aggregate results.
-    let schema = gen.clone().into_root_schema_for::<AggregateResults<f64>>();
-    let filename = args.path.join("aggregate-results.json");
+    // Node order.
+    let schema = gen.clone().into_root_schema_for::<Vec<usize>>();
+    let filename = args.path.join("node-order.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
-    // Agent-specific results.
-    let schema = gen.clone().into_root_schema_for::<AgentResults<f64>>();
-    let filename = args.path.join("agent-results.json");
-    let mut file = File::create(filename)?;
-    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
-
-    // Network weights results.
-    let schema = gen.clone().into_root_schema_for::<NetworkWeights<f64>>();
-    let filename = args.path.join("weight-results.json");
-    let mut file = File::create(filename)?;
-    write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
-
-    // Network skim results.
-    let schema = gen.into_root_schema_for::<NetworkSkim<f64>>();
-    let filename = args.path.join("skim-results.json");
+    // Output.
+    let schema = gen.clone().into_root_schema_for::<Output>();
+    let filename = args.path.join("output.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 

@@ -109,15 +109,31 @@ rm -r ${OUTPUT_NAME}
 [tasks.schemas-flow]
 description = "Generate I/O schemas (with human-readable versions)."
 category = "Documentation"
-dependencies = ["schemas", "human-schemas"]
+dependencies = ["schemas-metropolis", "schemas-tch", "human-schemas"]
 
-[tasks.schemas]
-description = "Generate I/O schemas."
+[tasks.schemas-metropolis]
+description = "Generate I/O schemas for Metropolis."
 category = "Documentation"
 install_crate = false
 toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
 command = "cargo"
-args = ["run", "--release", "--bin", "generate_schema", "./schemas"]
+args = ["run", "--release", "--bin", "generate_schema", "./schemas/metropolis"]
+
+[tasks.schemas-tch]
+description = "Generate I/O schemas for TCH."
+category = "Documentation"
+install_crate = false
+toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
+command = "cargo"
+args = [
+  "run",
+  "--release",
+  "-p",
+  "tch",
+  "--bin",
+  "generate_schema",
+  "./schemas/tch",
+]
 
 [tasks.human-schemas]
 description = "Generate I/O schemas."
