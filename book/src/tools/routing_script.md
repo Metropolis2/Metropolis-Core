@@ -54,7 +54,7 @@ To print the help message, use
 $ ./compute_travel_times --help
 Compute efficiently earliest-arrival or profile queries
 
-Usage: compute_travel_times [OPTIONS] --queries <QUERIES> --graph <GRAPH> --result <RESULT>
+Usage: compute_travel_times [OPTIONS] --queries <QUERIES> --graph <GRAPH> --output <OUTPUT>
 
 Options:
       --queries <QUERIES>
@@ -69,8 +69,8 @@ Options:
       --parameters <PARAMETERS>
           Path to the file where the parameters are stored
 
-      --result <RESULT>
-          Path to the file where the results of the queries should be stored
+      --output <OUTPUT>
+          Path to the file where the output should be stored
 
       --input-order <INPUT_ORDER>
           Path to the file where the node ordering is stored (only for intersect and tch). If not specified, the node ordering is computing automatically
