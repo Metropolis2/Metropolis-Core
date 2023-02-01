@@ -290,7 +290,7 @@ fn check_route<T: TTFNum>(
 ) {
     // Check that there is no loop in the route.
     let n = route.iter().collect::<HashSet<_>>().len();
-    assert_eq!(n, route.len(), "Invalid route: {:?}", route);
+    assert_eq!(n, route.len(), "Invalid route: {route:?}");
     // Check that the predicted arrival time is coherent with the TTF.
     let tt = ttf.eval(departure_time);
     assert!(

@@ -638,7 +638,7 @@ impl<T: TTFNum, S> PwlTTF<T, S> {
     fn is_fifo(&self) -> bool {
         for (p, q) in self.double_iter() {
             if (q.x + q.y).approx_lt(&(p.x + p.y)) {
-                println!("{:?}", self);
+                println!("{self:?}");
                 return false;
             }
         }
@@ -692,10 +692,7 @@ impl<T: TTFNum, S> PwlTTF<T, S> {
                 // After the last x breakpoint, the y is constant and equal to the last value of y.
                 z - self[self.len() - 1].y
             } else {
-                panic!(
-                    "Value {:?} is greater than last arrival time ({:?})",
-                    z, max_z
-                );
+                panic!("Value {z:?} is greater than last arrival time ({max_z:?})");
             }
         } else {
             inv_linear_interp(self[i - 1], self[i], z)

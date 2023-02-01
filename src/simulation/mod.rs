@@ -469,25 +469,25 @@ pub fn run_simulation_from_json_files(
     info!("Reading input files");
     let mut bytes = Vec::new();
     File::open(agents)
-        .unwrap_or_else(|err| panic!("Unable to open agents file `{:?}`: {}", agents, err))
+        .unwrap_or_else(|err| panic!("Unable to open agents file `{agents:?}`: {err}"))
         .read_to_end(&mut bytes)
-        .unwrap_or_else(|err| panic!("Unable to read agents file `{:?}`: {}", agents, err));
+        .unwrap_or_else(|err| panic!("Unable to read agents file `{agents:?}`: {err}"));
     let agents: Vec<Agent<f64>> = serde_json::from_slice(&bytes).expect("Unable to parse agents");
 
     let mut bytes = Vec::new();
     File::open(parameters)
-        .unwrap_or_else(|err| panic!("Unable to open parameters file `{:?}`: {}", parameters, err))
+        .unwrap_or_else(|err| panic!("Unable to open parameters file `{parameters:?}`: {err}"))
         .read_to_end(&mut bytes)
-        .unwrap_or_else(|err| panic!("Unable to read parameters file `{:?}`: {}", parameters, err));
+        .unwrap_or_else(|err| panic!("Unable to read parameters file `{parameters:?}`: {err}"));
     let parameters: Parameters<f64> =
         serde_json::from_slice(&bytes).expect("Unable to parse parameters");
 
     let road_network: Option<RoadNetwork<f64>> = if let Some(rn) = road_network {
         let mut bytes = Vec::new();
         File::open(rn)
-            .unwrap_or_else(|err| panic!("Unable to open road network file `{:?}`: {}", rn, err))
+            .unwrap_or_else(|err| panic!("Unable to open road network file `{rn:?}`: {err}"))
             .read_to_end(&mut bytes)
-            .unwrap_or_else(|err| panic!("Unable to read road network file `{:?}`: {}", rn, err));
+            .unwrap_or_else(|err| panic!("Unable to read road network file `{rn:?}`: {err}"));
         Some(serde_json::from_slice(&bytes).expect("Unable to parse road network"))
     } else {
         None
@@ -497,17 +497,11 @@ pub fn run_simulation_from_json_files(
         let mut bytes = Vec::new();
         File::open(weights)
             .unwrap_or_else(|err| {
-                panic!(
-                    "Unable to open network weights file `{:?}`: {}",
-                    weights, err
-                )
+                panic!("Unable to open network weights file `{weights:?}`: {err}")
             })
             .read_to_end(&mut bytes)
             .unwrap_or_else(|err| {
-                panic!(
-                    "Unable to read network weights file `{:?}`: {}",
-                    weights, err
-                )
+                panic!("Unable to read network weights file `{weights:?}`: {err}")
             });
         Some(serde_json::from_slice(&bytes).expect("Unable to parse network weights"))
     } else {

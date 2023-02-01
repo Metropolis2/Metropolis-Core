@@ -244,8 +244,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             self.unpack_edge(source, target, &mut current_time, &mut unpacked_path)
                 .with_context(|| {
                     format!(
-                        "Failed to unpack edge from {:?} to {:?} at time {:?}",
-                        source, target, current_time
+                        "Failed to unpack edge from {source:?} to {target:?} at time {current_time:?}"
                     )
                 })?;
         }
@@ -353,8 +352,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                 .unpack_path(&packed_path, departure_time)
                 .with_context(|| {
                     format!(
-                        "Failed to unpack path {:?} with departure time {:?}",
-                        packed_path, departure_time
+                        "Failed to unpack path {packed_path:?} with departure time {departure_time:?}"
                     )
                 })?;
             Ok(Some((arrival_time, unpacked_path)))

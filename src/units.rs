@@ -417,7 +417,7 @@ impl<T: TTFNum> fmt::Display for Time<T> {
         let hour = seconds / 3600;
         let minute = seconds % 3600 / 60;
         let second = seconds % 60;
-        write!(f, "{:02}:{:02}:{:02}", hour, minute, second)
+        write!(f, "{hour:02}:{minute:02}:{second:02}")
     }
 }
 
@@ -638,7 +638,7 @@ impl<T: TTFNum> Distribution<T> {
             return None;
         }
         let count_float =
-            T::from_usize(count).unwrap_or_else(|| panic!("Cannot convert {:?} to TTFNum", count));
+            T::from_usize(count).unwrap_or_else(|| panic!("Cannot convert {count:?} to TTFNum"));
         let mean = sum / count_float;
         let var = sum_squared / count_float - mean.powi(2);
         let std = if var > T::zero() {

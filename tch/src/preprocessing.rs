@@ -273,10 +273,7 @@ impl<T: TTFNum> ContractionGraph<T> {
                 .collect();
             if nodes_to_contract.is_empty() {
                 let order: Vec<_> = self.graph.node_references().map(|(_, n)| n.order).collect();
-                panic!(
-                    "Invalid node order (it must be a total order): {:.50?}",
-                    order
-                );
+                panic!("Invalid node order (it must be a total order): {order:.50?}");
             }
             // Contract the new batch of nodes.
             // We do not need a cache so with use an empty cache.
@@ -564,11 +561,11 @@ impl<T: TTFNum> ContractionGraph<T> {
         );
         debug_assert!(
             cost.is_finite(),
-            "Invalid cost (quotient: {:?}, depth: {:?}, unpacked quotient: {:?}, complexity: {:?})",
-            edge_quotient,
-            hierarchy_depth,
-            unpacked_edges_quotient,
-            complexity_quotient
+            "Invalid cost
+            (quotient: {edge_quotient:?},
+             depth: {hierarchy_depth:?},
+             unpacked quotient: {unpacked_edges_quotient:?},
+             complexity: {complexity_quotient:?})"
         );
         cost
     }
