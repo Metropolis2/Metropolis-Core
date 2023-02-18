@@ -142,6 +142,8 @@ struct Edge {
 /// Point-to-point query (earliest-arrival or profile).
 #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct Query {
+    /// Index of the query.
+    pub id: u64,
     /// Index of the source node.
     #[schemars(with = "usize")]
     pub source: NodeIndex,
@@ -157,13 +159,13 @@ pub struct Query {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum QueryResult {
-    /// Arrival time (for earliest-arrival queries).
-    ArrivalTime(f64),
-    /// Arrival time and route (for earliest-arrival queries).
-    #[schemars(with = "Option<(f64, Vec<usize>)>")]
-    ArrivalTimeAndRoute((f64, Vec<EdgeIndex>)),
-    /// Travel-time function (for profile queries).
-    TravelTimeFunction(TTF<f64>),
+    /// Id and rrival time (for earliest-arrival queries).
+    ArrivalTime((u64, f64)),
+    /// Id, arrival time and route (for earliest-arrival queries).
+    #[schemars(with = "(f64, Vec<usize>)")]
+    ArrivalTimeAndRoute((u64, f64, Vec<EdgeIndex>)),
+    /// Id and travel-time function (for profile queries).
+    TravelTimeFunction((u64, TTF<f64>)),
     /// The source and target are not connected.
     NotConnected,
 }

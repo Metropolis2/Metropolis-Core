@@ -201,7 +201,7 @@ fn main() -> Result<()> {
                 || pool.pull(Default::default),
                 |alloc, query| {
                     if let Some(td) = query.departure_time {
-                        let query = BidirectionalPointToPointQuery::new(
+                        let bidir_query = BidirectionalPointToPointQuery::new(
                             query.source,
                             query.target,
                             td,
@@ -211,7 +211,7 @@ fn main() -> Result<()> {
                             BidirectionalTCHEA::new(&graph.0, ttf_func_edge, HashMap::new());
                         let result = earliest_arrival_query(
                             &mut alloc.ea_alloc,
-                            &query,
+                            &bidir_query,
                             &mut ops,
                             &graph.0,
                             ttf_func_edge,
@@ -231,9 +231,9 @@ fn main() -> Result<()> {
                                             .expect("Invalid Dijkstra route output"),
                                     );
                                 }
-                                QueryResult::ArrivalTimeAndRoute((ta, edge_route))
+                                QueryResult::ArrivalTimeAndRoute((query.id, ta, edge_route))
                             } else {
-                                QueryResult::ArrivalTime(ta)
+                                QueryResult::ArrivalTime((query.id, ta))
                             }
                         } else {
                             QueryResult::NotConnected
@@ -244,18 +244,18 @@ fn main() -> Result<()> {
                             ttf_func_edge,
                             HashMap::new(),
                         );
-                        let query = BidirectionalPointToPointQuery::from_default(
+                        let bidir_query = BidirectionalPointToPointQuery::from_default(
                             query.source,
                             query.target,
                         );
                         let mut ttf_opt =
-                            profile_query(&mut alloc.profile_search, &query, &mut ops);
+                            profile_query(&mut alloc.profile_search, &bidir_query, &mut ops);
                         if let Some(ref mut ttf) = &mut ttf_opt {
                             parameters.result_simplification.simplify(ttf);
                         }
                         bp.inc(1);
                         if let Some(ttf) = ttf_opt {
-                            QueryResult::TravelTimeFunction(ttf)
+                            QueryResult::TravelTimeFunction((query.id, ttf))
                         } else {
                             QueryResult::NotConnected
                         }
@@ -335,7 +335,7 @@ fn main() -> Result<()> {
                         .unwrap();
                         bp.inc(1);
                         if let Some(ta) = ta_opt {
-                            QueryResult::ArrivalTime(ta)
+                            QueryResult::ArrivalTime((query.id, ta))
                         } else {
                             QueryResult::NotConnected
                         }
@@ -348,7 +348,7 @@ fn main() -> Result<()> {
                         }
                         bp.inc(1);
                         if let Some(ttf) = ttf_opt {
-                            QueryResult::TravelTimeFunction(ttf)
+                            QueryResult::TravelTimeFunction((query.id, ttf))
                         } else {
                             QueryResult::NotConnected
                         }
@@ -397,9 +397,9 @@ fn main() -> Result<()> {
                             bp.inc(1);
                             if let Some((ta, route)) = result {
                                 if parameters.output_route {
-                                    QueryResult::ArrivalTimeAndRoute((ta, route))
+                                    QueryResult::ArrivalTimeAndRoute((query.id, ta, route))
                                 } else {
-                                    QueryResult::ArrivalTime(ta)
+                                    QueryResult::ArrivalTime((query.id, ta))
                                 }
                             } else {
                                 QueryResult::NotConnected
@@ -419,7 +419,7 @@ fn main() -> Result<()> {
                             }
                             bp.inc(1);
                             if let Some(ttf) = ttf_opt {
-                                QueryResult::TravelTimeFunction(ttf)
+                                QueryResult::TravelTimeFunction((query.id, ttf))
                             } else {
                                 QueryResult::NotConnected
                             }
