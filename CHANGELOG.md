@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.2.0] - 2023-02-18
+
 ### Added
 
 - [INPUT] Add `Trip` mode which can represent trips by car (or any other mode) with
@@ -180,7 +182,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.1.7...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.0
 [0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7
 [0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
 [0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5

@@ -1,6 +1,6 @@
 [package]
 name = "metropolis"
-version = "0.1.7"
+version = "0.2.0"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "A dynamic multi-modal traffic-assignment simulator"
