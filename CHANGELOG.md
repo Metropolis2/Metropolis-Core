@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.2.1] - 2023-02-18
+
+### Changed
+
+- [DEV] Build Linux releases using MUSL for large compatibility.
+
 ## [0.2.0] - 2023-02-18
 
 ### Added
@@ -182,7 +188,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.2.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.2.1...HEAD
+[0.2.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.1
 [0.2.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.0
 [0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7
 [0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
