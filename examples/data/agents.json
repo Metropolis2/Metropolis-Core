@@ -20,11 +20,16 @@
     },
     "modes": [
       {
-        "type": "Road",
+        "type": "Trip",
         "value": {
-          "origin": 0,
-          "destination": 1,
-          "vehicle": 0,
+          "legs": [
+            {
+              "class": {
+                "type": "Virtual",
+                "value": 60.0
+              }
+            }
+          ],
           "departure_time_model": {
             "type": "Constant",
             "value": 0.0
@@ -48,17 +53,40 @@
         "t_star_low": 50.0,
         "t_star_high": 150.0,
         "beta": 1.0,
-        "gamma": 4.0,
-        "desired_arrival": false
+        "gamma": 4.0
       }
     },
     "modes": [
       {
-        "type": "Road",
+        "type": "Trip",
         "value": {
-          "origin": 0,
-          "destination": 3,
-          "vehicle": 1,
+          "legs": [
+            {
+              "class": {
+                "type": "Road",
+                "value": {
+                  "origin": 0,
+                  "destination": 1,
+                  "vehicle": 0
+                }
+              },
+              "stopping_time": 600.0,
+              "travel_utility": {
+                "type": "Polynomial",
+                "value": {
+                  "a": 1.0,
+                  "b": 1.0,
+                  "c": 1.0,
+                  "d": 1.0,
+                  "e": 1.0
+                }
+              },
+              "schedule_utility": {
+                "type": "None"
+              }
+            }
+          ],
+          "origin_delay": 300.0,
           "departure_time_model": {
             "type": "ContinuousChoice",
             "value": {
@@ -72,115 +100,20 @@
               }
             }
           },
-          "travel_utility": {
+          "total_travel_utility": {
             "type": "Polynomial",
             "value": {
               "a": 1.0
             }
-          }
-        }
-      },
-      {
-        "type": "Road",
-        "value": {
-          "origin": 0,
-          "destination": 3,
-          "vehicle": 1,
-          "departure_time_model": {
-            "type": "ContinuousChoice",
-            "value": {
-              "period": [0.0, 200.0],
-              "choice_model": {
-                "type": "Logit",
-                "value": {
-                  "u": 0.5,
-                  "mu": 1.0
-                }
-              }
-            }
-          },
-          "travel_utility": {
-            "type": "Polynomial",
-            "value": {
-              "b": 2.0
-            }
-          }
-        }
-      },
-      {
-        "type": "Road",
-        "value": {
-          "origin": 0,
-          "destination": 3,
-          "vehicle": 1,
-          "departure_time_model": {
-            "type": "ContinuousChoice",
-            "value": {
-              "period": [0.0, 200.0],
-              "choice_model": {
-                "type": "Logit",
-                "value": {
-                  "u": 0.5,
-                  "mu": 1.0
-                }
-              }
-            }
-          },
-          "travel_utility": {
-            "type": "Polynomial",
-            "value": {
-              "a": 5.0,
-              "b": -4.0,
-              "c": 3.0,
-              "d": -2.0,
-              "e": 1.0
-            }
-          }
-        }
-      },
-      {
-        "type": "FixedTTF",
-        "value": {
-          "legs": [
-            {
-              "ttf": 5.0
-            },
-            {
-              "ttf": {
-                "points": [
-                  [0.0, 10.0],
-                  [50.0, 15.0],
-                  [100.0, 10.0]
-                ],
-                "period": [0.0, 100.0]
-              },
-              "stopping_time": 5.0,
-              "travel_utility": {
-                "type": "Polynomial",
-                "value": {
-                  "b": -2.0
-                }
-              },
-              "schedule_utility": {
-                "type": "AlphaBetaGamma",
-                "value": {
-                  "t_star_low": 30.0,
-                  "t_star_high": 30.0,
-                  "beta": 1.0,
-                  "gamma": 4.0
-                }
-              }
-            }
-          ],
-          "departure_time_model": {
-            "type": "Constant",
-            "value": 10.0
           },
           "origin_schedule_utility": {
+            "type": "None"
+          },
+          "destination_schedule_utility": {
             "type": "AlphaBetaGamma",
             "value": {
-              "t_star_low": 5.0,
-              "t_star_high": 15.0,
+              "t_star_low": 30.0,
+              "t_star_high": 30.0,
               "beta": 1.0,
               "gamma": 4.0
             }

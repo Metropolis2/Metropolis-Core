@@ -13,9 +13,9 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-use crate::mode::{mode_index, Mode, ModeIndex, PreDayChoiceAllocation};
+use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::NetworkSkim;
-use crate::simulation::results::PreDayResult;
+use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
 use crate::units::NoUnit;
 
@@ -67,7 +67,7 @@ impl<T> Agent<T> {
 }
 
 impl<T: TTFNum> Agent<T> {
-    /// Returns the [PreDayResult] of the agent, i.e., the choices made in the pre-day model given
+    /// Returns an [AgentResult] initialized from the choices made in the pre-day model given
     /// an expected [NetworkSkim] and the results of the previous day (if any).
     ///
     /// If the `update` boolean is `false`, the choices are not computed again. Instead, the
@@ -79,26 +79,26 @@ impl<T: TTFNum> Agent<T> {
         &self,
         exp_skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
-        previous_pre_day_result: Option<&PreDayResult<T>>,
+        previous_day_result: Option<&AgentResult<T>>,
         update: bool,
-        alloc: &mut PreDayChoiceAllocation<T>,
-    ) -> Result<PreDayResult<T>> {
+    ) -> Result<AgentResult<T>> {
         if update {
             if let Some(choice_model) = &self.mode_choice {
                 // Compute the mode-specific expected utilities and get the callback functions.
                 let (expected_utilities, mut callbacks) = itertools::process_results(
                     self.modes
                         .iter()
-                        .map(|mode| mode.make_pre_day_choice(exp_skims, &preprocess_data.network)),
+                        .map(|mode| mode.get_pre_day_choice(exp_skims, &preprocess_data.network)),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
                 )?;
-                // Get the id of the chosen mode and the global expected utility, from the mode choice
-                // model.
+                // Get the id of the chosen mode and the global expected utility, from the mode
+                // choice model.
                 let (choice_id, expected_utility) = choice_model.get_choice(&expected_utilities)?;
-                // Call the callback function of the chosen mode to get the mode-specific pre-day choices.
+                // Call the callback function of the chosen mode to get the mode-specific results.
                 let callback = callbacks.swap_remove(choice_id);
-                let mode_result = callback(alloc)?;
-                Ok(PreDayResult::new(
+                let mode_result = callback()?;
+                Ok(AgentResult::new(
+                    self.id,
                     mode_index(choice_id),
                     expected_utility,
                     mode_result,
@@ -107,22 +107,22 @@ impl<T: TTFNum> Agent<T> {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
                 let (expected_utility, callback) =
-                    chosen_mode.make_pre_day_choice(exp_skims, &preprocess_data.network)?;
-                let mode_result = callback(alloc)?;
-                Ok(PreDayResult::new(
+                    chosen_mode.get_pre_day_choice(exp_skims, &preprocess_data.network)?;
+                let mode_result = callback()?;
+                Ok(AgentResult::new(
+                    self.id,
                     mode_index(0),
                     expected_utility,
                     mode_result,
                 ))
             }
-        } else if let Some(previous_pre_day_result) = previous_pre_day_result {
+        } else if let Some(previous_day_result) = previous_day_result {
             // No update required: simply return the results of the previous day.
-            Ok(previous_pre_day_result.clone())
+            // The results are reset before being returned.
+            Ok(previous_day_result.reset())
         } else {
             // No update required but there is no result to return.
-            Err(anyhow!(
-                "No previous pre-day result but `update` is `false`"
-            ))
+            Err(anyhow!("No previous result but `update` is `false`"))
         }
     }
 }
@@ -160,8 +160,7 @@ mod tests {
     use choice::DeterministicChoiceModel;
 
     use super::*;
-    use crate::mode::mode_index;
-    use crate::mode::PreDayChoices;
+    use crate::mode::{mode_index, ModeResults};
     use crate::units::Utility;
 
     fn get_agent() -> Agent<f64> {
@@ -175,27 +174,15 @@ mod tests {
     fn make_pre_day_choice_test() {
         let mut agent = get_agent();
         assert!(agent
-            .make_pre_day_choice(
-                &Default::default(),
-                &Default::default(),
-                None,
-                false,
-                &mut Default::default()
-            )
+            .make_pre_day_choice(&Default::default(), &Default::default(), None, false,)
             .is_err());
 
         let result = agent
-            .make_pre_day_choice(
-                &Default::default(),
-                &Default::default(),
-                None,
-                true,
-                &mut Default::default(),
-            )
+            .make_pre_day_choice(&Default::default(), &Default::default(), None, true)
             .unwrap();
-        assert_eq!(result.get_mode_index(), mode_index(0));
-        assert_eq!(result.get_expected_utility(), Utility(10.));
-        assert_eq!(result.get_choices(), &PreDayChoices::None);
+        assert_eq!(result.mode, mode_index(0));
+        assert_eq!(result.expected_utility, Utility(10.));
+        assert_eq!(result.mode_results, ModeResults::None);
 
         assert_eq!(
             agent
@@ -204,7 +191,6 @@ mod tests {
                     &Default::default(),
                     Some(&result),
                     false,
-                    &mut Default::default()
                 )
                 .unwrap(),
             result
@@ -212,16 +198,10 @@ mod tests {
 
         agent.modes.push(Mode::Constant(Utility(15.)));
         let result = agent
-            .make_pre_day_choice(
-                &Default::default(),
-                &Default::default(),
-                None,
-                true,
-                &mut Default::default(),
-            )
+            .make_pre_day_choice(&Default::default(), &Default::default(), None, true)
             .unwrap();
-        assert_eq!(result.get_mode_index(), mode_index(1));
-        assert_eq!(result.get_expected_utility(), Utility(15.));
-        assert_eq!(result.get_choices(), &PreDayChoices::None);
+        assert_eq!(result.mode, mode_index(1));
+        assert_eq!(result.expected_utility, Utility(15.));
+        assert_eq!(result.mode_results, ModeResults::None);
     }
 }

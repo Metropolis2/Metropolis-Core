@@ -6,7 +6,7 @@ Metropolis is a dynamic multi-modal agent-based transport simulator.
 
 A release of Metropolis consists in a zip file with the following content:
 
-- `book/`: directory with the HTML documentation of Metropolis
+- `book/`: directory with the HTML documentation of Metropolis (open the `index.html` file)
 - `docs/`: documentation of Metropolis targeted for developers
 - `examples/`: example input files for the simulator
 - `execs/`: directory where the executables are stored

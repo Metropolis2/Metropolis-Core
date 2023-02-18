@@ -1,5 +1,9 @@
 # Representing travel-time functions
 
+**Table of Contents**
+
+<!-- toc -->
+
 Metropolis makes heavy use a travel-time functions (e.g., when representing an edge's weight or a
 travel-time function for an origin-destination pair).
 A travel-time function (*TTF* for short) is a function \\(f: t \mapsto f(t)\\), which gives for any departure time

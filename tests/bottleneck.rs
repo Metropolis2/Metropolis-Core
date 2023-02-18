@@ -6,8 +6,8 @@
 use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
-use metropolis::mode::road::RoadMode;
-use metropolis::mode::{DepartureTimeModel, Mode};
+use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
+use metropolis::mode::Mode;
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
@@ -27,16 +27,21 @@ fn get_simulation() -> Simulation<f64> {
     let departure_times = vec![0., 3., 4., 5., 10., 21.];
     let mut agents = Vec::with_capacity(departure_times.len());
     for (i, dt) in departure_times.into_iter().enumerate() {
-        let road = RoadMode::new(
-            node_index(0),
-            node_index(1),
-            vehicle_index(0),
+        let leg = Leg::new(
+            LegType::Road(RoadLeg::new(node_index(0), node_index(1), vehicle_index(0))),
+            Time::default(),
+            TravelUtility::default(),
+            ScheduleUtility::None,
+        );
+        let trip = TravelingMode::new(
+            vec![leg],
+            Time::default(),
             DepartureTimeModel::Constant(Time(dt)),
             TravelUtility::default(),
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Road(road)], None);
+        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 
@@ -141,7 +146,7 @@ fn bottleneck_test() {
 
     let expected_arrival_times = vec![1., 5., 9., 13., 17., 22.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
-        let ta = agent_res.arrival_time().unwrap();
+        let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
             ta,
             Time(exp_ta),

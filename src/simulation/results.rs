@@ -10,14 +10,15 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use ttf::TTFNum;
 
-use crate::agent::{agent_index, AgentIndex};
+use crate::agent::{agent_index, Agent, AgentIndex};
 use crate::event::{Event, EventQueue};
-use crate::mode::{AggregateModeResults, Mode, ModeIndex, ModeResults, PreDayChoices};
+use crate::mode::{AggregateModeResults, ModeIndex, ModeResults};
 use crate::network::{NetworkSkim, NetworkWeights};
 use crate::units::{Distribution, Time, Utility};
 
@@ -179,170 +180,84 @@ impl RunningTimes {
     }
 }
 
-/// Results from the pre-day choices of an agent.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
-pub struct PreDayResult<T> {
-    /// Index of the chosen mode.
-    mode: ModeIndex,
-    /// Expected utility from the trip.
-    expected_utility: Utility<T>,
-    /// Mode-specific pre-day results.
-    choices: PreDayChoices<T>,
-}
-
-impl<T> PreDayResult<T> {
-    /// Creates a new PreDayResult.
-    pub const fn new(
-        mode: ModeIndex,
-        expected_utility: Utility<T>,
-        choices: PreDayChoices<T>,
-    ) -> Self {
-        PreDayResult {
-            mode,
-            expected_utility,
-            choices,
-        }
-    }
-
-    /// Returns a reference to the [PreDayChoices].
-    pub const fn get_choices(&self) -> &PreDayChoices<T> {
-        &self.choices
-    }
-
-    /// Returns the index of the chosen mode.
-    pub const fn get_mode_index(&self) -> ModeIndex {
-        self.mode
-    }
-}
-
-impl<T: Copy> PreDayResult<T> {
-    /// Returns the expected utility.
-    pub const fn get_expected_utility(&self) -> Utility<T> {
-        self.expected_utility
-    }
-}
-
-impl<T: TTFNum + 'static> PreDayResult<T> {
-    /// Converts the [PreDayResult] into an [AgentResult].
-    pub fn into_agent_result(self, agent_id: usize) -> AgentResult<T> {
-        let mode_results = self.choices.init_mode_results();
-        AgentResult::new(agent_id, self, mode_results)
-    }
-
-    /// Returns the event (if any) associated with the pre-day choices.
-    pub fn get_event(&self, agent: AgentIndex) -> Option<Box<dyn Event<T>>> {
-        self.choices.get_event(agent)
-    }
-}
-
 /// Results of an agent, during a single iteration.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResult<T> {
     /// Id of the agent.
-    id: usize,
-    /// Utility resulting from the trip.
-    utility: Option<Utility<T>>,
-    /// Departure time from origin.
-    departure_time: Option<Time<T>>,
-    /// Arrival time at destination.
-    arrival_time: Option<Time<T>>,
-    /// Results from the pre-day model.
-    pre_day_results: PreDayResult<T>,
+    pub(crate) id: usize,
+    /// Index of the chosen mode.
+    pub(crate) mode: ModeIndex,
+    /// Expected utility from the trip.
+    pub(crate) expected_utility: Utility<T>,
     /// Mode-specific results.
-    mode_results: ModeResults<T>,
+    pub(crate) mode_results: ModeResults<T>,
 }
 
 impl<T> AgentResult<T> {
     /// Creates a new AgentResult.
     pub const fn new(
         id: usize,
-        pre_day_results: PreDayResult<T>,
+        mode: ModeIndex,
+        expected_utility: Utility<T>,
         mode_results: ModeResults<T>,
     ) -> Self {
         AgentResult {
             id,
-            utility: None,
-            departure_time: None,
-            arrival_time: None,
-            pre_day_results,
+            mode,
+            expected_utility,
             mode_results,
         }
     }
 
-    /// Returns the id of the agent.
-    pub const fn id(&self) -> usize {
-        self.id
-    }
-
-    /// Returns a reference to the [PreDayResult].
-    pub const fn pre_day_results(&self) -> &PreDayResult<T> {
-        &self.pre_day_results
-    }
-
-    /// Returns a reference to the [ModeResults].
-    pub const fn mode_results(&self) -> &ModeResults<T> {
+    /// Returns a reference to the [ModeResults] of the [AgentResult].
+    pub fn mode_results(&self) -> &ModeResults<T> {
         &self.mode_results
-    }
-
-    /// Returns a mutable reference to the [ModeResults].
-    pub fn mut_mode_results(&mut self) -> &mut ModeResults<T> {
-        &mut self.mode_results
-    }
-
-    /// Sets the departure time to the given value.
-    pub fn set_departure_time(&mut self, departure_time: Time<T>) {
-        self.departure_time = Some(departure_time);
-    }
-
-    /// Sets the arrival time to the given value.
-    pub fn set_arrival_time(&mut self, arrival_time: Time<T>) {
-        self.arrival_time = Some(arrival_time);
-    }
-
-    /// Returns `true` if the agent has arrived at destination.
-    pub const fn has_arrived(&self) -> bool {
-        self.arrival_time.is_some()
-    }
-}
-
-impl<T: Copy> AgentResult<T> {
-    /// Returns the utility of the agent.
-    pub const fn utility(&self) -> Option<Utility<T>> {
-        self.utility
-    }
-
-    /// Returns the departure time of the agent.
-    pub const fn departure_time(&self) -> Option<Time<T>> {
-        self.departure_time
-    }
-
-    /// Returns the arrival time of the agent.
-    pub const fn arrival_time(&self) -> Option<Time<T>> {
-        self.arrival_time
     }
 }
 
 impl<T: TTFNum> AgentResult<T> {
-    /// Returns the travel time of the agent.
-    pub fn travel_time(&self) -> Option<Time<T>> {
-        if let (Some(td), Some(ta)) = (self.departure_time, self.arrival_time) {
-            Some(ta - td)
-        } else {
-            None
+    /// Clones and resets the results in prevision for a new day.
+    pub fn reset(&self) -> Self {
+        Self {
+            id: self.id,
+            mode: self.mode,
+            expected_utility: self.expected_utility,
+            mode_results: self.mode_results.reset(),
         }
     }
 
-    /// Process the results of the agent.
+    /// Returns `true` if the agent has finished all its trips and activities, i.e., there is
+    /// nothing more to simulate for him / her in the within-day model.
+    pub fn is_finished(&self) -> bool {
+        self.mode_results.is_finished()
+    }
+
+    /// Computes the absolute difference between the departure time for the current result and the
+    /// departure time of a previous result.
     ///
-    /// The utility is computed from the given [Mode] description, and the stored [ModeResults].
-    pub fn process_results(&mut self, mode: &Mode<T>) {
-        match &mut self.mode_results {
-            ModeResults::Road(road_results) => road_results.process_results(),
-            ModeResults::None => (),
+    /// Returns zero if one of the two result does not have a departure time (i.e., for non-trip
+    /// modes).
+    pub fn departure_time_shift(&self, previous_result: &AgentResult<T>) -> Time<T> {
+        if let (Some(dt), Some(prev_dt)) = (
+            self.mode_results.departure_time(),
+            previous_result.mode_results.departure_time(),
+        ) {
+            (dt - prev_dt).abs()
+        } else {
+            Time::zero()
         }
-        self.utility =
-            Some(mode.get_utility(&self.mode_results, self.departure_time, self.arrival_time));
+    }
+}
+
+impl<T: TTFNum> AgentResult<T> {
+    /// Returns the initial event associated with an [AgentResult] (if any).
+    pub fn get_event<'a>(
+        &self,
+        agent_id: AgentIndex,
+        agent: &'a Agent<T>,
+    ) -> Option<Box<dyn Event<'a, T> + 'a>> {
+        self.mode_results.get_event(agent_id, &agent[self.mode])
     }
 }
 
@@ -354,27 +269,33 @@ impl<T: TTFNum> AgentResult<T> {
 pub struct AgentResults<T>(Vec<AgentResult<T>>);
 
 impl<T> AgentResults<T> {
+    /// Creates a new AgentResults from a vector of [AgentResult].
+    pub fn from_vec(results: Vec<AgentResult<T>>) -> Self {
+        AgentResults(results)
+    }
+
     /// Creates a new empty AgentResults, with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         AgentResults(Vec::with_capacity(capacity))
     }
 }
 
-impl<T: Copy> AgentResults<T> {
-    /// Iterates over the departure times of the agents.
-    pub fn departure_times(&self) -> impl Iterator<Item = Option<Time<T>>> + '_ {
-        self.iter().map(|r| r.departure_time)
-    }
-}
-
-impl<T: TTFNum + 'static> AgentResults<T> {
+impl<T: TTFNum> AgentResults<T> {
     /// Returns an [EventQueue] with all the events resulting from the pre-day choices of the
     /// agents.
-    pub fn get_event_queue(&self) -> EventQueue<T> {
-        self.0
+    pub fn get_event_queue<'a>(&self, agents: &'a [Agent<T>]) -> EventQueue<'a, T> {
+        assert_eq!(
+            self.0.len(),
+            agents.len(),
+            "The number of agents is not equal to the number of agent results"
+        );
+        agents
             .iter()
+            .zip(self.0.iter())
             .enumerate()
-            .filter_map(|(id, r)| r.pre_day_results().get_event(AgentIndex::new(id)))
+            .filter_map(|(id, (agent, agent_result))| {
+                agent_result.get_event(AgentIndex::new(id), agent)
+            })
             .collect()
     }
 }

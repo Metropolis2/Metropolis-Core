@@ -7,6 +7,7 @@
 use std::collections::VecDeque;
 use std::ops::{Index, IndexMut};
 
+use anyhow::Result;
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 use ttf::{PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
@@ -16,8 +17,9 @@ use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
 use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData, RoadNode};
 use crate::event::{Event, EventQueue};
-use crate::mode::road::VehicleEvent;
+use crate::mode::trip::event::VehicleEvent;
 use crate::simulation::results::AgentResult;
+use crate::simulation::PreprocessingData;
 use crate::units::{Flow, Interval, Length, NoUnit, Time};
 
 /// Struct that holds data on the current state of a [RoadNode].
@@ -118,7 +120,7 @@ impl<T: TTFNum> RoadSegment<T> {
 /// - The [Vehicle] type of the vehicle waiting.
 ///
 /// - The time at which the vehicle started waiting.
-type BottleneckEntry<'a, T> = (Box<VehicleEvent<T>>, &'a Vehicle<T>);
+type BottleneckEntry<'a, T> = (Box<VehicleEvent<'a, T>>, &'a Vehicle<T>);
 
 /// Type representing a queue of vehicles waiting at a Bottleneck.
 type BottleneckQueue<'a, T> = VecDeque<BottleneckEntry<'a, T>>;
@@ -131,11 +133,11 @@ type BottleneckQueue<'a, T> = VecDeque<BottleneckEntry<'a, T>>;
 /// If the bottleneck is closed, the enum can store a [BottleneckEvent] that triggers the next time
 /// it open.
 #[derive(Clone, Debug)]
-pub enum BottleneckStatus<T> {
+pub enum BottleneckStatus<'a, T> {
     /// The bottleneck is open.
     ///
     /// The vehicle associated to the given [VehicleEvent] can cross immediately.
-    Open(Box<VehicleEvent<T>>),
+    Open(Box<VehicleEvent<'a, T>>),
     /// The bottleneck is closed.
     ///
     /// If a [BottleneckEvent] is not created yet, it is returned here.
@@ -257,7 +259,7 @@ impl<T: TTFNum> Bottleneck<'_, T> {
     }
 }
 
-impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
+impl<'a, T: TTFNum> Bottleneck<'a, T> {
     /// Record the entry of a vehicle in the bottleneck.
     ///
     /// Return the status of the bottleneck as a [BottleneckStatus].
@@ -265,10 +267,10 @@ impl<'a, T: TTFNum + 'static> Bottleneck<'a, T> {
     /// when the vehicle enters, the status of the bottleneck is `open`).
     fn enters(
         &mut self,
-        event: Box<VehicleEvent<T>>,
+        event: Box<VehicleEvent<'a, T>>,
         vehicle: &'a Vehicle<T>,
         edge_index: EdgeIndex,
-    ) -> BottleneckStatus<T> {
+    ) -> BottleneckStatus<'a, T> {
         let current_time = event.get_time();
         debug_assert!(current_time >= self.last_timing);
         let status = if self.is_open {
@@ -436,15 +438,15 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
     }
 }
 
-impl<'a, T: TTFNum + 'static> RoadEdgeState<'a, T> {
+impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
     /// Record the entry of a vehicle at the in-bottleneck of the edge.
     ///
     /// Return a [BottleneckStatus] that represents the state of the Bottleneck.
     pub fn enters_in_bottleneck(
         &mut self,
         vehicle: &'a Vehicle<T>,
-        event: Box<VehicleEvent<T>>,
-    ) -> BottleneckStatus<T> {
+        event: Box<VehicleEvent<'a, T>>,
+    ) -> BottleneckStatus<'a, T> {
         self.check_recording_interval(event.get_time());
         if let Some(bottleneck) = &mut self.in_bottleneck {
             bottleneck.enters(event, vehicle, self.edge_index)
@@ -460,8 +462,8 @@ impl<'a, T: TTFNum + 'static> RoadEdgeState<'a, T> {
     pub fn enters_out_bottleneck(
         &mut self,
         vehicle: &'a Vehicle<T>,
-        event: Box<VehicleEvent<T>>,
-    ) -> BottleneckStatus<T> {
+        event: Box<VehicleEvent<'a, T>>,
+    ) -> BottleneckStatus<'a, T> {
         self.check_recording_interval(event.get_time());
         // Remove the vehicle from the road part of the edge.
         self.road.exits(vehicle, event.get_time());
@@ -508,7 +510,10 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
             .into_iter()
             .map(|e| e.weight.into_simulated_functions())
             .collect();
-        for (uvehicle_id, vehicle) in preprocess_data.iter_unique_vehicles(&self.network.vehicles) {
+        for (uvehicle_id, vehicle) in preprocess_data
+            .unique_vehicles
+            .iter_uniques(&self.network.vehicles)
+        {
             let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs.iter()) {
                 let road_ttf = funcs
@@ -577,15 +582,16 @@ impl<T> BottleneckEvent<T> {
     }
 }
 
-impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
-    fn execute<'a: 'b, 'b>(
+impl<'a, T: TTFNum> Event<'a, T> for BottleneckEvent<T> {
+    fn execute<'b: 'a>(
         mut self: Box<Self>,
-        _network: &'a Network<T>,
-        _exp_skims: &NetworkSkim<T>,
-        state: &mut NetworkState<'b, T>,
+        _network: &'b Network<T>,
+        _skims: &NetworkSkim<T>,
+        state: &mut NetworkState<'a, T>,
+        _preprocess_data: &PreprocessingData<T>,
         _result: Option<&mut AgentResult<T>>,
-        events: &mut EventQueue<T>,
-    ) {
+        events: &mut EventQueue<'a, T>,
+    ) -> Result<()> {
         let road_network_state = state.get_mut_road_network().unwrap();
         let edge_state = &mut road_network_state[self.edge];
         edge_state.check_recording_interval(self.at_time);
@@ -605,6 +611,7 @@ impl<T: TTFNum + 'static> Event<T> for BottleneckEvent<T> {
             bottleneck.update_weighted_waiting_time(self.at_time);
             bottleneck.open();
         }
+        Ok(())
     }
     fn get_time(&self) -> Time<T> {
         self.at_time

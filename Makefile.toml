@@ -41,7 +41,13 @@ args = [
 env.CARGO_MAKE_BINARY_RELEASE_ENV_INSTALL_MUSL = false
 
 [tasks.build-release-for-target-base]
-args = ["build", "--release", "--workspace", "--target", "${CARGO_MAKE_RELEASE_FLOW_TARGET}"]
+args = [
+  "build",
+  "--release",
+  "--workspace",
+  "--target",
+  "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
+]
 
 [tasks.book-flow]
 description = "Generate book."
@@ -129,7 +135,7 @@ category = "Documentation"
 install_crate = false
 toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
 command = "cargo"
-args = ["run", "--release", "--bin", "generate_schema", "./schemas/metropolis"]
+args = ["run", "--release", "--bin", "generate_metropolis_schemas", "./schemas/metropolis"]
 
 [tasks.schemas-tch]
 description = "Generate I/O schemas for TCH."
@@ -143,7 +149,7 @@ args = [
   "-p",
   "tch",
   "--bin",
-  "generate_schema",
+  "generate_tch_schemas",
   "./schemas/tch",
 ]
 

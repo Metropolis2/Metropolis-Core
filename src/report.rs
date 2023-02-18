@@ -12,6 +12,7 @@ use anyhow::{anyhow, Result};
 use askama::Template;
 use ttf::TTFNum;
 
+use crate::mode::trip::results::LegTypeResults;
 use crate::mode::ModeResults;
 use crate::simulation::results::{AggregateResults, SimulationResults};
 use crate::units::Time;
@@ -35,9 +36,13 @@ fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResul
         let mut road_departure_times = Vec::with_capacity(last_iteration.agent_results().len());
         let mut road_arrival_times = Vec::with_capacity(last_iteration.agent_results().len());
         for (_, agent_result) in last_iteration.iter_agent_results() {
-            if let ModeResults::Road(_) = agent_result.mode_results() {
-                road_departure_times.push(agent_result.departure_time().unwrap());
-                road_arrival_times.push(agent_result.arrival_time().unwrap());
+            if let ModeResults::Trip(trip_results) = &agent_result.mode_results {
+                for leg_result in trip_results.legs.iter() {
+                    if let LegTypeResults::Road(_) = &leg_result.class {
+                        road_departure_times.push(leg_result.departure_time);
+                        road_arrival_times.push(leg_result.arrival_time);
+                    }
+                }
             }
         }
 

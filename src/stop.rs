@@ -4,7 +4,7 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to stopping criteria.
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::{FromPrimitive, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -57,14 +57,8 @@ fn get_mean_departure_time_shift<T: TTFNum>(
         .iter()
         .zip(prev_results.iter())
         .map(|(res, prev_res)| {
-            if res.pre_day_results().get_mode_index() == prev_res.pre_day_results().get_mode_index()
-            {
-                if let (Some(dt), Some(prev_dt)) = (res.departure_time(), prev_res.departure_time())
-                {
-                    (dt - prev_dt).abs()
-                } else {
-                    Time::zero()
-                }
+            if res.mode == prev_res.mode {
+                res.departure_time_shift(prev_res)
             } else {
                 // The agent has switched to another mode.
                 default
@@ -76,10 +70,13 @@ fn get_mean_departure_time_shift<T: TTFNum>(
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Float;
+
     use super::*;
     use crate::agent::agent_index;
-    use crate::mode::{mode_index, ModeResults, PreDayChoices};
-    use crate::simulation::results::{AgentResult, PreDayResult};
+    use crate::mode::trip::results::TripResults;
+    use crate::mode::{mode_index, ModeResults};
+    use crate::simulation::results::AgentResult;
     use crate::units::Utility;
 
     #[test]
@@ -98,22 +95,52 @@ mod tests {
         // === Departure times ===
         // Iteration 1: [0., 0.].
         // Iteration 2: [0., 2.].
-        let pdr = PreDayResult::new(mode_index(1), Utility(0.), PreDayChoices::None);
-
         let mut prev_agent_results = AgentResults::with_capacity(2);
-        let mut r = AgentResult::new(1, pdr.clone(), ModeResults::None);
-        r.set_departure_time(Time(0.));
+        let mode_results = ModeResults::Trip(TripResults {
+            legs: vec![],
+            departure_time: Time(0.),
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            expected_utility: Utility::nan(),
+            virtual_only: false,
+        });
+        let r = AgentResult::new(1, mode_index(0), Utility::nan(), mode_results);
         prev_agent_results.push(r);
-        let mut r = AgentResult::new(2, pdr.clone(), ModeResults::None);
-        r.set_departure_time(Time(0.));
+        let mode_results = ModeResults::Trip(TripResults {
+            legs: vec![],
+            departure_time: Time(0.),
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            expected_utility: Utility::nan(),
+            virtual_only: false,
+        });
+        let r = AgentResult::new(2, mode_index(0), Utility::nan(), mode_results);
         prev_agent_results.push(r);
 
         let mut agent_results = AgentResults::with_capacity(2);
-        let mut r = AgentResult::new(1, pdr.clone(), ModeResults::None);
-        r.set_departure_time(Time(0.));
+        let mode_results = ModeResults::Trip(TripResults {
+            legs: vec![],
+            departure_time: Time(0.),
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            expected_utility: Utility::nan(),
+            virtual_only: false,
+        });
+        let r = AgentResult::new(1, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
-        let mut r = AgentResult::new(2, pdr, ModeResults::None);
-        r.set_departure_time(Time(2.));
+        let mode_results = ModeResults::Trip(TripResults {
+            legs: vec![],
+            departure_time: Time(2.),
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            expected_utility: Utility::nan(),
+            virtual_only: false,
+        });
+        let r = AgentResult::new(2, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
 
         assert_eq!(
@@ -126,10 +153,17 @@ mod tests {
         );
         assert!(c.stop(0, &agent_results, Some(&prev_agent_results)));
 
-        // Now the second agent switched to another mode.
-        let pdr = PreDayResult::new(mode_index(2), Utility(0.), PreDayChoices::None);
-        let mut r = AgentResult::new(2, pdr, ModeResults::None);
-        r.set_departure_time(Time(0.));
+        // Now the second agent switched to another mode (index 1).
+        let mode_results = ModeResults::Trip(TripResults {
+            legs: vec![],
+            departure_time: Time(0.),
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            expected_utility: Utility::nan(),
+            virtual_only: false,
+        });
+        let r = AgentResult::new(2, mode_index(1), Utility::nan(), mode_results);
         agent_results[agent_index(1)] = r;
 
         assert_eq!(

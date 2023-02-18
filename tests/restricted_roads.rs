@@ -6,8 +6,8 @@
 use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
-use metropolis::mode::road::RoadMode;
-use metropolis::mode::{DepartureTimeModel, Mode};
+use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
+use metropolis::mode::Mode;
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
@@ -134,16 +134,21 @@ fn get_simulation() -> Simulation<f64> {
         } else {
             vehicle_index(i)
         };
-        let road = RoadMode::new(
-            node_index(0),
-            node_index(3),
-            v,
+        let leg = Leg::new(
+            LegType::Road(RoadLeg::new(node_index(0), node_index(3), v)),
+            Time::default(),
+            TravelUtility::default(),
+            ScheduleUtility::None,
+        );
+        let trip = TravelingMode::new(
+            vec![leg],
+            Time::default(),
             DepartureTimeModel::Constant(Time(0.)),
             TravelUtility::default(),
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Road(road)], None);
+        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 
@@ -184,7 +189,7 @@ fn restricted_road_test() {
         .zip(expected_arrival_times.iter())
         .enumerate()
     {
-        let ta = agent_res.arrival_time().unwrap();
+        let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
             ta,
             Time(exp_ta),

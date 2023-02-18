@@ -237,22 +237,24 @@ queries** (see [Terminology](routing_script.md#terminology)).
 This JSON file must be an Array of Objects where each Object represents a query and has the following
 fields:
 
+- `id` (integer): index of the query (used to match the output)
 - `source` (integer): index of the source node
 - `target` (integer): index of the target node
 - `departure_time` (float, optional): time of departure from the source node, in number of seconds
   since midnight (leave empty for profile queries)
 
 Alternatively, instead of using Objects, you can use Arrays where the first value is an integer
-corresponding to the source node, the second value is an integer corresponding to the target node
-and the third value (optional) is a float corresponding to the departure time.
+corresponding to the query's id, the second value is an integer corresponding to the source node,
+the third value is an integer corresponding to the target node and the fourth value (optional) is a
+float corresponding to the departure time.
 
 For example, if you want to run an earliest-arrival query from node 0 to node 1 with departure time
 70.0 (i.e., 00:01:10) and a profile query from node 2 to node 3, you can use the following
 
 ```json
 [
-  {"source": 0, "target": 1, "departure_time": 70.0},
-  {"source": 2, "target": 3}
+  {"id": 1, "source": 0, "target": 1, "departure_time": 70.0},
+  {"id": 2, "source": 2, "target": 3}
 ]
 ```
 
@@ -260,8 +262,8 @@ or
 
 ```json
 [
-  [0, 1, 70.0],
-  [0, 2]
+  [1, 0, 1, 70.0],
+  [2, 0, 2]
 ]
 ```
 
@@ -395,16 +397,18 @@ This JSON file is an Object with two keys, `results` and `details`.
 
 The value for key `results` is an Array with the query results.
 
-- For earliest-arrival queries, when `output_route` is `false`, the value is a float, representing
-  the earliest possible arrival time from source to target, given the departure time from source.
-- For earliest-arrival queries, when `output_route` is `true`, the value is an Array whose first
-  value is a float, representing the earliest possible arrival time from source to target, given the
-  departure time from source, and whose second value is an Array of integers representing the edge
-  indices of the fastest route.
--  For profile queries, the value is a `TTF`, representing the minimum-travel-time function from
-  source to target.
+- For earliest-arrival queries, when `output_route` is `false`, the value is an Array `[id, tt]`,
+  where `id` (integer) is the query's id and `tt` (float) is the earliest possible arrival time from
+  source to target, given the departure time from source.
+- For earliest-arrival queries, when `output_route` is `true`, the value is an Array
+  `[id, tt, route]`, where `id` (integer) is the query's id, `tt` (float) is the earliest possible
+  arrival time from source to target, given the departure time from source, and `route` is an Array
+  of integers representing the edge indices of the fastest route.
+- For profile queries, the value is an Array `[id, ttf]`, where `id` (integer) is the query's id and
+  `ttf` (`TTF`) is the minimum-travel-time function from source to target.
 
-The query result is `"null"` if the source and target are not connected.
+If the travel time or travel-time function is `"null"`, it means that the source and target nodes
+are not connected.
 
 The value for key `details` is an Object with the following keys.
 
@@ -424,16 +428,18 @@ first one returns a constant travel-time function), with `output_route` set to `
 [
   {
     "results": [
-      29430.0,
-      325.0,
-      {
-        "points": [
-          [18000.0, 70.0],
-          [28800.0, 90.0],
-          [36000.0, 70.0],
-        ],
-        "period": [18000.0, 36000.0]
-      }
+      [1, 29430.0],
+      [2, 325.0],
+      [3,
+        {
+          "points": [
+            [18000.0, 70.0],
+            [28800.0, 90.0],
+            [36000.0, 70.0],
+          ],
+          "period": [18000.0, 36000.0]
+        }
+      ]
     ]
   },
   {
@@ -455,19 +461,18 @@ Below is the same example when `output_route` is set to `true`.
 [
   {
     "results": [
-      [
-        29430.0,
-        [1, 2, 0]
-      ],
-      325.0,
-      {
-        "points": [
-          [18000.0, 70.0],
-          [28800.0, 90.0],
-          [36000.0, 70.0],
-        ],
-        "period": [18000.0, 36000.0]
-      }
+      [1, 29430.0, [1, 2, 0]],
+      [2, 325.0],
+      [3,
+        {
+          "points": [
+            [18000.0, 70.0],
+            [28800.0, 90.0],
+            [36000.0, 70.0],
+          ],
+          "period": [18000.0, 36000.0]
+        }
+      ]
     ]
   },
   {

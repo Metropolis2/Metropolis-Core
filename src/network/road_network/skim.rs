@@ -20,13 +20,13 @@ use ttf::{TTFNum, TTF};
 
 use crate::units::Time;
 
-/// Structure to store a [RoadNetworkSkim] for each [Vehicle](super::vehicle::Vehicle) of a
+/// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
 #[derive(Clone, Default, Debug, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
 #[serde(into = "SerializedRoadNetworkSkims<T>")]
 #[schemars(
-    description = "Travel-time function for each OD pair (inner array), for each vehicle type (outer array)"
+    description = "Travel-time function for each OD pair (inner array), for each unique vehicle type (outer array)"
 )]
 pub struct RoadNetworkSkims<T>(
     #[schemars(with = "SerializedRoadNetworkSkims<T>")] pub Vec<Option<RoadNetworkSkim<T>>>,
@@ -39,9 +39,6 @@ impl<T> Index<usize> for RoadNetworkSkims<T> {
     }
 }
 
-/// For a given origin node, map to each destination a travel-time function.
-type CachedQueriesFromSource<T> = HashMap<NodeIndex, Option<TTF<Time<T>>>>;
-
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
 #[derive(Clone, Default, Debug)]
@@ -49,7 +46,7 @@ pub struct RoadNetworkSkim<T> {
     /// Hierarchy overlay of the road-network graph.
     hierarchy_overlay: HierarchyOverlay<Time<T>>,
     /// Travel time functions for each used OD pair.
-    profile_query_cache: HashMap<NodeIndex, CachedQueriesFromSource<T>>,
+    profile_query_cache: ODTravelTimeFunctions<T>,
 }
 
 impl<T: TTFNum> RoadNetworkSkim<T> {
@@ -92,7 +89,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     pub fn pre_compute_profile_queries(
         &mut self,
         od_pairs: &HashMap<NodeIndex, HashSet<NodeIndex>>,
-        search_spaces: SearchSpaces<Time<T>>,
+        search_spaces: &SearchSpaces<Time<T>>,
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
             ProgressBar::new(od_pairs.len() as u64)
@@ -106,18 +103,14 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         );
         self.profile_query_cache = od_pairs
             .par_iter()
-            .map(|(&source, targets)| {
-                let results = targets
-                    .iter()
-                    .map(|&target| {
-                        let ttf = algo::intersect_profile_query(source, target, &search_spaces)?;
-                        Ok((target, ttf))
-                    })
-                    .collect::<Result<CachedQueriesFromSource<T>>>()?;
+            .flat_map_iter(|(&source, targets)| {
                 bp.inc(1);
-                Ok((source, results))
+                targets.iter().map(move |&target| {
+                    let ttf = algo::intersect_profile_query(source, target, search_spaces)?;
+                    Ok(((source, target), ttf))
+                })
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .collect::<Result<ODTravelTimeFunctions<T>>>()?;
         bp.finish_and_clear();
         Ok(())
     }
@@ -129,8 +122,8 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     /// Return `None` if there is no route between the two nodes.
     pub fn profile_query(&self, from: NodeIndex, to: NodeIndex) -> Result<Option<&TTF<Time<T>>>> {
         self.profile_query_cache
-            .get(&from)
-            .and_then(|r| r.get(&to).map(|ttf_opt| ttf_opt.as_ref()))
+            .get(&(from, to))
+            .map(|o| o.as_ref())
             .ok_or_else(|| {
                 anyhow!(
                     "The profile query from {:?} to {:?} is not in the cache",
@@ -187,14 +180,12 @@ impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
         for vehicle_skims in skims.0 {
             let mut serialized_vehicle_skims = Vec::new();
             if let Some(vehicle_skims) = vehicle_skims {
-                for (origin, origin_skims) in vehicle_skims.profile_query_cache.into_iter() {
-                    for (destination, ttf) in origin_skims.into_iter() {
-                        serialized_vehicle_skims.push(ODPairTTF {
-                            origin: origin.index(),
-                            destination: destination.index(),
-                            ttf,
-                        });
-                    }
+                for ((origin, destination), ttf) in vehicle_skims.profile_query_cache.into_iter() {
+                    serialized_vehicle_skims.push(ODPairTTF {
+                        origin: origin.index(),
+                        destination: destination.index(),
+                        ttf,
+                    });
                 }
             }
             serialized_skims.push(serialized_vehicle_skims);
@@ -202,6 +193,9 @@ impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
         SerializedRoadNetworkSkims(serialized_skims)
     }
 }
+
+/// Map for some origin nodes, an OD-level travel-time function, for some destination nodes.
+type ODTravelTimeFunctions<T> = HashMap<(NodeIndex, NodeIndex), Option<TTF<Time<T>>>>;
 
 /// A memory allocation that holds the structures required during earliest arrival queries.
 #[derive(Clone, Debug, Default)]

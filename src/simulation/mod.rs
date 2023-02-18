@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, log_enabled, Level, LevelFilter};
-use object_pool::Pool;
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
@@ -25,13 +24,12 @@ use time::{Duration, Instant};
 use ttf::TTFNum;
 
 use self::results::{
-    AgentResults, AggregateResults, IterationResults, IterationRunningTimes, PreDayResult,
-    RunningTimes, SimulationResults,
+    AgentResults, AggregateResults, IterationResults, IterationRunningTimes, RunningTimes,
+    SimulationResults,
 };
-use crate::agent::Agent;
-use crate::mode::fixed_ttf::AggregateFixedTTFResults;
-use crate::mode::road::AggregateRoadResults;
-use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode};
+use crate::agent::{agent_index, Agent};
+use crate::mode::trip::results::AggregateTripResults;
+use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::parameters::Parameters;
@@ -78,7 +76,7 @@ impl<T> Simulation<T> {
     }
 }
 
-impl<T: TTFNum + Serialize + 'static> Simulation<T> {
+impl<T: TTFNum> Simulation<T> {
     /// Run the simulation, using the given [NetworkWeights] as initial weights of the network.
     ///
     /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
@@ -164,7 +162,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
                 .compute_skims(weights, &preprocess_data.network, &self.parameters.network)
         })?;
         info!("Running pre-day model");
-        let (pre_day_results, t2) = record_time(|| {
+        let (mut agent_results, t2) = record_time(|| {
             self.run_pre_day_model(
                 &skims,
                 preprocess_data,
@@ -173,14 +171,13 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             )
         })?;
         info!("Running within-day model");
-        let ((sim_weights, within_day_results), t3) = record_time(|| {
-            Ok(self.run_within_day_model(pre_day_results, &skims, preprocess_data))
-        })?;
+        let (sim_weights, t3) =
+            record_time(|| self.run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
         info!("Running day-to-day model");
         let (new_weights, t4) = record_time(|| {
             Ok(self.run_day_to_day_model(weights, &sim_weights, iteration_counter))
         })?;
-        let iteration_results = IterationResults::new(within_day_results, new_weights, skims);
+        let iteration_results = IterationResults::new(agent_results, new_weights, skims);
         info!("Computing aggregate results");
         let (aggregate_results, t5) = record_time(|| {
             Ok(self.compute_aggregate_results(&iteration_results, previous_results_opt))
@@ -213,7 +210,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
 
     /// Runs the pre-day model, using the given [NetworkSkim] and the [AgentResults] of the
     /// previous iteration (if any).
-    /// Returns a Vec of [PreDayResult].
+    /// Returns [AgentResults].
     ///
     /// The pre-day model represents the decisions made by the agents before the start of a
     /// simulated day. In particular, agents choose their mode and departure time.
@@ -223,8 +220,7 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         preprocess_data: &PreprocessingData<T>,
         previous_results_opt: Option<&AgentResults<T>>,
         iteration_counter: u32,
-    ) -> Result<Vec<PreDayResult<T>>> {
-        let pool = Pool::new(rayon::current_num_threads(), Default::default);
+    ) -> Result<AgentResults<T>> {
         let bp = if log_enabled!(Level::Info) {
             ProgressBar::new(self.agents.len() as u64)
         } else {
@@ -239,52 +235,46 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
             let updates = self.get_update_vector(iteration_counter);
             (&self.agents, previous_results.deref(), updates)
                 .into_par_iter()
-                .map_init(
-                    || pool.pull(Default::default),
-                    |alloc, (agent, prev_agent_result, update)| {
-                        bp.inc(1);
-                        agent.make_pre_day_choice(
-                            exp_skims,
-                            preprocess_data,
-                            Some(prev_agent_result.pre_day_results()),
-                            update,
-                            alloc,
-                        )
-                    },
-                )
+                .panic_fuse()
+                .map(|(agent, prev_agent_result, update)| {
+                    bp.inc(1);
+                    agent.make_pre_day_choice(
+                        exp_skims,
+                        preprocess_data,
+                        Some(prev_agent_result),
+                        update,
+                    )
+                })
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             // Everyone has to make a choice.
             self.agents
                 .par_iter()
-                .map_init(
-                    || pool.pull(Default::default),
-                    |alloc, agent| {
-                        bp.inc(1);
-                        agent.make_pre_day_choice(exp_skims, preprocess_data, None, true, alloc)
-                    },
-                )
+                .panic_fuse()
+                .map(|agent| {
+                    bp.inc(1);
+                    agent.make_pre_day_choice(exp_skims, preprocess_data, None, true)
+                })
                 .collect::<Result<Vec<_>, _>>()?
         };
         bp.finish_and_clear();
-        Ok(results)
+        Ok(AgentResults::from_vec(results))
     }
 
-    /// Runs the within-day model, using the given Vec of [PreDayResult] and [NetworkSkim].
+    /// Runs the within-day model, using the given [AgentResults] and [NetworkSkim].
     /// Returns the resulting [NetworkWeights] and [AgentResults].
     ///
     /// In the within-day model, the movements of agents and vehicles on the network is simulated,
     /// given their pre-day choices.
     pub fn run_within_day_model(
         &self,
-        pre_day_results: Vec<PreDayResult<T>>,
+        agent_results: &mut AgentResults<T>,
         skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
-    ) -> (NetworkWeights<T>, AgentResults<T>) {
+    ) -> Result<NetworkWeights<T>> {
         debug!("Initializing variables");
         let mut state = self.network.get_blank_state(&preprocess_data.network);
-        let mut results = self.init_agent_results(pre_day_results);
-        let mut events = results.get_event_queue();
+        let mut events = agent_results.get_event_queue(&self.agents);
         let mut nb_events = 0;
         info!("Executing events");
         let bp = if log_enabled!(Level::Info) {
@@ -299,30 +289,36 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
         );
         while let Some(event) = events.pop() {
             nb_events += 1;
-            if let Some(result) = event.get_agent_index().map(|id| &mut results[id]) {
+            if let Some(result) = event.get_agent_index().map(|id| &mut agent_results[id]) {
                 // The event is associated to an agent.
-                event.execute(&self.network, skims, &mut state, Some(result), &mut events);
-                if result.has_arrived() {
+                event.execute(
+                    &self.network,
+                    skims,
+                    &mut state,
+                    preprocess_data,
+                    Some(result),
+                    &mut events,
+                )?;
+                if result.is_finished() {
                     bp.inc(1);
                 }
             } else {
-                event.execute(&self.network, skims, &mut state, None, &mut events);
+                event.execute(
+                    &self.network,
+                    skims,
+                    &mut state,
+                    preprocess_data,
+                    None,
+                    &mut events,
+                )?;
             }
         }
         bp.finish_and_clear();
-        // Drop the events queue (it is empty) so that it no longer borrows the results.
-        drop(events);
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
         let weights = state.into_weights(&preprocess_data.network, &self.parameters);
-        // Process agent results.
-        debug!("Processing agent results");
-        for (i, r) in results.iter_mut().enumerate() {
-            let chosen_mode = r.pre_day_results().get_mode_index();
-            r.process_results(&self.agents[i][chosen_mode]);
-        }
-        (weights, results)
+        Ok(weights)
     }
 
     /// Runs the day-to-day model, using the given old [NetworkWeights] (from the previous
@@ -343,80 +339,52 @@ impl<T: TTFNum + Serialize + 'static> Simulation<T> {
     pub fn compute_aggregate_results(
         &self,
         results: &IterationResults<T>,
-        prev_agent_results_opt: Option<&AgentResults<T>>,
+        prev_agent_results: Option<&AgentResults<T>>,
     ) -> AggregateResults<T> {
         let surplus = Distribution::from_iterator(
             results
                 .iter_agent_results()
-                .map(|(_agent_id, r)| r.pre_day_results().get_expected_utility()),
+                .map(|(_agent_id, r)| r.expected_utility),
         )
         .unwrap();
-        let mut road_entries = Vec::with_capacity(self.agents.len());
-        let mut fixed_ttf_entries = Vec::with_capacity(self.agents.len());
-        let mut cst_entries = Vec::with_capacity(self.agents.len());
-        if let Some(prev_agent_results) = prev_agent_results_opt {
-            for ((agent_id, agent_result), prev_agent_result) in
-                results.iter_agent_results().zip(prev_agent_results.iter())
-            {
-                let mode_id = agent_result.pre_day_results().get_mode_index();
-                match &self.agents[agent_id.index()][mode_id] {
-                    Mode::Road(road_mode) => {
-                        road_entries.push((road_mode, agent_result, Some(prev_agent_result)))
-                    }
-                    Mode::FixedTTF(mode) => fixed_ttf_entries.push((mode, agent_result)),
-                    Mode::Constant(_) => cst_entries.push(agent_result),
+        let mut trip_entries = Vec::with_capacity(self.agents.len());
+        let mut cst_utilities = Vec::with_capacity(self.agents.len());
+        for i in 0..(results.agent_results().len()) {
+            let agent_result = &results.agent_results()[agent_index(i)];
+            let mode_id = agent_result.mode;
+            match (&self.agents[i][mode_id], &agent_result.mode_results) {
+                (Mode::Trip(trip_mode), ModeResults::Trip(trip_result)) => {
+                    let prev_trip_result = if let Some(ModeResults::Trip(prev_trip_result)) =
+                        prev_agent_results.map(|r| &r[agent_index(i)].mode_results)
+                    {
+                        Some(prev_trip_result)
+                    } else {
+                        None
+                    };
+                    trip_entries.push((trip_mode, trip_result, prev_trip_result));
                 }
-            }
-        } else {
-            for (agent_id, agent_result) in results.iter_agent_results() {
-                let mode_id = agent_result.pre_day_results().get_mode_index();
-                match &self.agents[agent_id.index()][mode_id] {
-                    Mode::Road(road_mode) => road_entries.push((road_mode, agent_result, None)),
-                    Mode::FixedTTF(mode) => fixed_ttf_entries.push((mode, agent_result)),
-                    Mode::Constant(_) => cst_entries.push(agent_result),
-                }
+                (&Mode::Constant(utility), ModeResults::None) => cst_utilities.push(utility),
+                _ => panic!("Unsupported mode and mode results combination"),
             }
         }
-        let road_results = if road_entries.is_empty() {
+        let road_results = if trip_entries.is_empty() {
             None
         } else {
-            Some(AggregateRoadResults::from_agent_results(
-                road_entries,
-                self.network
-                    .get_road_network()
-                    .expect("Found RoadResults but no road network"),
-            ))
+            Some(AggregateTripResults::from_agent_results(trip_entries))
         };
-        let fixed_ttf_results = if fixed_ttf_entries.is_empty() {
+        let cst_results = if cst_utilities.is_empty() {
             None
         } else {
-            Some(AggregateFixedTTFResults::from_agent_results(
-                fixed_ttf_entries,
-            ))
-        };
-        let cst_results = if cst_entries.is_empty() {
-            None
-        } else {
-            Some(AggregateConstantResults::from_agent_results(cst_entries))
+            Some(AggregateConstantResults::from_utilities(cst_utilities))
         };
         let mode_results = AggregateModeResults {
-            road: road_results,
-            fixed_ttf: fixed_ttf_results,
+            trip_modes: road_results,
             constant: cst_results,
         };
         AggregateResults {
             surplus,
             mode_results,
         }
-    }
-
-    /// Converts a Vec of [PreDayResult] into [AgentResults].
-    fn init_agent_results(&self, pre_day_results: Vec<PreDayResult<T>>) -> AgentResults<T> {
-        let mut results = AgentResults::with_capacity(pre_day_results.len());
-        for (agent, pre_day_result) in self.agents.iter().zip(pre_day_results.into_iter()) {
-            results.push(pre_day_result.into_agent_result(agent.id));
-        }
-        results
     }
 
     /// Builds a vector of boolean indicating the agents that can switch their choice for the next

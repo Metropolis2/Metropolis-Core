@@ -334,6 +334,9 @@ where
         // Minimum index of x.
         let mut min_index = 0;
         iter.map(move |x| {
+            if x.approx_gt(&self[self.len() - 1].x) {
+                return self[self.len() - 1].y;
+            }
             let bucket = self.get_bucket(x);
             min_index = std::cmp::min(min_index, self.buckets[bucket]);
             debug_assert!(self[min_index].x.approx_le(&x));
@@ -348,11 +351,14 @@ where
                     return linear_interp(self[i - 1], self[i], x);
                 }
             }
-            assert!(x.approx_le(&self.period[1]));
-            Y::default()
+            // We assume that travel time stays constant after the last breakpoint.
+            self[self.len() - 1].y
         })
     }
 
+    /// Returns the smallest index `i` such that `x[i -1] < x <= x[i]`.
+    ///
+    /// Returns the length of the PwlXYF if the last x value is less than `x`.
     fn first_index_with_x_ge(&self, x: X) -> usize {
         debug_assert!(!self.is_empty());
         debug_assert!(x >= self.period[0], "{:?} < {:?}", x, self.period[0]);
@@ -454,7 +460,18 @@ where
             .take_while(|&x| x <= self.period[1])
         {
             let i = self.first_index_with_x_ge(x);
-            if x.approx_ne(&self[i].x) {
+            // i is such that x[i-1] < x <= x[i].
+            if i == self.len() {
+                // Point will be inserted at the end, no copy is necessary.
+                points_to_add.push((
+                    i,
+                    Point {
+                        x,
+                        y: self[self.len() - 1].y,
+                    },
+                ));
+            } else if x.approx_ne(&self[i].x) {
+                debug_assert!(x.approx_lt(&self[i].x));
                 let y = linear_interp(self[i - 1], self[i], x);
                 points_to_add.push((i, Point { x, y }));
                 nb_copy += self.len() - i;

@@ -68,7 +68,7 @@ pub struct PolynomialFunction<T> {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_zero")]
     pub d: T,
-    /// Coefficient of degree 5.
+    /// Coefficient of degree 4.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_zero")]
     pub e: T,

@@ -41,25 +41,53 @@
 					<tr class="first">
 						<th scope="col" rowspan="2" class="text-center">Iteration</th>
 						<th scope="col" rowspan="2" class="text-center">Surplus</th>
-						<th scope="col" colspan="14" class="text-center">Road</th>
-						<th scope="col" colspan="2" class="text-center">Constant</th>
+						<th scope="col" colspan="2" class="text-center">No Trip</th>
+						<th scope="col" colspan="7" class="text-center">Trips</th>
+						<th scope="col" colspan="19" class="text-center">Road Legs</th>
+						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
 					</tr>
 					<tr class="second">
-						<th scope="col" class="text-center">Count</th>
-						<th scope="col" class="text-center">Congestion</th>
+						<!-- CONSTANT UTILITY -->
+						<th scope="col" class="text-center">#</th>
+						<th scope="col" class="text-center">Mean utility</th>
+						<!-- TRIPS -->
+						<th scope="col" class="text-center">#</th>
+						<th scope="col" class="text-center">Mean departure time</th>
+						<th scope="col" class="text-center">Mean arrival time</th>
+						<th scope="col" class="text-center">Mean travel time</th>
+						<th scope="col" class="text-center">Mean utility</th>
+						<th scope="col" class="text-center">Mean expected utility</th>
+						<th scope="col" class="text-center">Mean departure-time shift</th>
+						<!-- ROAD LEGS -->
+						<th scope="col" class="text-center"># Legs</th>
+						<th scope="col" class="text-center"># Trips (1+ road leg)</th>
+						<th scope="col" class="text-center"># Trips (only road legs)</th>
+						<th scope="col" class="text-center">Mean # road legs</th>
 						<th scope="col" class="text-center">Mean departure time</th>
 						<th scope="col" class="text-center">Mean arrival time</th>
 						<th scope="col" class="text-center">Mean road time</th>
 						<th scope="col" class="text-center">Mean in-bottleneck time</th>
 						<th scope="col" class="text-center">Mean out-bottleneck time</th>
 						<th scope="col" class="text-center">Mean travel time</th>
-						<th scope="col" class="text-center">Mean free-flow travel time</th>
-						<th scope="col" class="text-center">Mean distance (m)</th>
+						<th scope="col" class="text-center">Mean route free-flow travel time</th>
+						<th scope="col" class="text-center">Mean global free-flow travel time</th>
+						<th scope="col" class="text-center">Mean route congestion</th>
+						<th scope="col" class="text-center">Mean global congestion</th>
+						<th scope="col" class="text-center">Mean route length (m)</th>
 						<th scope="col" class="text-center">Mean edge count</th>
 						<th scope="col" class="text-center">Mean utility</th>
-						<th scope="col" class="text-center">EXPECT</th>
-						<th scope="col" class="text-center">Mean departure-time shift</th>
-						<th scope="col" class="text-center">Count</th>
+						<th scope="col" class="text-center">Mean expected travel time</th>
+						<th scope="col" class="text-center">Mean expected travel time difference</th>
+						<!-- VIRTUAL LEGS -->
+						<th scope="col" class="text-center"># Legs</th>
+						<th scope="col" class="text-center"># Trips (1+ virtual leg)</th>
+						<th scope="col" class="text-center"># Trips (only virtual legs)</th>
+						<th scope="col" class="text-center">Mean # virtual legs</th>
+						<th scope="col" class="text-center">Mean departure time</th>
+						<th scope="col" class="text-center">Mean arrival time</th>
+						<th scope="col" class="text-center">Mean travel time</th>
+						<th scope="col" class="text-center">Mean global free-flow travel time</th>
+						<th scope="col" class="text-center">Mean global congestion</th>
 						<th scope="col" class="text-center">Mean utility</th>
 					</tr>
 				</thead>
@@ -68,43 +96,6 @@
 					<tr>
 						<td scope="row" class="text-center">{{ loop.index }}</td>
 						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean().0) }}</td>
-						{% match it.mode_results.road %}
-							{% when Some with (road) %}
-								<td class="text-center">{{ road.count }}</td>
-								<td class="text-center">{{ "{:.4}"|format(road.congestion.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.departure_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.arrival_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.road_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.in_bottleneck_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.out_bottleneck_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.travel_times.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(road.route_free_flow_travel_times.mean()) }}</td>
-								<td class="text-center">{{ "{:.0}"|format(road.lengths.mean().0) }}</td>
-								<td class="text-center">{{ "{:.2}"|format(road.edge_counts.mean()) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(road.utilities.mean().0) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(road.exp_travel_time_diff.mean()) }}</td>
-								{% match road.dep_time_shift %}
-									{% when Some with (distr) %}
-									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
-									{% when None %}
-									<td class="text-center">N/A</td>
-								{% endmatch %}
-							{% when None %}
-								<td class="text-center">0</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-								<td class="text-center">N/A</td>
-						{% endmatch %}
 						{% match it.mode_results.constant %}
 							{% when Some with (constant) %}
 								<td class="text-center">{{ constant.count }}</td>
@@ -112,6 +103,72 @@
 							{% when None %}
 								<td class="text-center">0</td>
 								<td class="text-center">N/A</td>
+						{% endmatch %}
+						{% match it.mode_results.trip_modes %}
+							{% when Some with (trip_results) %}
+								<!-- TRIPS -->
+								<td class="text-center">{{ trip_results.count }}</td>
+								<td class="text-center">{{ "{}"|format(trip_results.departure_time.mean()) }}</td>
+								<td class="text-center">{{ "{}"|format(trip_results.arrival_time.mean()) }}</td>
+								<td class="text-center">{{ "{}"|format(trip_results.travel_time.mean()) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(trip_results.utility.mean().0) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(trip_results.expected_utility.mean().0) }}</td>
+								{% match trip_results.dep_time_shift %}
+									{% when Some with (distr) %}
+									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
+									{% when None %}
+									<td class="text-center">N/A</td>
+								{% endmatch %}
+								<!-- ROAD LEGS -->
+								{% match trip_results.road_leg %}
+									{% when Some with (rlr) %}
+									<td class="text-center">{{ rlr.count }}</td>
+									<td class="text-center">{{ rlr.mode_count_one }}</td>
+									<td class="text-center">{{ rlr.mode_count_all }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.departure_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.arrival_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.road_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.in_bottleneck_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.out_bottleneck_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.route_free_flow_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.global_free_flow_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.route_congestion.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.global_congestion.mean()) }}</td>
+									<td class="text-center">{{ "{:.0}"|format(rlr.length.mean().0) }}</td>
+									<td class="text-center">{{ "{:.2}"|format(rlr.edge_count.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.utility.mean().0) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_diff.mean()) }}</td>
+									{% when None %}
+									{% for _ in 0..19 %}
+									<td class="text-center">N/A</td>
+									{% endfor %}
+								{% endmatch %}
+								<!-- VIRTUAL LEGS -->
+								{% match trip_results.virtual_leg %}
+									{% when Some with (vlr) %}
+									<td class="text-center">{{ vlr.count }}</td>
+									<td class="text-center">{{ vlr.mode_count_one }}</td>
+									<td class="text-center">{{ vlr.mode_count_all }}</td>
+									<td class="text-center">{{ "{}"|format(vlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(vlr.departure_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(vlr.arrival_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(vlr.travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(vlr.global_free_flow_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(vlr.global_congestion.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(vlr.utility.mean().0) }}</td>
+									{% when None %}
+									{% for _ in 0..10 %}
+									<td class="text-center">N/A</td>
+									{% endfor %}
+								{% endmatch %}
+							{% when None %}
+								<td class="text-center">0</td>
+								{% for _ in 0..35 %}
+								<td class="text-center">N/A</td>
+								{% endfor %}
 						{% endmatch %}
 					</tr>
 					{% endfor %}
@@ -186,12 +243,12 @@
 			for (let i = 0; i < data.length; i++) {
 				iters.push(i + 1);
 				surplus.push(data[i].surplus.mean);
-				road_count.push(data[i].mode_results.road.count);
-				road_congestion.push(data[i].mode_results.road.congestion.mean);
+				road_count.push(data[i].mode_results.trip_modes.count);
+				road_congestion.push(data[i].mode_results.trip_modes.road_leg.route_congestion.mean);
 				var t = new Date(0);
-				t.setSeconds(data[i].mode_results.road.departure_times.mean);
+				t.setSeconds(data[i].mode_results.trip_modes.departure_time.mean);
 				road_mean_departure_time.push(t.toISOString());
-				road_expect.push(data[i].mode_results.road.exp_travel_time_diff.mean);
+				road_expect.push(data[i].mode_results.trip_modes.road_leg.exp_travel_time_diff.mean);
 			}
 
 			var surplus_trace = {

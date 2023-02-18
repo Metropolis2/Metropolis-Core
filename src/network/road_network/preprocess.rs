@@ -4,12 +4,14 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Structs and functions to pre-process a [RoadNetwork].
+use std::ops::Index;
+
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
 use num_traits::ToPrimitive;
 use petgraph::prelude::NodeIndex;
 use serde::Deserialize;
-use ttf::TTFNum;
+use ttf::{TTFNum, TTF};
 
 use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{RoadNetwork, RoadNetworkParameters};
@@ -19,7 +21,7 @@ use crate::units::{Interval, Time};
 
 /// Struct to store the set of unique vehicles and the equivalences between vehicles.
 #[derive(Clone, Debug)]
-struct UniqueVehicles {
+pub(crate) struct UniqueVehicles {
     /// List all the vehicles for which [RoadNetworkWeights] and [RoadNetworkSkims] are computed.
     vehicles: Vec<VehicleIndex>,
     /// Map each vehicle to the corresponding id to use for [RoadNetworkWeights] and
@@ -50,8 +52,26 @@ impl UniqueVehicles {
     }
 
     /// Returns the number of unique vehicles.
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.vehicles.len()
+    }
+
+    /// Iterates over the unique vehicles' ids and [Vehicle].
+    pub(crate) fn iter_uniques<'a, T>(
+        &'a self,
+        vehicles: &'a [Vehicle<T>],
+    ) -> impl Iterator<Item = (usize, &'a Vehicle<T>)> {
+        self.vehicles
+            .iter()
+            .map(|v_id| &vehicles[v_id.index()])
+            .enumerate()
+    }
+}
+
+impl Index<VehicleIndex> for UniqueVehicles {
+    type Output = usize;
+    fn index(&self, index: VehicleIndex) -> &Self::Output {
+        &self.vehicle_map[&index]
     }
 }
 
@@ -68,12 +88,15 @@ impl Default for UniqueVehicles {
 #[derive(Clone, Debug, Default)]
 pub struct RoadNetworkPreprocessingData<T> {
     /// Set of unique vehicles.
-    unique_vehicles: UniqueVehicles,
+    pub(crate) unique_vehicles: UniqueVehicles,
     /// Vector with, for each unique vehicle, an [ODPairs] instance representing the
     /// origin-destination pairs for which at least one agent can make a trip with this vehicle.
-    od_pairs: Vec<ODPairs>,
+    pub(crate) od_pairs: Vec<ODPairs>,
+    /// Vector with, for each unique vehicle, an [ODTravelTimes] instance representing the
+    /// OD-pair level free-flow travel times.
+    pub(crate) free_flow_travel_times: Vec<ODTravelTimes<T>>,
     /// Time intervals for which the simulated travel times are aggregated.
-    recording_intervals: Vec<Time<T>>,
+    pub(crate) recording_intervals: Vec<Time<T>>,
 }
 
 impl<T> RoadNetworkPreprocessingData<T> {
@@ -96,18 +119,6 @@ impl<T> RoadNetworkPreprocessingData<T> {
     /// [RoadNetworkPreprocessingData].
     pub fn get_vehicle_index(&self, id: usize) -> VehicleIndex {
         self.unique_vehicles.vehicles[id]
-    }
-
-    /// Iterates over the unique vehicles' ids and [Vehicle].
-    pub fn iter_unique_vehicles<'a>(
-        &'a self,
-        vehicles: &'a [Vehicle<T>],
-    ) -> impl Iterator<Item = (usize, &'a Vehicle<T>)> {
-        self.unique_vehicles
-            .vehicles
-            .iter()
-            .map(|v_id| &vehicles[v_id.index()])
-            .enumerate()
     }
 
     /// Returns the slice of recording interval to use.
@@ -134,27 +145,19 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
         period: Interval<T>,
     ) -> Result<Self> {
         let unique_vehicles = UniqueVehicles::from_vehicles(&road_network.vehicles);
-        let mut od_pairs = vec![ODPairs::default(); unique_vehicles.len()];
-        for agent in agents {
-            for mode in agent.iter_modes() {
-                if let Mode::Road(road_mode) = mode {
-                    let uvehicle = unique_vehicles.vehicle_map.get(&road_mode.vehicle_index());
-                    if uvehicle.is_none() {
-                        return Err(anyhow!(
-                            "Agent {} has an invalid vehicle type index ({})",
-                            agent.id,
-                            road_mode.vehicle_index().index()
-                        ));
-                    }
-                    let vehicle_od_pairs = &mut od_pairs[*uvehicle.unwrap()];
-                    vehicle_od_pairs.add_pair(road_mode.origin(), road_mode.destination());
-                }
-            }
-        }
+        let od_pairs = od_pairs_from_agents(agents, &unique_vehicles)?;
+        let free_flow_travel_times = compute_free_flow_travel_times(
+            road_network,
+            agents,
+            parameters,
+            &unique_vehicles,
+            &od_pairs,
+        )?;
         let recording_intervals = build_recording_intervals(period, parameters.recording_interval);
         Ok(RoadNetworkPreprocessingData {
             unique_vehicles,
             od_pairs,
+            free_flow_travel_times,
             recording_intervals,
         })
     }
@@ -210,6 +213,88 @@ impl ODPairs {
     pub fn pairs(&self) -> &HashMap<NodeIndex, HashSet<NodeIndex>> {
         &self.pairs
     }
+}
+
+fn od_pairs_from_agents<T>(
+    agents: &[Agent<T>],
+    unique_vehicles: &UniqueVehicles,
+) -> Result<Vec<ODPairs>> {
+    let mut od_pairs = vec![ODPairs::default(); unique_vehicles.len()];
+    for agent in agents {
+        for mode in agent.iter_modes() {
+            if let Mode::Trip(trip_mode) = mode {
+                for leg in trip_mode.iter_road_legs() {
+                    let vehicle_id = leg.vehicle;
+                    let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id);
+                    if let Some(&uvehicle) = uvehicle {
+                        // Unwraping is safe because we are iterating over road legs.
+                        let origin = leg.origin;
+                        let destination = leg.destination;
+                        let vehicle_od_pairs = &mut od_pairs[uvehicle];
+                        vehicle_od_pairs.add_pair(origin, destination);
+                    } else {
+                        return Err(anyhow!(
+                            "Agent {} has an invalid vehicle type index ({})",
+                            agent.id,
+                            vehicle_id.index(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(od_pairs)
+}
+
+/// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
+type ODTravelTimes<T> = HashMap<(NodeIndex, NodeIndex), Time<T>>;
+
+fn compute_free_flow_travel_times<T: TTFNum>(
+    road_network: &RoadNetwork<T>,
+    agents: &[Agent<T>],
+    parameters: &RoadNetworkParameters<T>,
+    unique_vehicles: &UniqueVehicles,
+    od_pairs: &Vec<ODPairs>,
+) -> Result<Vec<ODTravelTimes<T>>> {
+    let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
+    let free_flow_weights = road_network.get_free_flow_weights_inner(unique_vehicles);
+    let skims = road_network.compute_skims_inner(&free_flow_weights, od_pairs, parameters)?;
+    for agent in agents {
+        for mode in agent.iter_modes() {
+            if let Mode::Trip(trip_mode) = mode {
+                for leg in trip_mode.iter_road_legs() {
+                    let vehicle_id = leg.vehicle;
+                    let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id).unwrap();
+                    let origin = leg.origin;
+                    let destination = leg.destination;
+                    let vehicle_ff_tts = &mut free_flow_travel_times[*uvehicle];
+                    let vehicle_skims = skims[*uvehicle]
+                        .as_ref()
+                        .unwrap_or_else(|| panic!("No skims for unique vehicle {uvehicle}"));
+                    let ttf = vehicle_skims.profile_query(origin, destination)?;
+                    let tt = match ttf {
+                        Some(&TTF::Constant(tt)) => tt,
+                        None => {
+                            return Err(anyhow!(
+                                "No route from node {} to node {}",
+                                origin.index(),
+                                destination.index()
+                            ));
+                        }
+                        Some(TTF::Piecewise(_)) => {
+                            return Err(anyhow!(
+                                "Free-flow travel time from {} to {} is not constant",
+                                origin.index(),
+                                destination.index()
+                            ));
+                        }
+                    };
+                    vehicle_ff_tts.insert((origin, destination), tt);
+                }
+            }
+        }
+    }
+    Ok(free_flow_travel_times)
 }
 
 fn build_recording_intervals<T: TTFNum>(period: Interval<T>, interval: Time<T>) -> Vec<Time<T>> {

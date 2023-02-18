@@ -10,13 +10,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
-- [INPUT] New mode: `FixedTTF`. This mode is useful for modes without congestion (or with exogenous
-  congestion), when the travel-time function between the start and end points are known. The
-  departure time of a trip with this mode can be exogenous or endogenous. The trip can be composed
-  of multiple legs (with optionnaly, different travel and schedule utility for each leg).
-- [INPUT] For `Road` mode, the schedule utility can now be specified with parameters
-  `origin_schedule_utility` and `destination_schedule_utility`. Previously, the schedule utility was
-  specified at the agent level, with parameter `schedule_utility`.
+- [INPUT] Add `Trip` mode which can represent trips by car (or any other mode) with
+  intermediary stops. See the Book for more details.
 - [USER] The simulation can be run with other initial weights than free flow, with the new
   `--weights` command line argument.
 - [INPUT] The initial iteration counter to use for the simulation can be specified in the
@@ -24,7 +19,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] New type for the field `utility_model` for road modes: `Polynomial`, which takes as
   values degree 0, 1, 2, 3 and 4 coefficients of a polynomial function (constant, linear, quadratic
   and cubic functions are special cases of the `Polynomial` type).
-- [OUTPUT] Add arrival-times distribution for the last iteration in the HTML report.
+- [OUTPUT] Add graph of arrival-times distribution for the last iteration in the HTML report.
+- [OUTPUT] Add global free-flow travel time (OD free-flow travel time over any route) and global
+  congestion to the output.
+- [OUTPUT] Add road- and virtual- legs specific results in the report table.
 - [USER] Add `CHANGELOG.md` to release zips.
 - [USER] Add tags [USER] and [DEV] in the Changelog to specify the concerned individuals (end-users
 - [USER] Add tags [INPUT] and [OUTPUT] in the Changelog to indicate that input or output files are
@@ -35,6 +33,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] Add a way not to simplify a `PwlXYF` when building it so that all breakpoints are kept.
 - [DEV] Add functions `constrain_to_domain`, `add_x_breakpoints`, `add_z_breakpoints`,
   `into_points`, `into_xs_and_ys` and `iter_eval` to `PwlXYF`.
+- [DEV] Add integration test `legs` for the new `Leg` mode.
+- [DEV] Add functions `route_free_flow_travel_time` and `route_length` to `RoadNetwork`.
 
 ### Changed
 
@@ -45,8 +45,6 @@ The tag [OUTPUT] indicates changes affecting the output files.
   `[e, t]`, where `e` is the edge index and `t` is the entry time on the edge (previously it was an
   array of objects with keys `edge` and `edge_entry`).
 - [USER] Complete the example so that it include all possible input formats.
-- [INPUT] Rename attribute `utility_model` of `Road` mode to `travel_utility` for clarity
-  (`utility_model` is set as an alias for backward compatibility).
 - [INPUT] Rename attribute `length` of a vehicle to `headway` for clarity (`length` is set as an
   alias for backward compatibility).
 - [USER] Validate that value `t_star_high` is not smaller than value `t_star_low` for the
@@ -60,14 +58,23 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Metropolis executable is now stored in the `execs` directory.
 - [DEV] Rename `XYF` function `middle_departure_time` to `middle_x` to be consistent with the
   terminology for the `XYF` functions.
+- [DEV] Add a `static` lifetime requirement for `TTFNum` trait.
+- [DEV] Enum `ModeResults` and struct `TripResults` are used to store mode-specific pre-day and
+  within-day results. Previously, pre-day results were stored in `PreDayChoices` and `RoadChoices`,
+  while within-day results were stored in `ModeResults` and `RoadResults`.
+- [DEV] Trait `Event` now takes a timeline, allowing to use references to the simulation input in
+  the events.
 
 ### Removed
 
+- [INPUT] The mode `Road` is removed (all the features are available with the new `Trip` mode).
 - [INPUT] Parameters `schedule_utility` for an Agent is removed. The schedule utility is now
   specified at the mode-level.
 - [Input] The parameter `desired_arrival` for `AlphaBetaGammaModel` is removed. The schedule utility
   is now explicitely specified for either the origin or destination (or intermediary stop) making
   this parameter useless.
+- [DEV] The `PreDayResult` struct is removed (everything is stored directly in `AgentResult` and
+  `ModeResults` now).
 
 ### Deprecated
 
@@ -78,6 +85,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] Deserialize `null` values for constant travel-time functions as `Infinity`, consistently
   with how the such values are serialized.
+- [DEV] Make functions `iter_eval` and `add_x_breakpoints` for `PwlXYF` works properly for points
+  after the last point of the `PwlXYF`.
 - [DEV] Run Clippy with `cargo-make`.
 - [DEV] Run the examples with `cargo-make`.
 

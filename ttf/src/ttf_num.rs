@@ -25,6 +25,7 @@ pub trait TTFNum:
     + fmt::Display
     + Serialize
     + DeserializeOwned
+    + 'static
 {
     /// Returns a small number representing a small error margin.
     fn small_margin() -> Self;

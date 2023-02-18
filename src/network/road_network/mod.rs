@@ -23,6 +23,7 @@ use tch::{ContractionParameters, HierarchyOverlay};
 use ttf::{TTFNum, TTFSimplification, TTF};
 
 pub use self::preprocess::RoadNetworkPreprocessingData;
+use self::preprocess::{ODPairs, UniqueVehicles};
 use self::skim::RoadNetworkSkim;
 pub use self::skim::RoadNetworkSkims;
 pub use self::state::RoadNetworkState;
@@ -352,9 +353,18 @@ impl<T: TTFNum> RoadNetwork<T> {
         preprocess_data: &RoadNetworkPreprocessingData<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
-        let mut skims = Vec::with_capacity(preprocess_data.nb_unique_vehicles());
-        for uvehicle_id in 0..preprocess_data.nb_unique_vehicles() {
-            let od_pairs = preprocess_data.od_pairs(uvehicle_id);
+        self.compute_skims_inner(weights, &preprocess_data.od_pairs, parameters)
+    }
+
+    fn compute_skims_inner(
+        &self,
+        weights: &RoadNetworkWeights<T>,
+        all_od_pairs: &Vec<ODPairs>,
+        parameters: &RoadNetworkParameters<T>,
+    ) -> Result<RoadNetworkSkims<T>> {
+        let mut skims = Vec::with_capacity(all_od_pairs.len());
+        for uvehicle_id in 0..all_od_pairs.len() {
+            let od_pairs = &all_od_pairs[uvehicle_id];
             if od_pairs.is_empty() {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
@@ -385,22 +395,27 @@ impl<T: TTFNum> RoadNetwork<T> {
             debug!("Simplifying search spaces");
             search_spaces.simplify(parameters.search_space_simplification);
             debug!("Computing profile queries");
-            skim.pre_compute_profile_queries(od_pairs.pairs(), search_spaces)?;
+            skim.pre_compute_profile_queries(od_pairs.pairs(), &search_spaces)?;
             skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))
     }
 
-    /// Return the free-flow travel time for each edge and each unique vehicle of the RoadNetwork.
+    /// Returns the free-flow travel time for each edge and each unique vehicle of the RoadNetwork.
     pub fn get_free_flow_weights(
         &self,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> RoadNetworkWeights<T> {
-        let mut weights_vec = RoadNetworkWeights::with_capacity(
-            preprocess_data.nb_unique_vehicles(),
-            self.graph.edge_count(),
-        );
-        for (uvehicle_id, vehicle) in preprocess_data.iter_unique_vehicles(&self.vehicles) {
+        self.get_free_flow_weights_inner(&preprocess_data.unique_vehicles)
+    }
+
+    fn get_free_flow_weights_inner(
+        &self,
+        unique_vehicles: &UniqueVehicles,
+    ) -> RoadNetworkWeights<T> {
+        let mut weights_vec =
+            RoadNetworkWeights::with_capacity(unique_vehicles.len(), self.graph.edge_count());
+        for (uvehicle_id, vehicle) in unique_vehicles.iter_uniques(&self.vehicles) {
             let weights = &mut weights_vec[uvehicle_id];
             for edge in self.graph.edge_references() {
                 if vehicle.can_access(edge.id()) {
@@ -412,6 +427,36 @@ impl<T: TTFNum> RoadNetwork<T> {
             }
         }
         weights_vec
+    }
+
+    /// Returns the free-flow travel time of traveling through the given route, with the given
+    /// vehicle.
+    pub fn route_free_flow_travel_time(
+        &self,
+        route: impl Iterator<Item = EdgeIndex>,
+        vehicle_id: VehicleIndex,
+    ) -> Time<T> {
+        let vehicle = &self[vehicle_id];
+        route
+            .map(|e| {
+                self.graph
+                    .edge_weight(e)
+                    .expect("The route is incompatible with the road network.")
+                    .get_free_flow_travel_time(vehicle)
+            })
+            .sum()
+    }
+
+    /// Returns the length of the given route.
+    pub fn route_length(&self, route: impl Iterator<Item = EdgeIndex>) -> Length<T> {
+        route
+            .map(|e| {
+                self.graph
+                    .edge_weight(e)
+                    .expect("The route is incompatible with the road network.")
+                    .length
+            })
+            .sum()
     }
 }
 

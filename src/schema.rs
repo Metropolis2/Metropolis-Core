@@ -5,15 +5,13 @@
 
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
 use hashbrown::HashSet;
-use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
+use petgraph::graph::{edge_index, node_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ttf::{PwlTTF, TTF};
 
 use crate::learning::{ExponentialLearningModel, LearningModel};
-use crate::mode::fixed_ttf::{FixedTTFLeg, FixedTTFMode};
-use crate::mode::road::RoadMode;
-use crate::mode::{DepartureTimeModel, Mode};
+use crate::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
+use crate::mode::Mode;
 use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
@@ -57,10 +55,7 @@ impl From<EdgeIndexDef> for EdgeIndex {
 pub(crate) fn example_agent() -> Agent<f64> {
     Agent::new(
         1,
-        vec![
-            Mode::Constant(Utility(1.0)),
-            Mode::Road(example_road_mode()),
-        ],
+        vec![Mode::Constant(Utility(1.0)), Mode::Trip(example_trip())],
         Some(ChoiceModel::Logit(LogitModel::new(
             NoUnit(0.5),
             NoUnit(2.0),
@@ -68,57 +63,42 @@ pub(crate) fn example_agent() -> Agent<f64> {
     )
 }
 
-pub(crate) fn example_road_mode() -> RoadMode<f64> {
-    RoadMode::new(
-        NodeIndex::new(0),
-        NodeIndex::new(1),
-        vehicle_index(0),
-        DepartureTimeModel::ContinuousChoice {
-            period: Interval([Time(0.0), Time(24.0 * 3600.0)]),
-            choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(4.0))),
-        },
-        example_travel_utility(),
-        ScheduleUtility::None,
-        example_schedule_utility(),
-    )
-}
-
-pub(crate) fn example_fixed_ttf_mode() -> FixedTTFMode<f64> {
-    let leg0 = FixedTTFLeg::new(
-        TTF::Constant(Time(10.0)),
-        Time(5.0),
-        TravelUtility::default(),
-        ScheduleUtility::None,
-    );
-    let leg1 = FixedTTFLeg::new(
-        TTF::Piecewise(PwlTTF::from_x_and_y(
-            vec![Time(0.0), Time(100.0), Time(200.0)],
-            vec![Time(10.0), Time(15.0), Time(10.0)],
-        )),
-        Time(0.0),
-        TravelUtility::default(),
+pub(crate) fn example_trip() -> TravelingMode<f64> {
+    let leg = Leg::new(
+        LegType::Road(RoadLeg::new(node_index(0), node_index(1), vehicle_index(0))),
+        Time(600.0),
+        TravelUtility::Polynomial(PolynomialFunction {
+            b: -0.02,
+            ..Default::default()
+        }),
         ScheduleUtility::AlphaBetaGamma(
             AlphaBetaGammaModel::new(
-                Time(120.0),
-                Time(120.0),
-                ValueOfTime(5.0),
-                ValueOfTime(20.0),
+                Time(100.0),
+                Time(100.0),
+                ValueOfTime(0.01),
+                ValueOfTime(0.04),
             )
             .unwrap(),
         ),
     );
-    FixedTTFMode::new(
-        vec![leg0, leg1],
-        DepartureTimeModel::ContinuousChoice {
-            period: Interval([Time(0.0), Time(200.0)]),
-            choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(1.0))),
-        },
+    TravelingMode::new(
+        vec![leg],
+        Time(300.0),
+        example_departure_time_model(),
         TravelUtility::Polynomial(PolynomialFunction {
-            b: -10.0,
+            c: 0.001,
             ..Default::default()
         }),
         ScheduleUtility::None,
+        ScheduleUtility::None,
     )
+}
+
+pub(crate) fn example_departure_time_model() -> DepartureTimeModel<f64> {
+    DepartureTimeModel::ContinuousChoice {
+        period: Interval([Time(0.0), Time(200.0)]),
+        choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(1.0))),
+    }
 }
 
 pub(crate) fn example_travel_utility() -> TravelUtility<f64> {
