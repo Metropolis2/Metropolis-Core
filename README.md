@@ -14,3 +14,8 @@ A release of Metropolis consists in a zip file with the following content:
 - `CHANGELOG.md`: file which list the changes between versions
 - `LICENSE.txt`: file with Metropolis' License
 - `README.md`: this file
+
+The versions of Metropolis are given a version number MAJOR.MINOR.PATCH (e.g., `0.1.7`).
+While Metropolis is still in Major version zero (0.y.z), an increment of the minor version indicates
+a backwards _incompatible_ change which means that the input files from the previous version might
+not work with the new version.
