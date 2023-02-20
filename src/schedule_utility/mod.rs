@@ -39,13 +39,13 @@ impl<T> Default for ScheduleUtility<T> {
 }
 
 impl<T: TTFNum> ScheduleUtility<T> {
-    /// Returns a vector of breakpoints where the schedule utility is non-linear.
+    /// Iterates over the breakpoints where the schedule utility is non-linear.
     ///
     /// The breakpoints are ordered by increasing departure time.
-    pub fn get_breakpoints(&self) -> Vec<Time<T>> {
+    pub fn iter_breakpoints(&self) -> Box<dyn Iterator<Item = Time<T>>> {
         match self {
-            Self::AlphaBetaGamma(model) => model.get_breakpoints(),
-            _ => Vec::new(),
+            Self::AlphaBetaGamma(model) => model.iter_breakpoints(),
+            _ => Box::new(std::iter::empty()),
         }
     }
 

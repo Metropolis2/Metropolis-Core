@@ -4,6 +4,8 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to trips.
+use std::collections::BinaryHeap;
+
 use anyhow::{anyhow, Result};
 use choice::ContinuousChoiceModel;
 use enum_as_inner::EnumAsInner;
@@ -12,7 +14,7 @@ use once_cell::sync::OnceCell;
 use petgraph::graph::NodeIndex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ttf::{NoSimplification, PwlXYF, TTFNum, TTF};
+use ttf::{PwlXYF, TTFNum, TTF};
 
 use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
@@ -351,28 +353,32 @@ impl<T: TTFNum> TravelingMode<T> {
         period: Interval<T>,
     ) -> TTF<Time<T>> {
         // TODO: Check that everything is fine with the periods.
+        let mut breakpoints: BinaryHeap<Time<T>> = BinaryHeap::new();
         // The TTF are linked without simplification so that all breakpoints are kept.
-        let mut ttf: TTF<Time<T>, NoSimplification> = TTF::default();
+        let mut ttf: TTF<Time<T>> = TTF::default();
         // Add breakpoints for schedule delay at origin.
-        ttf.add_x_breakpoints(self.origin_schedule_utility.get_breakpoints(), period.0);
+        breakpoints.extend(self.origin_schedule_utility.iter_breakpoints());
         // Add time delay at origin.
         ttf = ttf.add(self.origin_delay);
         for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
             // Add the travel time of the current leg.
             ttf = ttf.link(leg_ttf);
             // Add the breakpoints required for the schedule utility of the leg.
-            ttf.add_z_breakpoints(leg.schedule_utility.get_breakpoints(), period.0);
+            breakpoints.extend(
+                ttf.departure_times_with_arrivals_iter(leg.schedule_utility.iter_breakpoints()),
+            );
             // Add the stopping time.
             ttf = ttf.add(leg.stopping_time);
         }
         // Add breakpoints for schedule delay at destination.
-        ttf.add_z_breakpoints(
-            self.destination_schedule_utility.get_breakpoints(),
-            period.0,
-        );
+        breakpoints.extend(ttf.departure_times_with_arrivals_iter(
+            self.destination_schedule_utility.iter_breakpoints(),
+        ));
+        // Add breakpoints to the TTF.
+        ttf.add_x_breakpoints(breakpoints.into_sorted_vec(), period.0);
         // Constrain the TTF to the given period.
         ttf.constrain_to_domain(period.0);
-        ttf.with_simplification()
+        ttf
     }
 
     /// Returns the total stopping time of the trip, i.e., the sum of the stopping time for each

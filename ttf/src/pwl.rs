@@ -14,8 +14,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::point::*;
 use crate::ttf_num::TTFNum;
-use crate::NoSimplification;
-use crate::{Simplification, Simplify, UndercutDescriptor};
+use crate::UndercutDescriptor;
 
 const BUCKET_SIZE: usize = 8;
 
@@ -25,7 +24,7 @@ const BUCKET_SIZE: usize = 8;
 /// The `T` generic type is used to convert from `X` to `Y`.
 #[derive(PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(bound(serialize = "X: Clone + Serialize, Y: Clone + Serialize"))]
-pub struct PwlXYF<X, Y, T, S = Simplification> {
+pub struct PwlXYF<X, Y, T> {
     /// Breakpoints representing the function.
     #[schemars(with = "Vec<RawPoint<X, Y>>")]
     points: Vec<Point<X, Y>>,
@@ -46,17 +45,14 @@ pub struct PwlXYF<X, Y, T, S = Simplification> {
     #[serde(skip)]
     #[schemars(skip)]
     convert_type: std::marker::PhantomData<T>,
-    #[serde(skip)]
-    #[schemars(skip)]
-    simplification: std::marker::PhantomData<S>,
 }
 
 /// A piecewise-linear function represented by a Vec of points `(x, y)`, where the `x` and `y`
 /// values have the same type.
-pub type PwlTTF<T, S = Simplification> = PwlXYF<T, T, T, S>;
+pub type PwlTTF<T> = PwlXYF<T, T, T>;
 
 // Implement Debug manually so that we do not care if `T` and `S` implement Debug themself.
-impl<X: fmt::Debug, Y: fmt::Debug, T, S> fmt::Debug for PwlXYF<X, Y, T, S> {
+impl<X: fmt::Debug, Y: fmt::Debug, T> fmt::Debug for PwlXYF<X, Y, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PwlXYF")
             .field("points", &self.points)
@@ -70,7 +66,7 @@ impl<X: fmt::Debug, Y: fmt::Debug, T, S> fmt::Debug for PwlXYF<X, Y, T, S> {
 }
 
 // Implement Clone manually so that we do not care if `T` and `S` implement Clone themself.
-impl<X: Clone, Y: Clone, T, S> Clone for PwlXYF<X, Y, T, S> {
+impl<X: Clone, Y: Clone, T> Clone for PwlXYF<X, Y, T> {
     fn clone(&self) -> Self {
         Self {
             points: self.points.clone(),
@@ -80,12 +76,11 @@ impl<X: Clone, Y: Clone, T, S> Clone for PwlXYF<X, Y, T, S> {
             buckets: self.buckets.clone(),
             bucket_shift: self.bucket_shift,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         }
     }
 }
 
-impl<'de, X, Y, T, S> Deserialize<'de> for PwlXYF<X, Y, T, S>
+impl<'de, X, Y, T> Deserialize<'de> for PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
@@ -108,7 +103,7 @@ pub(crate) struct DeserPwlXYF<X, Y> {
     period: [X; 2],
 }
 
-impl<X, Y, T, S> PwlXYF<X, Y, T, S> {
+impl<X, Y, T> PwlXYF<X, Y, T> {
     /// Consumes the [PwlXYF] and returns a vector of values `(x, y)`.
     pub fn into_points(self) -> Vec<(X, Y)> {
         self.points.into_iter().map(|p| (p.x, p.y)).collect()
@@ -118,37 +113,9 @@ impl<X, Y, T, S> PwlXYF<X, Y, T, S> {
     pub fn into_xs_and_ys(self) -> (Vec<X>, Vec<Y>) {
         self.points.into_iter().map(|p| (p.x, p.y)).unzip()
     }
-
-    /// Converts a `PwlXYF<X, Y, T, S>` to `PwlXYF<X, Y, T, Simplification>`.
-    pub fn with_simplification(self) -> PwlXYF<X, Y, T, Simplification> {
-        PwlXYF {
-            points: self.points,
-            min: self.min,
-            max: self.max,
-            period: self.period,
-            buckets: self.buckets,
-            bucket_shift: self.bucket_shift,
-            convert_type: self.convert_type,
-            simplification: std::marker::PhantomData,
-        }
-    }
-
-    /// Converts a `PwlXYF<X, Y, T, S>` to `PwlXYF<X, Y, T, NoSimplification>`.
-    pub fn without_simplification(self) -> PwlXYF<X, Y, T, NoSimplification> {
-        PwlXYF {
-            points: self.points,
-            min: self.min,
-            max: self.max,
-            period: self.period,
-            buckets: self.buckets,
-            bucket_shift: self.bucket_shift,
-            convert_type: self.convert_type,
-            simplification: std::marker::PhantomData,
-        }
-    }
 }
 
-impl<X, Y, T, S> PwlXYF<X, Y, T, S>
+impl<X, Y, T> PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
@@ -165,19 +132,18 @@ where
             .minmax()
             .into_option()
             .unwrap();
-        let f: PwlXYFBuilder<X, Y, T, S> = PwlXYFBuilder {
+        let f: PwlXYFBuilder<X, Y, T> = PwlXYFBuilder {
             points: input.points,
             min: Some(min_y),
             max: Some(max_y),
             period: input.period,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         };
         f.finish()
     }
 }
 
-impl<X, Y, T, S> PwlXYF<X, Y, T, S>
+impl<X, Y, T> PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
@@ -192,7 +158,6 @@ where
             buckets: Vec::with_capacity(BUCKET_SIZE),
             bucket_shift: 0,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         }
     }
 
@@ -418,13 +383,13 @@ where
 
     /// Returns a new PwlXYF by applying a given function on the `y` values of the two input PwlXYFs.
     #[must_use]
-    pub fn map<F: Fn(Y) -> W, W>(&self, func: F) -> PwlXYF<X, W, T, S>
+    pub fn map<F: Fn(Y) -> W, W>(&self, func: F) -> PwlXYF<X, W, T>
     where
         F: Fn(Y) -> W,
         W: TTFNum + Into<T> + From<T>,
     {
         debug_assert!(!self.is_empty());
-        let mut xyf = PwlXYF::<X, W, T, S>::with_capacity(self.period, self.len());
+        let mut xyf = PwlXYF::<X, W, T>::with_capacity(self.period, self.len());
         xyf.min = Some(func(self.get_min()));
         xyf.max = Some(func(self.get_max()));
         xyf.points = self
@@ -590,12 +555,11 @@ where
     }
 }
 
-impl<X, Y, T, S> PwlXYF<X, Y, T, S>
+impl<X, Y, T> PwlXYF<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
     T: TTFNum,
-    S: Simplify,
 {
     /// Creates a new PwlXYF from a Vec of `x` values and a Vec of `y` values.
     pub fn from_x_and_y(x: Vec<X>, y: Vec<Y>) -> Self {
@@ -624,9 +588,9 @@ where
     }
 }
 
-impl<T, U, S> PwlXYF<T, T, U, S> {
+impl<T, U> PwlXYF<T, T, U> {
     /// Convenient way to convert a `PwlXYF<T, T, U>` into a `PwlTTF<T>`.
-    pub fn to_ttf(self) -> PwlTTF<T, S> {
+    pub fn to_ttf(self) -> PwlTTF<T> {
         PwlTTF {
             points: self.points,
             min: self.min,
@@ -635,12 +599,11 @@ impl<T, U, S> PwlXYF<T, T, U, S> {
             buckets: self.buckets,
             bucket_shift: self.bucket_shift,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         }
     }
 }
 
-impl<T: TTFNum, S> PwlTTF<T, S> {
+impl<T: TTFNum> PwlTTF<T> {
     /// Modifies the `y` values to force the PwlTTF to be FIFO (first-in, first-out).
     ///
     /// A PwlTTF is FIFO if its `z = x + y` values are non-decreasing.
@@ -721,6 +684,63 @@ impl<T: TTFNum, S> PwlTTF<T, S> {
             z
         );
         Some(x)
+    }
+
+    /// Iterates over the `x` values such that `x + f(x) = z`, given an iterate of `z` values.
+    ///
+    /// The iterator of `z` values must be sorterd in increasing order.
+    ///
+    /// The `z` values that are smaller than the smallest `x + y` are skipped.
+    pub fn x_at_z_iter<'a>(
+        &'a self,
+        zs: impl Iterator<Item = T> + 'a,
+    ) -> impl Iterator<Item = T> + 'a {
+        // Minimum index of x.
+        let mut min_index = 0;
+        // Minumum z value reachable.
+        let min_z = self.points[0].x + self.points[0].y;
+        // Maximum z value in the points.
+        let max_z = self.points[self.len() - 1].x + self.points[self.len() - 1].y;
+        zs.skip_while(move |z| z.approx_lt(&min_z)).map(move |z| {
+            if z.approx_ge(&max_z) {
+                // After the last point.
+                return z - self.points[self.len() - 1].y;
+            }
+            // Lower bound to the value we are finding.
+            let x_min = z - self.get_max();
+            // Lower bound to the index that we are finding.
+            let mut index = if x_min >= self.period[0] {
+                let bucket = self.get_bucket(x_min);
+                self.buckets[bucket]
+            } else {
+                0
+            };
+            index = std::cmp::max(index, min_index);
+            debug_assert!(index < self.len());
+            debug_assert!(index == 0 || (self[index - 1].x + self[index - 1].y).approx_le(&z));
+            for i in index..self.len() {
+                if self.points[i].x + self.points[i].y > z {
+                    debug_assert!(self.points[i - 1].x + self.points[i - 1].y <= z);
+                    index = i;
+                    break;
+                }
+            }
+            if index == 0 {
+                return self.points[0].x;
+            }
+            // i is such that x_{i-1} + y_{i-1} <= z < x_i + y_i
+            debug_assert!(index < self.len());
+            debug_assert!(index >= min_index);
+            min_index = index;
+            let x = inv_linear_interp(self.points[index - 1], self.points[index], z);
+            debug_assert!(
+                x + self.eval(x) - z < T::large_margin(),
+                "{:?} != {:?}",
+                x + self.eval(x),
+                z
+            );
+            x
+        })
     }
 
     /// Simplifies the PWL function using Reumann-Witkam simplification.
@@ -910,7 +930,7 @@ impl<T: TTFNum, S> PwlTTF<T, S> {
     }
 }
 
-impl<X, Y, T, S> ops::Index<usize> for PwlXYF<X, Y, T, S> {
+impl<X, Y, T> ops::Index<usize> for PwlXYF<X, Y, T> {
     type Output = Point<X, Y>;
 
     fn index(&self, i: usize) -> &Self::Output {
@@ -918,7 +938,7 @@ impl<X, Y, T, S> ops::Index<usize> for PwlXYF<X, Y, T, S> {
     }
 }
 
-impl<X, Y, T, S> ops::IndexMut<usize> for PwlXYF<X, Y, T, S> {
+impl<X, Y, T> ops::IndexMut<usize> for PwlXYF<X, Y, T> {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
         let n = self.points.len();
         &mut self.points[std::cmp::min(i, n - 1)]
@@ -949,10 +969,7 @@ fn area_below<T: TTFNum>(p: Point<T, T>, q: Point<T, T>) -> T {
     (q.x - p.x) * (min_y + (max_y.average(min_y) - min_y))
 }
 
-pub(crate) fn link<T: TTFNum, S1: Simplify, S2>(
-    f: &PwlTTF<T, S1>,
-    g: &PwlTTF<T, S2>,
-) -> PwlTTF<T, S1> {
+pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert!(f.is_fifo());
@@ -961,7 +978,7 @@ pub(crate) fn link<T: TTFNum, S1: Simplify, S2>(
     debug_assert!(f.get_min() >= T::zero());
     debug_assert!(g.get_min() >= T::zero());
 
-    let mut h: PwlTTFBuilder<T, S1> = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
     let f_first_ta = f.period[0] + f.eval(f.period[0]);
     let mut i = if f_first_ta <= g.period[1] {
         g.first_index_with_x_ge(f_first_ta)
@@ -1004,13 +1021,10 @@ pub(crate) fn link<T: TTFNum, S1: Simplify, S2>(
     h
 }
 
-pub(crate) fn link_cst_before<T: TTFNum, S1: Simplify, S2>(
-    g: &PwlTTF<T, S2>,
-    c: T,
-) -> PwlTTF<T, S1> {
+pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     debug_assert!(!g.is_empty());
 
-    let mut h: PwlTTFBuilder<T, S1> = PwlTTFBuilder::with_capacity(g.period, g.len());
+    let mut h = PwlTTFBuilder::with_capacity(g.period, g.len());
     let i = g.first_index_with_x_ge(g.period[0] + c);
 
     if i == g.len() {
@@ -1036,10 +1050,7 @@ pub(crate) fn link_cst_before<T: TTFNum, S1: Simplify, S2>(
     h
 }
 
-pub(crate) fn merge<T: TTFNum, S: Simplify>(
-    f: &PwlTTF<T, S>,
-    g: &PwlTTF<T, S>,
-) -> (PwlTTF<T, S>, UndercutDescriptor) {
+pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, UndercutDescriptor) {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert_eq!(f.period, g.period);
@@ -1054,7 +1065,7 @@ pub(crate) fn merge<T: TTFNum, S: Simplify>(
         return (g.clone(), descr);
     }
 
-    let mut h: PwlTTFBuilder<T, S> = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
 
     debug_assert_eq!(f[0].x, h.period[0]);
     debug_assert_eq!(g[0].x, h.period[0]);
@@ -1195,10 +1206,7 @@ pub(crate) fn merge<T: TTFNum, S: Simplify>(
     (h, descr)
 }
 
-pub(crate) fn merge_cst<T: TTFNum, S: Simplify>(
-    f: &PwlTTF<T, S>,
-    c: T,
-) -> (PwlTTF<T, S>, UndercutDescriptor) {
+pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescriptor) {
     debug_assert!(!f.is_empty());
 
     let mut descr = UndercutDescriptor::default();
@@ -1210,7 +1218,7 @@ pub(crate) fn merge_cst<T: TTFNum, S: Simplify>(
         descr.f_undercuts_strictly = true;
     }
 
-    let mut h: PwlTTFBuilder<T, S> = PwlTTFBuilder::with_capacity(f.period, 2 * f.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, 2 * f.len());
 
     if c.approx_le(&f.get_min()) {
         h.push(h.period[0], c);
@@ -1245,9 +1253,9 @@ pub(crate) fn merge_cst<T: TTFNum, S: Simplify>(
     (h, descr)
 }
 
-pub(crate) fn analyze_relative_position<T: TTFNum, S>(
-    f: &PwlTTF<T, S>,
-    g: &PwlTTF<T, S>,
+pub(crate) fn analyze_relative_position<T: TTFNum>(
+    f: &PwlTTF<T>,
+    g: &PwlTTF<T>,
 ) -> Either<Ordering, Vec<(T, Ordering)>> {
     debug_assert_eq!(f.period, g.period);
 
@@ -1410,8 +1418,8 @@ pub(crate) fn analyze_relative_position<T: TTFNum, S>(
     Either::Right(results)
 }
 
-pub(crate) fn analyze_relative_position_to_cst<T: TTFNum, S>(
-    f: &PwlTTF<T, S>,
+pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
+    f: &PwlTTF<T>,
     c: T,
 ) -> Either<Ordering, Vec<(T, Ordering)>> {
     if f.get_max().approx_le(&c) {
@@ -1479,16 +1487,16 @@ fn segment_contains<T: TTFNum>(segment: [Point<T, T>; 2], error: T, p: &Point<T,
     dist <= error
 }
 
-pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T, S: Simplify>(
-    f: &PwlTTF<T, S>,
-    g: &PwlTTF<T, S>,
+pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
+    f: &PwlTTF<T>,
+    g: &PwlTTF<T>,
     func: F,
-) -> PwlTTF<T, S> {
+) -> PwlTTF<T> {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
     debug_assert_eq!(f.period, g.period);
 
-    let mut h: PwlTTFBuilder<T, S> = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
+    let mut h = PwlTTFBuilder::with_capacity(f.period, f.len() + g.len());
 
     debug_assert_eq!(f[0].x, h.period[0]);
     debug_assert_eq!(g[0].x, h.period[0]);
@@ -1531,7 +1539,7 @@ pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T, S: Simplify>(
 
 /// A struct to conveniently build a [PwlXYF].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PwlXYFBuilder<X, Y, T, S = Simplification> {
+pub struct PwlXYFBuilder<X, Y, T> {
     /// Breakpoints representing the function.
     points: Vec<Point<X, Y>>,
     /// Minimum `y` value of the function.
@@ -1541,13 +1549,12 @@ pub struct PwlXYFBuilder<X, Y, T, S = Simplification> {
     /// Array `[x0, x1]` representing the domain of the function.
     period: [X; 2],
     convert_type: std::marker::PhantomData<T>,
-    simplification: std::marker::PhantomData<S>,
 }
 
 /// A struct to conveniently build a [PwlTTF].
-pub type PwlTTFBuilder<T, S = Simplification> = PwlXYFBuilder<T, T, T, S>;
+pub type PwlTTFBuilder<T> = PwlXYFBuilder<T, T, T>;
 
-impl<X, Y, T, S> PwlXYFBuilder<X, Y, T, S> {
+impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
     /// Creates a new [PwlXYFBuilder] with no point.
     pub fn new(period: [X; 2]) -> Self {
         Self {
@@ -1556,7 +1563,6 @@ impl<X, Y, T, S> PwlXYFBuilder<X, Y, T, S> {
             max: None,
             period,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         }
     }
 
@@ -1569,12 +1575,11 @@ impl<X, Y, T, S> PwlXYFBuilder<X, Y, T, S> {
             max: None,
             period,
             convert_type: std::marker::PhantomData,
-            simplification: std::marker::PhantomData,
         }
     }
 }
 
-impl<X, Y, T, S> PwlXYFBuilder<X, Y, T, S>
+impl<X, Y, T> PwlXYFBuilder<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
@@ -1606,7 +1611,7 @@ where
     /// Consumes the PwlXYFBuilder and returns a PwlXYF.
     ///
     /// *Panics* if the PwlXYFBuilder has no point.
-    pub fn finish(mut self) -> PwlXYF<X, Y, T, S> {
+    pub fn finish(mut self) -> PwlXYF<X, Y, T> {
         assert!(
             !self.is_empty(),
             "The piecewise-linear function must have at least 1 point"
@@ -1643,19 +1648,17 @@ where
             buckets: Vec::with_capacity(BUCKET_SIZE),
             bucket_shift: 0,
             convert_type: self.convert_type,
-            simplification: self.simplification,
         };
         xyf.setup_buckets();
         xyf
     }
 }
 
-impl<X, Y, T, S> PwlXYFBuilder<X, Y, T, S>
+impl<X, Y, T> PwlXYFBuilder<X, Y, T>
 where
     X: TTFNum + Into<T>,
     Y: TTFNum + Into<T> + From<T>,
     T: TTFNum,
-    S: Simplify,
 {
     /// Pushes a new point (`x`, `y`) to the [PwlXYFBuilder].
     pub fn push(&mut self, x: X, y: Y) {
@@ -1689,8 +1692,7 @@ where
             }
             debug_assert!(last_point.x < p.x);
         }
-        if S::simplify()
-            && self.len() > 1
+        if self.len() > 1
             && rotation(
                 &self.points[self.len() - 2],
                 &self.points[self.len() - 1],
@@ -1714,7 +1716,7 @@ mod tests {
     #[test]
     fn piecewise_test() {
         let breakpoints = vec![(-10., 15.), (0., 20.), (10., 5.)];
-        let ttf: PwlTTF<_, Simplification> = PwlTTF::from_breakpoints(breakpoints);
+        let ttf = PwlTTF::from_breakpoints(breakpoints);
         assert_eq!(ttf.eval(-10.), 15.);
         assert_eq!(ttf.eval(0.), 20.);
         assert_eq!(ttf.eval(10.), 5.);
@@ -1726,7 +1728,7 @@ mod tests {
     #[should_panic]
     fn piecewise_panic_test1() {
         let breakpoints = vec![(-10., 5.), (0., 10.), (10., -5.)];
-        let ttf: PwlTTF<_, Simplification> = PwlTTF::from_breakpoints(breakpoints);
+        let ttf = PwlTTF::from_breakpoints(breakpoints);
         ttf.eval(-15.);
     }
 
@@ -1734,47 +1736,71 @@ mod tests {
     #[should_panic]
     fn piecewise_panic_test3() {
         let breakpoints = vec![(-10., 5.), (0., 10.), (10., -5.)];
-        let ttf: PwlTTF<_, Simplification> = PwlTTF::from_breakpoints(breakpoints);
+        let ttf = PwlTTF::from_breakpoints(breakpoints);
         ttf.eval(f64::NAN);
     }
 
     #[test]
+    fn x_at_z_test() {
+        let ttf = PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
+        assert_eq!(ttf.x_at_z(5.0), Some(0.0));
+        assert_eq!(ttf.x_at_z(20.0), Some(10.0));
+        assert_eq!(ttf.x_at_z(25.0), Some(20.0));
+        assert_eq!(ttf.x_at_z(11.0), Some(4.0));
+        assert_eq!(ttf.x_at_z(14.0), Some(6.0));
+        assert_eq!(ttf.x_at_z(23.0), Some(16.0));
+        assert_eq!(ttf.x_at_z(4.0), None);
+        assert_eq!(ttf.x_at_z(30.0), None);
+    }
+
+    #[test]
+    fn x_at_z_iter_test() {
+        let ttf = PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
+        let zs = vec![4.0, 5.0, 11.0, 14.0, 20.0, 23.0, 25.0, 30.0];
+        let mut xs_iter = ttf.x_at_z_iter(zs.into_iter());
+        // 4 is skipped.
+        assert_eq!(xs_iter.next(), Some(0.0), "f(0) = 5");
+        assert_eq!(xs_iter.next(), Some(4.0), "f(4) = 11");
+        assert_eq!(xs_iter.next(), Some(6.0), "f(6) = 14");
+        assert_eq!(xs_iter.next(), Some(10.0), "f(10) = 20");
+        assert_eq!(xs_iter.next(), Some(16.0), "f(16) = 23");
+        assert_eq!(xs_iter.next(), Some(20.0), "f(20) = 25");
+        assert_eq!(xs_iter.next(), Some(25.0), "f(25) = 30");
+        assert_eq!(xs_iter.next(), None);
+    }
+
+    #[test]
     fn add_x_breakpoints_test() {
-        let mut ttf: PwlTTF<_, Simplification> =
-            PwlTTF::from_breakpoints(vec![(0.0, 0.0), (10.0, 10.0), (20.0, 0.0)]);
+        let mut ttf = PwlTTF::from_breakpoints(vec![(0.0, 0.0), (10.0, 10.0), (20.0, 0.0)]);
         ttf.add_x_breakpoints(vec![-5.0, 5.0, 10.0, 15.0, 20.0, 25.0]);
-        let new_ttf = PwlTTF::<f64, NoSimplification>::from_breakpoints(vec![
-            (0.0, 0.0),
-            (5.0, 5.0),
-            (10.0, 10.0),
-            (15.0, 5.0),
-            (20.0, 0.0),
-        ])
-        .with_simplification();
-        assert_eq!(ttf, new_ttf);
+        let new_points = vec![
+            Point { x: 0., y: 0. },
+            Point { x: 5., y: 5. },
+            Point { x: 10., y: 10. },
+            Point { x: 15., y: 5. },
+            Point { x: 20., y: 0. },
+        ];
+        assert_eq!(ttf.points, new_points);
     }
 
     #[test]
     fn add_z_breakpoints_test() {
-        let mut ttf: PwlTTF<_, Simplification> =
-            PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
+        let mut ttf = PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
         ttf.add_z_breakpoints(vec![-5.0, 0.0, 5.0, 11.0, 12.5, 20.0, 22.5, 25.0, 30.0]);
-        let new_ttf = PwlTTF::<f64, NoSimplification>::from_breakpoints(vec![
-            (0.0, 5.0),
-            (4.0, 7.0),
-            (5.0, 7.5),
-            (10.0, 10.0),
-            (15.0, 7.5),
-            (20.0, 5.0),
-        ])
-        .with_simplification();
-        assert_eq!(ttf, new_ttf);
+        let new_points = vec![
+            Point { x: 0., y: 5. },
+            Point { x: 4., y: 7. },
+            Point { x: 5., y: 7.5 },
+            Point { x: 10., y: 10. },
+            Point { x: 15., y: 7.5 },
+            Point { x: 20., y: 5. },
+        ];
+        assert_eq!(ttf.points, new_points);
     }
 
     #[test]
     fn constrain_to_domain_test() {
-        let mut ttf: PwlTTF<_, Simplification> =
-            PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
+        let mut ttf = PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
         ttf.constrain_to_domain([4.0, 16.0]);
         let new_ttf = PwlTTF::from_breakpoints(vec![(4.0, 7.0), (10.0, 10.0), (16.0, 7.0)]);
         assert_eq!(ttf, new_ttf);
@@ -1782,8 +1808,7 @@ mod tests {
 
     #[test]
     fn constrain_to_domain2_test() {
-        let mut ttf: PwlTTF<_, Simplification> =
-            PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
+        let mut ttf = PwlTTF::from_breakpoints(vec![(0.0, 5.0), (10.0, 10.0), (20.0, 5.0)]);
         let new_ttf = ttf.clone();
         ttf.constrain_to_domain([-5.0, 25.0]);
         assert_eq!(ttf, new_ttf);

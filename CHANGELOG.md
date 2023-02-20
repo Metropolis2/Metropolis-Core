@@ -8,6 +8,16 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [DEV] Add schedule-utility breakpoints ex-post when computing the global TTF for `Trip` modes
+  (previously it was done using a `NoSimplification` TTF).
+
+### Removed
+
+- [DEV] The `Simplification` and `NoSimplification` PwlTTF variants are removed as they are no
+  longer needed.
+
 ## [0.2.1] - 2023-02-18
 
 ### Changed

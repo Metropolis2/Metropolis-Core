@@ -59,34 +59,6 @@ impl UndercutDescriptor {
     }
 }
 
-/// Descriptor to use when the piecewise-linear function must be simplified whenever possible,
-/// i.e., if a point can be removed without modifying the function, it is removed.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
-pub struct Simplification;
-/// Descriptor to use when the piecewise-linear function must not be simplified.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, JsonSchema)]
-pub struct NoSimplification;
-
-/// Trait to describe if the piecewise-linear function must be simplified.
-///
-/// See [Simplification] and [NoSimplification].
-pub trait Simplify {
-    /// Returns `true` if the piecewise-linear function must be simplified whenever possible.
-    fn simplify() -> bool;
-}
-
-impl Simplify for Simplification {
-    fn simplify() -> bool {
-        true
-    }
-}
-
-impl Simplify for NoSimplification {
-    fn simplify() -> bool {
-        false
-    }
-}
-
 /// A function that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
@@ -96,9 +68,9 @@ impl Simplify for NoSimplification {
 #[serde(untagged)]
 #[schemars(title = "XYF")]
 #[schemars(description = "Constant or piecewise-linear function.")]
-pub enum XYF<X, Y, T, S = Simplification> {
+pub enum XYF<X, Y, T> {
     /// A piecewise-linear function.
-    Piecewise(PwlXYF<X, Y, T, S>),
+    Piecewise(PwlXYF<X, Y, T>),
     /// A constant function.
     #[serde(deserialize_with = "parse_constant")]
     Constant(Y),
@@ -107,33 +79,15 @@ pub enum XYF<X, Y, T, S = Simplification> {
 /// A travel-time function (TTF) that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
-pub type TTF<T, S = Simplification> = XYF<T, T, T, S>;
+pub type TTF<T> = XYF<T, T, T>;
 
-impl<X, Y: Zero, T, S> Default for XYF<X, Y, T, S> {
+impl<X, Y: Zero, T> Default for XYF<X, Y, T> {
     fn default() -> Self {
         XYF::Constant(Y::zero())
     }
 }
 
-impl<X, Y, T, S> XYF<X, Y, T, S> {
-    /// Converts a `XYF<X, Y, T, S>` to `XYF<X, Y, T, Simplification>`.
-    pub fn with_simplification(self) -> XYF<X, Y, T, Simplification> {
-        match self {
-            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.with_simplification()),
-            Self::Constant(c) => XYF::Constant(c),
-        }
-    }
-
-    /// Converts a `XYF<X, Y, T, S>` to `XYF<X, Y, T, NoSimplification>`.
-    pub fn without_simplification(self) -> XYF<X, Y, T, NoSimplification> {
-        match self {
-            Self::Piecewise(pwl_xyf) => XYF::Piecewise(pwl_xyf.without_simplification()),
-            Self::Constant(c) => XYF::Constant(c),
-        }
-    }
-}
-
-impl<X, Y, T, S> XYF<X, Y, T, S>
+impl<X, Y, T> XYF<X, Y, T>
 where
     X: TTFNum,
     Y: TTFNum + From<T>,
@@ -208,7 +162,7 @@ where
 
     /// Returns a new XYF equal to the input XYF after applying a function to all the `y` values.
     #[must_use]
-    pub fn map<F, W>(&self, func: F) -> XYF<X, W, T, S>
+    pub fn map<F, W>(&self, func: F) -> XYF<X, W, T>
     where
         F: Fn(Y) -> W,
         W: TTFNum + Into<T> + From<T>,
@@ -228,12 +182,11 @@ where
     }
 }
 
-impl<X, Y, T, S> XYF<X, Y, T, S>
+impl<X, Y, T> XYF<X, Y, T>
 where
     X: TTFNum,
     Y: TTFNum + From<T>,
     T: TTFNum + From<X> + From<Y>,
-    S: Simplify,
 {
     /// Add `x` breakpoints to the [XYF].
     pub fn add_x_breakpoints(&mut self, xs: Vec<X>, domain: [X; 2]) {
@@ -255,9 +208,9 @@ where
     }
 }
 
-impl<T, U, S> XYF<T, T, U, S> {
+impl<T, U> XYF<T, T, U> {
     /// Convenient way to transform a `XYF<T, T, U, S>` in a `TTF<T, S>`.
-    pub fn to_ttf(self) -> TTF<T, S> {
+    pub fn to_ttf(self) -> TTF<T> {
         match self {
             Self::Piecewise(pwl_xyf) => TTF::Piecewise(pwl_xyf.to_ttf()),
             Self::Constant(c) => TTF::Constant(c),
@@ -265,7 +218,7 @@ impl<T, U, S> XYF<T, T, U, S> {
     }
 }
 
-impl<T: TTFNum, S> TTF<T, S> {
+impl<T: TTFNum> TTF<T> {
     /// Returns the departure time `x` such that `f(x) = z`.
     ///
     /// Returns None if it is not possible to arrive at `z`.
@@ -281,6 +234,17 @@ impl<T: TTFNum, S> TTF<T, S> {
         match self {
             Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
             Self::Constant(c) => Some(z - *c),
+        }
+    }
+
+    /// Iterates over the departure times `x` such that `f(x) = z` given an iterator of `z` values.
+    pub fn departure_times_with_arrivals_iter<'a>(
+        &'a self,
+        zs: impl Iterator<Item = T> + 'a,
+    ) -> Box<dyn Iterator<Item = T> + 'a> {
+        match self {
+            Self::Piecewise(pwl_ttf) => Box::new(pwl_ttf.x_at_z_iter(zs)),
+            Self::Constant(c) => Box::new(zs.map(|z| z - *c)),
         }
     }
 
@@ -333,7 +297,7 @@ impl<T: TTFNum, S> TTF<T, S> {
     }
 }
 
-impl<T: TTFNum, S: Simplify> TTF<T, S> {
+impl<T: TTFNum> TTF<T> {
     /// Links the TTF with another TTF.
     ///
     /// The link operation returns the TTF `h` such that `h(x) = f(x) + g(f(x))`.
@@ -347,7 +311,7 @@ impl<T: TTFNum, S: Simplify> TTF<T, S> {
     /// assert_eq!(f.link(&g), TTF::Constant(3.0));
     /// ```
     #[must_use]
-    pub fn link<S1>(&self, other: &TTF<T, S1>) -> Self {
+    pub fn link(&self, other: &TTF<T>) -> Self {
         match (self, other) {
             (TTF::Piecewise(f), TTF::Piecewise(g)) => Self::Piecewise(pwl::link(f, g)),
             (TTF::Piecewise(f), TTF::Constant(c)) => Self::Piecewise(f.add(*c)),
@@ -458,7 +422,7 @@ impl<T> Default for TTFSimplification<T> {
 
 impl<T: TTFNum> TTFSimplification<T> {
     /// Applies the simplification method to a TTF.
-    pub fn simplify<S: Simplify>(self, ttf: &mut TTF<T, S>) {
+    pub fn simplify(self, ttf: &mut TTF<T>) {
         match self {
             Self::Raw => (),
             Self::Bound(bound) => ttf.approximate(bound),

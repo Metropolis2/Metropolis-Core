@@ -69,16 +69,16 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
         -cost
     }
 
-    /// Returns the breakpoints (departure time, travel time) at the kinks of the schedule-utility
-    /// function.
+    /// Iterates over the breakpoints (departure time, travel time) at the kinks of the
+    /// schedule-utility function.
     ///
     /// The kinks are the points such that arrival time is equal to desired arrival time or
     /// departure time is equal to desired departure time.
-    pub fn get_breakpoints(&self) -> Vec<Time<T>> {
+    pub fn iter_breakpoints(&self) -> Box<dyn Iterator<Item = Time<T>>> {
         if self.t_star_low.approx_ne(&self.t_star_high) {
-            vec![self.t_star_low, self.t_star_high]
+            Box::new([self.t_star_low, self.t_star_high].into_iter())
         } else {
-            vec![self.t_star_low]
+            Box::new([self.t_star_low].into_iter())
         }
     }
 }
@@ -166,14 +166,17 @@ mod tests {
     }
 
     #[test]
-    fn get_breakpoints_test() {
+    fn iter_breakpoints_test() {
         let model = AlphaBetaGammaModel {
             t_star_low: Time(10.),
             t_star_high: Time(20.),
             beta: ValueOfTime(5.),
             gamma: ValueOfTime(20.),
         };
-        assert_eq!(model.get_breakpoints(), vec![Time(10.), Time(20.)]);
+        let mut iter = model.iter_breakpoints();
+        assert_eq!(iter.next(), Some(Time(10.)));
+        assert_eq!(iter.next(), Some(Time(20.)));
+        assert_eq!(iter.next(), None);
 
         let model = AlphaBetaGammaModel {
             t_star_low: Time(10.),
@@ -181,6 +184,8 @@ mod tests {
             beta: ValueOfTime(5.),
             gamma: ValueOfTime(20.),
         };
-        assert_eq!(model.get_breakpoints(), vec![Time(10.)]);
+        let mut iter = model.iter_breakpoints();
+        assert_eq!(iter.next(), Some(Time(10.)));
+        assert_eq!(iter.next(), None);
     }
 }

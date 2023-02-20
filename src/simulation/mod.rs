@@ -134,6 +134,7 @@ impl<T: TTFNum> Simulation<T> {
     /// Compute everything that can be computed before the first iteration of the simulation and
     /// return a [PreprocessingData] instance with the results of these computations.
     pub fn preprocess(&self) -> Result<PreprocessingData<T>> {
+        info!("Pre-processing simulation");
         // Run the preprocessing stuff related to the network.
         let network = self.network.preprocess(
             &self.agents,
