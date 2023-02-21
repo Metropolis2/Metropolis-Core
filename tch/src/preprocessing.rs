@@ -45,13 +45,11 @@ pub struct ContractionParameters {
     unpacked_edges_quotient_weight: f64,
     complexity_quotient_weight: f64,
     thin_profile_interval_hop_limit: u8,
-    /// Number of threads to use for the parallelized parts of the code.
-    num_threads: usize,
 }
 
 impl Default for ContractionParameters {
     fn default() -> Self {
-        ContractionParameters::new(2.0, 1.0, 1.0, 2.0, 16, rayon::current_num_threads())
+        ContractionParameters::new(2.0, 1.0, 1.0, 2.0, 16)
     }
 }
 
@@ -63,7 +61,6 @@ impl ContractionParameters {
         unpacked_edges_quotient_weight: f64,
         complexity_quotient_weight: f64,
         thin_profile_interval_hop_limit: u8,
-        num_threads: usize,
     ) -> Self {
         ContractionParameters {
             edge_quotient_weight,
@@ -71,7 +68,6 @@ impl ContractionParameters {
             unpacked_edges_quotient_weight,
             complexity_quotient_weight,
             thin_profile_interval_hop_limit,
-            num_threads,
         }
     }
 }
@@ -229,7 +225,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         graph: DiGraph<ToContractNode, ToContractEdge<T>>,
         parameters: ContractionParameters,
     ) -> Self {
-        let pool = Pool::new(parameters.num_threads, Default::default);
+        let pool = Pool::new(rayon::current_num_threads(), Default::default);
 
         let mut order = Vec::new();
         order.resize(graph.node_count(), 0);

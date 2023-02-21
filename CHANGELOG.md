@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] The number of threads to use for parallelized tasks can be specified in the parameters of
+  the `metropolis` and `compute_travel_times` scripts (key is `nb_threads`).
+
 ### Changed
 
 - [DEV] Add schedule-utility breakpoints ex-post when computing the global TTF for `Trip` modes

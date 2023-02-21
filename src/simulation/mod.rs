@@ -85,6 +85,11 @@ impl<T: TTFNum> Simulation<T> {
         init_weights: Option<NetworkWeights<T>>,
         output_dir: &Path,
     ) -> Result<()> {
+        // Initialize the global rayon thread pool.
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(self.parameters.nb_threads)
+            .build_global()
+            .unwrap();
         let preprocess_data = self.preprocess()?;
         let mut weights = if let Some(weights) = init_weights {
             weights

@@ -127,6 +127,12 @@ fn main() -> Result<()> {
         Default::default()
     };
 
+    // Initialize the global rayon thread pool.
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(parameters.nb_threads)
+        .build_global()
+        .unwrap();
+
     // Check that all sources and targets are in the graph.
     let max_source_id = queries.iter().map(|q| q.source).max().unwrap();
     let max_target_id = queries.iter().map(|q| q.target).max().unwrap();

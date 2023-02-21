@@ -266,7 +266,7 @@ impl<T> NetworkPreprocessingData<T> {
 }
 
 /// Parameters of the simulation that are specific to the network.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct NetworkParameters<T> {
     /// Parameters specific to the road network.
     pub road_network: Option<RoadNetworkParameters<T>>,

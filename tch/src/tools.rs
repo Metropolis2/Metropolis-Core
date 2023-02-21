@@ -36,6 +36,11 @@ pub struct Parameters<T> {
     /// If `true`, the routes corresponding to the earliest-arrival queries are exported.
     #[serde(default)]
     pub output_route: bool,
+    /// Number of threads to use to parallelize queries.
+    ///
+    /// Default (0) is to use all the threads of the CPU.
+    #[serde(default)]
+    pub nb_threads: usize,
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
     #[schemars(

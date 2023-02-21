@@ -172,18 +172,19 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
 }
 
 pub(crate) fn example_parameters() -> Parameters<f64> {
-    Parameters::new(
-        Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
-        1,
-        NetworkParameters {
+    Parameters {
+        period: Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
+        init_iteration_counter: 1,
+        network: NetworkParameters {
             road_network: Some(RoadNetworkParameters::from_recording_interval(Time(60.0))),
         },
-        LearningModel::Exponential(ExponentialLearningModel::new(0.9)),
-        vec![
+        learning_model: LearningModel::Exponential(ExponentialLearningModel::new(0.9)),
+        stopping_criteria: vec![
             StopCriterion::MaxIteration(100),
             StopCriterion::DepartureTime(Time(2.0), Time(3600.0)),
         ],
-        1.0,
-        Some(13081996),
-    )
+        update_ratio: 1.0,
+        random_seed: Some(13081996),
+        nb_threads: 8,
+    }
 }

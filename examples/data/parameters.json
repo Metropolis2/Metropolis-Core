@@ -46,5 +46,6 @@
     }
   ],
   "update_ratio": 1.0,
-  "random_seed": 19960813
+  "random_seed": 19960813,
+  "nb_threads": 24
 }
