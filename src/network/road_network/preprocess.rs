@@ -8,7 +8,6 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
-use num_traits::ToPrimitive;
 use petgraph::prelude::NodeIndex;
 use serde::Deserialize;
 use ttf::{TTFNum, TTF};
@@ -17,7 +16,7 @@ use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{RoadNetwork, RoadNetworkParameters};
 use crate::agent::Agent;
 use crate::mode::Mode;
-use crate::units::{Interval, Time};
+use crate::units::Time;
 
 /// Struct to store the set of unique vehicles and the equivalences between vehicles.
 #[derive(Clone, Debug)]
@@ -95,8 +94,6 @@ pub struct RoadNetworkPreprocessingData<T> {
     /// Vector with, for each unique vehicle, an [ODTravelTimes] instance representing the
     /// OD-pair level free-flow travel times.
     pub(crate) free_flow_travel_times: Vec<ODTravelTimes<T>>,
-    /// Time intervals for which the simulated travel times are aggregated.
-    pub(crate) recording_intervals: Vec<Time<T>>,
 }
 
 impl<T> RoadNetworkPreprocessingData<T> {
@@ -121,11 +118,6 @@ impl<T> RoadNetworkPreprocessingData<T> {
         self.unique_vehicles.vehicles[id]
     }
 
-    /// Returns the slice of recording interval to use.
-    pub fn recording_intervals(&self) -> &[Time<T>] {
-        &self.recording_intervals
-    }
-
     /// Returns the [ODPairs] corresponding to the given unique-vehicle index.
     ///
     /// *Panics* if the unique-vehicle index exceeds the number of unique vehicle of this
@@ -142,7 +134,6 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
         road_network: &RoadNetwork<T>,
         agents: &[Agent<T>],
         parameters: &RoadNetworkParameters<T>,
-        period: Interval<T>,
     ) -> Result<Self> {
         let unique_vehicles = UniqueVehicles::from_vehicles(&road_network.vehicles);
         let od_pairs = od_pairs_from_agents(agents, &unique_vehicles)?;
@@ -153,12 +144,10 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
             &unique_vehicles,
             &od_pairs,
         )?;
-        let recording_intervals = build_recording_intervals(period, parameters.recording_interval);
         Ok(RoadNetworkPreprocessingData {
             unique_vehicles,
             od_pairs,
             free_flow_travel_times,
-            recording_intervals,
         })
     }
 }
@@ -295,26 +284,6 @@ fn compute_free_flow_travel_times<T: TTFNum>(
         }
     }
     Ok(free_flow_travel_times)
-}
-
-fn build_recording_intervals<T: TTFNum>(period: Interval<T>, interval: Time<T>) -> Vec<Time<T>> {
-    let mut intervals = Vec::with_capacity(
-        ((period.end() - period.start()) / interval)
-            .to_usize()
-            .unwrap()
-            + 2,
-    );
-    let mut current_time = period.start();
-    intervals.push(period.start());
-    loop {
-        current_time += interval;
-        if current_time >= period.end() {
-            break;
-        }
-        intervals.push(current_time);
-    }
-    intervals.push(period.end());
-    intervals
 }
 
 #[cfg(test)]

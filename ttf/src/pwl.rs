@@ -9,6 +9,7 @@ use std::ops;
 
 use either::Either;
 use itertools::Itertools;
+use num_traits::Zero;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -125,20 +126,10 @@ where
         if input.points.is_empty() {
             panic!("Cannot deserialize a PwlXYF with no point");
         }
-        let (min_y, max_y) = input
-            .points
-            .iter()
-            .map(|p| p.y)
-            .minmax()
-            .into_option()
-            .unwrap();
-        let f: PwlXYFBuilder<X, Y, T> = PwlXYFBuilder {
-            points: input.points,
-            min: Some(min_y),
-            max: Some(max_y),
-            period: input.period,
-            convert_type: std::marker::PhantomData,
-        };
+        let mut f = PwlXYFBuilder::with_capacity(input.period, input.points.len());
+        for p in input.points {
+            f.try_push_point(p);
+        }
         f.finish()
     }
 }
@@ -1042,7 +1033,7 @@ pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
             // Add first point.
             h.push(h.period[0], c + g.eval(h.period[0] + c));
         }
-        h.push_point(p);
+        h.try_push_point(p);
     }
 
     let h = h.finish();
@@ -1077,14 +1068,14 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     while i < f.len() && j < g.len() {
         if intersect(&f[i - 1], &f[i], &g[j - 1], &g[j]) {
             let p = intersection_point(&f[i - 1], &f[i], &g[j - 1], &g[j]);
-            h.push_point(p);
+            h.try_push_point(p);
             descr.f_undercuts_strictly = true;
             descr.g_undercuts_strictly = true;
         }
 
         if f[i].x.approx_eq(&g[j].x) {
             if f[i].y.approx_eq(&g[j].y) {
-                h.push_point(f[i]);
+                h.try_push_point(f[i]);
 
                 if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::CounterClockwise
                     || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j + 1])
@@ -1099,10 +1090,10 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                     descr.g_undercuts_strictly = true;
                 }
             } else if f[i].y < g[j].y {
-                h.push_point(f[i]);
+                h.try_push_point(f[i]);
                 descr.f_undercuts_strictly = true;
             } else {
-                h.push_point(g[j]);
+                h.try_push_point(g[j]);
                 descr.g_undercuts_strictly = true;
             }
             i += 1;
@@ -1111,7 +1102,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
             match rotation::<T, T, T>(&g[j - 1], &f[i], &g[j]) {
                 Rotation::CounterClockwise => {
                     descr.f_undercuts_strictly = true;
-                    h.push_point(f[i]);
+                    h.try_push_point(f[i]);
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i])
@@ -1120,7 +1111,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                             == Rotation::CounterClockwise
                     {
                         descr.f_undercuts_strictly = true;
-                        h.push_point(f[i]);
+                        h.try_push_point(f[i]);
                     }
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j]) == Rotation::Clockwise
@@ -1135,7 +1126,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
             match rotation::<T, T, T>(&f[i - 1], &g[j], &f[i]) {
                 Rotation::CounterClockwise => {
                     descr.g_undercuts_strictly = true;
-                    h.push_point(g[j]);
+                    h.try_push_point(g[j]);
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j])
@@ -1144,7 +1135,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                             == Rotation::CounterClockwise
                     {
                         descr.g_undercuts_strictly = true;
-                        h.push_point(g[j]);
+                        h.try_push_point(g[j]);
                     }
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&g[j], &g[j + 1], &f[i]) == Rotation::Clockwise
@@ -1166,35 +1157,35 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     let mut is_first = true;
     for i in i..f.len() {
         if f[i].y.approx_eq(&last_y_from_other) {
-            h.push_point(f[i]);
+            h.try_push_point(f[i]);
         } else if f[i].y < last_y_from_other {
             if !is_first && f[i - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
-                h.push_point(p);
+                h.try_push_point(p);
             }
             descr.f_undercuts_strictly = true;
-            h.push_point(f[i]);
+            h.try_push_point(f[i]);
         } else if !is_first && f[i - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&f[i - 1], &f[i], last_y_from_other);
             descr.g_undercuts_strictly = true;
-            h.push_point(p);
+            h.try_push_point(p);
         }
         is_first = false;
     }
     for j in j..g.len() {
         if g[j].y.approx_eq(&last_y_from_other) {
-            h.push_point(g[j]);
+            h.try_push_point(g[j]);
         } else if g[j].y < last_y_from_other {
             if !is_first && g[j - 1].y > last_y_from_other {
                 let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
-                h.push_point(p);
+                h.try_push_point(p);
             }
             descr.g_undercuts_strictly = true;
-            h.push_point(g[j]);
+            h.try_push_point(g[j]);
         } else if !is_first && g[j - 1].y < last_y_from_other {
             let p = intersection_point_horizontal(&g[j - 1], &g[j], last_y_from_other);
             descr.f_undercuts_strictly = true;
-            h.push_point(p);
+            h.try_push_point(p);
         }
         is_first = false;
     }
@@ -1238,12 +1229,12 @@ pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutD
         } else if f[i].y < c {
             if c.approx_lt(&f[i - 1].y) {
                 let p = intersection_point_horizontal(&f[i - 1], &f[i], c);
-                h.push_point(p);
+                h.try_push_point(p);
             }
-            h.push_point(f[i]);
+            h.try_push_point(f[i]);
         } else if f[i - 1].y.approx_lt(&c) {
             let p = intersection_point_horizontal(&f[i - 1], &f[i], c);
-            h.push_point(p);
+            h.try_push_point(p);
         }
     }
 
@@ -1548,13 +1539,20 @@ pub struct PwlXYFBuilder<X, Y, T> {
     max: Option<Y>,
     /// Array `[x0, x1]` representing the domain of the function.
     period: [X; 2],
+    /// Approximation bound.
+    approximation: T,
+    /// Coefficients `(a, b)` of the line `y = a + b * x` defined by the last two points of the
+    /// PwlXYFBuilder.
+    current_line: Option<(T, T)>,
+    /// Last point added to the PwlXYFBuilder (if it was skipped).
+    last_point: Option<Point<X, Y>>,
     convert_type: std::marker::PhantomData<T>,
 }
 
 /// A struct to conveniently build a [PwlTTF].
 pub type PwlTTFBuilder<T> = PwlXYFBuilder<T, T, T>;
 
-impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
+impl<X, Y, T: Zero> PwlXYFBuilder<X, Y, T> {
     /// Creates a new [PwlXYFBuilder] with no point.
     pub fn new(period: [X; 2]) -> Self {
         Self {
@@ -1562,6 +1560,9 @@ impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
             min: None,
             max: None,
             period,
+            approximation: T::zero(),
+            current_line: None,
+            last_point: None,
             convert_type: std::marker::PhantomData,
         }
     }
@@ -1574,6 +1575,44 @@ impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
             min: None,
             max: None,
             period,
+            approximation: T::zero(),
+            current_line: None,
+            last_point: None,
+            convert_type: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<X, Y, T> PwlXYFBuilder<X, Y, T> {
+    /// Creates a new [PwlXYFBuilder] with no point, with the given approximation bound.
+    pub fn with_approximation(period: [X; 2], approximation: T) -> Self {
+        Self {
+            points: Vec::new(),
+            min: None,
+            max: None,
+            period,
+            approximation,
+            current_line: None,
+            last_point: None,
+            convert_type: std::marker::PhantomData,
+        }
+    }
+
+    /// Creates a new [PwlXYFBuilder] with no point, that can hold at least the given capacity of
+    /// points, with the given approximation bound.
+    pub fn with_approximation_and_capacity(
+        period: [X; 2],
+        approximation: T,
+        capacity: usize,
+    ) -> Self {
+        Self {
+            points: Vec::with_capacity(capacity),
+            min: None,
+            max: None,
+            period,
+            approximation,
+            current_line: None,
+            last_point: None,
             convert_type: std::marker::PhantomData,
         }
     }
@@ -1613,9 +1652,11 @@ where
     /// *Panics* if the PwlXYFBuilder has no point.
     pub fn finish(mut self) -> PwlXYF<X, Y, T> {
         assert!(
-            !self.is_empty(),
+            self.last_point.is_some(),
             "The piecewise-linear function must have at least 1 point"
         );
+        // Push the last point added.
+        self.push_point(None);
         debug_assert!(
             self.min.unwrap().approx_eq(
                 &self
@@ -1662,50 +1703,92 @@ where
 {
     /// Pushes a new point (`x`, `y`) to the [PwlXYFBuilder].
     pub fn push(&mut self, x: X, y: Y) {
-        self.push_point(Point { x, y });
+        self.try_push_point(Point { x, y });
     }
 
     /// Pushes a new point to the [PwlXYFBuilder].
-    fn push_point(&mut self, p: Point<X, Y>) {
-        debug_assert!(
-            self.is_empty() || self.points.last().unwrap().x.approx_le(&p.x),
-            "{:?} > {:?}",
-            self.points.last().unwrap().x,
-            p.x
-        );
-        debug_assert!(!self.is_empty() || p.x == self.period[0]);
+    fn try_push_point(&mut self, p: Point<X, Y>) {
+        if p.x > self.period[1] {
+            // Do not add points greater than the PwlXYF's period.
+            return;
+        }
+        if self.is_empty() {
+            if self.last_point.is_none() {
+                // First point added to the PwlXYFBuilder: We put it in `last_point`, it will be
+                // added to the points when the second point is added.
+                debug_assert!(p.x.approx_eq(&self.period[0]));
+                self.last_point = Some(p);
+            } else {
+                // Second point added to the PwlXYFBuilder: We push the previous point, set the
+                // current line and put the new point in `last_point`.
+                self.push_point(Some(p));
+            }
+            return;
+        }
+        debug_assert!(self.current_line.is_some());
+        debug_assert!(self.last_point.is_some());
         debug_assert!(p.x >= self.period[0]);
-        debug_assert!(p.x <= self.period[1]);
-        self.update_min_max(p.y);
-        if let Some(last_point) = self.points.last_mut() {
-            if last_point.x.approx_eq(&p.x) {
+        // Check if the new point lies within the boundaries formed by the two previous points.
+        if self.skip_point(p) {
+            // We do not add the previous point because the new point is within the boundaries.
+            self.last_point = Some(p);
+            return;
+        }
+        // We add the previous point that we tried to add.
+        self.push_point(Some(p));
+    }
+
+    /// Adds the last point added to the actual points of the PwlXYFBuilder.
+    fn push_point(&mut self, next: Option<Point<X, Y>>) {
+        let p = self.last_point.unwrap();
+        println!("p: {:?} next: {:?}", p, next);
+        if let Some(mut q) = next {
+            // Update the point if the `x` value is not large enough compared to the previous `x`
+            // value.
+            if p.x.approx_ge(&q.x) {
                 // The point to add has the same x as the last point added.
-                if last_point.y.approx_eq(&p.y) {
+                if p.y.approx_eq(&q.y) {
                     // Do not try to add the same point again.
                     return;
                 }
-                let new_x = last_point.x.max(p.x) + X::small_margin();
-                last_point.x = last_point.x.min(p.x);
-                debug_assert!(last_point.x < new_x);
-                self.points.push(Point { x: new_x, y: p.y });
-                return;
+                let new_x = p.x.max(q.x) + X::small_margin();
+                q.x = new_x;
             }
-            debug_assert!(last_point.x < p.x);
+            self.last_point = Some(q);
         }
-        if self.len() > 1
-            && rotation(
-                &self.points[self.len() - 2],
-                &self.points[self.len() - 1],
-                &p,
-            ) == Rotation::Colinear
-        {
-            // The new point is colinear with the two previous points.
-            // The new point replaces the last one.
-            *self.points.last_mut().unwrap() = p;
-            return;
-        }
-        debug_assert!(self.is_empty() || self.points.last().unwrap().x < p.x);
+        debug_assert!(
+            self.points.is_empty() || self.points.last().unwrap().x < p.x,
+            "{:?} >= {:?}",
+            self.points.last().unwrap().x,
+            p.x
+        );
+        self.update_min_max(p.y);
         self.points.push(p);
+        if self.last_point.is_some() {
+            self.build_line();
+        }
+    }
+
+    /// Builds the coefficient of the line formed by the two last points.
+    ///
+    /// *Panics* if there is no point yet or if `last_point` is `None`.
+    fn build_line(&mut self) {
+        let p = self.points.last().unwrap();
+        let q = self.last_point.unwrap();
+        debug_assert!(p.x.approx_le(&q.x));
+        // Coefficient of the line.
+        let b = (q.y - p.y).into() / (q.x - p.x).into();
+        // Value of Y at origin for the line.
+        let a = p.y.into() - b * p.x.into();
+        self.current_line = Some((a, b));
+    }
+
+    /// Returns `true` if the given point can be skipped, i.e., it lies within the boundaries
+    /// formed by the last two points.
+    fn skip_point(&mut self, p: Point<X, Y>) -> bool {
+        let (a, b) = self.current_line.unwrap();
+        let dist = (p.y.into() - b * p.x.into() - a).abs();
+        dist.approx_le(&self.approximation)
     }
 }
 
@@ -1812,5 +1895,105 @@ mod tests {
         let new_ttf = ttf.clone();
         ttf.constrain_to_domain([-5.0, 25.0]);
         assert_eq!(ttf, new_ttf);
+    }
+
+    #[test]
+    fn build_with_approx_test() {
+        let mut builder = PwlXYFBuilder::with_approximation([0.0, 20.0], 1.0);
+        builder.push(0.0, 0.0); // Kept (first point).
+        builder.push(1.0, 1.0); // Discarded.
+        builder.push(2.0, 2.5); // Discarded.
+        builder.push(3.0, 2.5); // Kept (next point is not close to the line ((0, 0), (1, 1)).
+        builder.push(4.0, 6.0); // Discarded.
+        builder.push(4.0, 6.0); // Kept (next point is not close to the line ((3, 2.5), (4, 6)).
+        builder.push(5.0, 4.0); // Kept (next point is not close to the line ((4, 6), (5, 4)).
+        builder.push(5.0, 2.0); // Kept with modification.
+        builder.push(6.0, 1.0); // Discarded.
+        builder.push(7.0, 0.0); // Kept (last point).
+        let f = builder.finish();
+        assert_eq!(f.points.len(), 6, "TTF:\n{f:?}");
+        assert_eq!(f.points[0], Point { x: 0.0, y: 0.0 });
+        assert_eq!(f.points[1], Point { x: 3.0, y: 2.5 });
+        assert_eq!(f.points[2], Point { x: 4.0, y: 6.0 });
+        assert_eq!(f.points[3], Point { x: 5.0, y: 4.0 });
+        assert_eq!(
+            f.points[4],
+            Point {
+                x: 5.0 + f64::small_margin(),
+                y: 2.0
+            }
+        );
+        assert_eq!(f.points[5], Point { x: 7.0, y: 0.0 });
+    }
+
+    #[test]
+    fn build_test() {
+        let mut builder = PwlTTFBuilder::new([0.0, 20.0]);
+        builder.push(0.0, 0.0); // Kept (first point).
+        builder.push(0.0, 0.0); // Discarded.
+        builder.push(1.0, 1.0); // Discarded.
+        builder.push(2.0, 2.0); // Discarded.
+        builder.push(3.0, 3.0); // Kept (next point is not on the line ((0, 0), (1, 1)).
+        builder.push(4.0, 6.0); // Kept (next point is not on the line ((3, 3), (4, 6)).
+        builder.push(5.0, 4.0); // Discarded.
+        builder.push(5.0, 4.0); // Kept (next point is not on the line ((4, 6), (5, 4)).
+        builder.push(6.0, 0.0); // Kept (last point).
+        let f = builder.finish();
+        assert_eq!(f.points.len(), 5, "TTF:\n{f:?}");
+        assert_eq!(f.points[0], Point { x: 0.0, y: 0.0 });
+        assert_eq!(f.points[1], Point { x: 3.0, y: 3.0 });
+        assert_eq!(f.points[2], Point { x: 4.0, y: 6.0 });
+        assert_eq!(f.points[3], Point { x: 5.0, y: 4.0 });
+        assert_eq!(f.points[4], Point { x: 6.0, y: 0.0 });
+    }
+
+    #[test]
+    fn build_test2() {
+        let mut builder = PwlTTFBuilder::new([0.0, 20.0]);
+        builder.push(0.0, 0.0); // Kept (first point).
+        builder.push(0.0, 0.0); // Discarded.
+        builder.push(1.0, 1.0); // Discarded.
+        builder.push(2.0, 2.0); // Discarded.
+        builder.push(3.0, 3.0); // Kept (next point is not on the line ((0, 0), (1, 1)).
+        builder.push(4.0, 6.0); // Kept (next point is not on the line ((3, 3), (4, 6)).
+        builder.push(5.0, 4.0); // Kept (next point is not on the line ((4, 6), (5, 4)).
+        builder.push(5.0, 0.0); // Kept with modification.
+        builder.push(6.0, 0.0); // Kept (last point).
+        let f = builder.finish();
+        assert_eq!(f.points.len(), 6, "TTF:\n{f:?}");
+        assert_eq!(f.points[0], Point { x: 0.0, y: 0.0 });
+        assert_eq!(f.points[1], Point { x: 3.0, y: 3.0 });
+        assert_eq!(f.points[2], Point { x: 4.0, y: 6.0 });
+        assert_eq!(f.points[3], Point { x: 5.0, y: 4.0 });
+        assert_eq!(
+            f.points[4],
+            Point {
+                x: 5.0 + f64::small_margin(),
+                y: 0.0
+            }
+        );
+        assert_eq!(f.points[5], Point { x: 6.0, y: 0.0 });
+    }
+
+    #[test]
+    fn build_test3() {
+        let mut builder = PwlTTFBuilder::new([0.0, 20.0]);
+        builder.push(0.0, 0.0); // Kept (first point).
+        builder.push(0.0, 1.0); // Discarded.
+        builder.push(0.0, 3.0); // Discarded.
+        builder.push(0.0, 6.0); // Discarded.
+        builder.push(0.0, 10.0); // Kept (next point is not on the line ((0, 0), (1, 1)).
+        let f = builder.finish();
+        let mut x = 0.0;
+        assert_eq!(f.points.len(), 5, "TTF:\n{f:?}");
+        assert_eq!(f.points[0], Point { x, y: 0.0 });
+        x += f64::small_margin();
+        assert_eq!(f.points[1], Point { x, y: 1.0 });
+        x += f64::small_margin();
+        assert_eq!(f.points[2], Point { x, y: 3.0 });
+        x += f64::small_margin();
+        assert_eq!(f.points[3], Point { x, y: 6.0 });
+        x += f64::small_margin();
+        assert_eq!(f.points[4], Point { x, y: 10.0 });
     }
 }

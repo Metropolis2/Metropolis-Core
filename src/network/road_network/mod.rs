@@ -30,8 +30,9 @@ pub use self::state::RoadNetworkState;
 use self::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
+use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
-use crate::units::{Flow, Interval, Length, Speed, Time};
+use crate::units::{Flow, Length, NoUnit, Speed, Time};
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
@@ -132,6 +133,10 @@ fn default_time_schema() -> String {
     "0".to_owned()
 }
 
+fn default_no_unit_schema() -> String {
+    "0".to_owned()
+}
+
 const fn default_lanes() -> u8 {
     1
 }
@@ -174,6 +179,9 @@ pub struct RoadEdge<T> {
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
     bottleneck_outflow: Flow<T>,
+    /// If `true`, the length of vehicles on this road is limited by the length of the road.
+    #[serde(default)]
+    spillback: bool,
     /// Constant travel time penalty for the runnning part of the edge.
     #[serde(default = "Time::zero")]
     #[schemars(default = "default_time_schema")]
@@ -182,6 +190,7 @@ pub struct RoadEdge<T> {
 
 impl<T: TTFNum> RoadEdge<T> {
     /// Creates a new RoadEdge.
+    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         base_speed: Speed<T>,
         length: Length<T>,
@@ -189,6 +198,7 @@ impl<T: TTFNum> RoadEdge<T> {
         speed_density: SpeedDensityFunction<T>,
         bottleneck_inflow: Flow<T>,
         bottleneck_outflow: Flow<T>,
+        spillback: bool,
         constant_travel_time: Time<T>,
     ) -> Self {
         RoadEdge {
@@ -198,6 +208,7 @@ impl<T: TTFNum> RoadEdge<T> {
             speed_density,
             bottleneck_inflow,
             bottleneck_outflow,
+            spillback,
             constant_travel_time,
         }
     }
@@ -327,11 +338,18 @@ impl<T> RoadNetwork<T> {
 
 impl<T: TTFNum> RoadNetwork<T> {
     /// Returns an empty [RoadNetworkState].
-    pub fn get_blank_state<'a>(
-        &'a self,
-        preprocess_data: &'a RoadNetworkPreprocessingData<T>,
-    ) -> RoadNetworkState<'a, T> {
-        RoadNetworkState::from_network(self, preprocess_data.recording_intervals())
+    pub fn get_blank_state<'a>(&'a self, parameters: &'a Parameters<T>) -> RoadNetworkState<'a, T> {
+        let road_network_parameters = parameters
+            .network
+            .road_network
+            .as_ref()
+            .expect("Cannot create RoadNetworkState with no RoadNetworkParameters");
+        RoadNetworkState::from_network(
+            self,
+            parameters.period,
+            road_network_parameters.bottleneck_approximation,
+            road_network_parameters.road_length_approximation,
+        )
     }
 
     /// Returns the [RoadNetworkPreprocessingData] for the given set of [agents](Agent), the given
@@ -340,9 +358,8 @@ impl<T: TTFNum> RoadNetwork<T> {
         &self,
         agents: &[Agent<T>],
         parameters: &RoadNetworkParameters<T>,
-        period: Interval<T>,
     ) -> Result<RoadNetworkPreprocessingData<T>> {
-        RoadNetworkPreprocessingData::preprocess(self, agents, parameters, period)
+        RoadNetworkPreprocessingData::preprocess(self, agents, parameters)
     }
 
     /// Compute and return the [RoadNetworkSkims] for the RoadNetwork, with the given
@@ -468,7 +485,8 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
 }
 
 /// Set of parameters related to a [RoadNetwork].
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 #[schemars(title = "Road Network Parameters")]
 #[schemars(description = "Set of parameters related to a road network.")]
 pub struct RoadNetworkParameters<T> {
@@ -478,8 +496,14 @@ pub struct RoadNetworkParameters<T> {
         description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
     )]
     pub contraction: ContractionParameters,
-    /// Interval in time for which the bottleneck and road segment travel times are aggregated.
-    pub recording_interval: Time<T>,
+    /// Time approximation bound used when recording bottlenecks' waiting times.
+    #[serde(default)]
+    #[schemars(default = "default_time_schema")]
+    pub bottleneck_approximation: Time<T>,
+    /// Length approximation bound used when recording road segments' lengths.
+    #[serde(default)]
+    #[schemars(default = "default_no_unit_schema")]
+    pub road_length_approximation: NoUnit<T>,
     /// [TTFSimplification] describing how the simulated edges' TTFs are simplified at the end of
     /// an iteration.
     #[serde(default = "TTFSimplification::<Time<T>>::default")]
@@ -506,21 +530,6 @@ pub struct RoadNetworkParameters<T> {
     pub search_space_simplification: TTFSimplification<Time<T>>,
 }
 
-impl<T> RoadNetworkParameters<T> {
-    /// Create a new [RoadNetworkParameters] from a recording time interval, leaving all the other
-    /// values to their default.
-    pub fn from_recording_interval(recording_interval: Time<T>) -> Self {
-        Self {
-            recording_interval,
-            contraction: Default::default(),
-            simulated_simplification: Default::default(),
-            weight_simplification: Default::default(),
-            overlay_simplification: Default::default(),
-            search_space_simplification: Default::default(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use hashbrown::HashSet;
@@ -538,6 +547,7 @@ mod tests {
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_inflow: Flow(f64::INFINITY),
             bottleneck_outflow: Flow(f64::INFINITY),
+            spillback: false,
             constant_travel_time: Time(10.),
         };
         let vehicle = Vehicle::new(

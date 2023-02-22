@@ -67,7 +67,7 @@ impl TTFNum for f32 {
         100. * MARGIN32
     }
     fn approx_eq(&self, other: &Self) -> bool {
-        (self - other).abs() < MARGIN32
+        (self - other).abs() <= MARGIN32
     }
     fn approx_le(&self, other: &Self) -> bool {
         *self <= *other + MARGIN32
@@ -88,7 +88,7 @@ impl TTFNum for f64 {
         100. * MARGIN64
     }
     fn approx_eq(&self, other: &Self) -> bool {
-        (self - other).abs() < MARGIN64
+        (self - other).abs() <= MARGIN64
     }
     fn approx_le(&self, other: &Self) -> bool {
         *self <= *other + MARGIN64

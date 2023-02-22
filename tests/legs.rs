@@ -10,10 +10,8 @@ use metropolis::mode::trip::results::{LegResults, LegTypeResults, RoadLegResults
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::{mode_index, Mode, ModeResults};
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
-use metropolis::network::road_network::{
-    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
-};
-use metropolis::network::{Network, NetworkParameters};
+use metropolis::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
+use metropolis::network::Network;
 use metropolis::parameters::Parameters;
 use metropolis::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
 use metropolis::schedule_utility::ScheduleUtility;
@@ -41,6 +39,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Flow::infinity(),
+                false,
                 Time(0.),
             ),
         ),
@@ -54,6 +53,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Flow::infinity(),
+                false,
                 Time(0.),
             ),
         ),
@@ -136,12 +136,8 @@ fn get_simulation() -> Simulation<f64> {
     let agent = Agent::new(0, vec![Mode::Trip(trip)], None);
     agents.push(agent);
 
-    let network_parameters = NetworkParameters {
-        road_network: Some(RoadNetworkParameters::from_recording_interval(Time(5.0))),
-    };
     let parameters = Parameters {
         period: Interval([Time(0.0), Time(50.0)]),
-        network: network_parameters,
         stopping_criteria: vec![StopCriterion::MaxIteration(1)],
         ..Default::default()
     };

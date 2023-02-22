@@ -141,11 +141,9 @@ impl<T: TTFNum> Simulation<T> {
     pub fn preprocess(&self) -> Result<PreprocessingData<T>> {
         info!("Pre-processing simulation");
         // Run the preprocessing stuff related to the network.
-        let network = self.network.preprocess(
-            &self.agents,
-            &self.parameters.network,
-            self.parameters.period,
-        )?;
+        let network = self
+            .network
+            .preprocess(&self.agents, &self.parameters.network)?;
         Ok(PreprocessingData { network })
     }
 
@@ -279,7 +277,7 @@ impl<T: TTFNum> Simulation<T> {
         preprocess_data: &PreprocessingData<T>,
     ) -> Result<NetworkWeights<T>> {
         debug!("Initializing variables");
-        let mut state = self.network.get_blank_state(&preprocess_data.network);
+        let mut state = self.network.get_blank_state(&self.parameters);
         let mut events = agent_results.get_event_queue(&self.agents);
         let mut nb_events = 0;
         info!("Executing events");

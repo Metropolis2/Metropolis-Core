@@ -15,7 +15,6 @@ use ttf::TTFNum;
 
 use crate::agent::Agent;
 use crate::parameters::Parameters;
-use crate::units::Interval;
 
 pub mod road_network;
 
@@ -51,14 +50,11 @@ impl<T: TTFNum> Network<T> {
     }
 
     /// Returns a blank [NetworkState] from the network.
-    pub fn get_blank_state<'a>(
-        &'a self,
-        preprocess_data: &'a NetworkPreprocessingData<T>,
-    ) -> NetworkState<'a, T> {
+    pub fn get_blank_state<'a>(&'a self, parameters: &'a Parameters<T>) -> NetworkState<'a, T> {
         NetworkState::new(
             self.road_network
                 .as_ref()
-                .map(|rn| rn.get_blank_state(preprocess_data.road_network.as_ref().unwrap())),
+                .map(|rn| rn.get_blank_state(parameters)),
         )
     }
 
@@ -107,12 +103,11 @@ impl<T: TTFNum> Network<T> {
         &self,
         agents: &[Agent<T>],
         parameters: &NetworkParameters<T>,
-        period: Interval<T>,
     ) -> Result<NetworkPreprocessingData<T>> {
         let rn_data = self
             .road_network
             .as_ref()
-            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap(), period))
+            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap()))
             .transpose()?;
         Ok(NetworkPreprocessingData {
             road_network: rn_data,
@@ -266,8 +261,17 @@ impl<T> NetworkPreprocessingData<T> {
 }
 
 /// Parameters of the simulation that are specific to the network.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(bound(deserialize = "T: TTFNum"))]
 pub struct NetworkParameters<T> {
     /// Parameters specific to the road network.
     pub road_network: Option<RoadNetworkParameters<T>>,
+}
+
+impl<T: Default> Default for NetworkParameters<T> {
+    fn default() -> Self {
+        Self {
+            road_network: Some(RoadNetworkParameters::default()),
+        }
+    }
 }
