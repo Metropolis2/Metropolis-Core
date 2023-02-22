@@ -76,7 +76,6 @@ impl<T: TTFNum> RoadSegment<T> {
     ///
     /// Also records the change of value.
     fn set_length(&mut self, length: Length<T>, timing: Time<T>) {
-        println!("Time: {:?}, length: {:?}", timing, length);
         self.length_history.push(timing, length);
         self.occupied_length = length;
     }

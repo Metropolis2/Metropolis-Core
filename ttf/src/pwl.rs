@@ -1741,7 +1741,6 @@ where
     /// Adds the last point added to the actual points of the PwlXYFBuilder.
     fn push_point(&mut self, next: Option<Point<X, Y>>) {
         let p = self.last_point.unwrap();
-        println!("p: {:?} next: {:?}", p, next);
         if let Some(mut q) = next {
             // Update the point if the `x` value is not large enough compared to the previous `x`
             // value.
