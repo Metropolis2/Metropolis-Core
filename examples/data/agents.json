@@ -15,9 +15,6 @@
         "u": 0.5
       }
     },
-    "schedule_utility": {
-      "type": "None"
-    },
     "modes": [
       {
         "type": "Trip",
@@ -45,15 +42,6 @@
       "value": {
         "u": 0.5,
         "mu": 1.0
-      }
-    },
-    "schedule_utility": {
-      "type": "AlphaBetaGamma",
-      "value": {
-        "t_star_low": 50.0,
-        "t_star_high": 150.0,
-        "beta": 1.0,
-        "gamma": 4.0
       }
     },
     "modes": [
