@@ -317,6 +317,9 @@ impl<T: TTFNum> Simulation<T> {
                 )?;
             }
         }
+        if log_enabled!(Level::Info) {
+            debug_assert_eq!(bp.position(), bp.length().unwrap());
+        }
         bp.finish_and_clear();
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.

@@ -159,7 +159,8 @@ pub(crate) fn intersection_point<T: TTFNum>(
 ) -> Point<T, T> {
     debug_assert_ne!(
         perp_dot_product::<T, T, T>(&(*p - *q), &(*b - *a)),
-        T::zero()
+        T::zero(),
+        "a: {a:?}, b: {b:?}, p: {p:?}, q: {q:?}"
     );
     *a + (*b - *a)
         * (perp_dot_product::<T, T, T>(&(*p - *q), &(*p - *a))
@@ -174,28 +175,34 @@ pub(crate) fn intersection_point_horizontal<T: TTFNum>(
     b: &Point<T, T>,
     c: T,
 ) -> Point<T, T> {
-    debug_assert!(a.y.min(b.y).approx_le(&c));
-    debug_assert!(a.y.max(b.y).approx_ge(&c));
+    if a.y.approx_eq(&c) {
+        return *a;
+    }
+    if b.y.approx_eq(&c) {
+        return *b;
+    }
+
+    debug_assert!(a.y.min(b.y).approx_lt(&c));
+    debug_assert!(a.y.max(b.y).approx_gt(&c));
+
+    if a.x.approx_eq(&b.x) {
+        // a and b form a vertical line.
+        return Point {
+            x: a.x.average(b.x),
+            y: c,
+        };
+    }
 
     let p = &Point { x: a.x, y: c };
     let q = &Point { x: b.x, y: c };
 
-    if p.x.approx_eq(&q.x) {
-        // a and b form a vertical line.
-        Point {
-            x: p.x.average(q.x),
-            y: c,
-        }
-    } else {
-        debug_assert!(intersect(a, b, p, q));
-        let result = intersection_point(a, b, p, q);
-        debug_assert!(c.approx_eq(&result.y));
-        debug_assert!(a.y.min(b.y).approx_le(&result.y));
-        debug_assert!(a.y.max(b.y).approx_ge(&result.y));
-        debug_assert!(a.x.min(b.x).approx_le(&result.x));
-        debug_assert!(a.x.max(b.x).approx_ge(&result.x));
-        result
-    }
+    let result = intersection_point(a, b, p, q);
+    debug_assert!(c.approx_eq(&result.y));
+    debug_assert!(a.y.min(b.y).approx_le(&result.y));
+    debug_assert!(a.y.max(b.y).approx_ge(&result.y));
+    debug_assert!(a.x.min(b.x).approx_le(&result.x));
+    debug_assert!(a.x.max(b.x).approx_ge(&result.x));
+    result
 }
 
 #[cfg(test)]
@@ -280,5 +287,22 @@ mod tests {
             ),
             Point { x: 0.5, y: 0.5 }
         );
+    }
+
+    #[test]
+    fn intersection_point_horizontal_test() {
+        let a = Point { x: 0., y: 0. };
+        let b = Point {
+            x: f64::small_margin() + f64::EPSILON,
+            y: 1.0 + f64::small_margin() + f64::EPSILON,
+        };
+        let p = intersection_point_horizontal(&a, &b, 1.0);
+        assert!(
+            p.x.approx_eq(&(f64::small_margin() + f64::EPSILON)),
+            "{:?} != {:?}",
+            p.x,
+            f64::small_margin() + f64::EPSILON
+        );
+        assert!(p.y.approx_eq(&1.0), "{:?} != 1.0", p.y);
     }
 }

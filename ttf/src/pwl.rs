@@ -609,7 +609,7 @@ impl<T: TTFNum> PwlTTF<T> {
     fn is_fifo(&self) -> bool {
         for (p, q) in self.double_iter() {
             if (q.x + q.y).approx_lt(&(p.x + p.y)) {
-                println!("{self:?}");
+                println!("{:?} + {:?} < {:?} + {:?}", q.x, q.y, p.x, p.y);
                 return false;
             }
         }
@@ -963,7 +963,7 @@ fn area_below<T: TTFNum>(p: Point<T, T>, q: Point<T, T>) -> T {
 pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
     debug_assert!(!f.is_empty());
     debug_assert!(!g.is_empty());
-    debug_assert!(f.is_fifo());
+    debug_assert!(f.is_fifo(), "{f:?}");
     debug_assert_eq!(f.period, g.period);
     debug_assert!(f[0].x.approx_eq(&g[0].x));
     debug_assert!(f.get_min() >= T::zero());
@@ -1007,7 +1007,7 @@ pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
         h.push(x, y);
     }
     let h = h.finish();
-    debug_assert!(h.is_fifo());
+    debug_assert!(h.is_fifo(), "{h:?}");
     // debug_assert!(h.dbg_check_link(f, g));
     h
 }
@@ -1037,7 +1037,7 @@ pub(crate) fn link_cst_before<T: TTFNum>(g: &PwlTTF<T>, c: T) -> PwlTTF<T> {
     }
 
     let h = h.finish();
-    debug_assert!(h.is_fifo());
+    debug_assert!(h.is_fifo(), "{h:?}");
     h
 }
 
@@ -1060,7 +1060,8 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
 
     debug_assert_eq!(f[0].x, h.period[0]);
     debug_assert_eq!(g[0].x, h.period[0]);
-    h.push(h.period[0], f[0].y.min(g[0].y));
+    let mut last_y = f[0].y.min(g[0].y);
+    h.push(h.period[0], last_y);
 
     let mut i = 1;
     let mut j = 1;
@@ -1069,6 +1070,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
         if intersect(&f[i - 1], &f[i], &g[j - 1], &g[j]) {
             let p = intersection_point(&f[i - 1], &f[i], &g[j - 1], &g[j]);
             h.try_push_point(p);
+            last_y = p.y;
             descr.f_undercuts_strictly = true;
             descr.g_undercuts_strictly = true;
         }
@@ -1076,6 +1078,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
         if f[i].x.approx_eq(&g[j].x) {
             if f[i].y.approx_eq(&g[j].y) {
                 h.try_push_point(f[i]);
+                last_y = f[i].y;
 
                 if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::CounterClockwise
                     || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j + 1])
@@ -1090,10 +1093,22 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                     descr.g_undercuts_strictly = true;
                 }
             } else if f[i].y < g[j].y {
-                h.try_push_point(f[i]);
+                let x = if last_y < f[i].y {
+                    f[i].x.min(g[j].x)
+                } else {
+                    f[i].x.max(g[j].x)
+                };
+                h.try_push_point(Point { x, y: f[i].y });
+                last_y = f[i].y;
                 descr.f_undercuts_strictly = true;
             } else {
-                h.try_push_point(g[j]);
+                let x = if last_y < g[j].y {
+                    f[i].x.min(g[j].x)
+                } else {
+                    f[i].x.max(g[j].x)
+                };
+                h.try_push_point(Point { x, y: g[j].y });
+                last_y = g[j].y;
                 descr.g_undercuts_strictly = true;
             }
             i += 1;
@@ -1103,6 +1118,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                 Rotation::CounterClockwise => {
                     descr.f_undercuts_strictly = true;
                     h.try_push_point(f[i]);
+                    last_y = f[i].y;
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i])
@@ -1112,6 +1128,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                     {
                         descr.f_undercuts_strictly = true;
                         h.try_push_point(f[i]);
+                        last_y = f[i].y;
                     }
                     if rotation::<T, T, T>(&g[j - 1], &f[i - 1], &f[i]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&f[i], &f[i + 1], &g[j]) == Rotation::Clockwise
@@ -1127,6 +1144,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                 Rotation::CounterClockwise => {
                     descr.g_undercuts_strictly = true;
                     h.try_push_point(g[j]);
+                    last_y = g[j].y;
                 }
                 Rotation::Colinear => {
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j])
@@ -1136,6 +1154,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
                     {
                         descr.g_undercuts_strictly = true;
                         h.try_push_point(g[j]);
+                        last_y = g[j].y;
                     }
                     if rotation::<T, T, T>(&f[i - 1], &g[j - 1], &g[j]) == Rotation::Clockwise
                         || rotation::<T, T, T>(&g[j], &g[j + 1], &f[i]) == Rotation::Clockwise
@@ -1193,7 +1212,7 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     debug_assert!(!h.is_empty());
     let h = h.finish();
     // debug_assert!(h.dbg_check_min(f, g));
-    debug_assert!(h.is_fifo());
+    debug_assert!(h.is_fifo(), "{h:?}");
     (h, descr)
 }
 
@@ -1214,7 +1233,7 @@ pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutD
     if c.approx_le(&f.get_min()) {
         h.push(h.period[0], c);
         let h = h.finish();
-        debug_assert!(h.is_fifo());
+        debug_assert!(h.is_fifo(), "{h:?}");
         return (h, descr);
     }
 
@@ -1240,7 +1259,7 @@ pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutD
 
     debug_assert!(!h.is_empty());
     let h = h.finish();
-    debug_assert!(h.is_fifo());
+    debug_assert!(h.is_fifo(), "{h:?}");
     (h, descr)
 }
 
@@ -1524,7 +1543,7 @@ pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
 
     debug_assert!(!h.is_empty());
     let h = h.finish();
-    debug_assert!(h.is_fifo());
+    debug_assert!(h.is_fifo(), "{h:?}");
     h
 }
 
@@ -1787,7 +1806,7 @@ where
     fn skip_point(&mut self, p: Point<X, Y>) -> bool {
         let (a, b) = self.current_line.unwrap();
         let dist = (p.y.into() - b * p.x.into() - a).abs();
-        dist.approx_le(&self.approximation)
+        dist <= self.approximation
     }
 }
 

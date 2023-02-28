@@ -10,7 +10,7 @@ use std::ops::{Index, IndexMut};
 use anyhow::Result;
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use ttf::{PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
+use ttf::{PwlTTF, PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
 
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
@@ -83,8 +83,7 @@ impl<T: TTFNum> RoadSegment<T> {
     /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated Length.
     fn into_simulated_length_function(self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
         let pwl_xyf = self.length_history.finish();
-        debug_assert_eq!(pwl_xyf.iter_y().last().unwrap(), &Length::zero());
-        if pwl_xyf.iter_y().all(|y| y == &pwl_xyf[0].y) {
+        if pwl_xyf.is_cst() {
             XYF::Constant(pwl_xyf[0].y)
         } else {
             XYF::Piecewise(pwl_xyf)
@@ -179,8 +178,7 @@ impl<T: TTFNum> Bottleneck<'_, T> {
     /// Consumes the [Bottleneck] and returns a [PwlTTF] with the simulated waiting time.
     fn into_simulated_ttf(self) -> TTF<Time<T>> {
         let pwl_ttf = self.waiting_time_history.finish();
-        debug_assert_eq!(pwl_ttf.iter_y().last().unwrap(), &Time::zero());
-        if pwl_ttf.iter_y().all(|y| y == &pwl_ttf[0].y) {
+        if pwl_ttf.is_cst() {
             TTF::Constant(pwl_ttf[0].y)
         } else {
             TTF::Piecewise(pwl_ttf)
@@ -419,10 +417,22 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
         {
             let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs.iter()) {
-                let road_ttf = funcs
-                    .road
-                    .map(|l| edge_ref.get_travel_time(l, vehicle))
-                    .to_ttf();
+                let road_ttf = match &funcs.road {
+                    XYF::Piecewise(road_pwl_length) => {
+                        let road_pwl_ttf = PwlTTF::from_iterator(
+                            road_pwl_length
+                                .iter()
+                                .map(|p| (p.x, edge_ref.get_travel_time(p.y, vehicle))),
+                            *road_pwl_length.period(),
+                        );
+                        if road_pwl_ttf.is_cst() {
+                            TTF::Constant(road_pwl_ttf[0].y)
+                        } else {
+                            TTF::Piecewise(road_pwl_ttf)
+                        }
+                    }
+                    XYF::Constant(l) => TTF::Constant(edge_ref.get_travel_time(*l, vehicle)),
+                };
                 let mut ttf = funcs
                     .in_bottleneck
                     .link(&road_ttf)
@@ -511,7 +521,9 @@ impl<'a, T: TTFNum> Event<'a, T> for BottleneckEvent<T> {
         vehicle_event.set_time(self.at_time);
         events.push(vehicle_event);
         if bottleneck.queue.is_empty() {
-            debug_assert_eq!(self.at_time, bottleneck.next_opening - closing_time);
+            debug_assert!(self
+                .at_time
+                .approx_eq(&(bottleneck.next_opening - closing_time)));
             // Record that the bottleneck is now open.
             bottleneck.record(self.at_time, self.at_time);
         } else {

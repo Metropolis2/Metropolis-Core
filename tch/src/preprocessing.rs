@@ -303,6 +303,7 @@ impl<T: TTFNum> ContractionGraph<T> {
                     (node_id, cost)
                 },
             )
+            .panic_fuse()
             .collect();
         for (node_id, cost) in costs.into_iter() {
             self.graph[node_id].cost = cost;
