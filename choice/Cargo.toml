@@ -10,7 +10,7 @@ categories = ["science", "mathematics"]
 publish = false
 
 [dependencies]
-ttf = { path = "../ttf" }
+ttf = { path = "../pwl" }
 anyhow = "1.0"
 serde = "1.0"
 schemars = "0.8"

@@ -14,8 +14,9 @@ use crate::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode
 use crate::mode::Mode;
 use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
 use crate::network::road_network::{
-    RoadEdge, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
+    RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
+use crate::network::NetworkParameters;
 use crate::parameters::Parameters;
 use crate::schedule_utility::ScheduleUtility;
 use crate::stop::StopCriterion;
@@ -175,7 +176,12 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
     Parameters {
         period: Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
         init_iteration_counter: 1,
-        network: Default::default(),
+        network: NetworkParameters {
+            road_network: Some(RoadNetworkParameters {
+                recording_interval: Time(300.0),
+                contraction: Default::default(),
+            }),
+        },
         learning_model: LearningModel::Exponential(ExponentialLearningModel::new(0.9)),
         stopping_criteria: vec![
             StopCriterion::MaxIteration(100),

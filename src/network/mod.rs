@@ -164,17 +164,10 @@ impl<'a, T> NetworkState<'a, T> {
 
 impl<T: TTFNum> NetworkState<'_, T> {
     /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
-    pub fn into_weights(
-        self,
-        preprocess_data: &NetworkPreprocessingData<T>,
-        parameters: &Parameters<T>,
-    ) -> NetworkWeights<T> {
-        let rn_weights = self.road_network.map(|rn| {
-            rn.into_weights(
-                preprocess_data.road_network.as_ref().unwrap(),
-                parameters.network.road_network.as_ref().unwrap(),
-            )
-        });
+    pub fn into_weights(self, preprocess_data: &NetworkPreprocessingData<T>) -> NetworkWeights<T> {
+        let rn_weights = self
+            .road_network
+            .map(|rn| rn.into_weights(preprocess_data.road_network.as_ref().unwrap()));
         NetworkWeights {
             road_network: rn_weights,
         }
@@ -235,15 +228,6 @@ impl<T: TTFNum> NetworkWeights<T> {
             road_network: rn_weights,
         }
     }
-
-    /// Simplifies the weights.
-    pub fn simplify(&mut self, parameters: &NetworkParameters<T>) {
-        if let (Some(rn_weights), Some(rn_parameters)) =
-            (self.road_network.as_mut(), parameters.road_network.as_ref())
-        {
-            rn_weights.simplify(rn_parameters);
-        }
-    }
 }
 
 /// Structure representing network data that is pre-computed before the first iteration of the
@@ -266,12 +250,4 @@ impl<T> NetworkPreprocessingData<T> {
 pub struct NetworkParameters<T> {
     /// Parameters specific to the road network.
     pub road_network: Option<RoadNetworkParameters<T>>,
-}
-
-impl<T: Default> Default for NetworkParameters<T> {
-    fn default() -> Self {
-        Self {
-            road_network: Some(RoadNetworkParameters::default()),
-        }
-    }
 }

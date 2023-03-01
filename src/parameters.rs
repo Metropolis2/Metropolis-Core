@@ -12,7 +12,7 @@ use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
 use crate::simulation::results::AgentResults;
 use crate::stop::StopCriterion;
-use crate::units::{Interval, Time};
+use crate::units::Interval;
 
 const fn default_iteration_counter() -> u32 {
     1
@@ -67,21 +67,6 @@ pub struct Parameters<T> {
     pub nb_threads: usize,
 }
 
-impl<T: TTFNum> Default for Parameters<T> {
-    fn default() -> Self {
-        Self {
-            period: Interval([Time(T::zero()), Time(T::infinity())]),
-            init_iteration_counter: 1,
-            network: Default::default(),
-            learning_model: Default::default(),
-            stopping_criteria: vec![StopCriterion::MaxIteration(1)],
-            update_ratio: 1.0,
-            random_seed: None,
-            nb_threads: 0,
-        }
-    }
-}
-
 impl<T: TTFNum> Parameters<T> {
     /// Returns `true` if the Simulation must be stopped.
     ///
@@ -105,10 +90,7 @@ impl<T: TTFNum> Parameters<T> {
         iteration_counter: u32,
     ) -> NetworkWeights<T> {
         // At this point, the iteration counter has not been increment yet.
-        let mut new_weights =
-            self.learning_model
-                .learn(old_weights, weights, iteration_counter + 1);
-        new_weights.simplify(&self.network);
-        new_weights
+        self.learning_model
+            .learn(old_weights, weights, iteration_counter + 1)
     }
 }

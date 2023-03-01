@@ -116,7 +116,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut parameters: Parameters<f64> = if let Some(filename) = args.parameters {
+    let mut parameters: Parameters = if let Some(filename) = args.parameters {
         info!("Reading parameters");
         let mut bytes = Vec::new();
         File::open(filename)
@@ -150,11 +150,6 @@ fn main() -> Result<()> {
             graph[edge_id] = ttf
         }
     }
-
-    // Simplify the edges' weights.
-    graph
-        .edge_weights_mut()
-        .for_each(|ttf| parameters.weight_simplification.simplify(ttf));
 
     if parameters.algorithm == AlgorithmType::Best {
         // Guess the best algorithm to use.
@@ -254,11 +249,8 @@ fn main() -> Result<()> {
                             query.source,
                             query.target,
                         );
-                        let mut ttf_opt =
+                        let ttf_opt =
                             profile_query(&mut alloc.profile_search, &bidir_query, &mut ops);
-                        if let Some(ref mut ttf) = &mut ttf_opt {
-                            parameters.result_simplification.simplify(ttf);
-                        }
                         bp.inc(1);
                         if let Some(ttf) = ttf_opt {
                             QueryResult::TravelTimeFunction((query.id, ttf))
@@ -273,7 +265,7 @@ fn main() -> Result<()> {
         query_time = t1.elapsed();
     } else {
         let t1 = Instant::now();
-        let mut overlay = if let Some(order) = order {
+        let overlay = if let Some(order) = order {
             info!("Contracting nodes");
             HierarchyOverlay::construct(
                 &graph,
@@ -300,17 +292,11 @@ fn main() -> Result<()> {
                 .unwrap();
         }
 
-        info!("Simplifying hierarchy overlay");
-        overlay.simplify(parameters.overlay_simplification);
-
         if parameters.algorithm == AlgorithmType::Intersect {
             info!("Computing search spaces");
             let (sources, targets): (HashSet<NodeIndex>, HashSet<NodeIndex>) =
                 queries.iter().map(|q| (q.source, q.target)).unzip();
-            let mut search_spaces = overlay.get_search_spaces(&sources, &targets);
-
-            info!("Simplifying search spaces");
-            search_spaces.simplify(parameters.search_space_simplification);
+            let search_spaces = overlay.get_search_spaces(&sources, &targets);
 
             preprocessing_time = t1.elapsed();
             let t2 = Instant::now();
@@ -346,12 +332,9 @@ fn main() -> Result<()> {
                             QueryResult::NotConnected
                         }
                     } else {
-                        let mut ttf_opt =
+                        let ttf_opt =
                             intersect_profile_query(query.source, query.target, &search_spaces)
                                 .unwrap();
-                        if let Some(ref mut ttf) = &mut ttf_opt {
-                            parameters.result_simplification.simplify(ttf);
-                        }
                         bp.inc(1);
                         if let Some(ttf) = ttf_opt {
                             QueryResult::TravelTimeFunction((query.id, ttf))
@@ -413,16 +396,13 @@ fn main() -> Result<()> {
                         } else {
                             let (profile_alloc, profile_candidate_map) =
                                 alloc.get_profile_variables();
-                            let mut ttf_opt = overlay.profile_query(
+                            let ttf_opt = overlay.profile_query(
                                 query.source,
                                 query.target,
                                 &mut profile_alloc.interval_search,
                                 &mut profile_alloc.profile_search,
                                 profile_candidate_map,
                             );
-                            if let Some(ref mut ttf) = &mut ttf_opt {
-                                parameters.result_simplification.simplify(ttf);
-                            }
                             bp.inc(1);
                             if let Some(ttf) = ttf_opt {
                                 QueryResult::TravelTimeFunction((query.id, ttf))

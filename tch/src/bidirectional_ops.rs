@@ -226,7 +226,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalProfileDijkstra::new(
@@ -368,7 +368,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let mut ops =
@@ -556,7 +556,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let mut ops =

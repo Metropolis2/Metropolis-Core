@@ -50,7 +50,7 @@ use crate::search::DijkstraSearch;
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 3., 2., 1., 0.], 0., 2.5)),
 ///     ),
 /// ]);
 /// let mut ops = BidirectionalProfileDijkstra::new(
@@ -62,11 +62,11 @@ use crate::search::DijkstraSearch;
 /// let label = profile_query(&mut search, &query, &mut ops);
 /// assert_eq!(
 ///     label,
-///     Some(TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-///         (0., 3.),
-///         (2.5, 3.),
-///         (10., 0.),
-///     ])))
+///     Some(TTF::Piecewise(PwlTTF::from_values(
+///         vec![3., 3., 2., 1., 0.],
+///         0.,
+///         2.5
+///     )))
 /// );
 /// ```
 pub fn profile_query<'a, PQ1, PQ2, G1, G2, F1, F2, CM, Q, T>(
@@ -212,7 +212,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let edge_label = |e: EdgeReference<_>| &graph[e.id()];

@@ -18,7 +18,7 @@ use petgraph::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
-use ttf::{TTFSimplification, TTF};
+use ttf::TTF;
 
 use crate::{
     ContractionParameters, DefaultBidirectionalProfileSearch, DefaultEarliestArrivalAllocation,
@@ -29,7 +29,7 @@ use crate::{
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[schemars(title = "Parameters")]
 #[schemars(description = "Set of parameters.")]
-pub struct Parameters<T> {
+pub struct Parameters {
     /// Algorithm type to use for the queries.
     #[serde(default)]
     pub algorithm: AlgorithmType,
@@ -47,28 +47,6 @@ pub struct Parameters<T> {
         description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
     )]
     pub contraction: ContractionParameters,
-    /// [TTFSimplification] describing how the edges' TTFs are simplified before doing anything.
-    #[serde(default = "TTFSimplification::<T>::default")]
-    #[schemars(description = "How to simplify the edges TTFs before doing anyting else.")]
-    pub weight_simplification: TTFSimplification<T>,
-    /// [TTFSimplification] describing how the edges' TTFs are simplified after the
-    /// HierarchyOverlay is built.
-    #[serde(default = "TTFSimplification::<T>::default")]
-    #[schemars(
-        description = "How to simplify the edges TTFs after the hierarchy overlay is built."
-    )]
-    pub overlay_simplification: TTFSimplification<T>,
-    /// [TTFSimplification] describing how the TTFs of the forward and backward search spaces
-    /// are simplified.
-    #[serde(default = "TTFSimplification::<T>::default")]
-    #[schemars(
-        description = "How to simplify the TTFs of the forward and backward search spaces."
-    )]
-    pub search_space_simplification: TTFSimplification<T>,
-    /// [TTFSimplification] describing how the TTFs resuling from the queries are simplified.
-    #[serde(default = "TTFSimplification::<T>::default")]
-    #[schemars(description = "How to simplify the TTFs resulting from the queries.")]
-    pub result_simplification: TTFSimplification<T>,
 }
 
 /// Algorithm type to use for the queries.

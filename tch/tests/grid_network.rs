@@ -36,11 +36,7 @@ fn profile_interval_test() {
     let n = 10;
     let graph = get_grid_network(n);
 
-    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 10.),
-        (45., 20.),
-        (90., 10.),
-    ]));
+    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(vec![10., 20., 10.], 0., 45.));
     let cst_tt = TTF::Constant(15.);
     let mut ops = ops::ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<()>| {
         if e.source() == node_index(0) && e.target() == node_index(1) {
@@ -93,12 +89,8 @@ fn thin_profile_interval_test() {
     let n = 10;
     let graph = get_grid_network(n);
 
-    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 10.),
-        (45., 20.),
-        (90., 10.),
-    ]));
-    let cst_tt = TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 15.), (100., 15.)]));
+    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(vec![10., 20., 10.], 0., 45.));
+    let cst_tt = TTF::Constant(15.);
     let mut ops = ops::ThinProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<()>| {
         if e.source() == node_index(0) && e.target() == node_index(1) {
             // First vertical edge from top-left corner node.
@@ -154,11 +146,7 @@ fn tchea_test() {
     let n = 10;
     let graph = get_grid_network(n);
 
-    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 10.),
-        (45., 20.),
-        (90., 10.),
-    ]));
+    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(vec![10., 20., 10.], 0., 45.));
     let cst_tt = TTF::Constant(15.);
     let mut ops = bidirectional_ops::BidirectionalTCHEA::new(
         &graph,
@@ -338,11 +326,11 @@ fn contraction_hierarchies_test() {
     let n = 10;
     let graph = get_grid_network(n);
 
-    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 10.),
-        (5000., 20.),
-        (10000., 10.),
-    ]));
+    let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(
+        vec![10., 15., 20., 15., 10.],
+        0.,
+        2500.,
+    ));
     let cst_tt = TTF::Constant(15.);
 
     let parameters = ContractionParameters::default();
@@ -459,12 +447,11 @@ fn contraction_hierarchies_test() {
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30.
     // - Go through node (0, 1), with travel time profile ([0, 5000, 10000], [25, 35, 25]).
-    let ttf: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 25.),
-        (2500., 30.),
-        (7500., 30.),
-        (10000., 25.),
-    ]));
+    let ttf: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(
+        vec![25., 30., 30., 30., 25.],
+        0.,
+        2500.,
+    ));
     assert_eq!(label, Some(ttf));
 
     // Test re-using the node order.
@@ -560,11 +547,10 @@ fn contraction_hierarchies_test() {
     // Two paths to go from node (0, 0) to node (1, 1):
     // - Go through node (1, 0), with constant travel time 30.
     // - Go through node (0, 1), with travel time profile ([0, 5000, 10000], [25, 35, 25]).
-    let ttf: TTF<f64> = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-        (0., 25.),
-        (2500., 30.),
-        (7500., 30.),
-        (10000., 25.),
-    ]));
+    let ttf: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(
+        vec![25., 30., 30., 30., 25.],
+        0.,
+        2500.,
+    ));
     assert_eq!(label, Some(ttf));
 }

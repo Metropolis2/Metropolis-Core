@@ -16,7 +16,7 @@ categories = ["algorithms"]
 publish = false
 
 [dependencies]
-ttf = { path = "../ttf/" }
+ttf = { path = "../pwl/" }
 anyhow = "1.0"
 bincode = "1.3"
 clap = { version = "4.0", features = ["derive"] }

@@ -25,19 +25,18 @@
 #![warn(clippy::all)]
 #![doc(html_no_source)]
 
-mod point;
 mod pwl;
 mod ttf_num;
 
 use std::cmp::Ordering;
-use std::iter;
 
 use either::Either;
 use num_traits::Zero;
-pub use pwl::{PwlTTF, PwlTTFBuilder, PwlXYF, PwlXYFBuilder};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
-pub use ttf_num::TTFNum;
+
+pub use self::pwl::{PwlTTF, PwlXYF};
+pub use self::ttf_num::TTFNum;
 
 /// Descriptor used when merging two TTFs `f` and `g`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -96,7 +95,7 @@ where
     /// Returns the minimum `y` value observed over the `x`-domain, i.e., return `min_x f(x)`.
     pub fn get_min(&self) -> Y {
         match self {
-            Self::Piecewise(pwl_xyf) => pwl_xyf.get_min(),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.min(),
             Self::Constant(c) => *c,
         }
     }
@@ -104,7 +103,7 @@ where
     /// Returns the maximum `y` value observed over the `x`-domain, i.e., return `max_x f(x)`.
     pub fn get_max(&self) -> Y {
         match self {
-            Self::Piecewise(pwl_xyf) => pwl_xyf.get_max(),
+            Self::Piecewise(pwl_xyf) => pwl_xyf.max(),
             Self::Constant(c) => *c,
         }
     }
@@ -147,7 +146,7 @@ where
     ) -> Box<dyn Iterator<Item = Y> + 'a> {
         match self {
             Self::Constant(c) => Box::new(iter.map(|_| *c)),
-            Self::Piecewise(pwl_xyf) => Box::new(pwl_xyf.iter_eval(iter)),
+            Self::Piecewise(pwl_xyf) => Box::new(iter.map(|x| pwl_xyf.eval(x))),
         }
     }
 
@@ -172,40 +171,6 @@ where
             Self::Constant(c) => XYF::Constant(func(*c)),
         }
     }
-
-    /// Constrains the [XYF] to a given `x`-domain.
-    pub fn constrain_to_domain(&mut self, domain: [X; 2]) {
-        match self {
-            Self::Piecewise(pwl_xyf) => pwl_xyf.constrain_to_domain(domain),
-            Self::Constant(_) => (),
-        }
-    }
-}
-
-impl<X, Y, T> XYF<X, Y, T>
-where
-    X: TTFNum,
-    Y: TTFNum + From<T>,
-    T: TTFNum + From<X> + From<Y>,
-{
-    /// Add `x` breakpoints to the [XYF].
-    pub fn add_x_breakpoints(&mut self, xs: Vec<X>, domain: [X; 2]) {
-        if xs.is_empty() {
-            return;
-        }
-        match self {
-            Self::Piecewise(pwl_xyf) => pwl_xyf.add_x_breakpoints(xs),
-            Self::Constant(c) => {
-                let xs_iter = iter::once(domain[0]).chain(
-                    xs.into_iter()
-                        .skip_while(|x| x.approx_le(&domain[0]))
-                        .take_while(|x| x.approx_le(&domain[1])),
-                );
-                let ys_iter = iter::repeat(*c);
-                *self = Self::Piecewise(PwlXYF::from_iterator(xs_iter.zip(ys_iter), domain))
-            }
-        }
-    }
 }
 
 impl<T, U> XYF<T, T, U> {
@@ -214,85 +179,6 @@ impl<T, U> XYF<T, T, U> {
         match self {
             Self::Piecewise(pwl_xyf) => TTF::Piecewise(pwl_xyf.to_ttf()),
             Self::Constant(c) => TTF::Constant(c),
-        }
-    }
-}
-
-impl<T: TTFNum> TTF<T> {
-    /// Returns the departure time `x` such that `f(x) = z`.
-    ///
-    /// Returns None if it is not possible to arrive at `z`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use ttf::TTF;
-    /// let ttf: TTF<f64> = TTF::Constant(1.0);
-    /// assert_eq!(ttf.departure_time_with_arrival(3.0), Some(2.0));
-    /// ```
-    pub fn departure_time_with_arrival(&self, z: T) -> Option<T> {
-        match self {
-            Self::Piecewise(pwl_ttf) => pwl_ttf.x_at_z(z),
-            Self::Constant(c) => Some(z - *c),
-        }
-    }
-
-    /// Iterates over the departure times `x` such that `f(x) = z` given an iterator of `z` values.
-    pub fn departure_times_with_arrivals_iter<'a>(
-        &'a self,
-        zs: impl Iterator<Item = T> + 'a,
-    ) -> Box<dyn Iterator<Item = T> + 'a> {
-        match self {
-            Self::Piecewise(pwl_ttf) => Box::new(pwl_ttf.x_at_z_iter(zs)),
-            Self::Constant(c) => Box::new(zs.map(|z| z - *c)),
-        }
-    }
-
-    /// Simulates the merge operation between two TTFs `f` and `g` and check where `f` is below `g`
-    /// and where `g` is below `f`.
-    ///
-    /// Returns either
-    /// - an `Ordering` implying that `f` is always below `g` or `g` is always below `f`.
-    ///
-    /// - a vector of tuples `(T, Ordering)`, where a value `(t, ord)` means that, starting from
-    ///   departure time `t`, the ordering between `f` and `g` is `ord`.
-    ///   The vector is ordered by increasing departure times.
-    pub fn analyze_relative_position(&self, other: &Self) -> Either<Ordering, Vec<(T, Ordering)>> {
-        match (self, other) {
-            (Self::Piecewise(f), Self::Piecewise(g)) => pwl::analyze_relative_position(f, g),
-            (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
-            (&Self::Constant(c), Self::Piecewise(g)) => {
-                let mut pos = pwl::analyze_relative_position_to_cst(g, c);
-                if let Either::Right(ref mut values) = pos {
-                    for (_x, ord) in values.iter_mut() {
-                        *ord = ord.reverse();
-                    }
-                }
-                pos
-            }
-            (&Self::Constant(a), &Self::Constant(b)) => {
-                let pos = if b < a {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                };
-                Either::Left(pos)
-            }
-        }
-    }
-
-    /// Reduces the number of breakpoints of the TTF, ensuring that the approximation error never
-    /// exceeds a given bound.
-    ///
-    /// The approximation error is the difference between the `y` values of the initial TTF and the
-    /// resulting TTF, for any `x`.
-    pub fn approximate(&mut self, error: T) {
-        if let Self::Piecewise(pwl_ttf) = self {
-            pwl_ttf.approximate(error);
-            if pwl_ttf.is_cst() {
-                // Convert TTF::Piecewise to TTF::Constant.
-                *self = TTF::Constant(pwl_ttf[0].y);
-            }
         }
     }
 }
@@ -348,7 +234,7 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => {
                 let (h, descr) = pwl::merge_cst(f, c);
                 let h = if h.is_cst() {
-                    Self::Constant(h[0].y)
+                    Self::Constant(h.min())
                 } else {
                     Self::Piecewise(h)
                 };
@@ -357,7 +243,7 @@ impl<T: TTFNum> TTF<T> {
             (&Self::Constant(c), Self::Piecewise(g)) => {
                 let (h, rev_descr) = pwl::merge_cst(g, c);
                 let h = if h.is_cst() {
-                    Self::Constant(h[0].y)
+                    Self::Constant(h.min())
                 } else {
                     Self::Piecewise(h)
                 };
@@ -387,75 +273,44 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
-    /// Add `x` breakpoints corresponding to `z` values to the [XYF].
-    pub fn add_z_breakpoints(&mut self, mut zs: Vec<T>, domain: [T; 2]) {
-        if zs.is_empty() {
-            return;
-        }
-        match self {
-            Self::Piecewise(pwl_xyf) => pwl_xyf.add_z_breakpoints(zs),
-            &mut Self::Constant(c) => {
-                zs.iter_mut().for_each(|z| *z -= c);
-                self.add_x_breakpoints(zs, domain)
-            }
-        }
-    }
-}
-
-/// Description of a method to simplify a TTF.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "value")]
-pub enum TTFSimplification<T> {
-    /// No simplification is done.
-    Raw,
-    /// Allow for a given error bound.
-    Bound(T),
-    /// Compute the values at fixed intervals.
-    Interval(T),
-}
-
-impl<T> Default for TTFSimplification<T> {
-    fn default() -> Self {
-        TTFSimplification::Raw
-    }
-}
-
-impl<T: TTFNum> TTFSimplification<T> {
-    /// Applies the simplification method to a TTF.
-    pub fn simplify(self, ttf: &mut TTF<T>) {
-        match self {
-            Self::Raw => (),
-            Self::Bound(bound) => ttf.approximate(bound),
-            Self::Interval(interval) => {
-                if let TTF::Piecewise(ref mut pwl_ttf) = ttf {
-                    let &[start, end] = pwl_ttf.period();
-                    let mut xs =
-                        Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 1);
-                    let mut bins =
-                        Vec::with_capacity(((end - start) / interval).to_usize().unwrap() + 2);
-                    let mut current_time = start;
-                    let half_interval = interval.average(T::zero());
-                    bins.push(start);
-                    loop {
-                        xs.push(current_time);
-                        if current_time + half_interval < end {
-                            bins.push(current_time + half_interval);
-                        }
-                        current_time += interval;
-                        if current_time > end {
-                            break;
-                        }
-                    }
-                    bins.push(end);
-                    let ys = pwl_ttf.average_y_in_intervals(&bins);
-                    *pwl_ttf = PwlTTF::from_x_and_y(xs, ys);
-                    pwl_ttf.ensure_fifo();
-                    if pwl_ttf.is_cst() {
-                        // Convert TTF::Piecewise to TTF::Constant.
-                        *ttf = TTF::Constant(pwl_ttf[0].y);
+    /// Simulates the merge operation between two TTFs `f` and `g` and check where `f` is below `g`
+    /// and where `g` is below `f`.
+    ///
+    /// Returns either
+    /// - an `Ordering` implying that `f` is always below `g` or `g` is always below `f`.
+    ///
+    /// - a vector of tuples `(T, Ordering)`, where a value `(t, ord)` means that, starting from
+    ///   departure time `t`, the ordering between `f` and `g` is `ord`.
+    ///   The vector is ordered by increasing departure times.
+    pub fn analyze_relative_position(&self, other: &Self) -> Either<Ordering, Vec<(T, Ordering)>> {
+        match (self, other) {
+            (Self::Piecewise(f), Self::Piecewise(g)) => pwl::analyze_relative_position(f, g),
+            (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
+            (&Self::Constant(c), Self::Piecewise(g)) => {
+                let mut pos = pwl::analyze_relative_position_to_cst(g, c);
+                if let Either::Right(ref mut values) = pos {
+                    for (_x, ord) in values.iter_mut() {
+                        *ord = ord.reverse();
                     }
                 }
+                pos
             }
+            (&Self::Constant(a), &Self::Constant(b)) => {
+                let pos = if b < a {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                };
+                Either::Left(pos)
+            }
+        }
+    }
+
+    /// Modifies `self` inplace to ensure that it is a FIFO function.
+    pub fn ensure_fifo(&mut self) {
+        match self {
+            Self::Piecewise(pwl_ttf) => pwl_ttf.ensure_fifo(),
+            Self::Constant(_) => (),
         }
     }
 }

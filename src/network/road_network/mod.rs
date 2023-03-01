@@ -20,7 +20,7 @@ use petgraph::visit::EdgeRef;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use tch::{ContractionParameters, HierarchyOverlay};
-use ttf::{TTFNum, TTFSimplification, TTF};
+use ttf::{TTFNum, TTF};
 
 pub use self::preprocess::RoadNetworkPreprocessingData;
 use self::preprocess::{ODPairs, UniqueVehicles};
@@ -32,7 +32,7 @@ pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
 use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
-use crate::units::{Flow, Length, NoUnit, Speed, Time};
+use crate::units::{Flow, Length, Speed, Time};
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
@@ -130,10 +130,6 @@ fn default_flow_schema() -> String {
 }
 
 fn default_time_schema() -> String {
-    "0".to_owned()
-}
-
-fn default_no_unit_schema() -> String {
     "0".to_owned()
 }
 
@@ -347,8 +343,7 @@ impl<T: TTFNum> RoadNetwork<T> {
         RoadNetworkState::from_network(
             self,
             parameters.period,
-            road_network_parameters.bottleneck_approximation,
-            road_network_parameters.road_length_approximation,
+            road_network_parameters.recording_interval,
         )
     }
 
@@ -390,13 +385,11 @@ impl<T: TTFNum> RoadNetwork<T> {
             debug!("Total number of breakpoints: {nb_breakpoints}");
             // TODO: In some cases, it might be faster to re-use the same order from one iteration
             // to another.
-            let mut hierarchy = HierarchyOverlay::order(
+            let hierarchy = HierarchyOverlay::order(
                 &self.graph,
                 |edge_id| weights[(uvehicle_id, edge_id)].clone(),
                 parameters.contraction.clone(),
             );
-            debug!("Simplifying Hierarchy Overlay");
-            hierarchy.simplify(parameters.overlay_simplification);
             debug!(
                 "Number of edges in the Hierarchy Overlay: {}",
                 hierarchy.edge_count()
@@ -407,10 +400,8 @@ impl<T: TTFNum> RoadNetwork<T> {
             );
             let mut skim = RoadNetworkSkim::new(hierarchy);
             debug!("Computing search spaces");
-            let mut search_spaces =
+            let search_spaces =
                 skim.get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
-            debug!("Simplifying search spaces");
-            search_spaces.simplify(parameters.search_space_simplification);
             debug!("Computing profile queries");
             skim.pre_compute_profile_queries(od_pairs.pairs(), &search_spaces)?;
             skims.push(Some(skim));
@@ -485,7 +476,7 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
 }
 
 /// Set of parameters related to a [RoadNetwork].
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
 #[schemars(title = "Road Network Parameters")]
 #[schemars(description = "Set of parameters related to a road network.")]
@@ -496,38 +487,8 @@ pub struct RoadNetworkParameters<T> {
         description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
     )]
     pub contraction: ContractionParameters,
-    /// Time approximation bound used when recording bottlenecks' waiting times.
-    #[serde(default)]
-    #[schemars(default = "default_time_schema")]
-    pub bottleneck_approximation: Time<T>,
-    /// Length approximation bound used when recording road segments' lengths.
-    #[serde(default)]
-    #[schemars(default = "default_no_unit_schema")]
-    pub road_length_approximation: NoUnit<T>,
-    /// [TTFSimplification] describing how the simulated edges' TTFs are simplified at the end of
-    /// an iteration.
-    #[serde(default = "TTFSimplification::<Time<T>>::default")]
-    #[schemars(description = "How to simplify the edges TTFs at the end of the within-day model.")]
-    pub simulated_simplification: TTFSimplification<Time<T>>,
-    /// [TTFSimplification] describing how the weights of the road network are simplified at the
-    /// beginning of the iteration.
-    #[serde(default = "TTFSimplification::<Time<T>>::default")]
-    #[schemars(description = "How to simplify the edges TTFs at the beginning of the iteration.")]
-    pub weight_simplification: TTFSimplification<Time<T>>,
-    /// [TTFSimplification] describing how the edges' TTFs are simplified after the
-    /// HierarchyOverlay is built.
-    #[serde(default = "TTFSimplification::<Time<T>>::default")]
-    #[schemars(
-        description = "How to simplify the edges TTFs after the hierarchy overlay is built."
-    )]
-    pub overlay_simplification: TTFSimplification<Time<T>>,
-    /// [TTFSimplification] describing how the TTFs of the forward and backward search spaces
-    /// are simplified.
-    #[serde(default = "TTFSimplification::<Time<T>>::default")]
-    #[schemars(
-        description = "How to simplify the TTFs of the forward and backward search spaces."
-    )]
-    pub search_space_simplification: TTFSimplification<Time<T>>,
+    /// Time interval for which travel times are recorded at the edge level during the simulation.
+    pub recording_interval: Time<T>,
 }
 
 #[cfg(test)]

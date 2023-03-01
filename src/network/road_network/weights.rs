@@ -11,7 +11,6 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::RoadNetworkParameters;
 use crate::units::Time;
 
 /// Structure to store the travel-time functions of each edge of a
@@ -100,15 +99,6 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
             }
         }
         new_weights
-    }
-
-    /// Simplifies the RoadNetworkWeights.
-    pub fn simplify(&mut self, parameters: &RoadNetworkParameters<T>) {
-        for weights in self.0.iter_mut() {
-            for ttf in weights.iter_mut() {
-                parameters.weight_simplification.simplify(ttf);
-            }
-        }
     }
 }
 

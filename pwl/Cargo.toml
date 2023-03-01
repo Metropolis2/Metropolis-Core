@@ -1,9 +1,9 @@
 [package]
 name = "ttf"
-version = "0.2.1"
+version = "0.1.0"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
-description = "Travel-time functions and other utilities"
+description = "Piece-wise linear functions"
 repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
 keywords = ["travel-time", "piecewise"]
 categories = ["science", "mathematics"]

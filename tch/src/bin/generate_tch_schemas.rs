@@ -64,7 +64,7 @@ fn main() -> Result<()> {
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Parameters.
-    let schema = gen.clone().into_root_schema_for::<Parameters<f64>>();
+    let schema = gen.clone().into_root_schema_for::<Parameters>();
     let filename = args.path.join("parameters.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;

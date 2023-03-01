@@ -14,7 +14,7 @@ use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
 use petgraph::Direction;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use ttf::{TTFNum, TTFSimplification, TTF};
+use ttf::{TTFNum, TTF};
 
 use crate::algo::{earliest_arrival_query, profile_query, EarliestArrivalAllocation};
 use crate::bidirectional_ops::{
@@ -225,14 +225,6 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     /// The complexity is the sum of the complexity of the edges' [TTF] (See [TTF::complexity]).
     pub fn complexity(&self) -> usize {
         self.graph.edge_weights().map(|e| e.ttf.complexity()).sum()
-    }
-
-    /// Simplifies all the edges' TTF of the HierarchyOverlay using the given [TTFSimplification]
-    /// rule.
-    pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
-        self.graph
-            .edge_weights_mut()
-            .for_each(|e| simplification.simplify(&mut e.ttf));
     }
 
     /// Returns the unpacked version of a path, i.e., return the path as a vector of *original*
@@ -576,16 +568,5 @@ impl<T> SearchSpaces<T> {
     /// exits.
     pub fn get_backward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {
         self.backward.get(node)
-    }
-}
-
-impl<T: TTFNum> SearchSpaces<T> {
-    /// Simplifies all the search spaces using the given [TTFSimplification] rule.
-    pub fn simplify(&mut self, simplification: TTFSimplification<T>) {
-        self.forward.par_values_mut().for_each(|search_space| {
-            search_space
-                .values_mut()
-                .for_each(|ttf| simplification.simplify(ttf))
-        });
     }
 }

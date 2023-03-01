@@ -18,7 +18,7 @@ publish = false
 
 [dependencies]
 choice = { path = "choice/" }
-ttf = { path = "ttf/" }
+ttf = { path = "pwl/" }
 tch = { path = "tch/" }
 anyhow = "1.0"
 askama = { version = "0.11", features = ["serde-json"] }

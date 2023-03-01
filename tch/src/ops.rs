@@ -247,7 +247,7 @@ where
 ///         0,
 ///         2,
 ///         TTF::Piecewise(
-///             PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])
+///             PwlTTF::from_values(vec![4., 0.], 0., 10.)
 ///         ),
 ///     ),
 /// ]);
@@ -413,7 +413,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 3., 2., 1., 0.], 0., 2.5)),
 ///     ),
 /// ]);
 /// let mut ops = ProfileDijkstra::new_forward(&graph, |e: EdgeReference<_>| &graph[e.id()]);
@@ -421,11 +421,7 @@ where
 /// let query = PointToPointQuery::from_default(node_index(0), node_index(2));
 /// search.solve_query(&query, &mut ops);
 ///
-/// let ttf = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-///     (0., 3.),
-///     (2.5, 3.),
-///     (10., 0.),
-/// ]));
+/// let ttf = TTF::Piecewise(PwlTTF::from_values(vec![3., 3., 2., 1., 0.], 0., 2.5));
 /// assert_eq!(search.get_label(&node_index(2)), Some(&ttf));
 /// ```
 #[derive(Clone, Debug)]
@@ -633,7 +629,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let mut ops =
@@ -925,7 +921,7 @@ where
 ///     (
 ///         0,
 ///         2,
-///         TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 4.), (10., 0.)])),
+///         TTF::Piecewise(PwlTTF::from_values(vec![4., 0.], 0., 10.)),
 ///     ),
 /// ]);
 /// let mut ops =
@@ -1298,39 +1294,19 @@ mod tests {
         //   2
         let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let graph = DiGraph::<(), TTF<f64>>::from_edges(&[
-            (
-                0,
-                1,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 5.), (100., 5.)])),
-            ),
-            (
-                1,
-                3,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 5.), (100., 5.)])),
-            ),
+            (0, 1, TTF::Constant(5.)),
+            (1, 3, TTF::Constant(5.)),
             (
                 0,
                 2,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-                    (0., 0.),
-                    (50., 10.),
-                    (100., 0.),
-                ])),
+                TTF::Piecewise(PwlTTF::from_values(vec![0., 10., 0.], 0., 50.)),
             ),
             (
                 2,
                 3,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-                    (0., 0.),
-                    (60., 10.),
-                    (100., 0.),
-                ])),
+                TTF::Piecewise(PwlTTF::from_values(vec![0., 10., 0.], 0., 50.)),
             ),
-            (
-                3,
-                4,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 0.), (100., 0.)])),
-            ),
+            (3, 4, TTF::Constant(0.)),
         ]);
         let mut ops =
             ProfileDijkstra::new_forward(&graph, |e: EdgeReference<'_, _>| &graph[e.id()]);
@@ -1338,12 +1314,7 @@ mod tests {
         let query = PointToPointQuery::from_default(node_index(0), node_index(4));
         search.solve_query(&query, &mut ops);
 
-        let ttf = TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-            (0., 0.),
-            (25., 10.),
-            (75., 10.),
-            (100., 0.),
-        ]));
+        let ttf = TTF::Piecewise(PwlTTF::from_values(vec![0., 10., 0.], 0., 50.));
         assert_eq!(search.get_label(&node_index(4)).unwrap(), &ttf);
     }
 
@@ -1358,39 +1329,19 @@ mod tests {
         //   2
         let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
         let graph = DiGraph::<(), TTF<f64>>::from_edges(&[
-            (
-                0,
-                1,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 5.), (100., 5.)])),
-            ),
-            (
-                1,
-                3,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 5.), (100., 5.)])),
-            ),
+            (0, 1, TTF::Constant(5.)),
+            (1, 3, TTF::Constant(5.)),
             (
                 0,
                 2,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-                    (0., 0.),
-                    (50., 10.),
-                    (100., 0.),
-                ])),
+                TTF::Piecewise(PwlTTF::from_values(vec![0., 10., 0.], 0., 50.)),
             ),
             (
                 2,
                 3,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![
-                    (0., 0.),
-                    (60., 10.),
-                    (100., 0.),
-                ])),
+                TTF::Piecewise(PwlTTF::from_values(vec![0., 10., 0.], 0., 50.)),
             ),
-            (
-                3,
-                4,
-                TTF::Piecewise(PwlTTF::from_breakpoints(vec![(0., 0.), (100., 0.)])),
-            ),
+            (3, 4, TTF::Constant(0.)),
         ]);
         let mut ops =
             ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<'_, _>| &graph[e.id()]);

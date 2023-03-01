@@ -40,7 +40,7 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// let (choice_id, _exp_payoff) = model.get_choice(&[1., 0.]).unwrap();
 /// assert_eq!(choice_id, 1);
 ///
-/// let bpf = PwlXYF::from_breakpoints(vec![(0., 0.), (1., 0.)]);
+/// let bpf = PwlXYF::from_values(vec![0., 0.], 0., 1.);
 /// let (callback, exp_payoff) = model.get_continuous_choice(bpf).unwrap();
 /// // The expected payoff is equal to the Euler's constant.
 /// assert!((exp_payoff - 0.5772156649).abs() < 1e-8);
@@ -197,7 +197,7 @@ impl<T: TTFNum> LogitModel<T> {
     {
         // To prevent overflow, we force the values to be non-positive when computing the
         // probabilities (the expected payoff is not affected).
-        let max_value = func.get_max();
+        let max_value = func.max();
         if !max_value.is_finite() {
             return Err(anyhow!("Found a non-finite payoff for function {:?}", func));
         }
@@ -206,10 +206,10 @@ impl<T: TTFNum> LogitModel<T> {
         // G_i is defined as the integral, from x_i to x_i+1, of exp(y(tau) / mu) d tau.
         let cum_probs_parts: Vec<T> = func
             .double_iter()
-            .map(|(p0, p1)| {
+            .map(|((x0, y0), (x1, y1))| {
                 self.get_cum_func_value(
-                    (p0.x.into(), (p0.y - max_value).into()),
-                    (p1.x.into(), (p1.y - max_value).into()),
+                    (x0.into(), (y0 - max_value).into()),
+                    (x1.into(), (y1 - max_value).into()),
                 )
             })
             .collect();
@@ -220,10 +220,11 @@ impl<T: TTFNum> LogitModel<T> {
             // are very large.
             // We try to use a discrete choice instead (this make sense if the slopes are indeed
             // very large).
+            let y_values: Vec<_> = func.iter_y().collect();
             let (id, exp_payoff) = self
-                .get_choice(&func.iter_y().cloned().collect::<Vec<_>>())
+                .get_choice(&y_values)
                 .context("Failed to compute a deterministic choice from the y values")?;
-            return Ok((Box::new(move || func[id].x), exp_payoff));
+            return Ok((Box::new(move || func.x_at_index(id)), exp_payoff));
         }
         // Compute the expected payoff using the log-sum formula.
         // Do not forget to add back the maximum value that was substracted.
@@ -244,9 +245,13 @@ impl<T: TTFNum> LogitModel<T> {
                 .enumerate()
                 .find(|(_, cum_prob)| *cum_prob > threshold)
                 .unwrap();
+            let x0 = func.x_at_index(k);
+            let x1 = func.x_at_index(k + 1);
+            let y0 = func.y_at_index(k);
+            let y1 = func.y_at_index(k + 1);
             <X as From<T>>::from(self.get_chosen_x(
-                (func[k].x.into(), (func[k].y - max_value).into()),
-                (func[k + 1].x.into(), (func[k + 1].y - max_value).into()),
+                (x0.into(), (y0 - max_value).into()),
+                (x1.into(), (y1 - max_value).into()),
                 cum_probs_parts[k] - (cum_prob - threshold),
             ))
         };
@@ -359,16 +364,16 @@ mod tests {
     fn continuous_logit_test() {
         let model = LogitModel::new(0.4f64, 2.0f64);
         // Invalid values: error.
-        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![0., f64::INFINITY]);
+        let bpf = PwlTTF::from_values(vec![0., f64::INFINITY], 0., 10.);
         assert!(model.get_continuous_choice(bpf).is_err());
         // Two equal choices: linear interpolation.
         // Log sum is mu * ln(10.0) + mu * Euler's constant.
-        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![0., 0.]);
+        let bpf = PwlTTF::from_values(vec![0., 0.], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 4.);
         assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EULER_MASCHERONI);
         // Very large slope 1.
-        let bpf = PwlTTF::from_x_and_y(vec![0., 10.], vec![f64::MIN, f64::MAX]);
+        let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
         assert_eq!(
@@ -376,7 +381,7 @@ mod tests {
             f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI
         );
         // Very large slope 2.
-        let bpf = PwlTTF::from_x_and_y(vec![0., 10., 20.], vec![f64::MIN, f64::MAX, f64::MIN]);
+        let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX, f64::MIN], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
         assert_eq!(
@@ -384,33 +389,12 @@ mod tests {
             f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
         );
         // Very large slope 3.
-        let bpf = PwlTTF::from_x_and_y(vec![0., 10., 20.], vec![f64::MAX, f64::MIN, f64::MAX]);
+        let bpf = PwlTTF::from_values(vec![f64::MAX, f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 0.);
         assert_eq!(
             choice.1,
             f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
-        );
-        // Very large slope 4.
-        let bpf = PwlTTF::from_x_and_y(
-            vec![0., 100., 100. + 1e-8, 100. + 2e-8, 200.],
-            vec![10., 10., f64::MIN, 10., 10.],
-        );
-        let choice = model.get_continuous_choice(bpf).unwrap();
-        assert!(((choice.0)() - 0.4 * 200.) < 1e-8);
-        assert!(choice
-            .1
-            .approx_eq(&(10. + 2. * 200.0f64.ln() + 2. * EULER_MASCHERONI)));
-        // Large and constant values.
-        let bpf = PwlTTF::from_x_and_y(
-            vec![0., f64::EPSILON, 1_000., 100_000.],
-            vec![f64::MAX, f64::MAX, f64::MAX, f64::MAX],
-        );
-        let choice = model.get_continuous_choice(bpf).unwrap();
-        assert_eq!((choice.0)(), 40_000.);
-        assert_eq!(
-            choice.1,
-            f64::MAX + 2. * 100_000.0f64.ln() + 2. * EULER_MASCHERONI
         );
     }
 }

@@ -5,17 +5,18 @@
 
 //! Description of [RoadNetworkState].
 use std::collections::VecDeque;
+use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
 use anyhow::Result;
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
-use ttf::{PwlTTF, PwlTTFBuilder, PwlXYFBuilder, TTFNum, TTF, XYF};
+use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
 use super::super::{Network, NetworkSkim, NetworkState};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData, RoadNode};
+use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData, RoadNode};
 use crate::event::{Event, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
 use crate::simulation::results::AgentResult;
@@ -50,10 +51,9 @@ struct RoadSegment<T> {
 }
 
 impl<T: TTFNum> RoadSegment<T> {
-    fn new(period: Interval<T>, approximation: NoUnit<T>) -> Self {
-        let mut length_history: PwlXYFBuilder<Time<T>, Length<T>, NoUnit<T>> =
-            PwlXYFBuilder::with_approximation(period.0, approximation);
-        length_history.push(period.start(), Length::zero());
+    fn new(period: Interval<T>, interval: Time<T>) -> Self {
+        let length_history: PwlXYFBuilder<Time<T>, Length<T>, NoUnit<T>> =
+            PwlXYFBuilder::new(period.0, interval);
         RoadSegment {
             occupied_length: Length::zero(),
             length_history,
@@ -82,12 +82,7 @@ impl<T: TTFNum> RoadSegment<T> {
 
     /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated Length.
     fn into_simulated_length_function(self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
-        let pwl_xyf = self.length_history.finish();
-        if pwl_xyf.is_cst() {
-            XYF::Constant(pwl_xyf[0].y)
-        } else {
-            XYF::Piecewise(pwl_xyf)
-        }
+        self.length_history.finish()
     }
 }
 
@@ -142,7 +137,7 @@ struct Bottleneck<'a, T> {
     /// Queue of vehicles currently waiting at the bottleneck.
     queue: BottleneckQueue<'a, T>,
     /// Waiting time PwlTTF function.
-    waiting_time_history: PwlTTFBuilder<Time<T>>,
+    waiting_time_history: PwlXYFBuilder<Time<T>, Time<T>, Time<T>>,
 }
 
 impl<'a, T> Bottleneck<'a, T> {
@@ -157,10 +152,9 @@ impl<T: TTFNum> Bottleneck<'_, T> {
         effective_flow: Flow<T>,
         position: BottleneckPosition,
         period: Interval<T>,
-        approximation: Time<T>,
+        interval: Time<T>,
     ) -> Self {
-        let mut waiting_time_history = PwlTTFBuilder::with_approximation(period.0, approximation);
-        waiting_time_history.push(period.start(), Time::zero());
+        let waiting_time_history = PwlXYFBuilder::new(period.0, interval);
         Bottleneck {
             effective_flow,
             position,
@@ -177,12 +171,12 @@ impl<T: TTFNum> Bottleneck<'_, T> {
 
     /// Consumes the [Bottleneck] and returns a [PwlTTF] with the simulated waiting time.
     fn into_simulated_ttf(self) -> TTF<Time<T>> {
-        let pwl_ttf = self.waiting_time_history.finish();
-        if pwl_ttf.is_cst() {
-            TTF::Constant(pwl_ttf[0].y)
-        } else {
-            TTF::Piecewise(pwl_ttf)
-        }
+        let mut ttf = self.waiting_time_history.finish();
+        println!("{:?}", self.position);
+        println!("{:?}", ttf);
+        ttf.ensure_fifo();
+        println!("{:?}", ttf);
+        ttf
     }
 }
 
@@ -264,8 +258,7 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
         reference: &'a RoadEdge<T>,
         edge_index: EdgeIndex,
         recording_period: Interval<T>,
-        bottleneck_approximation: Time<T>,
-        road_approximation: NoUnit<T>,
+        recording_interval: Time<T>,
     ) -> Self {
         let effective_inflow = reference.get_effective_inflow();
         let in_bottleneck = if effective_inflow.is_infinite() {
@@ -275,7 +268,7 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
                 effective_inflow,
                 BottleneckPosition::In,
                 recording_period,
-                bottleneck_approximation,
+                recording_interval,
             ))
         };
         let effective_outflow = reference.get_effective_outflow();
@@ -286,13 +279,13 @@ impl<'a, T: TTFNum> RoadEdgeState<'a, T> {
                 effective_outflow,
                 BottleneckPosition::Out,
                 recording_period,
-                bottleneck_approximation,
+                recording_interval,
             ))
         };
         RoadEdgeState {
             reference,
             edge_index,
-            road: RoadSegment::new(recording_period, road_approximation),
+            road: RoadSegment::new(recording_period, recording_interval),
             in_bottleneck,
             out_bottleneck,
             total_length: Default::default(),
@@ -376,20 +369,11 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
     pub fn from_network(
         network: &'a RoadNetwork<T>,
         recording_period: Interval<T>,
-        bottleneck_approximation: Time<T>,
-        road_approximation: NoUnit<T>,
+        recording_interval: Time<T>,
     ) -> Self {
         let graph = network.get_graph().map(
             |node_id, n| RoadNodeState::new(n, node_id),
-            |edge_id, e| {
-                RoadEdgeState::new(
-                    e,
-                    edge_id,
-                    recording_period,
-                    bottleneck_approximation,
-                    road_approximation,
-                )
-            },
+            |edge_id, e| RoadEdgeState::new(e, edge_id, recording_period, recording_interval),
         );
         RoadNetworkState { graph, network }
     }
@@ -399,7 +383,6 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
     pub fn into_weights(
         self,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
-        parameters: &RoadNetworkParameters<T>,
     ) -> RoadNetworkWeights<T> {
         let mut weights = RoadNetworkWeights::with_capacity(
             preprocess_data.nb_unique_vehicles(),
@@ -419,25 +402,23 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs.iter()) {
                 let road_ttf = match &funcs.road {
                     XYF::Piecewise(road_pwl_length) => {
-                        let road_pwl_ttf = PwlTTF::from_iterator(
-                            road_pwl_length
-                                .iter()
-                                .map(|p| (p.x, edge_ref.get_travel_time(p.y, vehicle))),
-                            *road_pwl_length.period(),
-                        );
+                        let road_pwl_ttf =
+                            road_pwl_length.map(|l| edge_ref.get_travel_time(l, vehicle));
                         if road_pwl_ttf.is_cst() {
-                            TTF::Constant(road_pwl_ttf[0].y)
+                            TTF::Constant(road_pwl_ttf.y_at_index(0))
                         } else {
-                            TTF::Piecewise(road_pwl_ttf)
+                            TTF::Piecewise(road_pwl_ttf.to_ttf())
                         }
                     }
                     XYF::Constant(l) => TTF::Constant(edge_ref.get_travel_time(*l, vehicle)),
                 };
-                let mut ttf = funcs
+                println!("In: {:?}", funcs.in_bottleneck);
+                println!("Road: {:?}", road_ttf);
+                println!("Out: {:?}", funcs.out_bottleneck);
+                let ttf = funcs
                     .in_bottleneck
                     .link(&road_ttf)
                     .link(&funcs.out_bottleneck);
-                parameters.simulated_simplification.simplify(&mut ttf);
                 vehicle_weights.push(ttf);
             }
         }
@@ -535,5 +516,113 @@ impl<'a, T: TTFNum> Event<'a, T> for BottleneckEvent<T> {
     }
     fn get_time(&self) -> Time<T> {
         self.at_time
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PwlXYFBuilder<X, Y, T> {
+    points: Vec<Y>,
+    start_x: X,
+    end_x: X,
+    interval_x: X,
+    current_index: usize,
+    last_point: (X, Y),
+    weighted_y: T,
+    convert_type: PhantomData<T>,
+}
+
+impl<X, Y, T> PwlXYFBuilder<X, Y, T>
+where
+    X: TTFNum + Into<T>,
+    Y: TTFNum + Into<T> + From<T>,
+    T: TTFNum,
+{
+    fn new(period: [X; 2], interval_x: X) -> Self {
+        let n = ((period[1] - period[0]) / interval_x)
+            .trunc()
+            .to_usize()
+            .unwrap()
+            + 1;
+        PwlXYFBuilder {
+            points: Vec::with_capacity(n),
+            start_x: period[0],
+            end_x: period[1],
+            interval_x,
+            current_index: 0,
+            last_point: (period[0], Y::zero()),
+            weighted_y: T::zero(),
+            convert_type: PhantomData,
+        }
+    }
+
+    fn push(&mut self, x: X, y: Y) {
+        debug_assert!(x >= self.start_x);
+        if x > self.end_x {
+            // Skip.
+            return;
+        }
+        let index = ((x - self.start_x) / self.interval_x)
+            .round()
+            .to_usize()
+            .unwrap();
+        debug_assert!(index >= self.current_index);
+        if index > self.current_index {
+            self.finish_interval(index);
+        }
+        let duration = x - self.last_point.0;
+        debug_assert!(duration >= X::zero());
+        self.weighted_y += duration.into() * self.last_point.1.into();
+        self.last_point = (x, y);
+    }
+
+    fn finish_interval(&mut self, index: usize) {
+        // Find interval length and end.
+        let half_interval_length = X::average(self.interval_x, X::zero());
+        let interval_end = self.start_x
+            + self.interval_x * X::from(self.current_index).unwrap()
+            + half_interval_length;
+        // Add last point.
+        let duration = interval_end - self.last_point.0;
+        debug_assert!(duration >= X::zero());
+        self.weighted_y += duration.into() * self.last_point.1.into();
+        self.last_point = (interval_end, self.last_point.1);
+        // Compute and add `y` value for current interval.
+        let interval_length =
+            if self.current_index == 0 || self.current_index == self.nb_intervals() - 1 {
+                half_interval_length
+            } else {
+                self.interval_x
+            };
+        let y = self.weighted_y / interval_length.into();
+        self.points.push(y.into());
+        // Switch to next interval.
+        self.weighted_y = T::zero();
+        self.current_index += 1;
+        // Go recursive (multiple intervals can end at the same time).
+        if index > self.current_index {
+            self.finish_interval(index)
+        }
+    }
+
+    fn nb_intervals(&self) -> usize {
+        ((self.end_x - self.start_x) / self.interval_x)
+            .trunc()
+            .to_usize()
+            .unwrap()
+            + 1
+    }
+
+    fn finish(mut self) -> XYF<X, Y, T> {
+        self.finish_interval(self.nb_intervals());
+        if self.points.iter().all(|&y| y == self.points[0]) {
+            // All `y` values are identical.
+            XYF::Constant(self.points[0])
+        } else {
+            XYF::Piecewise(PwlXYF::from_values(
+                self.points,
+                self.start_x,
+                self.interval_x,
+            ))
+        }
     }
 }

@@ -4,12 +4,10 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to trips.
-use std::collections::BinaryHeap;
-
 use anyhow::{anyhow, Result};
 use choice::ContinuousChoiceModel;
 use enum_as_inner::EnumAsInner;
-use num_traits::{Float, Zero};
+use num_traits::{Float, FromPrimitive, Zero};
 use once_cell::sync::OnceCell;
 use petgraph::graph::NodeIndex;
 use schemars::JsonSchema;
@@ -29,6 +27,8 @@ use crate::units::{Interval, NoUnit, Time, Utility};
 
 pub mod event;
 pub mod results;
+
+const NB_INTERVALS: usize = 1500;
 
 /// A leg of a trip.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -340,47 +340,6 @@ impl<T: TTFNum> TravelingMode<T> {
         total_utility
     }
 
-    /// Returns the global travel-time function of the trip, within a given time period, with all
-    /// necessary breakpoints to compute utility.
-    ///
-    /// In principle, the breakpoints are all departure times where the utility is non-linear.
-    ///
-    /// The returned travel-time function has a breakpoint for the start and for the end of the
-    /// given period.
-    pub fn get_global_ttf_with_breakpoints(
-        &self,
-        leg_ttfs: &[&TTF<Time<T>>],
-        period: Interval<T>,
-    ) -> TTF<Time<T>> {
-        // TODO: Check that everything is fine with the periods.
-        let mut breakpoints: BinaryHeap<Time<T>> = BinaryHeap::new();
-        // The TTF are linked without simplification so that all breakpoints are kept.
-        let mut ttf: TTF<Time<T>> = TTF::default();
-        // Add breakpoints for schedule delay at origin.
-        breakpoints.extend(self.origin_schedule_utility.iter_breakpoints());
-        // Add time delay at origin.
-        ttf = ttf.add(self.origin_delay);
-        for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
-            // Add the travel time of the current leg.
-            ttf = ttf.link(leg_ttf);
-            // Add the breakpoints required for the schedule utility of the leg.
-            breakpoints.extend(
-                ttf.departure_times_with_arrivals_iter(leg.schedule_utility.iter_breakpoints()),
-            );
-            // Add the stopping time.
-            ttf = ttf.add(leg.stopping_time);
-        }
-        // Add breakpoints for schedule delay at destination.
-        breakpoints.extend(ttf.departure_times_with_arrivals_iter(
-            self.destination_schedule_utility.iter_breakpoints(),
-        ));
-        // Add breakpoints to the TTF.
-        ttf.add_x_breakpoints(breakpoints.into_sorted_vec(), period.0);
-        // Constrain the TTF to the given period.
-        ttf.constrain_to_domain(period.0);
-        ttf
-    }
-
     /// Returns the total stopping time of the trip, i.e., the sum of the stopping time for each
     /// leg (plus the delay at origin).
     fn get_total_stopping_time(&self) -> Time<T> {
@@ -394,24 +353,10 @@ impl<T: TTFNum> TravelingMode<T> {
         leg_ttfs: &[&TTF<Time<T>>],
         period: Interval<T>,
     ) -> PwlXYF<Time<T>, Utility<T>, NoUnit<T>> {
-        let ttf = self.get_global_ttf_with_breakpoints(leg_ttfs, period);
-
-        // Convert the TTF to vectors of departure times and travel times.
-        let (tds, tts) = match ttf {
-            TTF::Constant(tt) => (period.to_vec(), vec![tt; 2]),
-            TTF::Piecewise(pwl_ttf) => {
-                let (mut tds, mut tts) = pwl_ttf.into_xs_and_ys();
-                debug_assert!(tds[tds.len() - 1].approx_le(&period.end()));
-                // Add the end of the period as breakpoint if it does not exist yet.
-                if tds[tds.len() - 1].approx_lt(&period.end()) {
-                    tds.push(period.end());
-                    tts.push(tts[tts.len() - 1]);
-                }
-                (tds, tts)
-            }
-        };
-        debug_assert!(tds[0].approx_eq(&period.start()));
-        debug_assert!(tds[tds.len() - 1].approx_eq(&period.end()));
+        let interval = period.length() / Time::from_usize(NB_INTERVALS).unwrap();
+        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| Some(*x + interval))
+            .take_while(|&x| x <= period.end())
+            .collect();
 
         let mut utilities = vec![Utility::default(); tds.len()];
         // Add schedule utility at origin.
@@ -419,24 +364,19 @@ impl<T: TTFNum> TravelingMode<T> {
             .iter_mut()
             .zip(tds.iter())
             .for_each(|(u, &td)| *u += self.origin_schedule_utility.get_utility(td));
-        // Add total travel utility (stopping time needs to be excluded).
-        utilities.iter_mut().zip(tts.iter()).for_each(|(u, &tt)| {
-            *u += self
-                .total_travel_utility
-                .get_travel_utility(tt - self.get_total_stopping_time())
-        });
         let mut current_times = tds.clone();
+        // Add origin delay.
         current_times
             .iter_mut()
             .for_each(|t| *t += self.origin_delay);
         for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
             // Add the leg-specific travel-time utility and schedule utility, and update the
             // current times.
-            let tt_iter = leg_ttf.iter_eval(current_times.clone().into_iter());
             utilities
                 .iter_mut()
-                .zip(current_times.iter_mut().zip(tt_iter))
-                .for_each(|(u, (t, tt))| {
+                .zip(current_times.iter_mut())
+                .for_each(|(u, t)| {
+                    let tt = leg_ttf.eval(*t);
                     // Update the current time.
                     *t += tt;
                     // Increase the utility for the associated departure time.
@@ -446,20 +386,21 @@ impl<T: TTFNum> TravelingMode<T> {
                     *t += leg.stopping_time;
                 });
         }
-        // At this point, current times should be equal to the arrival time at destination.
-        debug_assert!(
-            current_times
-                .iter()
-                .zip(tds.iter().zip(tts.iter()))
-                .all(|(ct, (&td, &tt))| (td + tt).approx_eq(ct)),
-            "Error in time summation\nCurrent times: {current_times:?}\nTDs: {tds:?}\nTTs: {tts:?}"
-        );
         // Add schedule utility at destination.
         utilities
             .iter_mut()
             .zip(current_times.iter())
             .for_each(|(u, &ta)| *u += self.destination_schedule_utility.get_utility(ta));
-        PwlXYF::from_x_and_y(tds, utilities)
+        // Add total travel utility (stopping time needs to be excluded).
+        utilities
+            .iter_mut()
+            .zip(current_times.into_iter())
+            .zip(tds.into_iter())
+            .for_each(|((u, t), td)| {
+                let tot_tt = (t - td) - self.get_total_stopping_time();
+                *u += self.total_travel_utility.get_travel_utility(tot_tt)
+            });
+        PwlXYF::from_values(utilities, period.start(), interval)
     }
 
     /// Returns `true` if the [TravelingMode] is composed of virtual legs only.

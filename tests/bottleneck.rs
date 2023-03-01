@@ -9,8 +9,10 @@ use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::Mode;
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
-use metropolis::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
-use metropolis::network::Network;
+use metropolis::network::road_network::{
+    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
+};
+use metropolis::network::{Network, NetworkParameters};
 use metropolis::parameters::Parameters;
 use metropolis::schedule_utility::ScheduleUtility;
 use metropolis::simulation::Simulation;
@@ -18,7 +20,7 @@ use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
 use petgraph::graph::{edge_index, node_index, DiGraph};
-use ttf::{TTFNum, TTF};
+use ttf::TTF;
 
 fn get_simulation() -> Simulation<f64> {
     // Create agents with fixed departure times.
@@ -73,7 +75,16 @@ fn get_simulation() -> Simulation<f64> {
         period: Interval([Time(0.0), Time(50.0)]),
         learning_model: LearningModel::Exponential(ExponentialLearningModel::new(0.0)),
         stopping_criteria: vec![StopCriterion::MaxIteration(1)],
-        ..Default::default()
+        network: NetworkParameters {
+            road_network: Some(RoadNetworkParameters {
+                contraction: Default::default(),
+                recording_interval: Time(1.0),
+            }),
+        },
+        init_iteration_counter: 1,
+        update_ratio: 1.0,
+        random_seed: None,
+        nb_threads: 0,
     };
 
     Simulation::new(agents, network, parameters)
@@ -96,42 +107,6 @@ fn bottleneck_test() {
     // Travel time on the road segment is always 1 second.
     // Out-bottleneck entry times: 1, 4, 6, 8, 11, 22.
     // Arrival times: 1, 5, 9, 13, 17, 22.
-
-    // Entry / Exit times for the entry bottleneck.
-    // 0 -> 0
-    // 3 -> 3
-    // 4 -> 5
-    // 5 -> 7
-    // 7 -> 7 (virtual)
-    // 10 -> 10
-    // 21 -> 21
-    // Waiting times:
-    // 0 -> 0
-    // 3 -> 0
-    // 4 -> 1
-    // 5 -> 2
-    // 7 -> 0
-    // 10 -> 0
-    // 21 -> 0
-
-    // Entry / Exit times for the exit bottleneck.
-    // 0 -> 0 (virtual)
-    // 1 -> 1
-    // 4 -> 5
-    // 6 -> 9
-    // 8 -> 13
-    // 11 -> 17
-    // 17 -> 17 (virtual)
-    // 22 -> 22
-    // Waiting times:
-    // 0 -> 0
-    // 1 -> 0
-    // 4 -> 1
-    // 6 -> 3
-    // 8 -> 5
-    // 11 -> 6
-    // 17 -> 0
-    // 22 -> 0
 
     let expected_arrival_times = vec![1., 5., 9., 13., 17., 22.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
@@ -156,39 +131,7 @@ fn bottleneck_test() {
     };
     assert_eq!(
         ttf.period(),
-        &[Time(0.), Time(50.)],
+        (Time(0.), Time(50.)),
         "The period of the TTF should be equal to the period of the simulation"
-    );
-    // With departure time 0.0, the waiting time for the in-bottleneck is 0.0.
-    // With departure time 1.0, the waiting time for the out-bottleneck is 0.0.
-    let actual = ttf.eval(Time(0.));
-    let expected = Time(0. + 1. + 0.);
-    assert!(
-        actual.approx_eq(&expected),
-        "Invalid expected travel time when leaving at time 0.0: {actual:?} != {expected:?}"
-    );
-    // With departure time 3.0, the waiting time for the in-bottleneck is 0.0.
-    // With departure time 4.0, the waiting time for the out-bottleneck is 1.0.
-    let actual = ttf.eval(Time(3.));
-    let expected = Time(0. + 1. + 1.);
-    assert!(
-        actual.approx_eq(&expected),
-        "Invalid expected travel time when leaving at time 3.0: {actual:?} != {expected:?}"
-    );
-    // With departure time 6, the waiting time for the in-bottleneck is 1.
-    // With departure time 6 + 1 + 1 = 8, the waiting time for the out-bottleneck is 5.
-    let actual = ttf.eval(Time(6.));
-    let expected = Time(1. + 1. + 5.);
-    assert!(
-        actual.approx_eq(&expected),
-        "Invalid expected travel time when leaving at time 6.0: {actual:?} != {expected:?}"
-    );
-    // With departure time 13, the waiting time for the in-bottleneck is 0.
-    // With departure time 14, the waiting time for the out-bottleneck is 3.
-    let actual = ttf.eval(Time(13.));
-    let expected = Time(0. + 1. + 3.);
-    assert!(
-        actual.approx_eq(&expected),
-        "Invalid expected travel time when leaving at time 13.0: {actual:?} != {expected:?}"
     );
 }
