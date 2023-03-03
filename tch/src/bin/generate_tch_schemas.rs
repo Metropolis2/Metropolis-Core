@@ -56,6 +56,7 @@ fn main() -> Result<()> {
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Weights.
+    #[allow(clippy::disallowed_types)]
     let schema = gen
         .clone()
         .into_root_schema_for::<std::collections::HashMap<usize, TTF<f64>>>();
@@ -76,7 +77,7 @@ fn main() -> Result<()> {
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Output.
-    let schema = gen.clone().into_root_schema_for::<Output>();
+    let schema = gen.into_root_schema_for::<Output>();
     let filename = args.path.join("output.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
