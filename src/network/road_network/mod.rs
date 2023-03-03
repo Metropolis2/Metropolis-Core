@@ -570,17 +570,17 @@ mod tests {
         // tt ~= 1000 / 22.7777 ~= 43.9024.
         // + constant tt 10.0.
         let tt = edge.get_travel_time(Length(800.), &vehicle);
-        assert!(tt.approx_eq(&Time(53.9024)), "{tt:?} != 53.9024");
+        assert!((tt.0 - 53.9024) < 1e-4, "{tt:?} != 53.9024");
         // With occupied length 1200.0, density is 0.6.
         // coef = (.4 / .6)^2 = 4/9.
         // speed = 25 * (1 - 4/9) + 5 * 4/9 ~= 16.1111.
         // tt ~= 1000 / 16.1111 ~= 62.0690.
         // + constant tt 10.0.
         let tt = edge.get_travel_time(Length(1200.), &vehicle);
-        assert!(tt.approx_eq(&Time(72.0690)), "{tt:?} != 72.0690");
+        assert!((tt.0 - 72.0690).abs() < 1e-4, "{tt:?} != 72.0690");
         // With occupied length 1599.99, density is close to 0.8.
         let tt = edge.get_travel_time(Length(1599.99999999), &vehicle);
-        assert!(tt.approx_eq(&Time(210.)), "{tt:?} != 210.0");
+        assert!((tt.0 - 210.).abs() < 1e-4, "{tt:?} != 210.0");
         // Traffic jam.
         // 1 km at 18 km/h is 200s.
         assert_eq!(

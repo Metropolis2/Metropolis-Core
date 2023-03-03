@@ -493,7 +493,7 @@ where
                 if let Some(prev_data) = forw_data.get(&self.back_ops.get_next_node(edge)) {
                     let tt = self.back_ops.get_ttf(edge).eval(*prev_data.label());
                     let arrival_time = *prev_data.label() + tt;
-                    if arrival_time.approx_lt(&key) {
+                    if arrival_time < key {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
                         return true;
@@ -505,7 +505,7 @@ where
             for edge in self.forw_ops.edges_from(node) {
                 if let Some(prev_data) = back_data.get(&self.forw_ops.get_next_node(edge)) {
                     let upper_bound = prev_data.label()[1] + self.forw_ops.get_ttf(edge).get_max();
-                    if upper_bound.approx_lt(&key) {
+                    if upper_bound < key {
                         // The node can be stalled because the arrival time at the current node
                         // can be improved by going through the current edge.
                         return true;

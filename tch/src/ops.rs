@@ -757,7 +757,7 @@ where
             };
             if let Some(prev_data) = data.get(&other_node) {
                 let upper_bound = prev_data.label()[1] + (self.edge_label)(edge).get_max();
-                if upper_bound.approx_lt(&node_data.label()[0]) {
+                if upper_bound < node_data.label()[0] {
                     // The node can be stalled because the arrival time at the current node
                     // can be improved by going through the current edge.
                     return true;

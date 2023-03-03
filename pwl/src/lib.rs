@@ -251,8 +251,8 @@ impl<T: TTFNum> TTF<T> {
             }
             (&Self::Constant(a), &Self::Constant(b)) => {
                 let descr = UndercutDescriptor {
-                    f_undercuts_strictly: a.approx_lt(&b),
-                    g_undercuts_strictly: b.approx_lt(&a),
+                    f_undercuts_strictly: a < b,
+                    g_undercuts_strictly: b < a,
                 };
                 (Self::Constant(a.min(b)), descr)
             }

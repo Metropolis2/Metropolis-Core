@@ -731,7 +731,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         // be contracted.
         self.run_thin_profile_interval_query(from, to, None, alloc);
         if let Some(interval) = alloc.interval_search.get_label(&to) {
-            if interval[1].approx_lt(&edge_score.get_min()) {
+            if interval[1] < edge_score.get_min() {
                 // No shortcut edge is needed.
                 return true;
             }
@@ -740,10 +740,8 @@ impl<T: TTFNum> ContractionGraph<T> {
             // Sample search.
             if let Some(departure_time) = edge_score.middle_x() {
                 self.run_sample_search(from, to, departure_time, &corridor, alloc);
-                if let Some(alt_arrival_time) = alloc.sample_search.get_label(&to) {
-                    if alt_arrival_time
-                        .approx_ge(&(departure_time + edge_score.eval(departure_time)))
-                    {
+                if let Some(&alt_arrival_time) = alloc.sample_search.get_label(&to) {
+                    if alt_arrival_time >= (departure_time + edge_score.eval(departure_time)) {
                         // For the first departure time, it is faster to take the edge through the
                         // contracted node so a shortcut is necessary.
                         return false;
@@ -757,10 +755,10 @@ impl<T: TTFNum> ContractionGraph<T> {
             if let Some(score) = alloc.profile_search.get_label(&to) {
                 // There is a witness only if the score of the profile query is not larger than the
                 // edge score.
-                if score.get_max().approx_lt(&edge_score.get_min()) {
+                if score.get_max() < edge_score.get_min() {
                     return true;
                 }
-                let (_merged_ttf, descr) = score.add(T::large_margin()).merge(edge_score);
+                let (_merged_ttf, descr) = score.merge(edge_score);
                 !descr.g_undercuts_strictly && descr.f_undercuts_strictly
             } else {
                 false
@@ -925,7 +923,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
                 } else {
                     old_pack[j].0
                 };
-                if relative_positioning[i].0.approx_eq(&old_pack_t) {
+                if relative_positioning[i].0 == old_pack_t {
                     match relative_positioning[i].1 {
                         Ordering::Less => {
                             merged_pack.push((relative_positioning[i].0, old_pack[j].1));

@@ -497,9 +497,7 @@ impl<'a, T: TTFNum> Event<'a, T> for BottleneckEvent<T> {
         vehicle_event.set_time(self.at_time);
         events.push(vehicle_event);
         if bottleneck.queue.is_empty() {
-            debug_assert!(self
-                .at_time
-                .approx_eq(&(bottleneck.next_opening - closing_time)));
+            debug_assert!(self.at_time == (bottleneck.next_opening - closing_time));
             // Record that the bottleneck is now open.
             bottleneck.record(self.at_time, self.at_time);
         } else {

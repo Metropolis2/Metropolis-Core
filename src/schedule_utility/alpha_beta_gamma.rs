@@ -75,10 +75,10 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     /// The kinks are the points such that arrival time is equal to desired arrival time or
     /// departure time is equal to desired departure time.
     pub fn iter_breakpoints(&self) -> Box<dyn Iterator<Item = Time<T>>> {
-        if self.t_star_low.approx_ne(&self.t_star_high) {
-            Box::new([self.t_star_low, self.t_star_high].into_iter())
-        } else {
+        if self.t_star_low == self.t_star_high {
             Box::new([self.t_star_low].into_iter())
+        } else {
+            Box::new([self.t_star_low, self.t_star_high].into_iter())
         }
     }
 }

@@ -319,21 +319,6 @@ macro_rules! impl_ttf_on_unit(
             }
 
             impl<T: TTFNum> TTFNum for $t<T> {
-                fn small_margin() -> Self {
-                   Self(T::small_margin())
-                }
-                fn large_margin() -> Self {
-                    Self(T::large_margin())
-                }
-                fn approx_eq(&self, other: &Self) -> bool {
-                    self.0.approx_eq(&other.0)
-                }
-                fn approx_le(&self, other: &Self) -> bool {
-                    self.0.approx_le(&other.0)
-                }
-                fn approx_lt(&self, other: &Self) -> bool {
-                    self.0.approx_lt(&other.0)
-                }
                 fn average(self, other: Self) -> Self {
                     Self(self.0.average(other.0))
                 }

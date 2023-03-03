@@ -353,9 +353,7 @@ pub fn intersect_earliest_arrival_query<T: TTFNum>(
             debug!("Candidate: {}", candidate.index());
             debug!("Source TTF: {:?}", source_ttf);
             debug!("Target TTF: {:?}", target_ttf);
-            if (departure_time + source_ttf.get_min() + target_ttf.get_min())
-                .approx_ge(&earliest_arrival)
-            {
+            if (departure_time + source_ttf.get_min() + target_ttf.get_min()) >= earliest_arrival {
                 continue;
             }
             let mut new_arrival = departure_time + source_ttf.eval(departure_time);
@@ -423,7 +421,7 @@ pub fn intersect_profile_query<T: TTFNum>(
         for candidate in candidates.iter().filter(|n| *n != min_candidate) {
             let source_ttf = &source_space[candidate];
             let target_ttf = &target_space[candidate];
-            if (source_ttf.get_min() + target_ttf.get_min()).approx_ge(&upper_bound) {
+            if (source_ttf.get_min() + target_ttf.get_min()) >= upper_bound {
                 continue;
             }
             let ttf = source_ttf.link(target_ttf);
