@@ -172,10 +172,7 @@ impl<T: TTFNum> Bottleneck<'_, T> {
     /// Consumes the [Bottleneck] and returns a [PwlTTF] with the simulated waiting time.
     fn into_simulated_ttf(self) -> TTF<Time<T>> {
         let mut ttf = self.waiting_time_history.finish();
-        println!("{:?}", self.position);
-        println!("{:?}", ttf);
         ttf.ensure_fifo();
-        println!("{:?}", ttf);
         ttf
     }
 }
@@ -412,13 +409,11 @@ impl<'a, T: TTFNum> RoadNetworkState<'a, T> {
                     }
                     XYF::Constant(l) => TTF::Constant(edge_ref.get_travel_time(*l, vehicle)),
                 };
-                println!("In: {:?}", funcs.in_bottleneck);
-                println!("Road: {:?}", road_ttf);
-                println!("Out: {:?}", funcs.out_bottleneck);
-                let ttf = funcs
+                let mut ttf = funcs
                     .in_bottleneck
                     .link(&road_ttf)
                     .link(&funcs.out_bottleneck);
+                ttf.ensure_fifo();
                 vehicle_weights.push(ttf);
             }
         }
