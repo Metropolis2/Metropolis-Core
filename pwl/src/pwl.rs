@@ -571,8 +571,30 @@ pub(crate) fn analyze_relative_position<T: TTFNum>(
     }
 
     debug_assert_eq!(results[0].0, f.start_x);
+    if cfg!(debug_assertions) {
+        check_analyze_relative_position(f, g, &results);
+    }
 
     Either::Right(results)
+}
+
+fn check_analyze_relative_position<T: TTFNum>(
+    f: &PwlTTF<T>,
+    g: &PwlTTF<T>,
+    results: &[(T, Ordering)],
+) {
+    for ((x, f_y), g_y) in f.iter().zip(g.iter_y()) {
+        let i = match results.binary_search_by(|(t, _)| t.partial_cmp(&x).unwrap()) {
+            Ok(i) => i,
+            Err(i) => i - 1,
+        };
+        let pos = results[i].1;
+        match f_y.partial_cmp(&g_y) {
+            Some(Ordering::Less) => assert_eq!(pos, Ordering::Less),
+            Some(Ordering::Greater) => assert_eq!(pos, Ordering::Greater),
+            _ => (),
+        }
+    }
 }
 
 /// Find `x` where the relative positioning switched.
@@ -585,7 +607,7 @@ fn get_x_intersection<T: TTFNum>(x0: T, f_y0: T, g_y0: T, x1: T, f_y1: T, g_y1: 
     } else if dy1.is_zero() {
         x1
     } else {
-        let alpha = dy0 / (dy0 + dy1);
+        let alpha = dy0.abs() / (dy0.abs() + dy1.abs());
         x0 * (T::one() - alpha) + x1 * alpha
     }
 }
@@ -635,7 +657,7 @@ pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
     }
 
     if results.is_empty() {
-        results.push((f.start_x, Ordering::Less));
+        results.push((f.start_x, Ordering::Greater));
     }
 
     debug_assert_eq!(results[0].0, f.start_x);
