@@ -408,8 +408,10 @@ impl<T: TTFNum> Simulation<T> {
         let mut updates = vec![true; self.agents.len()];
         // Number of agents that will be able to switch their choice.
         let n = (self.parameters.update_ratio * self.agents.len() as f64) as usize;
-        updates[n..].fill(false);
-        updates.shuffle(&mut rng);
+        if n < self.agents.len() {
+            updates[n..].fill(false);
+            updates.shuffle(&mut rng);
+        }
         updates
     }
 }
