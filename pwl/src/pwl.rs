@@ -6,6 +6,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use anyhow::anyhow;
 use either::Either;
 use itertools::Itertools;
 use schemars::JsonSchema;
@@ -50,6 +51,45 @@ impl<Y: PartialOrd + Copy> MinMax<Y> {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DeserPwlXYF<X, Y> {
+    points: Vec<Y>,
+    start_x: X,
+    interval_x: X,
+}
+
+impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
+    type Error = anyhow::Error;
+    fn try_from(value: DeserPwlXYF<X, Y>) -> Result<Self, Self::Error> {
+        if value.start_x < X::zero() {
+            return Err(anyhow!(
+                "`start_x` value must be non-negative, got {:?}",
+                value.start_x
+            ));
+        }
+        if value.interval_x < X::zero() {
+            return Err(anyhow!(
+                "`interval_x` value must be non-negative, got {:?}",
+                value.interval_x
+            ));
+        }
+        let (&min, &max) = value.points.iter().minmax().into_option().unwrap();
+        let pwl_xyf = PwlXYF {
+            points: value.points,
+            min,
+            max,
+            start_x: value.start_x,
+            interval_x: value.interval_x,
+            convert_type: std::marker::PhantomData,
+        };
+        Ok(pwl_xyf)
+    }
+}
+
+fn default_min_max() -> &'static str {
+    "null"
+}
+
 /// A piecewise-linear function represented by a Vec of points `y`.
 ///
 /// The `x` points are evenly spaced, starting at `start_x`, with interval given by `interval_x`.
@@ -57,13 +97,18 @@ impl<Y: PartialOrd + Copy> MinMax<Y> {
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
 #[derive(PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(bound(serialize = "X: Clone + Serialize, Y: Clone + Serialize"))]
+#[serde(bound = "X: TTFNum, Y: TTFNum")]
+#[serde(try_from = "DeserPwlXYF<X, Y>")]
 pub struct PwlXYF<X, Y, T> {
     /// `y` values of the function.
     points: Vec<Y>,
     /// Minimum `y` value of the function.
+    #[schemars(skip_deserializing)]
+    #[schemars(default = "default_min_max")]
     min: Y,
     /// Maximum `y` value of the function.
+    #[schemars(skip_deserializing)]
+    #[schemars(default = "default_min_max")]
     max: Y,
     /// Starting `x` value.
     start_x: X,

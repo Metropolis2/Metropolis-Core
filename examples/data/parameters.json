@@ -2,27 +2,11 @@
   "period": [0.0, 200.0],
   "network": {
     "road_network": {
-      "recording_interval": 20.0,
-      "simulated_simplification": {
-        "type": "Interval",
-        "value": 5.0
-      },
-      "weight_simplification": {
-        "type": "Bound",
-        "value": 1.0
-      },
-      "overlay_simplification": {
-        "type": "Bound",
-        "value": 0.5
-      },
-      "search_space_simplification": {
-        "type": "Raw"
-      },
+      "recording_interval": 50.0,
       "contraction": {
         "complexity_quotient_weight": 2.0,
         "edge_quotient_weight": 2.0,
         "hierarchy_depth_weight": 1.0,
-        "num_threads": 8,
         "thin_profile_interval_hop_limit": 16,
         "unpacked_edges_quotient_weight": 1.0
       }
