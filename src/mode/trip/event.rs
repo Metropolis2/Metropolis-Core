@@ -174,6 +174,20 @@ impl<T> VehicleEvent<'_, T> {
             }
         }
     }
+
+    /// Index of the edge the vehicle was previously on (if any).
+    pub fn previous_edge(&self) -> Option<EdgeIndex> {
+        if self.edge_position > 0 {
+            Some(self.route[self.edge_position - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Index of the edge the vehicle is currently on.
+    pub fn current_edge(&self) -> EdgeIndex {
+        self.route[self.edge_position]
+    }
 }
 
 impl<'a, T: TTFNum> VehicleEvent<'a, T> {
@@ -237,11 +251,9 @@ impl<'a, T: TTFNum> VehicleEvent<'a, T> {
             road_event.edge_exit.unwrap() - road_event.out_bottleneck_entry.unwrap();
         result.route.push(road_event.into());
     }
-}
 
-impl<'a, T: TTFNum> Event<'a, T> for VehicleEvent<'a, T> {
-    fn execute<'b: 'a>(
-        mut self: Box<Self>,
+    pub fn execute<'b: 'a>(
+        self,
         network: &'b Network<T>,
         skims: &NetworkSkim<T>,
         state: &mut NetworkState<'a, T>,
@@ -388,12 +400,10 @@ impl<'a, T: TTFNum> Event<'a, T> for VehicleEvent<'a, T> {
             VehicleEventType::EntersRoadSegment => {
                 let road_leg = leg.class.as_road().expect("Not a road leg");
                 let vehicle = &road_network[road_leg.vehicle];
-                let current_edge = self.route[self.edge_position];
                 // Record the event.
                 self.set_segment_entry(self.at_time);
                 // Compute the road travel time.
-                let travel_time =
-                    road_network_state[current_edge].enters_road(vehicle, self.at_time);
+                let travel_time = road_network_state.enters_road(&self, vehicle, self.at_time);
                 self.event_type = VehicleEventType::EntersOutBottleneck;
                 if travel_time == Time::zero() {
                     // We can execute the next event directly because the time is the same.
@@ -462,6 +472,7 @@ impl<'a, T: TTFNum> Event<'a, T> for VehicleEvent<'a, T> {
             }
 
             VehicleEventType::ReachesDestination => {
+                // TODO: Remove from previous edge.
                 let road_leg_results = leg_results
                     .class
                     .as_road()
@@ -488,6 +499,20 @@ impl<'a, T: TTFNum> Event<'a, T> for VehicleEvent<'a, T> {
             }
         }
         Ok(())
+    }
+}
+
+impl<'a, T: TTFNum> Event<'a, T> for VehicleEvent<'a, T> {
+    fn execute<'b: 'a>(
+        self: Box<Self>,
+        network: &'b Network<T>,
+        skims: &NetworkSkim<T>,
+        state: &mut NetworkState<'a, T>,
+        preprocess_data: &PreprocessingData<T>,
+        result: Option<&mut AgentResult<T>>,
+        events: &mut EventQueue<'a, T>,
+    ) -> Result<()> {
+        self.execute(network, skims, state, preprocess_data, result, events)
     }
 
     fn get_time(&self) -> Time<T> {
