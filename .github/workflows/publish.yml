@@ -44,26 +44,13 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
+        target: ${{ matrix.binary_target }}
         profile: minimal
         override: true
     - name: Install Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-    - name: Install rust windows msvc target
-      if: matrix.os == 'windows-latest'
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable-x86_64-pc-windows-msvc
-        profile: minimal
-        override: true
-    - name: Install rust musl target
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable-x86_64-unknown-linux-musl
-        profile: minimal
-        override: true
     - name: Install cargo-make
       uses: actions-rs/cargo@v1
       with:
