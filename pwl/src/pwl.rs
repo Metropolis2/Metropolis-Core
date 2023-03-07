@@ -86,10 +86,6 @@ impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
     }
 }
 
-fn default_min_max() -> &'static str {
-    "null"
-}
-
 /// A piecewise-linear function represented by a Vec of points `y`.
 ///
 /// The `x` points are evenly spaced, starting at `start_x`, with interval given by `interval_x`.
@@ -103,12 +99,10 @@ pub struct PwlXYF<X, Y, T> {
     /// `y` values of the function.
     points: Vec<Y>,
     /// Minimum `y` value of the function.
-    #[schemars(skip_deserializing)]
-    #[schemars(default = "default_min_max")]
+    #[serde(skip)]
     min: Y,
     /// Maximum `y` value of the function.
-    #[schemars(skip_deserializing)]
-    #[schemars(default = "default_min_max")]
+    #[serde(skip)]
     max: Y,
     /// Starting `x` value.
     start_x: X,
