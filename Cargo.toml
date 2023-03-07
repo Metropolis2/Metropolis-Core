@@ -21,7 +21,7 @@ choice = { path = "choice/" }
 ttf = { path = "pwl/" }
 tch = { path = "tch/" }
 anyhow = "1.0"
-askama = { version = "0.11", features = ["serde-json"] }
+askama = { version = "0.12", features = ["serde-json"] }
 clap = { version = "4.0", features = ["derive"] }
 enum-as-inner = "0.5"
 hashbrown = { version = "0.13", features = ["rayon"] }
