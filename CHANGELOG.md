@@ -8,28 +8,30 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.3.1] - 2023-03-07
+
+### Fixed
+
+- [DEV] Fix Linux build.
+
+## [0.3.0] - 2023-03-07
+
 ### Added
 
 - [INPUT] The number of threads to use for parallelized tasks can be specified in the parameters of
   the `metropolis` and `compute_travel_times` scripts (key is `nb_threads`).
-- [INPUT] Add parameters `bottleneck_approximation` and `road_length_approximation` to the
-  `RoadNetworkParameters` (they replace the removed `recording_interval` parameter, see the book for
-  more details).
-- [USER] Add "Congestion and spillback modeling" section to the book.
-- [DEV] Add `approximation` parameter to `PwlXYFBuilder`, allowing to approximate the `PwlXYF` with
-  Reumann-Witkam algorithm during the build.
+- [USER] Add "Congestion and spillback modeling" section to the Book.
 
 ### Changed
 
-- [DEV] Add schedule-utility breakpoints ex-post when computing the global TTF for `Trip` modes
-  (previously it was done using a `NoSimplification` TTF).
-- [DEV] Improve and optimize how bottlenecks are simulated.
-- [DEV] Record the waiting times at bottleneck and the road segment's length by pushing points to an
-  approximated `PwlXYFBuilder` at each event (instead of averaging over recording intervals).
+- [INPUT] Road-network parameter `recording_interval` specifies the distance between breakpoints for
+  *all* piecewise-linear functions there are in Metropolis.
+- [INPUT] The JSON representation of travel-time functions has changed (see the Book for details).
 
 ### Removed
 
-- [INPUT] The `recording_interval` parameter of `RoadNetworkParameters` is removed.
+- [INPUT] All the `*_simplification` road-network parameters are removed (`recording_interval`
+  parameter has superseded them).
 - [DEV] The `Simplification` and `NoSimplification` PwlTTF variants are removed as they are no
   longer needed.
 
@@ -213,7 +215,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.2.1...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.3.1...HEAD
+[0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
+[0.3.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.0
 [0.2.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.1
 [0.2.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.0
 [0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7

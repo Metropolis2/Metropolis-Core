@@ -176,12 +176,9 @@ An example of triangle graph would be
     "source": 1,
     "target": 2,
     "weight": {
-      "points": [
-        [0.0, 10.0],
-        [10.0, 20.0],
-        [20.0, 15.0]
-      ],
-      "period": [0.0, 20.0]
+      "points": [10.0, 20.0, 15.0],
+      "start_x": 0.0,
+      "interval_x": 10.0
     }
   },
   {
@@ -202,6 +199,10 @@ An example of triangle graph would be
 > corresponds to index `0`, the node id `103` corresponds to index `1` and the node id `104`
 > corresponds to index `2`.
 
+> Note. When time-dependent functions are used as edges' weigth, they must all have the same
+> `start_x` and `interval_x` values and the same number of points. (Nevertheless, it is possible to
+> mix time-dependent and constant travel times.
+
 Alternatively, instead of using Objects, you can use Arrays to represent edges, where the first
 value is an integer corresponding to the source node, the second value is an integer corresponding
 to the target node and the third value (optional) is a `TTF`.
@@ -214,12 +215,9 @@ Then, the above example can be written more compactly as
     1,
     2,
     {
-      "points": [
-        [0.0, 10.0],
-        [10.0, 20.0],
-        [20.0, 15.0]
-      ],
-      "period": [0.0, 20.0]
+      "points": [10.0, 20.0, 15.0],
+      "start_x": 0.0,
+      "interval_x": 10.0
     }
   ],
   [2, 0]
@@ -290,15 +288,15 @@ time for edge index 1.
 {
   "0": 30.0,
   "1": {
-    "points": [
-      [0.0, 10.0],
-      [10.0, 20.0],
-      [20.0, 15.0]
-    ],
-    "period": [0.0, 20.0]
+    "points": [10.0, 20.0, 15.0],
+    "start_x": 0.0,
+    "interval_x": 10.0
   }
 }
 ```
+> Note. When time-dependent functions are used as edges' weigth, they must all have the same
+> `start_x` and `interval_x` values and the same number of points. (Nevertheless, it is possible to
+> mix time-dependent and constant travel times.
 
 ## Parameters file
 
@@ -315,21 +313,9 @@ The parameter `output_route` (boolean, optional) is used to control whether the 
 output of the script (for earliest-arrival queries only).
 The default is to not output the routes.
 
-There are four parameters to control when and how the travel-time functions are simplified.
-
-- `weight_simplification` (`TTFSimplification`, optional): how to simplify the TTFs of the edges
-  before doing anything else.
-- `overlay_simplification` (`TTFSimplification`, optional): how to simplify the TTFs of the edges
-  (original and shortcuts) once the hierarchy overlay is built (for *TCH* and *intersect* algorithms
-  only).
-- `search_space_simplification` (`TTFSimplification`, optional): how to simplify the TTFs of the
-  search spaces (for *intersect* algorithm only).
-- `result_simplification` (`TTFSimplification`, optional): how to simplify the resulting TTFs of the
-  profile queries.
-
-See [Travel-time function
-simplifications](../getting_started/ttf.md#travel-time-function-simplifications) to understand how
-TTFs are simplified and what are the possible values for `TTFSimplification`.
+The parameter `nb_thread` (integer, optional) controls the number of threads used to compute queries
+in parallel.
+The default is to use as many threads as possible.
 
 There is another parameter `contraction` which is used to control how the hierarchy overlay is
 built.
@@ -344,15 +330,7 @@ Below is an example of Parameters file.
 {
   "algorithm": "Dijkstra",
   "output_route": true,
-  "overlay_simplification": {
-    "type": "Interval",
-    "value": 5.0
-  },
-  "search_space_simplification": {
-    "type": "Bound",
-    "value": 1.0
-  },
-  "result_simplification": "Raw"
+  "nb_threads": 8
 }
 ```
 
@@ -432,12 +410,9 @@ first one returns a constant travel-time function), with `output_route` set to `
       [2, 325.0],
       [3,
         {
-          "points": [
-            [18000.0, 70.0],
-            [28800.0, 90.0],
-            [36000.0, 70.0],
-          ],
-          "period": [18000.0, 36000.0]
+          "points": [70.0, 90.0, 70.0],
+          "start_x": 18000.0,
+          "interval_x": 9000.0
         }
       ]
     ]
@@ -465,12 +440,9 @@ Below is the same example when `output_route` is set to `true`.
       [2, 325.0],
       [3,
         {
-          "points": [
-            [18000.0, 70.0],
-            [28800.0, 90.0],
-            [36000.0, 70.0],
-          ],
-          "period": [18000.0, 36000.0]
+          "points": [70.0, 90.0, 70.0],
+          "start_x": 18000.0,
+          "interval_x": 9000.0
         }
       ]
     ]

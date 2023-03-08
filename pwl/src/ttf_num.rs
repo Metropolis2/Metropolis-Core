@@ -24,18 +24,35 @@ pub trait TTFNum:
     + DeserializeOwned
     + 'static
 {
+    /// Returns true if the two number of approximately equal.
+    fn approx_eq(&self, other: &Self) -> bool;
+    /// Returns a margin number that can be used to consider that two values are close to each
+    /// other.
+    fn margin() -> Self;
     /// Returns the average between two numbers.
     #[must_use]
     fn average(self, other: Self) -> Self;
 }
 
 impl TTFNum for f32 {
+    fn approx_eq(&self, other: &Self) -> bool {
+        (self - other) < 1e-4
+    }
+    fn margin() -> Self {
+        0.01
+    }
     fn average(self, other: Self) -> Self {
         (self + other) / 2.0
     }
 }
 
 impl TTFNum for f64 {
+    fn approx_eq(&self, other: &Self) -> bool {
+        (self - other) < 1e-4
+    }
+    fn margin() -> Self {
+        0.01
+    }
     fn average(self, other: Self) -> Self {
         (self + other) / 2.0
     }

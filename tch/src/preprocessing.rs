@@ -758,7 +758,7 @@ impl<T: TTFNum> ContractionGraph<T> {
                 if score.get_max() < edge_score.get_min() {
                     return true;
                 }
-                let (_merged_ttf, descr) = score.merge(edge_score);
+                let (_merged_ttf, descr) = score.add(T::margin()).merge(edge_score);
                 !descr.g_undercuts_strictly && descr.f_undercuts_strictly
             } else {
                 false
