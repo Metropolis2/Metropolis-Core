@@ -19,16 +19,21 @@ use metropolis::simulation::Simulation;
 use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
-use petgraph::graph::{edge_index, node_index, DiGraph};
-use ttf::TTF;
+use petgraph::graph::{node_index, DiGraph};
 
 fn get_simulation() -> Simulation<f64> {
     // Create agents with fixed departure times.
-    let departure_times = vec![0., 3., 4., 5., 10., 21.];
+    let departure_times = vec![0., 2., 1., 3.];
+    let origins = vec![0, 1, 2, 3];
+    let destinations = vec![3, 0, 1, 2];
     let mut agents = Vec::with_capacity(departure_times.len());
-    for (i, dt) in departure_times.into_iter().enumerate() {
+    for (i, (dt, (o, d))) in departure_times
+        .into_iter()
+        .zip(origins.into_iter().zip(destinations.into_iter()))
+        .enumerate()
+    {
         let leg = Leg::new(
-            LegType::Road(RoadLeg::new(node_index(0), node_index(2), vehicle_index(0))),
+            LegType::Road(RoadLeg::new(node_index(o), node_index(d), vehicle_index(0))),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
@@ -45,19 +50,18 @@ fn get_simulation() -> Simulation<f64> {
         agents.push(agent);
     }
 
-    // Create a road network with 2 edges, with capacities 1 vehicle each 2 seconds and 1 vehicle
-    // each 4 seconds, respectively.
-    // Travel time is 1 second free-flow.
+    // Create a road network with 4 edges, with infinite capacities, free-flow travel time of 5
+    // seconds and length of 5 meters.
     let graph = DiGraph::from_edges(&[
         (
             0,
             1,
             RoadEdge::new(
                 Speed(1.0),
-                Length(1.0),
+                Length(5.0),
                 1,
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.5),
+                Flow(f64::INFINITY),
                 Time(0.),
             ),
         ),
@@ -66,16 +70,41 @@ fn get_simulation() -> Simulation<f64> {
             2,
             RoadEdge::new(
                 Speed(1.0),
-                Length(1.0),
+                Length(5.0),
                 1,
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.25),
+                Flow(f64::INFINITY),
+                Time(0.),
+            ),
+        ),
+        (
+            2,
+            3,
+            RoadEdge::new(
+                Speed(1.0),
+                Length(5.0),
+                1,
+                SpeedDensityFunction::FreeFlow,
+                Flow(f64::INFINITY),
+                Time(0.),
+            ),
+        ),
+        (
+            3,
+            0,
+            RoadEdge::new(
+                Speed(1.0),
+                Length(5.0),
+                1,
+                SpeedDensityFunction::FreeFlow,
+                Flow(f64::INFINITY),
                 Time(0.),
             ),
         ),
     ]);
+    // Vehicles are 6 meters long: 1 vehicle is enough to block an edge.
     let vehicle = Vehicle::new(
-        Length(1.0),
+        Length(6.0),
         PCE(1.0),
         SpeedFunction::Base,
         HashSet::new(),
@@ -92,7 +121,7 @@ fn get_simulation() -> Simulation<f64> {
             road_network: Some(RoadNetworkParameters {
                 contraction: Default::default(),
                 recording_interval: Time(1.0),
-                spillback: false,
+                spillback: true,
             }),
         },
         init_iteration_counter: 1,
@@ -105,7 +134,7 @@ fn get_simulation() -> Simulation<f64> {
 }
 
 #[test]
-fn bottleneck_test() {
+fn gridlock_test() {
     let simulation = get_simulation();
     let preprocess_data = simulation.preprocess().unwrap();
     let weights = simulation
@@ -116,24 +145,24 @@ fn bottleneck_test() {
         .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
-    // Departure times: 0, 3, 4, 5, 10, 21.
-    // Edge 1 entry times: 0, 3, 5, 7, 10, 21.
-    // Travel time on edge 1 is always 1 second.
-    // Edge 1 exit reached: 1, 4, 6, 8, 11, 22.
-    // Edge 1 exit times: 1, 5, 7, 11, 15, 22.
-    // Edge 2 entry times: 1, 5, 9, 13, 17, 22.
-    // Travel time on edge 2 is always 1 second.
-    // Arrival times: 2, 6, 10, 14, 18, 23.
+    // Departure times: 0, 2, 1, 3.
     //
-    // Total travel times: 2, 3, 6, 9, 8, 2.
+    // Edge 1 is blocked from 0 to 5.
+    // Edge 2 is blocked from 2 to 7.
+    // Edge 3 is blocked from 1 to 6.
+    // Edge 4 is blocked from 3 to 8.
+    //
+    // First edge of the trip exit: 8, 8, 8, 8.
+    // Second edge of the trip exit: 13, 13, 13, 13.
+    // Arrival times: 18, 18, 18, 18.
 
-    let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
+    let expected_arrival_times = vec![18., 18., 18., 18.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
     }
 
-    let expected_in_bottleneck_times = vec![0., 1., 3., 4., 2., 0.];
+    let expected_in_bottleneck_times = vec![3., 1., 2., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())
@@ -146,7 +175,7 @@ fn bottleneck_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
+    let expected_travel_times = vec![15., 15., 15., 15.];
     for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
         let t = agent_res.mode_results().as_trip().unwrap().legs[0]
             .class
@@ -156,7 +185,7 @@ fn bottleneck_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let expected_out_bottleneck_times = vec![0., 0., 1., 3., 4., 0.];
+    let expected_out_bottleneck_times = vec![0., 0., 0., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())
@@ -168,19 +197,4 @@ fn bottleneck_test() {
             .out_bottleneck_time;
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
-
-    let weights = results
-        .iteration_results
-        .network_weights()
-        .get_road_network()
-        .unwrap();
-    let edge_weight = &weights[(0, edge_index(0))];
-    let TTF::Piecewise(ttf) = edge_weight else {
-        panic!("TTF should be piecewise");
-    };
-    assert_eq!(
-        ttf.period(),
-        (Time(0.), Time(50.)),
-        "The period of the TTF should be equal to the period of the simulation"
-    );
 }

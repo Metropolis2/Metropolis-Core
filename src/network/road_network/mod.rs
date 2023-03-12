@@ -167,17 +167,12 @@ pub struct RoadEdge<T> {
     /// Speed-density function for the running part of the edge.
     #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
-    /// Maximum inflow of vehicle at the beginning of the edge (in PCE per second).
+    /// Maximum flow of vehicle entering the edge (in PCE per second).
     #[serde(default = "default_flow")]
     #[schemars(default = "default_flow_schema")]
-    bottleneck_inflow: Flow<T>,
-    /// Maximum outflow of vehicle at the end of the edge (in PCE per second).
-    #[serde(default = "default_flow")]
-    #[schemars(default = "default_flow_schema")]
-    bottleneck_outflow: Flow<T>,
-    /// If `true`, the length of vehicles on this road is limited by the length of the road.
-    #[serde(default)]
-    spillback: bool,
+    #[serde(alias = "bottleneck_inflow")]
+    #[serde(alias = "bottleneck_outflow")]
+    bottleneck_flow: Flow<T>,
     /// Constant travel time penalty for the runnning part of the edge.
     #[serde(default = "Time::zero")]
     #[schemars(default = "default_time_schema")]
@@ -192,9 +187,7 @@ impl<T: TTFNum> RoadEdge<T> {
         length: Length<T>,
         lanes: u8,
         speed_density: SpeedDensityFunction<T>,
-        bottleneck_inflow: Flow<T>,
-        bottleneck_outflow: Flow<T>,
-        spillback: bool,
+        bottleneck_flow: Flow<T>,
         constant_travel_time: Time<T>,
     ) -> Self {
         RoadEdge {
@@ -202,9 +195,7 @@ impl<T: TTFNum> RoadEdge<T> {
             length,
             lanes,
             speed_density,
-            bottleneck_inflow,
-            bottleneck_outflow,
-            spillback,
+            bottleneck_flow,
             constant_travel_time,
         }
     }
@@ -251,14 +242,9 @@ impl<T: TTFNum> RoadEdge<T> {
         self.length * self.lanes
     }
 
-    /// Return the effective bottleneck inflow of the edge, i.e., the inflow for all the lanes.
-    pub fn get_effective_inflow(&self) -> Flow<T> {
-        self.bottleneck_inflow * self.lanes
-    }
-
-    /// Return the effective bottleneck outflow of the edge, i.e., the outflow for all the lanes.
-    pub fn get_effective_outflow(&self) -> Flow<T> {
-        self.bottleneck_outflow * self.lanes
+    /// Return the effective bottleneck flow of the edge, i.e., the flow for all the lanes.
+    pub fn get_effective_flow(&self) -> Flow<T> {
+        self.bottleneck_flow * self.lanes
     }
 }
 
@@ -334,7 +320,7 @@ impl<T> RoadNetwork<T> {
 
 impl<T: TTFNum> RoadNetwork<T> {
     /// Returns an empty [RoadNetworkState].
-    pub fn get_blank_state<'a>(&'a self, parameters: &'a Parameters<T>) -> RoadNetworkState<'a, T> {
+    pub fn get_blank_state(&self, parameters: &Parameters<T>) -> RoadNetworkState<T> {
         let road_network_parameters = parameters
             .network
             .road_network
@@ -344,6 +330,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             self,
             parameters.period,
             road_network_parameters.recording_interval,
+            road_network_parameters.spillback,
         )
     }
 
@@ -475,6 +462,10 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
     }
 }
 
+const fn default_is_true() -> bool {
+    true
+}
+
 /// Set of parameters related to a [RoadNetwork].
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
@@ -489,6 +480,10 @@ pub struct RoadNetworkParameters<T> {
     pub contraction: ContractionParameters,
     /// Time interval for which travel times are recorded at the edge level during the simulation.
     pub recording_interval: Time<T>,
+    /// If `true` the total headways of vehicles on each edge of the road network is limited by the
+    /// total length of the edges.
+    #[serde(default = "default_is_true")]
+    pub spillback: bool,
 }
 
 #[cfg(test)]
@@ -506,9 +501,7 @@ mod tests {
             length: Length(1000.),  // 1 km
             lanes: 2,
             speed_density: SpeedDensityFunction::FreeFlow,
-            bottleneck_inflow: Flow(f64::INFINITY),
-            bottleneck_outflow: Flow(f64::INFINITY),
-            spillback: false,
+            bottleneck_flow: Flow(f64::INFINITY),
             constant_travel_time: Time(10.),
         };
         let vehicle = Vehicle::new(

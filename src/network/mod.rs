@@ -50,7 +50,7 @@ impl<T: TTFNum> Network<T> {
     }
 
     /// Returns a blank [NetworkState] from the network.
-    pub fn get_blank_state<'a>(&'a self, parameters: &'a Parameters<T>) -> NetworkState<'a, T> {
+    pub fn get_blank_state(&self, parameters: &Parameters<T>) -> NetworkState<T> {
         NetworkState::new(
             self.road_network
                 .as_ref()
@@ -145,29 +145,36 @@ impl<T> NetworkSkim<T> {
 /// It is used to compute congestion during the within-day modeland to get the observed
 /// [NetworkWeights] at the end of the within-day model.
 #[derive(Clone, Debug)]
-pub struct NetworkState<'a, T> {
-    road_network: Option<RoadNetworkState<'a, T>>,
+pub struct NetworkState<T> {
+    road_network: Option<RoadNetworkState<T>>,
 }
 
-impl<'a, T> NetworkState<'a, T> {
-    const fn new(road_network: Option<RoadNetworkState<'a, T>>) -> Self {
+impl<T> NetworkState<T> {
+    const fn new(road_network: Option<RoadNetworkState<T>>) -> Self {
         NetworkState { road_network }
     }
 
     /// Return a mutable reference to the [RoadNetworkState] of the [NetworkState], as an option.
     ///
     /// If the NetworkState has no road-network state, return `None`.
-    pub fn get_mut_road_network(&mut self) -> Option<&mut RoadNetworkState<'a, T>> {
+    pub fn get_mut_road_network(&mut self) -> Option<&mut RoadNetworkState<T>> {
         self.road_network.as_mut()
     }
 }
 
-impl<T: TTFNum> NetworkState<'_, T> {
+impl<T: TTFNum> NetworkState<T> {
     /// Return [NetworkWeights] that provide a simplified representation of the [NetworkState].
-    pub fn into_weights(self, preprocess_data: &NetworkPreprocessingData<T>) -> NetworkWeights<T> {
-        let rn_weights = self
-            .road_network
-            .map(|rn| rn.into_weights(preprocess_data.road_network.as_ref().unwrap()));
+    pub fn into_weights(
+        self,
+        network: &Network<T>,
+        preprocess_data: &NetworkPreprocessingData<T>,
+    ) -> NetworkWeights<T> {
+        let rn_weights = self.road_network.map(|rn| {
+            rn.into_weights(
+                network.road_network.as_ref().unwrap(),
+                preprocess_data.road_network.as_ref().unwrap(),
+            )
+        });
         NetworkWeights {
             road_network: rn_weights,
         }

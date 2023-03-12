@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use time::Duration;
 use ttf::TTFNum;
 
-use crate::agent::{agent_index, Agent, AgentIndex};
+use crate::agent::{agent_index, AgentIndex};
 use crate::event::{Event, EventQueue};
 use crate::mode::{AggregateModeResults, ModeIndex, ModeResults};
 use crate::network::{NetworkSkim, NetworkWeights};
@@ -252,12 +252,8 @@ impl<T: TTFNum> AgentResult<T> {
 
 impl<T: TTFNum> AgentResult<T> {
     /// Returns the initial event associated with an [AgentResult] (if any).
-    pub fn get_event<'a>(
-        &self,
-        agent_id: AgentIndex,
-        agent: &'a Agent<T>,
-    ) -> Option<Box<dyn Event<'a, T> + 'a>> {
-        self.mode_results.get_event(agent_id, &agent[self.mode])
+    pub fn get_event(&self, agent_id: AgentIndex) -> Option<Box<dyn Event<T>>> {
+        self.mode_results.get_event(agent_id, self.mode)
     }
 }
 
@@ -283,19 +279,11 @@ impl<T> AgentResults<T> {
 impl<T: TTFNum> AgentResults<T> {
     /// Returns an [EventQueue] with all the events resulting from the pre-day choices of the
     /// agents.
-    pub fn get_event_queue<'a>(&self, agents: &'a [Agent<T>]) -> EventQueue<'a, T> {
-        assert_eq!(
-            self.0.len(),
-            agents.len(),
-            "The number of agents is not equal to the number of agent results"
-        );
-        agents
+    pub fn get_event_queue(&self) -> EventQueue<T> {
+        self.0
             .iter()
-            .zip(self.0.iter())
             .enumerate()
-            .filter_map(|(id, (agent, agent_result))| {
-                agent_result.get_event(AgentIndex::new(id), agent)
-            })
+            .filter_map(|(id, agent_result)| agent_result.get_event(AgentIndex::new(id)))
             .collect()
     }
 }

@@ -3,6 +3,7 @@
   "network": {
     "road_network": {
       "recording_interval": 50.0,
+      "spillback": true,
       "contraction": {
         "complexity_quotient_weight": 2.0,
         "edge_quotient_weight": 2.0,

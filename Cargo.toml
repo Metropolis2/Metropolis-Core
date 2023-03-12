@@ -1,6 +1,6 @@
 [package]
 name = "metropolis"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "A dynamic multi-modal traffic-assignment simulator"
@@ -23,6 +23,7 @@ tch = { path = "tch/" }
 anyhow = "1.0"
 askama = { version = "0.12", features = ["serde-json"] }
 clap = { version = "4.0", features = ["derive"] }
+either = "1.8"
 enum-as-inner = "0.5"
 hashbrown = { version = "0.13", features = ["rayon"] }
 indicatif = "0.17"

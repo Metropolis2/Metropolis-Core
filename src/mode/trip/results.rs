@@ -14,6 +14,7 @@ use super::event::{RoadEvent, TransparentRoadEvent, VehicleEvent};
 use super::{Leg, LegType, TravelingMode};
 use crate::agent::AgentIndex;
 use crate::event::Event;
+use crate::mode::ModeIndex;
 use crate::units::{Distribution, Length, Time, Utility};
 
 /// The results for a [LegType::Road].
@@ -250,26 +251,15 @@ impl<T: TTFNum> TripResults<T> {
     /// Returns the initial event associated with the trip.
     ///
     /// Returns `None` if the trip is virtual only.
-    pub fn get_event<'a>(
-        &self,
-        agent_id: AgentIndex,
-        mode: &'a TravelingMode<T>,
-    ) -> Option<Box<dyn Event<'a, T> + 'a>> {
+    pub fn get_event(&self, agent_id: AgentIndex, mode_id: ModeIndex) -> Option<Box<dyn Event<T>>> {
         if self.virtual_only {
             None
         } else {
-            match &mode.legs[0].class {
-                LegType::Road(_) => Some(Box::new(VehicleEvent::new_road(
-                    agent_id,
-                    mode,
-                    self.departure_time,
-                ))),
-                LegType::Virtual(_) => Some(Box::new(VehicleEvent::new_virtual(
-                    agent_id,
-                    mode,
-                    self.departure_time,
-                ))),
-            }
+            Some(Box::new(VehicleEvent::new(
+                agent_id,
+                mode_id,
+                self.departure_time,
+            )))
         }
     }
 }

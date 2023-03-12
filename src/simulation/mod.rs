@@ -28,6 +28,7 @@ use self::results::{
     SimulationResults,
 };
 use crate::agent::{agent_index, Agent};
+use crate::event::EventInput;
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::RoadNetwork;
@@ -278,7 +279,7 @@ impl<T: TTFNum> Simulation<T> {
     ) -> Result<NetworkWeights<T>> {
         debug!("Initializing variables");
         let mut state = self.network.get_blank_state(&self.parameters);
-        let mut events = agent_results.get_event_queue(&self.agents);
+        let mut events = agent_results.get_event_queue();
         let mut nb_events = 0;
         info!("Executing events");
         let bp = if log_enabled!(Level::Info) {
@@ -291,30 +292,22 @@ impl<T: TTFNum> Simulation<T> {
                 .template("{bar:60} ETA: {eta}")
                 .unwrap(),
         );
+        let mut input = EventInput {
+            agents: &self.agents,
+            network: &self.network,
+            preprocess_data,
+            skims,
+            agent_results,
+        };
         while let Some(event) = events.pop() {
             nb_events += 1;
-            if let Some(result) = event.get_agent_index().map(|id| &mut agent_results[id]) {
-                // The event is associated to an agent.
-                event.execute(
-                    &self.network,
-                    skims,
-                    &mut state,
-                    preprocess_data,
-                    Some(result),
-                    &mut events,
-                )?;
-                if result.is_finished() {
-                    bp.inc(1);
-                }
-            } else {
-                event.execute(
-                    &self.network,
-                    skims,
-                    &mut state,
-                    preprocess_data,
-                    None,
-                    &mut events,
-                )?;
+            let agent_has_arrived = event.execute(
+                &mut input,
+                state.get_mut_road_network().unwrap(),
+                &mut events,
+            )?;
+            if agent_has_arrived {
+                bp.inc(1);
             }
         }
         if log_enabled!(Level::Info) {
@@ -324,7 +317,7 @@ impl<T: TTFNum> Simulation<T> {
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
-        let weights = state.into_weights(&preprocess_data.network);
+        let weights = state.into_weights(&self.network, &preprocess_data.network);
         Ok(weights)
     }
 

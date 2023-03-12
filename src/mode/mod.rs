@@ -58,7 +58,7 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 }
 
 /// Mode of transportation available to an agent.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, EnumAsInner)]
 #[serde(bound = "T: TTFNum")]
 #[serde(tag = "type", content = "value")]
 #[schemars(title = "Mode")]
@@ -148,15 +148,10 @@ impl<T: TTFNum> ModeResults<T> {
 
 impl<T: TTFNum> ModeResults<T> {
     /// Returns the initial event associated with the mode (if any).
-    pub fn get_event<'a>(
-        &self,
-        agent_id: AgentIndex,
-        mode: &'a Mode<T>,
-    ) -> Option<Box<dyn Event<'a, T> + 'a>> {
-        match (self, mode) {
-            (Self::Trip(trip_results), Mode::Trip(trip)) => trip_results.get_event(agent_id, trip),
-            (Self::None, Mode::Constant(_)) => None,
-            _ => panic!("Incompatible `Mode` and `ModeResults` combination"),
+    pub fn get_event(&self, agent_id: AgentIndex, mode_id: ModeIndex) -> Option<Box<dyn Event<T>>> {
+        match self {
+            Self::Trip(trip_results) => trip_results.get_event(agent_id, mode_id),
+            Self::None => None,
         }
     }
 }

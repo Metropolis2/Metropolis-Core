@@ -19,8 +19,7 @@
           "speed_density": {
             "type": "FreeFlow"
           },
-          "bottleneck_inflow": 1.0,
-          "bottleneck_outflow": 1.0
+          "bottleneck_flow": 1.0
         }
       ],
       [

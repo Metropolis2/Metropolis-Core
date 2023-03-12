@@ -8,6 +8,27 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.4.0] - 2023-03-12
+
+### Added
+
+- [INPUT] Now road-network parameter `spillback` can be used to prevent vehicles from entering the
+  edge if it is full (i.e., if the length of vehicles already on the edge is not smaller than the
+  total length of the edge).
+- [DEV] Add integration tests `spillback` and `gridlock` for the new spillback feature.
+
+### Changed
+
+- [INPUT] The entry bottleneck and exit bottleneck of an edge must now have exactly the same flow.
+  Road-edge parameter `bottleneck_flow` is used to set the bottleneck flow of an edge. (Former
+  parameters `bottleneck_inflow` or `bottleneck_outflow` can be used as alias but only one of them
+  must be set).
+- [DEV] The signature of the `execute` function of events is simplified.
+- [DEV] The `VehicleEvent`, `RoadEdgeState`, `RoadNetworkState` and `NetworkState` structs no
+  longer hold references to simulation variables.
+- [DEV] The `EdgeEntryState` and `EdgeExitState` structs replace the `Bottleneck` struct.
+- [DEV] The `RoadNodeState` struct is now empty.
+
 ## [0.3.1] - 2023-03-07
 
 ### Fixed
@@ -215,7 +236,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.3.1...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0
 [0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
 [0.3.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.0
 [0.2.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.1

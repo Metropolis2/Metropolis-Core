@@ -166,8 +166,6 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
             2.0,
         )),
         Flow(0.4),
-        Flow(0.4),
-        false,
         Time(4.0),
     )
 }
@@ -179,6 +177,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         network: NetworkParameters {
             road_network: Some(RoadNetworkParameters {
                 recording_interval: Time(300.0),
+                spillback: true,
                 contraction: Default::default(),
             }),
         },

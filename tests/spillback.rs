@@ -24,11 +24,16 @@ use ttf::TTF;
 
 fn get_simulation() -> Simulation<f64> {
     // Create agents with fixed departure times.
-    let departure_times = vec![0., 3., 4., 5., 10., 21.];
+    let departure_times = vec![0., 7., 5., 6., 9., 30.];
+    let origins = vec![0, 1, 0, 0, 0, 0];
     let mut agents = Vec::with_capacity(departure_times.len());
-    for (i, dt) in departure_times.into_iter().enumerate() {
+    for (i, (dt, o)) in departure_times
+        .into_iter()
+        .zip(origins.into_iter())
+        .enumerate()
+    {
         let leg = Leg::new(
-            LegType::Road(RoadLeg::new(node_index(0), node_index(2), vehicle_index(0))),
+            LegType::Road(RoadLeg::new(node_index(o), node_index(2), vehicle_index(0))),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
@@ -45,19 +50,18 @@ fn get_simulation() -> Simulation<f64> {
         agents.push(agent);
     }
 
-    // Create a road network with 2 edges, with capacities 1 vehicle each 2 seconds and 1 vehicle
-    // each 4 seconds, respectively.
-    // Travel time is 1 second free-flow.
+    // Create a road network with 2 edges, with infinite capacities, free-flow travel time of 10
+    // seconds and length of 10 meters.
     let graph = DiGraph::from_edges(&[
         (
             0,
             1,
             RoadEdge::new(
                 Speed(1.0),
-                Length(1.0),
+                Length(10.0),
                 1,
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.5),
+                Flow(f64::INFINITY),
                 Time(0.),
             ),
         ),
@@ -66,16 +70,17 @@ fn get_simulation() -> Simulation<f64> {
             2,
             RoadEdge::new(
                 Speed(1.0),
-                Length(1.0),
+                Length(10.0),
                 1,
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.25),
+                Flow(f64::INFINITY),
                 Time(0.),
             ),
         ),
     ]);
+    // Vehicles are 6 meters long: 2 vehicles are enough to block an edge.
     let vehicle = Vehicle::new(
-        Length(1.0),
+        Length(6.0),
         PCE(1.0),
         SpeedFunction::Base,
         HashSet::new(),
@@ -92,7 +97,7 @@ fn get_simulation() -> Simulation<f64> {
             road_network: Some(RoadNetworkParameters {
                 contraction: Default::default(),
                 recording_interval: Time(1.0),
-                spillback: false,
+                spillback: true,
             }),
         },
         init_iteration_counter: 1,
@@ -105,7 +110,7 @@ fn get_simulation() -> Simulation<f64> {
 }
 
 #[test]
-fn bottleneck_test() {
+fn spillback_test() {
     let simulation = get_simulation();
     let preprocess_data = simulation.preprocess().unwrap();
     let weights = simulation
@@ -116,24 +121,27 @@ fn bottleneck_test() {
         .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
-    // Departure times: 0, 3, 4, 5, 10, 21.
-    // Edge 1 entry times: 0, 3, 5, 7, 10, 21.
-    // Travel time on edge 1 is always 1 second.
-    // Edge 1 exit reached: 1, 4, 6, 8, 11, 22.
-    // Edge 1 exit times: 1, 5, 7, 11, 15, 22.
-    // Edge 2 entry times: 1, 5, 9, 13, 17, 22.
-    // Travel time on edge 2 is always 1 second.
-    // Arrival times: 2, 6, 10, 14, 18, 23.
+    // Departure times: 0, 7, 5, 6, 9, 30.
+    // Origins: 0, 1, 0, 0, 0, 0.
+    // Edge 1 entry times: 0, NA, 5, 10, 15, 30.
+    // Travel time on edge 1 is always 10 second.
+    // Edge 1 exit reached: 10, NA, 15, 20, 25, 40.
+    // Edge 2 entry times: 10, 7, 17, 20, 27, 40.
+    // Travel time on edge 2 is always 10 second.
+    // Arrival times: 20, 17, 27, 30, 37, 50.
     //
-    // Total travel times: 2, 3, 6, 9, 8, 2.
+    // Edge 1 is full from 5 to 10, then from 10 to 15, then from 15 to 20.
+    // Edge 2 is full from 10 to 17, then from 17 to 20, then from 20 to 27, then from 27 to 30.
+    //
+    // Total travel times: 20, 10, 22, 24, 28, 20.
 
-    let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
+    let expected_arrival_times = vec![20., 17., 27., 30., 37., 50.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
     }
 
-    let expected_in_bottleneck_times = vec![0., 1., 3., 4., 2., 0.];
+    let expected_in_bottleneck_times = vec![0., 0., 2., 4., 8., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())
@@ -146,7 +154,7 @@ fn bottleneck_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
+    let expected_travel_times = vec![20., 10., 20., 20., 20., 20.];
     for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
         let t = agent_res.mode_results().as_trip().unwrap().legs[0]
             .class
@@ -156,7 +164,7 @@ fn bottleneck_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let expected_out_bottleneck_times = vec![0., 0., 1., 3., 4., 0.];
+    let expected_out_bottleneck_times = vec![0., 0., 0., 0., 0., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())

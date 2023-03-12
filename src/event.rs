@@ -11,38 +11,42 @@ use std::fmt::Debug;
 use anyhow::Result;
 use ttf::TTFNum;
 
-use crate::agent::AgentIndex;
-use crate::network::{Network, NetworkSkim, NetworkState};
-use crate::simulation::results::AgentResult;
+use crate::agent::Agent;
+use crate::network::road_network::RoadNetworkState;
+use crate::network::{Network, NetworkSkim};
+use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
 use crate::units::Time;
 
+/// Variables required to execute an event.
+#[derive(Debug)]
+pub struct EventInput<'a, T> {
+    /// Reference to the [Agent] of the simulation.
+    pub(crate) agents: &'a [Agent<T>],
+    /// Reference to the [Network] of the simulation.
+    pub(crate) network: &'a Network<T>,
+    /// Reference to the [PreprocessingData] of the simulation.
+    pub(crate) preprocess_data: &'a PreprocessingData<T>,
+    /// Reference to the current [NetworkSkim] of the simulation.
+    pub(crate) skims: &'a NetworkSkim<T>,
+    /// Mutable reference to the [AgentResults] for the current iteration.
+    pub(crate) agent_results: &'a mut AgentResults<T>,
+}
+
 /// Trait to represent an event (e.g., from an agent, a vehicle, a network infrastructure) that can
 /// be executed.
-pub trait Event<'a, T>: Debug {
+pub trait Event<T>: Debug {
     /// Executes the event.
     ///
-    /// - The [NetworkState] can be modified by the event execution.
-    ///
-    /// - If the event is associated with an agent, the [AgentResult] can be updated.
-    ///
-    /// - The current [EventQueue] can be modified (i.e., new events can be pushed in the queue).
-    fn execute<'b: 'a>(
+    /// Returns `true` if an agent reached his / her destination during the event execution.
+    fn execute<'sim: 'event, 'event>(
         self: Box<Self>,
-        network: &'b Network<T>,
-        skims: &NetworkSkim<T>,
-        state: &mut NetworkState<'a, T>,
-        preprocess_data: &PreprocessingData<T>,
-        result: Option<&mut AgentResult<T>>,
-        events: &mut EventQueue<'a, T>,
-    ) -> Result<()>;
+        input: &'event mut EventInput<'sim, T>,
+        road_network_state: &'event mut RoadNetworkState<T>,
+        events: &'event mut EventQueue<T>,
+    ) -> Result<bool>;
     /// Returns the time at which the event occurs.
     fn get_time(&self) -> Time<T>;
-    /// Returns the [AgentIndex] of the associated [Agent](crate::agent::Agent), or `None` if the
-    /// event is not associated with an agent.
-    fn get_agent_index(&self) -> Option<AgentIndex> {
-        None
-    }
 }
 
 /// An entry for the [EventQueue].
@@ -50,40 +54,40 @@ pub trait Event<'a, T>: Debug {
 // The timing of the events could be retrieved with [Event::get_time].
 // Instead, they are cached to speed-up the queue.
 #[derive(Debug)]
-pub struct EventEntry<'a, T> {
+pub struct EventEntry<T> {
     time: Time<T>,
-    event: Box<dyn Event<'a, T> + 'a>,
+    event: Box<dyn Event<T>>,
 }
 
-impl<T> PartialEq for EventEntry<'_, T> {
+impl<T> PartialEq for EventEntry<T> {
     fn eq(&self, _other: &Self) -> bool {
         // There is never the same entry twice in the queue.
         false
     }
 }
 
-impl<T: TTFNum> Ord for EventEntry<'_, T> {
+impl<T: TTFNum> Ord for EventEntry<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         // We reverse the ordering so that events are pop in chronological order.
         self.time.cmp(&other.time).reverse()
     }
 }
 
-impl<T: TTFNum> PartialOrd for EventEntry<'_, T> {
+impl<T: TTFNum> PartialOrd for EventEntry<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T> Eq for EventEntry<'_, T> {}
+impl<T> Eq for EventEntry<T> {}
 
 /// A priority queue represented as a [BinaryHeap].
 ///
 /// The `EventQueue` is used to store events that are executed in chronological order.
 #[derive(Debug)]
-pub struct EventQueue<'a, T>(BinaryHeap<EventEntry<'a, T>>);
+pub struct EventQueue<T>(BinaryHeap<EventEntry<T>>);
 
-impl<T> EventQueue<'_, T> {
+impl<T> EventQueue<T> {
     /// Returns `true` if the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -95,14 +99,14 @@ impl<T> EventQueue<'_, T> {
     }
 }
 
-impl<'a, T: TTFNum> EventQueue<'a, T> {
+impl<T: TTFNum> EventQueue<T> {
     /// Pops the next event in the queue, i.e., the event with the earliest execution time.
-    pub fn pop(&mut self) -> Option<Box<dyn Event<'a, T> + 'a>> {
+    pub fn pop(&mut self) -> Option<Box<dyn Event<T>>> {
         self.0.pop().map(|entry| entry.event)
     }
 
     /// Pushes a new event in the queue.
-    pub fn push(&mut self, event: Box<dyn Event<'a, T> + 'a>) {
+    pub fn push(&mut self, event: Box<dyn Event<T>>) {
         self.0.push(EventEntry {
             time: event.get_time(),
             event,
@@ -110,16 +114,16 @@ impl<'a, T: TTFNum> EventQueue<'a, T> {
     }
 }
 
-impl<T: TTFNum> Default for EventQueue<'_, T> {
+impl<T: TTFNum> Default for EventQueue<T> {
     fn default() -> Self {
         EventQueue(BinaryHeap::new())
     }
 }
 
-impl<'a, T: TTFNum> FromIterator<Box<dyn Event<'a, T> + 'a>> for EventQueue<'a, T> {
+impl<T: TTFNum> FromIterator<Box<dyn Event<T>>> for EventQueue<T> {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = Box<dyn Event<'a, T> + 'a>>,
+        I: IntoIterator<Item = Box<dyn Event<T>>>,
     {
         EventQueue(
             iter.into_iter()
@@ -141,17 +145,14 @@ mod tests {
         time: Time<f64>,
     }
 
-    impl<'a> Event<'a, f64> for DummyEvent {
-        fn execute<'b: 'a>(
+    impl Event<f64> for DummyEvent {
+        fn execute<'sim: 'event, 'event>(
             self: Box<Self>,
-            _network: &'b Network<f64>,
-            _exp_skims: &NetworkSkim<f64>,
-            _state: &mut NetworkState<'a, f64>,
-            _preprocess_data: &PreprocessingData<f64>,
-            _result: Option<&mut AgentResult<f64>>,
-            _events: &mut EventQueue<'a, f64>,
-        ) -> Result<()> {
-            Ok(())
+            _input: &'event mut EventInput<'sim, f64>,
+            _road_network_state: &'event mut RoadNetworkState<f64>,
+            _events: &'event mut EventQueue<f64>,
+        ) -> Result<bool> {
+            Ok(false)
         }
         fn get_time(&self) -> Time<f64> {
             self.time
