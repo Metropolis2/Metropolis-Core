@@ -5,14 +5,13 @@
 
 //! Description of [RoadNetworkState].
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 
 use anyhow::Result;
 use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashSet;
 use log::warn;
-use num_traits::{Float, Zero};
+use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
 use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
@@ -33,13 +32,12 @@ struct RoadSegment<T> {
     /// Total length of the vehicles currently on the segment.
     occupied_length: Length<T>,
     /// History of the length of vehicles on the segment.
-    length_history: PwlXYFBuilder<Time<T>, Length<T>, NoUnit<T>>,
+    length_history: LengthXYFBuilder<T>,
 }
 
 impl<T: TTFNum> RoadSegment<T> {
     fn new(period: Interval<T>, interval: Time<T>) -> Self {
-        let length_history: PwlXYFBuilder<Time<T>, Length<T>, NoUnit<T>> =
-            PwlXYFBuilder::new(period.0, interval);
+        let length_history = LengthXYFBuilder::new(period, interval);
         RoadSegment {
             occupied_length: Length::zero(),
             length_history,
@@ -128,7 +126,7 @@ struct EdgeEntryState<T> {
     /// Queue of vehicles currently waiting to enter the edge.
     queue: VehicleQueue<T>,
     /// Waiting time PwlTTF function.
-    waiting_time_history: PwlXYFBuilder<Time<T>, Time<T>, Time<T>>,
+    waiting_time_history: WaitXYFBuilder<T>,
 }
 
 impl<T: TTFNum> EdgeEntryState<T> {
@@ -153,7 +151,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
             effective_flow,
             status: EdgeEntryStatus::Open,
             queue: VehicleQueue::new(),
-            waiting_time_history: PwlXYFBuilder::new(period.0, interval),
+            waiting_time_history: WaitXYFBuilder::new(period, interval),
         })
     }
 
@@ -217,7 +215,6 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 // Close the edge entry. It will re-open again when the vehicle will have
                 // succesfully entered the edge.
                 self.status = EdgeEntryStatus::Closed;
-                self.record(current_time, current_time);
                 Some(Either::Left(next_event))
             }
             (true, true) => {
@@ -226,7 +223,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 let edge_id = next_event.previous_edge();
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_back((next_event, current_time));
-                edge_id.map(|e| Either::Right(e))
+                edge_id.map(Either::Right)
             }
             (false, _) => {
                 // Edge is closed.
@@ -266,7 +263,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 let edge_id = event.previous_edge();
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_front((event, entry_time));
-                edge_id.map(|e| Either::Right(e))
+                edge_id.map(Either::Right)
             } else {
                 // A new vehicle is released, the bottleneck stays closed.
                 self.status = EdgeEntryStatus::Closed;
@@ -319,12 +316,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
 
     /// Records the entry and exit of a vehicle from the edge's entry at a given time.
     fn record(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
-        // The average waiting time from last entry time to this entry time is half of the waiting
-        // time for the vehicle which entered at this entry time.
-        self.waiting_time_history.push(
-            entry_time,
-            Time::average(exit_time - entry_time, Time::zero()),
-        );
+        self.waiting_time_history.push(entry_time, exit_time);
     }
 
     /// Consumes the [EdgeEntryState] and returns a [TTF] with the simulated waiting time.
@@ -346,7 +338,7 @@ struct EdgeExitState<T> {
     /// Queue of vehicles currently waiting to exit the edge.
     queue: VehicleQueue<T>,
     /// Waiting time PwlTTF function.
-    waiting_time_history: PwlXYFBuilder<Time<T>, Time<T>, Time<T>>,
+    waiting_time_history: WaitXYFBuilder<T>,
 }
 
 impl<T: TTFNum> EdgeExitState<T> {
@@ -361,7 +353,7 @@ impl<T: TTFNum> EdgeExitState<T> {
             effective_flow,
             status: EdgeExitStatus::Open,
             queue: VehicleQueue::new(),
-            waiting_time_history: PwlXYFBuilder::new(period.0, interval),
+            waiting_time_history: WaitXYFBuilder::new(period, interval),
         }
     }
 
@@ -392,7 +384,6 @@ impl<T: TTFNum> EdgeExitState<T> {
             // Close the edge exit. It will re-open again when the vehicle will have succesfully
             // exited the edge (it can get trapped at the entry of the downstream edge).
             self.status = EdgeExitStatus::Closed;
-            self.record(current_time, current_time);
             Some(next_event)
         } else {
             // Bottleneck is closed.
@@ -429,12 +420,7 @@ impl<T: TTFNum> EdgeExitState<T> {
 
     /// Records the entry and exit of a vehicle from the edge's exit at a given time.
     fn record(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
-        // The average waiting time from last entry time to this entry time is half of the waiting
-        // time for the vehicle which entered at this entry time.
-        self.waiting_time_history.push(
-            entry_time,
-            Time::average(exit_time - entry_time, Time::zero()),
-        );
+        self.waiting_time_history.push(entry_time, exit_time);
     }
 
     /// Consumes the [EdgeExitState] and returns a [TTF] with the simulated waiting time.
@@ -958,48 +944,40 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
 }
 
 #[derive(Clone, Debug)]
-struct PwlXYFBuilder<X, Y, T> {
-    points: Vec<Y>,
-    start_x: X,
-    end_x: X,
-    interval_x: X,
+struct WaitXYFBuilder<T> {
+    points: Vec<Time<T>>,
+    start_x: Time<T>,
+    end_x: Time<T>,
+    interval_x: Time<T>,
     current_index: usize,
-    last_point: (X, Y),
-    weighted_y: T,
-    convert_type: PhantomData<T>,
+    last_point: (Time<T>, Time<T>),
+    weighted_y: Time<T>,
 }
 
-impl<X, Y, T> PwlXYFBuilder<X, Y, T>
+impl<T> WaitXYFBuilder<T>
 where
-    X: TTFNum + Into<T>,
-    Y: TTFNum + Into<T> + From<T>,
     T: TTFNum,
 {
-    fn new(period: [X; 2], interval_x: X) -> Self {
-        let n = ((period[1] - period[0]) / interval_x)
-            .trunc()
-            .to_usize()
-            .unwrap()
-            + 1;
-        PwlXYFBuilder {
+    fn new(period: Interval<T>, interval_x: Time<T>) -> Self {
+        let n = (period.length() / interval_x).trunc().to_usize().unwrap() + 1;
+        WaitXYFBuilder {
             points: Vec::with_capacity(n),
-            start_x: period[0],
-            end_x: period[1],
+            start_x: period.start(),
+            end_x: period.end(),
             interval_x,
             current_index: 0,
-            last_point: (period[0], Y::zero()),
-            weighted_y: T::zero(),
-            convert_type: PhantomData,
+            last_point: (period.start(), period.start()),
+            weighted_y: Time::zero(),
         }
     }
 
-    fn push(&mut self, x: X, y: Y) {
-        debug_assert!(x >= self.start_x);
-        if x > self.end_x {
+    fn push(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
+        debug_assert!(entry_time >= self.start_x);
+        if entry_time > self.end_x {
             // Skip.
             return;
         }
-        let index = ((x - self.start_x) / self.interval_x)
+        let index = ((entry_time - self.start_x) / self.interval_x)
             .round()
             .to_usize()
             .unwrap();
@@ -1007,34 +985,47 @@ where
         if index > self.current_index {
             self.finish_interval(index);
         }
-        let duration = x - self.last_point.0;
-        debug_assert!(duration >= X::zero());
-        self.weighted_y += duration.into() * self.last_point.1.into();
-        self.last_point = (x, y);
+        self.add_record(entry_time, exit_time);
+    }
+
+    fn add_record(&mut self, en_t1: Time<T>, ex_t1: Time<T>) {
+        let (en_t0, ex_t0) = self.last_point;
+        // The exiting time cannot decrease.
+        debug_assert!(ex_t0 <= ex_t1);
+        let duration = en_t1 - en_t0;
+        debug_assert!(duration.is_sign_positive());
+        // At `en_t0`, the waiting time was `ex_t0 - en_t0`.
+        // At `en_t1`, the waiting time was `ex_t1 - en_t1`.
+        // Just before `en_t1`, the exit time was `max(en_t1, ex_t0)`.
+        // Just before `en_t1`, the waiting time was `max(en_t1, ex_t0) - en_t1
+        // = max(0, ex_t0 - en_t1)`
+        // Therefore, from `en_t0` to `en_t1`, the average waiting time was the average between
+        // `ex_t0 - en_t0` and `max(0, ex_t0 - en_t1)`.
+        let average_y = Time::average(ex_t0 - en_t0, std::cmp::max(Time::zero(), ex_t0 - en_t1));
+        self.weighted_y += duration * average_y;
+        self.last_point = (en_t1, ex_t1);
     }
 
     fn finish_interval(&mut self, index: usize) {
-        // Find interval length and end.
-        let half_interval_length = X::average(self.interval_x, X::zero());
-        let interval_end = self.start_x
-            + self.interval_x * X::from(self.current_index).unwrap()
-            + half_interval_length;
-        // Add last point.
-        let duration = interval_end - self.last_point.0;
-        debug_assert!(duration >= X::zero());
-        self.weighted_y += duration.into() * self.last_point.1.into();
-        self.last_point = (interval_end, self.last_point.1);
+        // Find current interval bounds.
+        let half_interval_length = Time::average(self.interval_x, Time::zero());
+        let interval_mid =
+            self.start_x + self.interval_x * Time::from_usize(self.current_index).unwrap();
+        let interval_start = std::cmp::max(self.start_x, interval_mid - half_interval_length);
+        let interval_end = std::cmp::min(self.end_x, interval_mid + half_interval_length);
+        // The last event that occured was in the interval and we know that no other event occurs
+        // in this interval.
+        debug_assert!(self.last_point.0 >= interval_start);
+        debug_assert!(self.last_point.0 <= interval_end);
+        // Compute the exit time at the end of the interval.
+        let end_exit_time = std::cmp::max(self.last_point.1, interval_end);
+        self.add_record(interval_end, end_exit_time);
         // Compute and add `y` value for current interval.
-        let interval_length =
-            if self.current_index == 0 || self.current_index == self.nb_intervals() - 1 {
-                half_interval_length
-            } else {
-                self.interval_x
-            };
-        let y = self.weighted_y / interval_length.into();
-        self.points.push(y.into());
+        let interval_length = interval_end - interval_start;
+        let y = self.weighted_y / interval_length;
+        self.points.push(y);
         // Switch to next interval.
-        self.weighted_y = T::zero();
+        self.weighted_y = Time::zero();
         self.current_index += 1;
         // Go recursive (multiple intervals can end at the same time).
         if index > self.current_index {
@@ -1050,7 +1041,111 @@ where
             + 1
     }
 
-    fn finish(mut self) -> XYF<X, Y, T> {
+    fn finish(mut self) -> TTF<Time<T>> {
+        self.finish_interval(self.nb_intervals());
+        if self.points.iter().all(|&y| y == self.points[0]) {
+            // All `y` values are identical.
+            XYF::Constant(self.points[0])
+        } else {
+            XYF::Piecewise(PwlXYF::from_values(
+                self.points,
+                self.start_x,
+                self.interval_x,
+            ))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LengthXYFBuilder<T> {
+    points: Vec<Length<T>>,
+    start_x: Time<T>,
+    end_x: Time<T>,
+    interval_x: Time<T>,
+    current_index: usize,
+    last_point: (Time<T>, Length<T>),
+    weighted_y: NoUnit<T>,
+}
+
+impl<T> LengthXYFBuilder<T>
+where
+    T: TTFNum,
+{
+    fn new(period: Interval<T>, interval_x: Time<T>) -> Self {
+        let n = (period.length() / interval_x).trunc().to_usize().unwrap() + 1;
+        LengthXYFBuilder {
+            points: Vec::with_capacity(n),
+            start_x: period.start(),
+            end_x: period.end(),
+            interval_x,
+            current_index: 0,
+            last_point: (period.start(), Length::zero()),
+            weighted_y: NoUnit::zero(),
+        }
+    }
+
+    fn push(&mut self, time: Time<T>, length: Length<T>) {
+        debug_assert!(time >= self.start_x);
+        if time > self.end_x {
+            // Skip.
+            return;
+        }
+        let index = ((time - self.start_x) / self.interval_x)
+            .round()
+            .to_usize()
+            .unwrap();
+        debug_assert!(index >= self.current_index);
+        if index > self.current_index {
+            self.finish_interval(index);
+        }
+        self.add_record(time, length);
+    }
+
+    fn add_record(&mut self, t1: Time<T>, l1: Length<T>) {
+        let (t0, l0) = self.last_point;
+        let duration = t1 - t0;
+        debug_assert!(duration.is_sign_positive());
+        // From `t0` to `t1`, the length is `l0`.
+        self.weighted_y += Into::<NoUnit<T>>::into(duration) * Into::<NoUnit<T>>::into(l0);
+        self.last_point = (t1, l1);
+    }
+
+    fn finish_interval(&mut self, index: usize) {
+        // Find current interval bounds.
+        let half_interval_length = Time::average(self.interval_x, Time::zero());
+        let interval_mid =
+            self.start_x + self.interval_x * Time::from_usize(self.current_index).unwrap();
+        let interval_start = std::cmp::max(self.start_x, interval_mid - half_interval_length);
+        let interval_end = std::cmp::min(self.end_x, interval_mid + half_interval_length);
+        // The last event that occured was in the interval and we know that no other event occurs
+        // in this interval.
+        // Therefore, the length at the end of the interval was the same as the last recorded
+        // length.
+        debug_assert!(self.last_point.0 >= interval_start);
+        debug_assert!(self.last_point.0 <= interval_end);
+        self.add_record(interval_end, self.last_point.1);
+        // Compute and add `y` value for current interval.
+        let interval_length = interval_end - interval_start;
+        let y = self.weighted_y / interval_length.into();
+        self.points.push(y.into());
+        // Switch to next interval.
+        self.weighted_y = NoUnit::zero();
+        self.current_index += 1;
+        // Go recursive (multiple intervals can end at the same time).
+        if index > self.current_index {
+            self.finish_interval(index)
+        }
+    }
+
+    fn nb_intervals(&self) -> usize {
+        ((self.end_x - self.start_x) / self.interval_x)
+            .trunc()
+            .to_usize()
+            .unwrap()
+            + 1
+    }
+
+    fn finish(mut self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
         self.finish_interval(self.nb_intervals());
         if self.points.iter().all(|&y| y == self.points[0]) {
             // All `y` values are identical.

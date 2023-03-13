@@ -423,7 +423,7 @@ impl<T: TTFNum> VehicleEvent<T> {
         } {
             if next_event.at_time == current_time {
                 // Next event can be executed immediately.
-                next_event.execute(input, road_network_state, events)?;
+                return next_event.execute(input, road_network_state, events);
             } else {
                 debug_assert!(next_event.at_time > current_time);
                 // Push next event to the queue.

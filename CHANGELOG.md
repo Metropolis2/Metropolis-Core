@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Fixed
+
+- [USER] Fix the progress bar of the within-day model.
+- [USER] Fix how waiting times and road length are recorded so that expected travel times are more
+  accurate.
+
 ## [0.4.0] - 2023-03-12
 
 ### Added
