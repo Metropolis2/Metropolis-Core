@@ -104,8 +104,14 @@ struct SimulatedFunctions<T> {
     road: XYF<Time<T>, Length<T>, NoUnit<T>>,
 }
 
-/// Next event to execute for a queued vehicle and time at which the vehicle entered the queue.
-type QueuedVehicle<T> = (VehicleEvent<T>, Time<T>);
+/// Next event to execute for a queued vehicle, time at which the vehicle entered the queue and
+/// edge it is coming from (if any).
+#[derive(Clone, Debug)]
+struct QueuedVehicle<T> {
+    event: VehicleEvent<T>,
+    entry_time: Time<T>,
+    previous_edge: Option<EdgeIndex>,
+}
 
 /// Queue of vehicles.
 type VehicleQueue<T> = VecDeque<QueuedVehicle<T>>;
@@ -192,6 +198,11 @@ impl<T: TTFNum> EdgeEntryState<T> {
             .unwrap_or(Time::zero())
     }
 
+    /// Iterates over the previous edges of the vehicles that are currently in the edge's queue.
+    fn iter_queued_vehicles_edge(&self) -> Vec<EdgeIndex> {
+        self.queue.iter().filter_map(|v| v.previous_edge).collect()
+    }
+
     /// A vehicle is reaching the edge entry.
     ///
     /// Three possible cases:
@@ -213,35 +224,42 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 // Free to go.
                 debug_assert!(self.queue.is_empty());
                 // Close the edge entry. It will re-open again when the vehicle will have
-                // succesfully entered the edge.
+                // successfully entered the edge.
                 self.status = EdgeEntryStatus::Closed;
                 Some(Either::Left(next_event))
             }
             (true, true) => {
                 // Edge entry is open but edge is full.
                 debug_assert!(self.queue.is_empty());
-                let edge_id = next_event.previous_edge();
+                let previous_edge = next_event.previous_edge();
                 self.status = EdgeEntryStatus::Full;
-                self.queue.push_back((next_event, current_time));
-                edge_id.map(Either::Right)
+                self.queue.push_back(QueuedVehicle {
+                    event: next_event,
+                    entry_time: current_time,
+                    previous_edge,
+                });
+                previous_edge.map(Either::Right)
             }
             (false, _) => {
                 // Edge is closed.
+                let previous_edge = next_event.previous_edge();
+                self.queue.push_back(QueuedVehicle {
+                    event: next_event,
+                    entry_time: current_time,
+                    previous_edge,
+                });
                 if self.status == EdgeEntryStatus::Full {
                     // The edge is full so the previous edge of the vehicle is blocked until this
                     // edge gets free.
-                    let edge_id = next_event.previous_edge();
-                    self.queue.push_back((next_event, current_time));
-                    edge_id.map(Either::Right)
+                    previous_edge.map(Either::Right)
                 } else {
-                    self.queue.push_back((next_event, current_time));
                     None
                 }
             }
         }
     }
 
-    /// A vehicle has succesfully entered the edge.
+    /// A vehicle has successfully entered the edge.
     ///
     /// Returns the closing time of the bottleneck.
     fn vehicle_enters(&mut self, vehicle: &Vehicle<T>) -> Time<T> {
@@ -264,18 +282,18 @@ impl<T: TTFNum> EdgeEntryState<T> {
     fn try_open_entry(
         &mut self,
         current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, EdgeIndex>> {
-        if let Some((mut event, entry_time)) = self.queue.pop_front() {
+    ) -> Option<Either<VehicleEvent<T>, Vec<EdgeIndex>>> {
+        if let Some(queued_vehicle) = self.queue.pop_front() {
             if self.is_full() {
                 // The edge is full, put the vehicle back in the queue (at the front).
-                let edge_id = event.previous_edge();
                 self.status = EdgeEntryStatus::Full;
-                self.queue.push_front((event, entry_time));
-                edge_id.map(Either::Right)
+                self.queue.push_front(queued_vehicle);
+                Some(Either::Right(self.iter_queued_vehicles_edge()))
             } else {
                 // A new vehicle is released, the bottleneck stays closed.
                 self.status = EdgeEntryStatus::Closed;
-                self.record(entry_time, current_time);
+                self.record(queued_vehicle.entry_time, current_time);
+                let mut event = queued_vehicle.event;
                 event.set_time(current_time);
                 Some(Either::Left(event))
             }
@@ -288,9 +306,10 @@ impl<T: TTFNum> EdgeEntryState<T> {
 
     /// Forces the release of the next pending vehicle.
     fn force_release(&mut self, current_time: Time<T>) -> VehicleEvent<T> {
-        let (mut event, entry_time) = self.queue.pop_front().expect("No vehicle to release");
+        let queued_vehicle = self.queue.pop_front().expect("No vehicle to release");
         self.status = EdgeEntryStatus::Closed;
-        self.record(entry_time, current_time);
+        self.record(queued_vehicle.entry_time, current_time);
+        let mut event = queued_vehicle.event;
         event.set_time(current_time);
         event
     }
@@ -312,8 +331,9 @@ impl<T: TTFNum> EdgeEntryState<T> {
             // The edge was full but it is not anymore.
             // Release the pending vehicle.
             self.status = EdgeEntryStatus::Closed;
-            let (mut event, entry_time) = self.queue.pop_front().unwrap();
-            self.record(entry_time, current_time);
+            let queued_vehicle = self.queue.pop_front().unwrap();
+            self.record(queued_vehicle.entry_time, current_time);
+            let mut event = queued_vehicle.event;
             event.set_time(current_time);
             Some(event)
         } else {
@@ -395,7 +415,11 @@ impl<T: TTFNum> EdgeExitState<T> {
             Some(next_event)
         } else {
             // Bottleneck is closed.
-            self.queue.push_back((next_event, current_time));
+            self.queue.push_back(QueuedVehicle {
+                previous_edge: next_event.previous_edge(),
+                event: next_event,
+                entry_time: current_time,
+            });
             None
         }
     }
@@ -414,9 +438,10 @@ impl<T: TTFNum> EdgeExitState<T> {
     /// Returns the event to execute for the next vehicle in the queue (if any).
     fn open_bottleneck(&mut self, current_time: Time<T>) -> Option<VehicleEvent<T>> {
         debug_assert_eq!(self.status, EdgeExitStatus::Closed);
-        if let Some((mut event, entry_time)) = self.queue.pop_front() {
+        if let Some(queued_vehicle) = self.queue.pop_front() {
             // A new vehicle is released, the bottleneck stays closed.
-            self.record(entry_time, current_time);
+            self.record(queued_vehicle.entry_time, current_time);
+            let mut event = queued_vehicle.event;
             event.set_time(current_time);
             Some(event)
         } else {
@@ -535,7 +560,7 @@ impl<T: TTFNum> RoadEdgeState<T> {
     fn open_entry_bottleneck(
         &mut self,
         current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, EdgeIndex>> {
+    ) -> Option<Either<VehicleEvent<T>, Vec<EdgeIndex>>> {
         self.entry
             .as_mut()
             .and_then(|entry| entry.try_open_entry(current_time))
@@ -764,11 +789,13 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     debug_assert_eq!(event.get_time(), current_time);
                     event.execute(event_input, self, event_queue)?;
                 }
-                Some(Either::Right(previous_edge)) => {
-                    // Vehicle from `previous_edge` is pending to enter the current edge, which
-                    // is full.
-                    debug_assert!(self.edges_full[previous_edge.index()].is_none());
-                    self.edges_full[previous_edge.index()] = Some(edge_index);
+                Some(Either::Right(previous_edges_iter)) => {
+                    // Vehicle from given edges are all pending to enter the current edge, which is
+                    // full.
+                    for edge_id in previous_edges_iter {
+                        debug_assert!(self.edges_full[edge_id.index()].is_none());
+                        self.edges_full[edge_id.index()] = Some(edge_index);
+                    }
                     if let Some(event) = self.check_gridlock(edge_index, current_time) {
                         debug_assert_eq!(event.get_time(), current_time);
                         event.execute(event_input, self, event_queue)?;
@@ -786,6 +813,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
             }));
         }
         if let Some(previous_edge_index) = from {
+            debug_assert_ne!(previous_edge_index, edge_index);
             self.release_from_edge(
                 previous_edge_index,
                 current_time,
@@ -910,14 +938,12 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                         debug_assert_eq!(self.at_time, event.get_time());
                         event.execute(input, road_network_state, events)?;
                     }
-                    Some(Either::Right(previous_edge)) => {
-                        // Vehicle from `previous_edge` is pending to enter the current edge, which
-                        // is full.
-                        debug_assert!(
-                            road_network_state.edges_full[previous_edge.index()].is_none()
-                        );
-                        road_network_state.edges_full[previous_edge.index()] =
-                            Some(self.edge_index);
+                    Some(Either::Right(previous_edges_iter)) => {
+                        // Vehicle from given edges are all pending to enter the current edge,
+                        // which is full.
+                        for edge_id in previous_edges_iter {
+                            road_network_state.edges_full[edge_id.index()] = Some(self.edge_index);
+                        }
                         if let Some(event) =
                             road_network_state.check_gridlock(self.edge_index, self.at_time)
                         {
