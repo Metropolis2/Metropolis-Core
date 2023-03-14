@@ -314,7 +314,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
         event
     }
 
-    /// A vehicle has succesfully exited the edge.
+    /// A vehicle has successfully exited the edge.
     ///
     /// Increases the length available on the edge according to the vehicle which just exited.
     ///
@@ -409,7 +409,7 @@ impl<T: TTFNum> EdgeExitState<T> {
     ) -> Option<VehicleEvent<T>> {
         if self.is_open() {
             debug_assert!(self.queue.is_empty());
-            // Close the edge exit. It will re-open again when the vehicle will have succesfully
+            // Close the edge exit. It will re-open again when the vehicle will have successfully
             // exited the edge (it can get trapped at the entry of the downstream edge).
             self.status = EdgeExitStatus::Closed;
             Some(next_event)
@@ -424,7 +424,7 @@ impl<T: TTFNum> EdgeExitState<T> {
         }
     }
 
-    /// A vehicle has succesfully exited the edge.
+    /// A vehicle has successfully exited the edge.
     ///
     /// Returns the closing time of the bottleneck.
     fn vehicle_exits(&mut self, vehicle: &Vehicle<T>) -> Time<T> {
