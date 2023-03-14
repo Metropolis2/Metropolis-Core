@@ -293,6 +293,7 @@ impl<T: TTFNum> Simulation<T> {
             }
         }
         bp.finish();
+        debug_assert_eq!(agent_results.len(), agent_results.nb_agents_arrived());
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");

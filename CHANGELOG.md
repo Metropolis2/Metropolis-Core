@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [DEV] Add a debug check that all agents have reached their destination.
+
 ### Changed
 
 - [USER] The progress bars refresh only periodically, for improved speed and better ETA.

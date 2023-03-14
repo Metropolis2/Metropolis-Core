@@ -286,6 +286,11 @@ impl<T: TTFNum> AgentResults<T> {
             .filter_map(|(id, agent_result)| agent_result.get_event(AgentIndex::new(id)))
             .collect()
     }
+
+    /// Returns the number of agents who finished their trips.
+    pub fn nb_agents_arrived(&self) -> usize {
+        self.0.iter().filter(|a| a.is_finished()).count()
+    }
 }
 
 impl<T> Index<AgentIndex> for AgentResults<T> {
