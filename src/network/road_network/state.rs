@@ -227,8 +227,16 @@ impl<T: TTFNum> EdgeEntryState<T> {
             }
             (false, _) => {
                 // Edge is closed.
-                self.queue.push_back((next_event, current_time));
-                None
+                if self.status == EdgeEntryStatus::Full {
+                    // The edge is full so the previous edge of the vehicle is blocked until this
+                    // edge gets free.
+                    let edge_id = next_event.previous_edge();
+                    self.queue.push_back((next_event, current_time));
+                    edge_id.map(Either::Right)
+                } else {
+                    self.queue.push_back((next_event, current_time));
+                    None
+                }
             }
         }
     }
@@ -867,6 +875,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
             }
             if cfg!(debug_assertions) {
                 debug_assert!(!edges.contains(&target));
+                edges.insert(target);
             }
             current_edge = target;
         }
@@ -895,12 +904,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
         let edge_state = &mut road_network_state.graph[self.edge_index];
         match self.position {
             BottleneckPosition::Entry => {
-                match edge_state
-                    .entry
-                    .as_mut()
-                    .unwrap()
-                    .try_open_entry(self.at_time)
-                {
+                match edge_state.open_entry_bottleneck(self.at_time) {
                     Some(Either::Left(event)) => {
                         // Vehicle can enter.
                         debug_assert_eq!(self.at_time, event.get_time());
@@ -927,12 +931,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                 }
             }
             BottleneckPosition::Exit => {
-                if let Some(event) = edge_state
-                    .exit
-                    .as_mut()
-                    .unwrap()
-                    .open_bottleneck(self.at_time)
-                {
+                if let Some(event) = edge_state.open_exit_bottleneck(self.at_time) {
                     debug_assert_eq!(self.at_time, event.get_time());
                     event.execute(input, road_network_state, events)?;
                 }
