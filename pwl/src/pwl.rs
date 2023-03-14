@@ -349,7 +349,7 @@ impl<T, U> PwlXYF<T, T, U> {
 impl<T: TTFNum> PwlTTF<T> {
     fn is_fifo(&self) -> bool {
         for ((x0, y0), (x1, y1)) in self.double_iter() {
-            if x0 + y0 > x1 + y1 {
+            if x0 + y0 > x1 + y1 + T::margin() {
                 println!("{:?} + {:?} > {:?} + {:?}", x0, y0, x1, y1);
                 return false;
             }

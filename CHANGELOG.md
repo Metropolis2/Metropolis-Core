@@ -19,9 +19,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [USER] Fix the progress bar of the within-day model.
-- [USER] Fix how waiting times and road length are recorded so that expected travel times are more
+- [DEV] Fix how waiting times and road length are recorded so that expected travel times are more
   accurate.
-- [USER] Fix how the spillback indicator is computed and reset.
+- [DEV] Fix how the spillback indicator is computed and reset.
+- [DEV] Add a margin when checking FIFO property to avoid false positive.
 
 ## [0.4.0] - 2023-03-12
 
