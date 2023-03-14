@@ -12,8 +12,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, log_enabled, Level, LevelFilter};
+use log::{debug, info, LevelFilter};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
@@ -34,6 +33,7 @@ use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResu
 use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::parameters::Parameters;
+use crate::progress_bar::MetroProgressBar;
 use crate::report;
 use crate::units::Distribution;
 
@@ -226,23 +226,14 @@ impl<T: TTFNum> Simulation<T> {
         previous_results_opt: Option<&AgentResults<T>>,
         iteration_counter: u32,
     ) -> Result<AgentResults<T>> {
-        let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(self.agents.len() as u64)
-        } else {
-            ProgressBar::hidden()
-        };
-        bp.set_style(
-            ProgressStyle::default_bar()
-                .template("{bar:60} ETA: {eta}")
-                .unwrap(),
-        );
+        let bp = MetroProgressBar::new(self.agents.len());
         let results = if let Some(previous_results) = previous_results_opt {
             let updates = self.get_update_vector(iteration_counter);
             (&self.agents, previous_results.deref(), updates)
                 .into_par_iter()
                 .panic_fuse()
                 .map(|(agent, prev_agent_result, update)| {
-                    bp.inc(1);
+                    bp.inc();
                     agent.make_pre_day_choice(
                         exp_skims,
                         preprocess_data,
@@ -257,12 +248,12 @@ impl<T: TTFNum> Simulation<T> {
                 .par_iter()
                 .panic_fuse()
                 .map(|agent| {
-                    bp.inc(1);
+                    bp.inc();
                     agent.make_pre_day_choice(exp_skims, preprocess_data, None, true)
                 })
                 .collect::<Result<Vec<_>, _>>()?
         };
-        bp.finish_and_clear();
+        bp.finish();
         Ok(AgentResults::from_vec(results))
     }
 
@@ -282,16 +273,7 @@ impl<T: TTFNum> Simulation<T> {
         let mut events = agent_results.get_event_queue();
         let mut nb_events = 0;
         info!("Executing events");
-        let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(events.len() as u64)
-        } else {
-            ProgressBar::hidden()
-        };
-        bp.set_style(
-            ProgressStyle::default_bar()
-                .template("{bar:60} ETA: {eta}")
-                .unwrap(),
-        );
+        let bp = MetroProgressBar::new(events.len());
         let mut input = EventInput {
             agents: &self.agents,
             network: &self.network,
@@ -307,13 +289,10 @@ impl<T: TTFNum> Simulation<T> {
                 &mut events,
             )?;
             if agent_has_arrived {
-                bp.inc(1);
+                bp.inc();
             }
         }
-        if log_enabled!(Level::Info) {
-            debug_assert_eq!(bp.position(), bp.length().unwrap());
-        }
-        bp.finish_and_clear();
+        bp.finish();
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");

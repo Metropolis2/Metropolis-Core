@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [USER] The progress bars refresh only periodically, for improved speed and better ETA.
+
 ### Fixed
 
 - [USER] Fix the progress bar of the within-day model.

@@ -30,6 +30,7 @@ pub mod learning;
 pub mod mode;
 pub mod network;
 pub mod parameters;
+pub mod progress_bar;
 pub mod report;
 pub mod schedule_utility;
 mod schema;
