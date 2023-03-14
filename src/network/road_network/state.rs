@@ -233,7 +233,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
         }
     }
 
-    /// A vehicle has succesfully enterd the edge.
+    /// A vehicle has succesfully entered the edge.
     ///
     /// Returns the closing time of the bottleneck.
     fn vehicle_enters(&mut self, vehicle: &Vehicle<T>) -> Time<T> {
@@ -742,8 +742,10 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ) -> Result<Time<T>> {
         let edge = &event_input.network.get_road_network().unwrap().graph[edge_index];
         let edge_state = &mut self.graph[edge_index];
-        // Reset the indicator that the edge is full (if needed).
-        self.edges_full[edge_index.index()] = None;
+        // Reset the indicator that the previous edge of the vehicle is in a pending state.
+        if let Some(previous_edge) = from {
+            self.edges_full[previous_edge.index()] = None;
+        }
         let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, edge);
         if closing_time.is_zero() {
             // The edge's entry bottleneck can be open immediately.

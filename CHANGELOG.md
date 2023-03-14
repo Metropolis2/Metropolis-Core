@@ -17,6 +17,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Fix the progress bar of the within-day model.
 - [USER] Fix how waiting times and road length are recorded so that expected travel times are more
   accurate.
+- [USER] Fix how the spillback indicator is reset.
 
 ## [0.4.0] - 2023-03-12
 
