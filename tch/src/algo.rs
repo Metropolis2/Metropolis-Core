@@ -278,6 +278,11 @@ where
             &alloc.downward_search,
         )
         .context("Failed to compute the path")?;
+        if cfg!(debug_assertions) {
+            // Check that there is no loop in the path.
+            let n = path.iter().collect::<hashbrown::HashSet<_>>().len();
+            assert_eq!(n, path.len(), "Invalid path: {path:?}");
+        }
         Ok(Some((label, path)))
     } else {
         Ok(None)

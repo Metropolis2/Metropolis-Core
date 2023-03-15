@@ -240,6 +240,11 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                     )
                 })?;
         }
+        if cfg!(debug_assertions) {
+            // Check that there is no loop in the path.
+            let n = unpacked_path.iter().collect::<HashSet<_>>().len();
+            assert_eq!(n, path.len(), "Invalid path: {unpacked_path:?}");
+        }
         Ok(unpacked_path)
     }
 
