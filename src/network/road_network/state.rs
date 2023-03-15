@@ -22,6 +22,8 @@ use crate::event::{Event, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
 use crate::units::{Flow, Interval, Length, NoUnit, Time};
 
+const MAX_WARNINGS: usize = 20;
+
 /// Struct that holds data on the current state of a [RoadNode].
 #[derive(Clone, Debug)]
 struct RoadNodeState {}
@@ -688,6 +690,8 @@ impl GridLockDetector {
 pub struct RoadNetworkState<T> {
     graph: DiGraph<RoadNodeState, RoadEdgeState<T>>,
     gridlock_detector: GridLockDetector,
+    /// Record the number of warnings sent to the user.
+    warnings: usize,
 }
 
 impl<T: TTFNum> RoadNetworkState<T> {
@@ -708,6 +712,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         RoadNetworkState {
             gridlock_detector,
             graph,
+            warnings: 0,
         }
     }
 
@@ -923,11 +928,17 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ) -> Option<VehicleEvent<T>> {
         if let Some(locked_edge) = self.gridlock_detector.get_locked_edge_from(from) {
             // Force the release of the pending vehicle to free the gridlock.
-            warn!(
-                "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
-                current_time,
-                locked_edge.index()
-            );
+            if self.warnings <= MAX_WARNINGS {
+                warn!(
+                    "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
+                    current_time,
+                    locked_edge.index()
+                );
+                if self.warnings == MAX_WARNINGS {
+                    warn!("Ignoring further warnings...");
+                }
+                self.warnings += 1;
+            }
             Some(self.graph[locked_edge].force_release(current_time))
         } else {
             // No gridlock detected.

@@ -11,6 +11,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Added
 
 - [USER] Add the current time of the events in the within-day model progress bar.
+- [USER] Ignore warnings when more than 20 have already been emitted.
 - [DEV] Add a debug check that all agents have reached their destination.
 - [DEV] Add more debug checks for the routes computed by the contraction hierarchies.
 
