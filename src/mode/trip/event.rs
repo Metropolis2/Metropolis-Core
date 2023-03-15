@@ -7,6 +7,7 @@
 
 use anyhow::{anyhow, Result};
 use hashbrown::HashSet;
+use log::warn;
 use num_traits::Float;
 use petgraph::graph::EdgeIndex;
 use schemars::JsonSchema;
@@ -462,8 +463,15 @@ fn get_arrival_time_and_route<T: TTFNum>(
     if let Some((arrival_time, route)) =
         skims.earliest_arrival_query(leg.origin, leg.destination, departure_time, alloc)?
     {
-        if cfg!(debug_assertions) {
-            check_route(&route);
+        // Check if there is a loop in the route.
+        let n = route.iter().collect::<HashSet<_>>().len();
+        if n != route.len() {
+            warn!(
+                "Found a loop in route from {} to {} at time {}",
+                leg.origin.index(),
+                leg.destination.index(),
+                departure_time
+            );
         }
         Ok((arrival_time, route))
     } else {
@@ -474,11 +482,4 @@ fn get_arrival_time_and_route<T: TTFNum>(
             departure_time,
         ))
     }
-}
-
-/// Run checks to ensure that the computed route is valid.
-fn check_route(route: &[EdgeIndex]) {
-    // Check that there is no loop in the route.
-    let n = route.iter().collect::<HashSet<_>>().len();
-    assert_eq!(n, route.len(), "Invalid route: {route:?}");
 }
