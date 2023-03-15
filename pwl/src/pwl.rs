@@ -349,7 +349,7 @@ impl<T, U> PwlXYF<T, T, U> {
 impl<T: TTFNum> PwlTTF<T> {
     fn is_fifo(&self) -> bool {
         for ((x0, y0), (x1, y1)) in self.double_iter() {
-            if x0 + y0 > x1 + y1 + T::margin() {
+            if x0 + y0 > x1 + y1 {
                 println!("{:?} + {:?} > {:?} + {:?}", x0, y0, x1, y1);
                 return false;
             }
@@ -357,13 +357,13 @@ impl<T: TTFNum> PwlTTF<T> {
         true
     }
 
-    /// Modifies `self` inplace to ensure that it is a FIFO function.
+    /// Modifies `self` inplace to ensure that it is a FIFO function (with some margin).
     pub fn ensure_fifo(&mut self) {
         for i in 1..self.points.len() {
             let diff =
                 self.x_at_index(i - 1) + self.points[i - 1] - self.x_at_index(i) - self.points[i];
-            if diff > T::zero() {
-                self.points[i] += diff;
+            if diff > -T::margin() {
+                self.points[i] += diff + T::margin();
             }
         }
         debug_assert!(self.is_fifo());
