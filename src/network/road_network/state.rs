@@ -925,7 +925,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
             // Force the release of the pending vehicle to free the gridlock.
             warn!(
                 "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
-                current_time.0,
+                current_time,
                 locked_edge.index()
             );
             Some(self.graph[locked_edge].force_release(current_time))
