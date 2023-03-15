@@ -600,6 +600,7 @@ dependencies = [
  "clap",
  "either",
  "enum-as-inner",
+ "fixedbitset",
  "hashbrown 0.13.2",
  "indicatif",
  "itertools",

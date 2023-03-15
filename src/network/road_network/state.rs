@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use anyhow::Result;
 use either::Either;
 use enum_as_inner::EnumAsInner;
-use hashbrown::HashSet;
+use fixedbitset::FixedBitSet;
 use log::warn;
 use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
@@ -638,14 +638,56 @@ impl<T: TTFNum> RoadEdgeState<T> {
     }
 }
 
+/// Vec indicating, for each edge, the edge a vehicle is pending to enter.
+#[derive(Clone, Debug)]
+struct GridLockDetector(Vec<Option<EdgeIndex>>);
+
+impl GridLockDetector {
+    fn new(nb_edges: usize) -> Self {
+        Self(vec![None; nb_edges])
+    }
+
+    /// Sets the status of edge `from` to be pending to enter edge `to`.
+    fn set_pending_state(&mut self, from: EdgeIndex, to: EdgeIndex) {
+        self.0[from.index()] = Some(to);
+    }
+
+    /// Removes the pending state of the edge.
+    fn remove_pending_state(&mut self, edge: EdgeIndex) {
+        self.0[edge.index()] = None;
+    }
+
+    /// Returns `true` if the given edge is in a pending state, i.e., it is blocked until another
+    /// edge is freed.
+    fn has_pending_state(&self, edge: EdgeIndex) -> bool {
+        self.0[edge.index()].is_some()
+    }
+
+    /// Returns `true` if edge `from` is pending to enter edge `to`.
+    fn is_pending_for(&self, from: EdgeIndex, to: EdgeIndex) -> bool {
+        self.0[from.index()] == Some(to)
+    }
+
+    fn get_locked_edge_from(&self, from: EdgeIndex) -> Option<EdgeIndex> {
+        let mut bs = FixedBitSet::with_capacity(self.0.len());
+        bs.insert(from.index());
+        let mut current_edge = from;
+        while let Some(target) = self.0[current_edge.index()] {
+            if bs.put(target.index()) {
+                // Node `target` has been visited twice: loop detected.
+                return Some(target);
+            }
+            current_edge = target;
+        }
+        None
+    }
+}
+
 /// Struct that represents the state of a [RoadNetwork] at a given time.
 #[derive(Clone, Debug)]
 pub struct RoadNetworkState<T> {
     graph: DiGraph<RoadNodeState, RoadEdgeState<T>>,
-    /// For each edge that is blocked because a vehicle is pending to exit, value is `Some` with the
-    /// id of the next edge for the pending vehicle.
-    /// For edges that are not full, value is `None`.
-    edges_full: Vec<Option<EdgeIndex>>,
+    gridlock_detector: GridLockDetector,
 }
 
 impl<T: TTFNum> RoadNetworkState<T> {
@@ -662,8 +704,9 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 RoadEdgeState::new(e, recording_period, recording_interval, spillback_enabled)
             },
         );
+        let gridlock_detector = GridLockDetector::new(graph.edge_count());
         RoadNetworkState {
-            edges_full: vec![None; graph.edge_count()],
+            gridlock_detector,
             graph,
         }
     }
@@ -729,10 +772,10 @@ impl<T: TTFNum> RoadNetworkState<T> {
             }
             Some(Either::Right(previous_edge)) => {
                 // Edge is full.
-                debug_assert!(self.edges_full[previous_edge.index()].is_none());
-                self.edges_full[previous_edge.index()] = Some(edge_index);
-                // Force the release of the vehicle if it is needed to prevent a gridlock.
-                self.check_gridlock(edge_index, current_time)
+                debug_assert!(!self.gridlock_detector.has_pending_state(previous_edge));
+                self.gridlock_detector
+                    .set_pending_state(previous_edge, edge_index);
+                self.manage_gridlock(edge_index, current_time)
             }
             None => {
                 // Vehicle is queued.
@@ -777,7 +820,13 @@ impl<T: TTFNum> RoadNetworkState<T> {
         let edge_state = &mut self.graph[edge_index];
         // Reset the indicator that the previous edge of the vehicle is in a pending state.
         if let Some(previous_edge) = from {
-            self.edges_full[previous_edge.index()] = None;
+            debug_assert!(
+                !self.gridlock_detector.has_pending_state(previous_edge)
+                    || self
+                        .gridlock_detector
+                        .is_pending_for(previous_edge, edge_index)
+            );
+            self.gridlock_detector.remove_pending_state(previous_edge);
         }
         let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, edge);
         if closing_time.is_zero() {
@@ -793,10 +842,11 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     // Vehicle from given edges are all pending to enter the current edge, which is
                     // full.
                     for edge_id in previous_edges_iter {
-                        debug_assert!(self.edges_full[edge_id.index()].is_none());
-                        self.edges_full[edge_id.index()] = Some(edge_index);
+                        debug_assert!(!self.gridlock_detector.has_pending_state(edge_id));
+                        self.gridlock_detector
+                            .set_pending_state(edge_id, edge_index);
                     }
-                    if let Some(event) = self.check_gridlock(edge_index, current_time) {
+                    if let Some(event) = self.manage_gridlock(edge_index, current_time) {
                         debug_assert_eq!(event.get_time(), current_time);
                         event.execute(event_input, self, event_queue)?;
                     }
@@ -866,48 +916,23 @@ impl<T: TTFNum> RoadNetworkState<T> {
         Ok(())
     }
 
-    /// Checks if there is a gridlock with edge `from`.
-    ///
-    /// If there is a gridlock, returns the [VehicleEvent] of the vehicle to release to prevent the
-    /// gridlock.
-    /// Otherwise, returns `None`.
-    fn check_gridlock(
+    fn manage_gridlock(
         &mut self,
         from: EdgeIndex,
         current_time: Time<T>,
     ) -> Option<VehicleEvent<T>> {
-        if self.has_gridlock(from) {
-            // Force the release of the pending vehicle to prevent a gridlock from
-            // forming.
+        if let Some(locked_edge) = self.gridlock_detector.get_locked_edge_from(from) {
+            // Force the release of the pending vehicle to free the gridlock.
             warn!(
-                "Forcing the release of a vehicle on edge {} to prevent a gridlock",
-                from.index()
+                "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
+                current_time.0,
+                locked_edge.index()
             );
-            Some(self.graph[from].force_release(current_time))
+            Some(self.graph[locked_edge].force_release(current_time))
         } else {
+            // No gridlock detected.
             None
         }
-    }
-
-    /// Returns `true` if there is a gridlock with edge `from`, i.e., there is a loop of pending
-    /// edges which includes edge `from`.
-    fn has_gridlock(&self, from: EdgeIndex) -> bool {
-        let mut current_edge = from;
-        let mut edges = HashSet::new();
-        if cfg!(debug_assertions) {
-            edges.insert(current_edge);
-        }
-        while let Some(target) = self.edges_full[current_edge.index()] {
-            if target == from {
-                return true;
-            }
-            if cfg!(debug_assertions) {
-                debug_assert!(!edges.contains(&target));
-                edges.insert(target);
-            }
-            current_edge = target;
-        }
-        false
     }
 }
 
@@ -942,10 +967,12 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                         // Vehicle from given edges are all pending to enter the current edge,
                         // which is full.
                         for edge_id in previous_edges_iter {
-                            road_network_state.edges_full[edge_id.index()] = Some(self.edge_index);
+                            road_network_state
+                                .gridlock_detector
+                                .set_pending_state(edge_id, self.edge_index);
                         }
                         if let Some(event) =
-                            road_network_state.check_gridlock(self.edge_index, self.at_time)
+                            road_network_state.manage_gridlock(self.edge_index, self.at_time)
                         {
                             debug_assert_eq!(event.get_time(), self.at_time);
                             event.execute(input, road_network_state, events)?;
