@@ -37,6 +37,9 @@ use crate::progress_bar::MetroProgressBar;
 use crate::report;
 use crate::units::Distribution;
 
+/// Number of events before the time on the within-day progress bar is refreshed.
+const UPDATE: usize = 500;
+
 /// An abstract representation of an area to be simulated.
 ///
 /// A simulation is composed of the following items:
@@ -273,7 +276,8 @@ impl<T: TTFNum> Simulation<T> {
         let mut events = agent_results.get_event_queue();
         let mut nb_events = 0;
         info!("Executing events");
-        let bp = MetroProgressBar::new(events.len());
+        let bp = MetroProgressBar::new(events.len())
+            .with_message(self.parameters.period.start().to_string());
         let mut input = EventInput {
             agents: &self.agents,
             network: &self.network,
@@ -283,6 +287,9 @@ impl<T: TTFNum> Simulation<T> {
         };
         while let Some(event) = events.pop() {
             nb_events += 1;
+            if nb_events % UPDATE == 0 {
+                bp.set_message(format!("{}", event.get_time()));
+            }
             let agent_has_arrived = event.execute(
                 &mut input,
                 state.get_mut_road_network().unwrap(),

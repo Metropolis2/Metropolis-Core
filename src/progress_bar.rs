@@ -5,6 +5,7 @@
 
 //! Progress bar and spinner for the library.
 use std::{
+    borrow::Cow,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -43,8 +44,8 @@ impl MetroProgressBar {
         }
     }
 
-    /// Sets a message to the [MetroProgressBar].
-    pub fn with_message(self, msg: &'static str) -> Self {
+    /// Adds a message to the [MetroProgressBar].
+    pub fn with_message(self, msg: impl Into<Cow<'static, str>>) -> Self {
         let bp = self.bp.with_message(msg);
         bp.set_style(
             ProgressStyle::default_bar()
@@ -55,6 +56,11 @@ impl MetroProgressBar {
             bp,
             current: self.current,
         }
+    }
+
+    /// Sets a message to the [MetroProgressBar].
+    pub fn set_message(&self, msg: impl Into<Cow<'static, str>>) {
+        self.bp.set_message(msg);
     }
 
     /// Increments the progress bar by one.

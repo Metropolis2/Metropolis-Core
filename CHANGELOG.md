@@ -10,6 +10,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
+- [USER] Add the current time of the events in the within-day model progress bar.
 - [DEV] Add a debug check that all agents have reached their destination.
 
 ### Changed
