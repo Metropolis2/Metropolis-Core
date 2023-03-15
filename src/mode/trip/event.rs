@@ -22,6 +22,7 @@ use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim};
 use crate::network::road_network::RoadNetworkState;
+use crate::progress_bar::MetroProgressBar;
 use crate::units::Time;
 
 /// Types of [VehicleEvent].
@@ -341,6 +342,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     road_leg,
                     self.at_time,
                     vehicle_skims,
+                    input.progress_bar.clone(),
                     // TODO: Use an alloc.
                     &mut Default::default(),
                 )?;
@@ -368,6 +370,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.current_edge(),
                     self.at_time,
                     self.into_next_step(None, trip),
+                    input,
                 )
             }
 
@@ -458,6 +461,7 @@ fn get_arrival_time_and_route<T: TTFNum>(
     leg: &RoadLeg,
     departure_time: Time<T>,
     skims: &RoadNetworkSkim<T>,
+    progress_bar: MetroProgressBar,
     alloc: &mut EAAllocation<T>,
 ) -> Result<(Time<T>, Vec<EdgeIndex>)> {
     if let Some((arrival_time, route)) =
@@ -466,12 +470,14 @@ fn get_arrival_time_and_route<T: TTFNum>(
         // Check if there is a loop in the route.
         let n = route.iter().collect::<HashSet<_>>().len();
         if n != route.len() {
-            warn!(
-                "Found a loop in route from {} to {} at time {}",
-                leg.origin.index(),
-                leg.destination.index(),
-                departure_time
-            );
+            progress_bar.suspend(|| {
+                warn!(
+                    "Found a loop in route from {} to {} at time {}",
+                    leg.origin.index(),
+                    leg.destination.index(),
+                    departure_time
+                );
+            })
         }
         Ok((arrival_time, route))
     } else {

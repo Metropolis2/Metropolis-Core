@@ -19,7 +19,7 @@ const UPDATE: u64 = 500;
 const UPDATE_MS: Duration = Duration::from_millis(100);
 
 /// A progress bar.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetroProgressBar {
     bp: ProgressBar,
     current: Arc<Mutex<u64>>,
@@ -77,6 +77,11 @@ impl MetroProgressBar {
     /// Sets the progress bar to finished.
     pub fn finish(&self) {
         self.bp.finish_and_clear();
+    }
+
+    /// Hides the progress bar temporarily.
+    pub fn suspend<F: FnOnce() -> R, R>(&self, f: F) -> R {
+        self.bp.suspend(f)
     }
 }
 

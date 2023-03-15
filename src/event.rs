@@ -14,6 +14,7 @@ use ttf::TTFNum;
 use crate::agent::Agent;
 use crate::network::road_network::RoadNetworkState;
 use crate::network::{Network, NetworkSkim};
+use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
 use crate::units::Time;
@@ -31,6 +32,8 @@ pub struct EventInput<'a, T> {
     pub(crate) skims: &'a NetworkSkim<T>,
     /// Mutable reference to the [AgentResults] for the current iteration.
     pub(crate) agent_results: &'a mut AgentResults<T>,
+    /// ProgressBar of the within-day model.
+    pub(crate) progress_bar: MetroProgressBar,
 }
 
 /// Trait to represent an event (e.g., from an agent, a vehicle, a network infrastructure) that can

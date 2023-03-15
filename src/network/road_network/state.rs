@@ -20,6 +20,7 @@ use super::weights::RoadNetworkWeights;
 use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData};
 use crate::event::{Event, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
+use crate::progress_bar::MetroProgressBar;
 use crate::units::{Flow, Interval, Length, NoUnit, Time};
 
 const MAX_WARNINGS: usize = 20;
@@ -767,11 +768,12 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Returns the next event to execute for this vehicle, if it can be executed immediately.
     /// Otherwise, returns `None` and the next event will be executed later.
-    pub fn try_enter_edge(
+    pub fn try_enter_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time<T>,
         next_event: VehicleEvent<T>,
+        event_input: &'event mut EventInput<'sim, T>,
     ) -> Option<VehicleEvent<T>> {
         let edge = &mut self.graph[edge_index];
         match edge.vehicle_reaches_entry(current_time, next_event) {
@@ -784,7 +786,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 debug_assert!(!self.gridlock_detector.has_pending_state(previous_edge));
                 self.gridlock_detector
                     .set_pending_state(previous_edge, edge_index);
-                self.manage_gridlock(edge_index, current_time)
+                self.manage_gridlock(edge_index, current_time, event_input.progress_bar.clone())
             }
             None => {
                 // Vehicle is queued.
@@ -855,7 +857,11 @@ impl<T: TTFNum> RoadNetworkState<T> {
                         self.gridlock_detector
                             .set_pending_state(edge_id, edge_index);
                     }
-                    if let Some(event) = self.manage_gridlock(edge_index, current_time) {
+                    if let Some(event) = self.manage_gridlock(
+                        edge_index,
+                        current_time,
+                        event_input.progress_bar.clone(),
+                    ) {
                         debug_assert_eq!(event.get_time(), current_time);
                         event.execute(event_input, self, event_queue)?;
                     }
@@ -929,17 +935,22 @@ impl<T: TTFNum> RoadNetworkState<T> {
         &mut self,
         from: EdgeIndex,
         current_time: Time<T>,
+        progress_bar: MetroProgressBar,
     ) -> Option<VehicleEvent<T>> {
         if let Some(locked_edge) = self.gridlock_detector.get_locked_edge_from(from) {
             // Force the release of the pending vehicle to free the gridlock.
             if self.warnings <= MAX_WARNINGS {
-                warn!(
+                progress_bar.suspend(|| {
+                    warn!(
                     "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
                     current_time,
                     locked_edge.index()
                 );
+                });
                 if self.warnings == MAX_WARNINGS {
-                    warn!("Ignoring further warnings...");
+                    progress_bar.suspend(|| {
+                        warn!("Ignoring further warnings...");
+                    });
                 }
                 self.warnings += 1;
             }
@@ -986,9 +997,11 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                                 .gridlock_detector
                                 .set_pending_state(edge_id, self.edge_index);
                         }
-                        if let Some(event) =
-                            road_network_state.manage_gridlock(self.edge_index, self.at_time)
-                        {
+                        if let Some(event) = road_network_state.manage_gridlock(
+                            self.edge_index,
+                            self.at_time,
+                            input.progress_bar.clone(),
+                        ) {
                             debug_assert_eq!(event.get_time(), self.at_time);
                             event.execute(input, road_network_state, events)?;
                         }

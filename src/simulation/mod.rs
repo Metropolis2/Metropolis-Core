@@ -284,6 +284,7 @@ impl<T: TTFNum> Simulation<T> {
             preprocess_data,
             skims,
             agent_results,
+            progress_bar: bp.clone(),
         };
         while let Some(event) = events.pop() {
             nb_events += 1;
