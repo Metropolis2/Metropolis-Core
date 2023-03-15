@@ -746,12 +746,16 @@ impl<T: TTFNum> RoadNetworkState<T> {
                         if road_pwl_ttf.is_cst() {
                             TTF::Constant(road_pwl_ttf.y_at_index(0))
                         } else {
-                            TTF::Piecewise(road_pwl_ttf.to_ttf())
+                            let mut road_ttf = road_pwl_ttf.to_ttf();
+                            road_ttf.ensure_fifo();
+                            TTF::Piecewise(road_ttf)
                         }
                     }
                     XYF::Constant(l) => TTF::Constant(edge_ref.get_travel_time(*l, vehicle)),
                 };
-                let mut ttf = funcs.entry.link(&road_ttf).link(&funcs.exit);
+                let mut ttf = funcs.entry.link(&road_ttf);
+                ttf.ensure_fifo();
+                ttf = ttf.link(&funcs.exit);
                 ttf.ensure_fifo();
                 vehicle_weights.push(ttf);
             }
