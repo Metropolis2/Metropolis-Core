@@ -238,18 +238,11 @@ impl<T: TTFNum> EdgeEntryState<T> {
             }
             (false, _) => {
                 // Edge is closed.
-                let agent_id = next_event.agent_id();
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
                     entry_time: current_time,
                 });
-                if self.status == EdgeEntryStatus::Full {
-                    // The edge is full so the previous edge of the vehicle is blocked until this
-                    // edge gets free.
-                    Some(Either::Right(agent_id))
-                } else {
-                    None
-                }
+                None
             }
         }
     }
