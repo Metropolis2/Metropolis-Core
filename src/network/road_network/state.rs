@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use anyhow::Result;
 use either::Either;
 use enum_as_inner::EnumAsInner;
-use fixedbitset::FixedBitSet;
+use hashbrown::HashMap;
 use log::warn;
 use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
@@ -18,9 +18,9 @@ use ttf::{PwlXYF, TTFNum, TTF, XYF};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
 use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData};
+use crate::agent::AgentIndex;
 use crate::event::{Event, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
-use crate::progress_bar::MetroProgressBar;
 use crate::units::{Flow, Interval, Length, NoUnit, Time};
 
 const MAX_WARNINGS: usize = 20;
@@ -113,7 +113,6 @@ struct SimulatedFunctions<T> {
 struct QueuedVehicle<T> {
     event: VehicleEvent<T>,
     entry_time: Time<T>,
-    previous_edge: Option<EdgeIndex>,
 }
 
 /// Queue of vehicles.
@@ -201,11 +200,6 @@ impl<T: TTFNum> EdgeEntryState<T> {
             .unwrap_or(Time::zero())
     }
 
-    /// Iterates over the previous edges of the vehicles that are currently in the edge's queue.
-    fn iter_queued_vehicles_edge(&self) -> Vec<EdgeIndex> {
-        self.queue.iter().filter_map(|v| v.previous_edge).collect()
-    }
-
     /// A vehicle is reaching the edge entry.
     ///
     /// Three possible cases:
@@ -221,7 +215,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
         &mut self,
         current_time: Time<T>,
         next_event: VehicleEvent<T>,
-    ) -> Option<Either<VehicleEvent<T>, EdgeIndex>> {
+    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         match (self.is_open(), self.is_full()) {
             (true, false) => {
                 // Free to go.
@@ -234,27 +228,25 @@ impl<T: TTFNum> EdgeEntryState<T> {
             (true, true) => {
                 // Edge entry is open but edge is full.
                 debug_assert!(self.queue.is_empty());
-                let previous_edge = next_event.previous_edge();
+                let agent_id = next_event.agent_id();
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
                     entry_time: current_time,
-                    previous_edge,
                 });
-                previous_edge.map(Either::Right)
+                Some(Either::Right(agent_id))
             }
             (false, _) => {
                 // Edge is closed.
-                let previous_edge = next_event.previous_edge();
+                let agent_id = next_event.agent_id();
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
                     entry_time: current_time,
-                    previous_edge,
                 });
                 if self.status == EdgeEntryStatus::Full {
                     // The edge is full so the previous edge of the vehicle is blocked until this
                     // edge gets free.
-                    previous_edge.map(Either::Right)
+                    Some(Either::Right(agent_id))
                 } else {
                     None
                 }
@@ -280,18 +272,18 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// - If there is a vehicle in the queue and the edge is not full: the edge entry stays closed,
     ///   returns `Some(Left)` with the next event to execute for the released vehicle.
     /// - If there is a vehicle in the queue but the edge is full: the edge entry is switch to
-    ///   `Full`, returns `Some(Right)` with the index of the current edge of the pending vehicle
-    ///   (or `None` if the pending vehicle is not currently on an edge).
+    ///   `Full`, returns `Some(Right)` with the index of the agent of the pending vehicle.
     fn try_open_entry(
         &mut self,
         current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, Vec<EdgeIndex>>> {
+    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         if let Some(queued_vehicle) = self.queue.pop_front() {
             if self.is_full() {
                 // The edge is full, put the vehicle back in the queue (at the front).
+                let agent_id = queued_vehicle.event.agent_id();
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_front(queued_vehicle);
-                Some(Either::Right(self.iter_queued_vehicles_edge()))
+                Some(Either::Right(agent_id))
             } else {
                 // A new vehicle is released, the bottleneck stays closed.
                 self.status = EdgeEntryStatus::Closed;
@@ -419,7 +411,6 @@ impl<T: TTFNum> EdgeExitState<T> {
         } else {
             // Bottleneck is closed.
             self.queue.push_back(QueuedVehicle {
-                previous_edge: next_event.previous_edge(),
                 event: next_event,
                 entry_time: current_time,
             });
@@ -509,7 +500,7 @@ impl<T: TTFNum> RoadEdgeState<T> {
         &mut self,
         current_time: Time<T>,
         next_event: VehicleEvent<T>,
-    ) -> Option<Either<VehicleEvent<T>, EdgeIndex>> {
+    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         if let Some(entry) = self.entry.as_mut() {
             entry.vehicle_reaches_entry(current_time, next_event)
         } else {
@@ -563,7 +554,7 @@ impl<T: TTFNum> RoadEdgeState<T> {
     fn open_entry_bottleneck(
         &mut self,
         current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, Vec<EdgeIndex>>> {
+    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         self.entry
             .as_mut()
             .and_then(|entry| entry.try_open_entry(current_time))
@@ -641,56 +632,14 @@ impl<T: TTFNum> RoadEdgeState<T> {
     }
 }
 
-/// Vec indicating, for each edge, the edge a vehicle is pending to enter.
-#[derive(Clone, Debug)]
-struct GridLockDetector(Vec<Option<EdgeIndex>>);
-
-impl GridLockDetector {
-    fn new(nb_edges: usize) -> Self {
-        Self(vec![None; nb_edges])
-    }
-
-    /// Sets the status of edge `from` to be pending to enter edge `to`.
-    fn set_pending_state(&mut self, from: EdgeIndex, to: EdgeIndex) {
-        self.0[from.index()] = Some(to);
-    }
-
-    /// Removes the pending state of the edge.
-    fn remove_pending_state(&mut self, edge: EdgeIndex) {
-        self.0[edge.index()] = None;
-    }
-
-    /// Returns `true` if the given edge is in a pending state, i.e., it is blocked until another
-    /// edge is freed.
-    fn has_pending_state(&self, edge: EdgeIndex) -> bool {
-        self.0[edge.index()].is_some()
-    }
-
-    /// Returns `true` if edge `from` is pending to enter edge `to`.
-    fn is_pending_for(&self, from: EdgeIndex, to: EdgeIndex) -> bool {
-        self.0[from.index()] == Some(to)
-    }
-
-    fn get_locked_edge_from(&self, from: EdgeIndex) -> Option<EdgeIndex> {
-        let mut bs = FixedBitSet::with_capacity(self.0.len());
-        bs.insert(from.index());
-        let mut current_edge = from;
-        while let Some(target) = self.0[current_edge.index()] {
-            if bs.put(target.index()) {
-                // Node `target` has been visited twice: loop detected.
-                return Some(target);
-            }
-            current_edge = target;
-        }
-        None
-    }
-}
-
 /// Struct that represents the state of a [RoadNetwork] at a given time.
 #[derive(Clone, Debug)]
 pub struct RoadNetworkState<T> {
     graph: DiGraph<RoadNodeState, RoadEdgeState<T>>,
-    gridlock_detector: GridLockDetector,
+    /// Map to find the current edge of all pending agents.
+    pending_edges: HashMap<AgentIndex, EdgeIndex>,
+    /// Maximum amout of time a vehicle is allowed to be pending.
+    max_pending_duration: Time<T>,
     /// Record the number of warnings sent to the user.
     warnings: usize,
 }
@@ -702,6 +651,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         recording_period: Interval<T>,
         recording_interval: Time<T>,
         spillback_enabled: bool,
+        max_pending_duration: Time<T>,
     ) -> Self {
         let graph = network.get_graph().map(
             |_node_id, _n| RoadNodeState {},
@@ -709,10 +659,10 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 RoadEdgeState::new(e, recording_period, recording_interval, spillback_enabled)
             },
         );
-        let gridlock_detector = GridLockDetector::new(graph.edge_count());
         RoadNetworkState {
-            gridlock_detector,
             graph,
+            pending_edges: HashMap::new(),
+            max_pending_duration,
             warnings: 0,
         }
     }
@@ -768,12 +718,12 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Returns the next event to execute for this vehicle, if it can be executed immediately.
     /// Otherwise, returns `None` and the next event will be executed later.
-    pub fn try_enter_edge<'sim: 'event, 'event>(
+    pub fn try_enter_edge(
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time<T>,
         next_event: VehicleEvent<T>,
-        event_input: &'event mut EventInput<'sim, T>,
+        event_queue: &mut EventQueue<T>,
     ) -> Option<VehicleEvent<T>> {
         let edge = &mut self.graph[edge_index];
         match edge.vehicle_reaches_entry(current_time, next_event) {
@@ -781,12 +731,17 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 // Next event can be executed immediately.
                 Some(event)
             }
-            Some(Either::Right(previous_edge)) => {
+            Some(Either::Right(agent)) => {
                 // Edge is full.
-                debug_assert!(!self.gridlock_detector.has_pending_state(previous_edge));
-                self.gridlock_detector
-                    .set_pending_state(previous_edge, edge_index);
-                self.manage_gridlock(edge_index, current_time, event_input.progress_bar.clone())
+                // Create an event in `max_pending_duration` seconds to unlock the vehicle if it is
+                // still stuck.
+                self.pending_edges.insert(agent, edge_index);
+                event_queue.push(Box::new(ForceVehicleRelease {
+                    at_time: current_time + self.max_pending_duration,
+                    agent,
+                    edge: edge_index,
+                }));
+                None
             }
             None => {
                 // Vehicle is queued.
@@ -824,21 +779,14 @@ impl<T: TTFNum> RoadNetworkState<T> {
         from: Option<EdgeIndex>,
         current_time: Time<T>,
         vehicle: &'sim Vehicle<T>,
+        agent_id: AgentIndex,
         event_input: &'event mut EventInput<'sim, T>,
         event_queue: &'event mut EventQueue<T>,
     ) -> Result<Time<T>> {
         let edge = &event_input.network.get_road_network().unwrap().graph[edge_index];
         let edge_state = &mut self.graph[edge_index];
-        // Reset the indicator that the previous edge of the vehicle is in a pending state.
-        if let Some(previous_edge) = from {
-            debug_assert!(
-                !self.gridlock_detector.has_pending_state(previous_edge)
-                    || self
-                        .gridlock_detector
-                        .is_pending_for(previous_edge, edge_index)
-            );
-            self.gridlock_detector.remove_pending_state(previous_edge);
-        }
+        // The agent is no longer pending.
+        self.pending_edges.remove(&agent_id);
         let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, edge);
         if closing_time.is_zero() {
             // The edge's entry bottleneck can be open immediately.
@@ -849,22 +797,16 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     debug_assert_eq!(event.get_time(), current_time);
                     event.execute(event_input, self, event_queue)?;
                 }
-                Some(Either::Right(previous_edges_iter)) => {
-                    // Vehicle from given edges are all pending to enter the current edge, which is
-                    // full.
-                    for edge_id in previous_edges_iter {
-                        debug_assert!(!self.gridlock_detector.has_pending_state(edge_id));
-                        self.gridlock_detector
-                            .set_pending_state(edge_id, edge_index);
-                    }
-                    if let Some(event) = self.manage_gridlock(
-                        edge_index,
-                        current_time,
-                        event_input.progress_bar.clone(),
-                    ) {
-                        debug_assert_eq!(event.get_time(), current_time);
-                        event.execute(event_input, self, event_queue)?;
-                    }
+                Some(Either::Right(agent)) => {
+                    // The given agent is pending to enter the edge.
+                    // Create an event to force release him / her in `max_pending_duration`
+                    // seconds.
+                    self.pending_edges.insert(agent, edge_index);
+                    event_queue.push(Box::new(ForceVehicleRelease {
+                        at_time: current_time + self.max_pending_duration,
+                        agent,
+                        edge: edge_index,
+                    }));
                 }
                 None => (),
             }
@@ -930,35 +872,53 @@ impl<T: TTFNum> RoadNetworkState<T> {
         }
         Ok(())
     }
+}
 
-    fn manage_gridlock(
-        &mut self,
-        from: EdgeIndex,
-        current_time: Time<T>,
-        progress_bar: MetroProgressBar,
-    ) -> Option<VehicleEvent<T>> {
-        if let Some(locked_edge) = self.gridlock_detector.get_locked_edge_from(from) {
-            // Force the release of the pending vehicle to free the gridlock.
-            if self.warnings <= MAX_WARNINGS {
-                progress_bar.suspend(|| {
-                    warn!(
-                    "At time {}: Forcing the release of a vehicle on edge {} to unlock a gridlock",
-                    current_time,
-                    locked_edge.index()
-                );
-                });
-                if self.warnings == MAX_WARNINGS {
-                    progress_bar.suspend(|| {
-                        warn!("Ignoring further warnings...");
-                    });
-                }
-                self.warnings += 1;
-            }
-            Some(self.graph[locked_edge].force_release(current_time))
-        } else {
-            // No gridlock detected.
-            None
+/// Event used to force the release of a vehicle pending to enter a link.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ForceVehicleRelease<T> {
+    /// Time at which the vehicle must be released.
+    at_time: Time<T>,
+    /// Id of the agent the vehicle belongs to.
+    agent: AgentIndex,
+    /// Id of the edge the vehicle is pending on.
+    edge: EdgeIndex,
+}
+
+impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
+    fn execute<'sim: 'event, 'event>(
+        self: Box<Self>,
+        input: &'event mut EventInput<'sim, T>,
+        road_network_state: &'event mut RoadNetworkState<T>,
+        events: &'event mut EventQueue<T>,
+    ) -> Result<bool> {
+        if road_network_state.pending_edges.get(&self.agent) != Some(&self.edge) {
+            // The agent is no longer pending on the edge.
+            return Ok(false);
         }
+        let edge = &mut road_network_state.graph[self.edge];
+        let event = edge.force_release(self.at_time);
+        debug_assert_eq!(event.agent_id(), self.agent);
+        if road_network_state.warnings <= MAX_WARNINGS {
+            input.progress_bar.suspend(|| {
+                warn!(
+                    "Forcing the release of agent {} from edge {} at time {}",
+                    self.agent.index(),
+                    self.edge.index(),
+                    self.at_time
+                );
+            });
+            if road_network_state.warnings == MAX_WARNINGS {
+                input.progress_bar.suspend(|| {
+                    warn!("Ignoring further warnings...");
+                });
+            }
+            road_network_state.warnings += 1;
+        }
+        event.execute(input, road_network_state, events)
+    }
+    fn get_time(&self) -> Time<T> {
+        self.at_time
     }
 }
 
@@ -989,22 +949,18 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                         debug_assert_eq!(self.at_time, event.get_time());
                         event.execute(input, road_network_state, events)?;
                     }
-                    Some(Either::Right(previous_edges_iter)) => {
-                        // Vehicle from given edges are all pending to enter the current edge,
-                        // which is full.
-                        for edge_id in previous_edges_iter {
-                            road_network_state
-                                .gridlock_detector
-                                .set_pending_state(edge_id, self.edge_index);
-                        }
-                        if let Some(event) = road_network_state.manage_gridlock(
-                            self.edge_index,
-                            self.at_time,
-                            input.progress_bar.clone(),
-                        ) {
-                            debug_assert_eq!(event.get_time(), self.at_time);
-                            event.execute(input, road_network_state, events)?;
-                        }
+                    Some(Either::Right(agent)) => {
+                        // The given agent is pending to enter the edge.
+                        // Create an event to force release him / her in `max_pending_duration`
+                        // seconds.
+                        road_network_state
+                            .pending_edges
+                            .insert(agent, self.edge_index);
+                        events.push(Box::new(ForceVehicleRelease {
+                            at_time: self.at_time + road_network_state.max_pending_duration,
+                            agent,
+                            edge: self.edge_index,
+                        }));
                     }
                     None => {
                         // No vehicle to release.

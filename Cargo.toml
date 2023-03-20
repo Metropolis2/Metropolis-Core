@@ -25,7 +25,6 @@ askama = { version = "0.12", features = ["serde-json"] }
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.5"
-fixedbitset = "0.4"
 hashbrown = { version = "0.13", features = ["rayon"] }
 indicatif = "0.17"
 itertools = "0.10"

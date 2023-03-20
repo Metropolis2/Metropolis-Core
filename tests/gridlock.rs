@@ -122,6 +122,7 @@ fn get_simulation() -> Simulation<f64> {
                 contraction: Default::default(),
                 recording_interval: Time(1.0),
                 spillback: true,
+                max_pending_duration: Time(10.0),
             }),
         },
         init_iteration_counter: 1,
@@ -147,22 +148,25 @@ fn gridlock_test() {
 
     // Departure times: 0, 2, 1, 3.
     //
-    // Edge 1 is blocked from 0 to 5.
-    // Edge 2 is blocked from 2 to 7.
-    // Edge 3 is blocked from 1 to 6.
-    // Edge 4 is blocked from 3 to 8.
+    // Arrival times at end of first edge: 5, 7, 6, 8.
     //
-    // First edge of the trip exit: 8, 8, 8, 8.
-    // Second edge of the trip exit: 13, 13, 13, 13.
-    // Arrival times: 18, 18, 18, 18.
+    // Vehicle 1 is released at time 15 (10 seconds after being pending).
+    // This triggers the release of all vehicles, at the same time.
+    //
+    // They all reach the second edge of their trip at time 15 + 5 = 20.
+    //
+    // They is a gridlock for 10 seconds.
+    // All vehicles are released at time 30.
+    //
+    // They all reached their destination at time 35.
 
-    let expected_arrival_times = vec![18., 18., 18., 18.];
+    let expected_arrival_times = vec![35., 35., 35., 35.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
     }
 
-    let expected_in_bottleneck_times = vec![3., 1., 2., 0.];
+    let expected_in_bottleneck_times = vec![20., 18., 19., 17.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())

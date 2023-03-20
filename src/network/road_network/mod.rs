@@ -331,6 +331,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             parameters.period,
             road_network_parameters.recording_interval,
             road_network_parameters.spillback,
+            road_network_parameters.max_pending_duration,
         )
     }
 
@@ -480,6 +481,8 @@ pub struct RoadNetworkParameters<T> {
     pub contraction: ContractionParameters,
     /// Time interval for which travel times are recorded at the edge level during the simulation.
     pub recording_interval: Time<T>,
+    /// Maximum amount of time a vehicle can be pending to enter the next edge.
+    pub max_pending_duration: Time<T>,
     /// If `true` the total headways of vehicles on each edge of the road network is limited by the
     /// total length of the edges.
     #[serde(default = "default_is_true")]

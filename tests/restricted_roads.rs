@@ -156,6 +156,7 @@ fn get_simulation() -> Simulation<f64> {
             road_network: Some(RoadNetworkParameters {
                 contraction: Default::default(),
                 recording_interval: Time(1.0),
+                max_pending_duration: Time(f64::INFINITY),
                 spillback: false,
             }),
         },

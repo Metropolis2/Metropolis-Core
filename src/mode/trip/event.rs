@@ -119,6 +119,11 @@ impl<T> VehicleEvent<T> {
         self.edge_position >= self.route.len()
     }
 
+    /// Returns the [AgentIndex] associated with the event.
+    pub fn agent_id(&self) -> AgentIndex {
+        self.agent
+    }
+
     /// Creates a new [VehicleEvent] for a given agent that leaves his / her origin at the given
     /// time.
     pub fn new(agent: AgentIndex, mode: ModeIndex, departure_time: Time<T>) -> Self {
@@ -370,7 +375,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.current_edge(),
                     self.at_time,
                     self.into_next_step(None, trip),
-                    input,
+                    events,
                 )
             }
 
@@ -383,6 +388,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.previous_edge(),
                     current_time,
                     vehicle,
+                    self.agent,
                     input,
                     events,
                 )?;

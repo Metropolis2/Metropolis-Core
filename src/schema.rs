@@ -178,6 +178,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
             road_network: Some(RoadNetworkParameters {
                 recording_interval: Time(300.0),
                 spillback: true,
+                max_pending_duration: Time(30.0),
                 contraction: Default::default(),
             }),
         },
