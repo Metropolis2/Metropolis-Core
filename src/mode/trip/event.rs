@@ -370,10 +370,13 @@ impl<T: TTFNum> VehicleEvent<T> {
             }
 
             VehicleEventType::ReachesEdgeEntry => {
+                let road_leg = leg.class.as_road().expect("Not a road leg");
+                let vehicle = &road_network[road_leg.vehicle];
                 // Try to enter the edge.
                 road_network_state.try_enter_edge(
                     self.current_edge(),
                     self.at_time,
+                    vehicle,
                     self.into_next_step(None, trip),
                     events,
                 )

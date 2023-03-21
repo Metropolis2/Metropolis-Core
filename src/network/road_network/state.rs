@@ -21,7 +21,7 @@ use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
-use crate::units::{Flow, Interval, Length, NoUnit, Time};
+use crate::units::{Flow, Interval, Length, NoUnit, Time, PCE};
 
 const MAX_WARNINGS: usize = 20;
 
@@ -112,6 +112,7 @@ struct SimulatedFunctions<T> {
 #[derive(Clone, Debug)]
 struct QueuedVehicle<T> {
     event: VehicleEvent<T>,
+    vehicle_pce: PCE<T>,
     entry_time: Time<T>,
 }
 
@@ -214,6 +215,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
     fn vehicle_reaches_entry(
         &mut self,
         current_time: Time<T>,
+        vehicle: &Vehicle<T>,
         next_event: VehicleEvent<T>,
     ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         match (self.is_open(), self.is_full()) {
@@ -232,6 +234,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
+                    vehicle_pce: vehicle.get_pce(),
                     entry_time: current_time,
                 });
                 Some(Either::Right(agent_id))
@@ -240,6 +243,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 // Edge is closed.
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
+                    vehicle_pce: vehicle.get_pce(),
                     entry_time: current_time,
                 });
                 None
@@ -381,10 +385,10 @@ impl<T: TTFNum> EdgeExitState<T> {
         self.status == EdgeExitStatus::Open
     }
 
-    /// Returns the closing time of the bottleneck when the given vehicle crosses it.
-    fn get_closing_time(&self, vehicle: &Vehicle<T>) -> Time<T> {
+    /// Returns the closing time of the bottleneck given the PCE of the vehicle which crosses it.
+    fn get_closing_time(&self, vehicle_pce: PCE<T>) -> Time<T> {
         self.effective_flow
-            .map(|f| vehicle.get_pce() / f)
+            .map(|f| vehicle_pce / f)
             .unwrap_or(Time::zero())
     }
 
@@ -406,14 +410,14 @@ impl<T: TTFNum> EdgeExitState<T> {
             // Close the edge exit.
             self.status = EdgeExitStatus::Closed;
             let closing_time = if self.overtaking_allowed {
-                if self.get_closing_time(vehicle).is_zero() {
+                if self.get_closing_time(vehicle.get_pce()).is_zero() {
                     // The bottleneck does not close.
                     self.status = EdgeExitStatus::Open;
                     None
                 } else {
                     // Return the closing time of the bottleneck so that an event is created to
                     // re-open it.
-                    Some(self.get_closing_time(vehicle))
+                    Some(self.get_closing_time(vehicle.get_pce()))
                 }
             } else {
                 // The edge exit will re-open again when the vehicle will have successfully exited
@@ -425,6 +429,7 @@ impl<T: TTFNum> EdgeExitState<T> {
             // Bottleneck is closed.
             self.queue.push_back(QueuedVehicle {
                 event: next_event,
+                vehicle_pce: vehicle.get_pce(),
                 entry_time: current_time,
             });
             None
@@ -441,21 +446,35 @@ impl<T: TTFNum> EdgeExitState<T> {
         } else {
             debug_assert_eq!(self.status, EdgeExitStatus::Closed);
             self.status = EdgeExitStatus::Closed;
-            Some(self.get_closing_time(vehicle))
+            Some(self.get_closing_time(vehicle.get_pce()))
         }
     }
 
     /// The bottleneck re-opens.
     ///
     /// Returns the event to execute for the next vehicle in the queue (if any).
-    fn open_bottleneck(&mut self, current_time: Time<T>) -> Option<VehicleEvent<T>> {
+    ///
+    /// Returns the closing time of the bottleneck, if it gets closed.
+    fn open_bottleneck(
+        &mut self,
+        current_time: Time<T>,
+    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
         debug_assert_eq!(self.status, EdgeExitStatus::Closed);
         if let Some(queued_vehicle) = self.queue.pop_front() {
-            // A new vehicle is released, the bottleneck stays closed.
+            // A new vehicle is released.
             self.record(queued_vehicle.entry_time, current_time);
+            let closing_time_opt = if self.overtaking_allowed {
+                // Return the closing time of the bottleneck so that an event is created to
+                // re-open it.
+                Some(self.get_closing_time(queued_vehicle.vehicle_pce))
+            } else {
+                // The bottleneck stays close until the vehicle has successfully entered its next
+                // edge.
+                None
+            };
             let mut event = queued_vehicle.event;
             event.set_time(current_time);
-            Some(event)
+            Some((event, closing_time_opt))
         } else {
             // The bottleneck is now open.
             self.status = EdgeExitStatus::Open;
@@ -517,10 +536,11 @@ impl<T: TTFNum> RoadEdgeState<T> {
     fn vehicle_reaches_entry(
         &mut self,
         current_time: Time<T>,
+        vehicle: &Vehicle<T>,
         next_event: VehicleEvent<T>,
     ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
         if let Some(entry) = self.entry.as_mut() {
-            entry.vehicle_reaches_entry(current_time, next_event)
+            entry.vehicle_reaches_entry(current_time, vehicle, next_event)
         } else {
             // Infinite flow + spillback is disabled: the vehicles can freely cross.
             Some(Either::Left(next_event))
@@ -592,7 +612,12 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// The exit bottleneck of the edge is re-opening.
     ///
     /// Returns the [VehicleEvent] of the released vehicle (if any).
-    fn open_exit_bottleneck(&mut self, current_time: Time<T>) -> Option<VehicleEvent<T>> {
+    ///
+    /// Returns the closing time of the bottleneck (if it gets closed).
+    fn open_exit_bottleneck(
+        &mut self,
+        current_time: Time<T>,
+    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
         self.exit
             .as_mut()
             .and_then(|exit| exit.open_bottleneck(current_time))
@@ -742,11 +767,12 @@ impl<T: TTFNum> RoadNetworkState<T> {
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time<T>,
+        vehicle: &Vehicle<T>,
         next_event: VehicleEvent<T>,
         event_queue: &mut EventQueue<T>,
     ) -> Option<VehicleEvent<T>> {
         let edge = &mut self.graph[edge_index];
-        match edge.vehicle_reaches_entry(current_time, next_event) {
+        match edge.vehicle_reaches_entry(current_time, vehicle, next_event) {
             Some(Either::Left(event)) => {
                 // Next event can be executed immediately.
                 Some(event)
@@ -889,10 +915,13 @@ impl<T: TTFNum> RoadNetworkState<T> {
         if let Some(closing_time) = closing_time_opt {
             if closing_time.is_zero() {
                 // The edge's exit bottleneck can be open immediately.
-                if let Some(event) = edge.open_exit_bottleneck(current_time) {
+                if let Some((event, closing_time_opt)) = edge.open_exit_bottleneck(current_time) {
                     // The vehicle entry has triggered the entry of a second vehicle.
                     // We can execute its event immediately.
                     event.execute(event_input, self, event_queue)?;
+                    // No closing time should be returned because overtaking is disabled on this
+                    // edge.
+                    debug_assert!(closing_time_opt.is_none());
                 }
             } else {
                 // Push an event to open the edge's exit bottleneck later.
@@ -1006,9 +1035,26 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                 }
             }
             BottleneckPosition::Exit => {
-                if let Some(event) = edge_state.open_exit_bottleneck(self.at_time) {
+                if let Some((event, closing_time_opt)) =
+                    edge_state.open_exit_bottleneck(self.at_time)
+                {
                     debug_assert_eq!(self.at_time, event.get_time());
                     event.execute(input, road_network_state, events)?;
+                    if let Some(closing_time) = closing_time_opt {
+                        let bottleneck_event = Box::new(BottleneckEvent {
+                            at_time: self.at_time + closing_time,
+                            edge_index: self.edge_index,
+                            position: self.position,
+                        });
+                        if closing_time.is_zero() {
+                            // Execute immediately the bottleneck opening.
+                            bottleneck_event.execute(input, road_network_state, events)?;
+                        } else {
+                            debug_assert!(closing_time.is_sign_positive());
+                            // Push the bottleneck event to the queue.
+                            events.push(bottleneck_event);
+                        }
+                    }
                 }
             }
         }
