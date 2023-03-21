@@ -386,7 +386,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                 let travel_time = road_network_state.enters_edge(
                     self.current_edge(),
                     self.previous_edge(),
-                    current_time,
+                    self.at_time,
                     vehicle,
                     self.agent,
                     input,
@@ -396,11 +396,15 @@ impl<T: TTFNum> VehicleEvent<T> {
             }
 
             VehicleEventType::ReachesEdgeExit => {
+                let road_leg = leg.class.as_road().expect("Not a road leg");
+                let vehicle = &road_network[road_leg.vehicle];
                 // Try to cross the bottleneck.
                 road_network_state.try_exit_edge(
                     self.current_edge(),
                     self.at_time,
+                    vehicle,
                     self.into_next_step(None, trip),
+                    events,
                 )
             }
 

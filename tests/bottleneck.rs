@@ -22,7 +22,7 @@ use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
 use petgraph::graph::{edge_index, node_index, DiGraph};
 use ttf::TTF;
 
-fn get_simulation() -> Simulation<f64> {
+fn get_simulation(overtaking: bool) -> Simulation<f64> {
     // Create agents with fixed departure times.
     let departure_times = vec![0., 3., 4., 5., 10., 21.];
     let mut agents = Vec::with_capacity(departure_times.len());
@@ -59,6 +59,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow(0.5),
                 Time(0.),
+                overtaking,
             ),
         ),
         (
@@ -71,6 +72,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow(0.25),
                 Time(0.),
+                overtaking,
             ),
         ),
     ]);
@@ -106,8 +108,8 @@ fn get_simulation() -> Simulation<f64> {
 }
 
 #[test]
-fn bottleneck_test() {
-    let simulation = get_simulation();
+fn bottleneck_no_overtaking_test() {
+    let simulation = get_simulation(false);
     let preprocess_data = simulation.preprocess().unwrap();
     let weights = simulation
         .get_network()
@@ -158,6 +160,87 @@ fn bottleneck_test() {
     }
 
     let expected_out_bottleneck_times = vec![0., 0., 1., 3., 4., 0.];
+    for (agent_res, &exp_t) in agent_results
+        .iter()
+        .zip(expected_out_bottleneck_times.iter())
+    {
+        let t = agent_res.mode_results().as_trip().unwrap().legs[0]
+            .class
+            .as_road()
+            .unwrap()
+            .out_bottleneck_time;
+        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+    }
+
+    let weights = results
+        .iteration_results
+        .network_weights()
+        .get_road_network()
+        .unwrap();
+    let edge_weight = &weights[(0, edge_index(0))];
+    let TTF::Piecewise(ttf) = edge_weight else {
+        panic!("TTF should be piecewise");
+    };
+    assert_eq!(
+        ttf.period(),
+        (Time(0.), Time(50.)),
+        "The period of the TTF should be equal to the period of the simulation"
+    );
+}
+
+#[test]
+fn bottleneck_overtaking_test() {
+    let simulation = get_simulation(true);
+    let preprocess_data = simulation.preprocess().unwrap();
+    let weights = simulation
+        .get_network()
+        .get_free_flow_weights(&preprocess_data.network);
+    let results = simulation
+        .run_iteration(&weights, None, 1, &preprocess_data)
+        .unwrap();
+    let agent_results = results.iteration_results.agent_results();
+
+    // Departure times: 0, 3, 4, 5, 10, 21.
+    // Edge 1 entry times: 0, 3, 5, 7, 10, 21.
+    // Travel time on edge 1 is always 1 second.
+    // Edge 1 exit reached: 1, 4, 6, 8, 11, 22.
+    // Edge 1 exit times: 1, 4, 6, 8, 11, 22.
+    // Edge 2 entry times: 1, 5, 9, 13, 17, 22.
+    // Travel time on edge 2 is always 1 second.
+    // Arrival times: 2, 6, 10, 14, 18, 23.
+    //
+    // Total travel times: 2, 3, 6, 9, 8, 2.
+
+    let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
+    for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
+        let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
+        assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
+    }
+
+    let expected_in_bottleneck_times = vec![0., 1., 4., 7., 6., 0.];
+    for (agent_res, &exp_t) in agent_results
+        .iter()
+        .zip(expected_in_bottleneck_times.iter())
+    {
+        let t = agent_res.mode_results().as_trip().unwrap().legs[0]
+            .class
+            .as_road()
+            .unwrap()
+            .in_bottleneck_time;
+        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+    }
+
+    let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
+    for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
+        let t = agent_res.mode_results().as_trip().unwrap().legs[0]
+            .class
+            .as_road()
+            .unwrap()
+            .road_time;
+        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+    }
+
+    let expected_out_bottleneck_times = vec![0., 0., 0., 0., 0., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())

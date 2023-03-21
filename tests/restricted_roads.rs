@@ -40,6 +40,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
+                true,
             ),
         ),
         (
@@ -52,6 +53,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
+                true,
             ),
         ),
         (
@@ -64,6 +66,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
+                true,
             ),
         ),
         (
@@ -76,6 +79,7 @@ fn get_simulation() -> Simulation<f64> {
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
+                true,
             ),
         ),
     ]);

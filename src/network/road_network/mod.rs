@@ -177,6 +177,10 @@ pub struct RoadEdge<T> {
     #[serde(default = "Time::zero")]
     #[schemars(default = "default_time_schema")]
     constant_travel_time: Time<T>,
+    /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
+    /// different outgoing edge).
+    #[serde(default)]
+    overtaking: bool,
 }
 
 impl<T: TTFNum> RoadEdge<T> {
@@ -189,6 +193,7 @@ impl<T: TTFNum> RoadEdge<T> {
         speed_density: SpeedDensityFunction<T>,
         bottleneck_flow: Flow<T>,
         constant_travel_time: Time<T>,
+        overtaking: bool,
     ) -> Self {
         RoadEdge {
             base_speed,
@@ -197,7 +202,14 @@ impl<T: TTFNum> RoadEdge<T> {
             speed_density,
             bottleneck_flow,
             constant_travel_time,
+            overtaking,
         }
+    }
+
+    /// Returns `true` if vehicles are allowed to overtake each other at the edge's  exit
+    /// bottleneck.
+    pub fn overtaking_is_allowed(&self) -> bool {
+        self.overtaking
     }
 
     /// Return the travel time for the running part of the edge for a given vehicle, given the
@@ -506,6 +518,7 @@ mod tests {
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_flow: Flow(f64::INFINITY),
             constant_travel_time: Time(10.),
+            overtaking: false,
         };
         let vehicle = Vehicle::new(
             Length(10.),

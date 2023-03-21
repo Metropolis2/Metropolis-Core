@@ -19,7 +19,8 @@
           "speed_density": {
             "type": "FreeFlow"
           },
-          "bottleneck_flow": 1.0
+          "bottleneck_flow": 1.0,
+          "overtaking": true
         }
       ],
       [
@@ -37,7 +38,8 @@
               "beta": 1.0
             }
           },
-          "constant_travel_time": 5.0
+          "constant_travel_time": 5.0,
+          "overtaking": false
         }
       ],
       [
