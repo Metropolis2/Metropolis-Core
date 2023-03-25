@@ -43,7 +43,7 @@
 						<th scope="col" rowspan="2" class="text-center">Surplus</th>
 						<th scope="col" colspan="2" class="text-center">No Trip</th>
 						<th scope="col" colspan="7" class="text-center">Trips</th>
-						<th scope="col" colspan="19" class="text-center">Road Legs</th>
+						<th scope="col" colspan="20" class="text-center">Road Legs</th>
 						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
 					</tr>
 					<tr class="second">
@@ -144,7 +144,7 @@
 									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_diff.mean()) }}</td>
 									{% match rlr.length_diff %}
 										{% when Some with (distr) %}
-										<td class="text-center">{{ "{:.2}"|format(distr.mean()) }}</td>
+										<td class="text-center">{{ "{:.2}"|format(distr.mean().0) }}</td>
 										{% when None %}
 										<td class="text-center">N/A</td>
 									{% endmatch %}
