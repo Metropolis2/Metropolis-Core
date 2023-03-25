@@ -358,7 +358,10 @@ impl<T: TTFNum> Simulation<T> {
         let road_results = if trip_entries.is_empty() {
             None
         } else {
-            Some(AggregateTripResults::from_agent_results(trip_entries))
+            Some(AggregateTripResults::from_agent_results(
+                trip_entries,
+                &self.network,
+            ))
         };
         let cst_results = if cst_utilities.is_empty() {
             None

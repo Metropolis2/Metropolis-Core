@@ -13,6 +13,7 @@ mod weights;
 use std::ops::{Deref, Index};
 
 use anyhow::Result;
+use hashbrown::HashSet;
 use log::debug;
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
@@ -465,6 +466,29 @@ impl<T: TTFNum> RoadNetwork<T> {
                     .length
             })
             .sum()
+    }
+
+    /// Returns the length of the first route that is not part of the second route.
+    pub fn route_length_diff(
+        &self,
+        first: impl Iterator<Item = EdgeIndex>,
+        second: impl Iterator<Item = EdgeIndex>,
+    ) -> Length<T> {
+        let second_edges: HashSet<EdgeIndex> = second.collect();
+        first
+            .filter_map(|e| {
+                if second_edges.contains(&e) {
+                    None
+                } else {
+                    Some(
+                        self.graph
+                            .edge_weight(e)
+                            .expect("The route is incompatible with the road network.")
+                            .length,
+                    )
+                }
+            })
+            .sum::<Length<T>>()
     }
 }
 

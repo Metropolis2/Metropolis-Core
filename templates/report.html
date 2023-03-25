@@ -78,6 +78,7 @@
 						<th scope="col" class="text-center">Mean utility</th>
 						<th scope="col" class="text-center">Mean expected travel time</th>
 						<th scope="col" class="text-center">Mean expected travel time difference</th>
+						<th scope="col" class="text-center">Mean length difference (m)</th>
 						<!-- VIRTUAL LEGS -->
 						<th scope="col" class="text-center"># Legs</th>
 						<th scope="col" class="text-center"># Trips (1+ virtual leg)</th>
@@ -141,8 +142,14 @@
 									<td class="text-center">{{ "{:.4}"|format(rlr.utility.mean().0) }}</td>
 									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_diff.mean()) }}</td>
+									{% match rlr.length_diff %}
+										{% when Some with (distr) %}
+										<td class="text-center">{{ "{:.2}"|format(distr.mean()) }}</td>
+										{% when None %}
+										<td class="text-center">N/A</td>
+									{% endmatch %}
 									{% when None %}
-									{% for _ in 0..19 %}
+									{% for _ in 0..20 %}
 									<td class="text-center">N/A</td>
 									{% endfor %}
 								{% endmatch %}

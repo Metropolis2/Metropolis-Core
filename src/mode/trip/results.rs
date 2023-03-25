@@ -15,6 +15,8 @@ use super::{Leg, LegType, TravelingMode};
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::mode::ModeIndex;
+use crate::network::road_network::RoadNetwork;
+use crate::network::Network;
 use crate::units::{Distribution, Length, Time, Utility};
 
 /// The results for a [LegType::Road].
@@ -332,11 +334,16 @@ pub struct AggregateRoadLegResults<T> {
     pub exp_travel_time: Distribution<Time<T>>,
     /// Distribution of relative difference between expected travel time and actual travel time.
     pub exp_travel_time_diff: Distribution<T>,
+    /// Distribution of length of the current route that was not used in the previous route.
+    pub length_diff: Option<Distribution<Length<T>>>,
 }
 
 impl<T: TTFNum> AggregateRoadLegResults<T> {
     /// Returns [AggregateRoadLegResults] from the results of an iteration.
-    fn from_agent_results(results: &RoadAgentResults<'_, T>) -> Option<Self> {
+    fn from_agent_results(
+        results: &RoadAgentResults<'_, T>,
+        road_network: Option<&RoadNetwork<T>>,
+    ) -> Option<Self> {
         /// Return a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
         fn get_distribution<U, V: TTFNum, F>(
             results: &RoadAgentResults<'_, U>,
@@ -356,6 +363,36 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
                     })
             }))
             .unwrap()
+        }
+        /// Return a [Distribution] by applying a function over [RoadLegResults] and the previous
+        /// iteration's [RoadLegResults].
+        fn get_distribution_with_prev<
+            U,
+            V: TTFNum,
+            F: Fn(&RoadLegResults<U>, &RoadLegResults<U>) -> V,
+        >(
+            results: &RoadAgentResults<'_, U>,
+            func: F,
+        ) -> Option<Distribution<V>> {
+            if results[0].2.is_none() {
+                None
+            } else {
+                Distribution::from_iterator(results.iter().flat_map(|(_, r, prev_r_opt)| {
+                    let prev_r = prev_r_opt.unwrap();
+                    r.legs
+                        .iter()
+                        .zip(prev_r.legs.iter())
+                        .flat_map(
+                            |(leg_r, prev_leg_r)| match (&leg_r.class, &prev_leg_r.class) {
+                                (
+                                    LegTypeResults::Road(road_leg_r),
+                                    LegTypeResults::Road(prev_road_leg_r),
+                                ) => Some(func(road_leg_r, prev_road_leg_r)),
+                                _ => None,
+                            },
+                        )
+                }))
+            }
         }
         let (count, mode_count_one, mode_count_all) =
             results.iter().fold((0, 0, 0), |acc, (m, _, _)| {
@@ -406,6 +443,12 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
                 T::zero()
             }
         });
+        let length_diff = get_distribution_with_prev(results, |rlr, prev_rlr| {
+            road_network.unwrap().route_length_diff(
+                rlr.route.iter().map(|e| e.edge),
+                prev_rlr.route.iter().map(|e| e.edge),
+            )
+        });
         Some(AggregateRoadLegResults {
             count,
             mode_count_one,
@@ -426,6 +469,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             utility,
             exp_travel_time,
             exp_travel_time_diff,
+            length_diff,
         })
     }
 }
@@ -530,7 +574,7 @@ pub type RoadAgentResults<'a, T> = Vec<(
 
 impl<T: TTFNum> AggregateTripResults<T> {
     /// Returns [AggregateTripResults] from the results of an iteration.
-    pub fn from_agent_results(results: RoadAgentResults<'_, T>) -> Self {
+    pub fn from_agent_results(results: RoadAgentResults<'_, T>, network: &Network<T>) -> Self {
         /// Return a [Distribution] by applying a function over [TravelingMode] and [TripResults].
         fn get_distribution<U, V: TTFNum, F: Fn(&TravelingMode<U>, &TripResults<U>) -> V>(
             results: &RoadAgentResults<'_, U>,
@@ -574,7 +618,10 @@ impl<T: TTFNum> AggregateTripResults<T> {
             utility,
             expected_utility,
             dep_time_shift,
-            road_leg: AggregateRoadLegResults::from_agent_results(&results),
+            road_leg: AggregateRoadLegResults::from_agent_results(
+                &results,
+                network.get_road_network(),
+            ),
             virtual_leg: AggregateVirtualLegResults::from_agent_results(&results),
         }
     }
