@@ -26,6 +26,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [USER] Fix the progress bar of the within-day model.
+- [USER] Better formatting for the mean number of virtual legs in the HTML report.
 - [DEV] Fix how waiting times and road length are recorded so that expected travel times are more
   accurate.
 - [DEV] Fix how the spillback indicator is computed and reset.

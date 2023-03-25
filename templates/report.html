@@ -152,7 +152,7 @@
 									<td class="text-center">{{ vlr.count }}</td>
 									<td class="text-center">{{ vlr.mode_count_one }}</td>
 									<td class="text-center">{{ vlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{}"|format(vlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(vlr.count_distribution.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.departure_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.arrival_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.travel_time.mean()) }}</td>
