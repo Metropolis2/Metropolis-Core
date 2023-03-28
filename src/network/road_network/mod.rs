@@ -366,16 +366,21 @@ impl<T: TTFNum> RoadNetwork<T> {
         preprocess_data: &RoadNetworkPreprocessingData<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
-        self.compute_skims_inner(weights, &preprocess_data.od_pairs, parameters)
+        self.compute_skims_inner(weights, &preprocess_data.od_pairs, &parameters.contraction)
     }
 
     fn compute_skims_inner(
         &self,
         weights: &RoadNetworkWeights<T>,
         all_od_pairs: &Vec<ODPairs>,
-        parameters: &RoadNetworkParameters<T>,
+        parameters: &ContractionParameters,
     ) -> Result<RoadNetworkSkims<T>> {
         let mut skims = Vec::with_capacity(all_od_pairs.len());
+        assert_eq!(
+            all_od_pairs.len(),
+            weights.len(),
+            "The road-network weights are incomatible with the numbe of unique vehicles"
+        );
         for uvehicle_id in 0..all_od_pairs.len() {
             let od_pairs = &all_od_pairs[uvehicle_id];
             if od_pairs.is_empty() {
@@ -389,7 +394,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             let hierarchy = HierarchyOverlay::order(
                 &self.graph,
                 |edge_id| weights[(uvehicle_id, edge_id)].clone(),
-                parameters.contraction.clone(),
+                parameters.clone(),
             );
             debug!(
                 "Number of edges in the Hierarchy Overlay: {}",
@@ -528,6 +533,7 @@ pub struct RoadNetworkParameters<T> {
 #[cfg(test)]
 mod tests {
     use hashbrown::HashSet;
+    use petgraph::graph::edge_index;
 
     use super::vehicle::SpeedFunction;
     use super::*;
@@ -623,6 +629,63 @@ mod tests {
         assert_eq!(
             edge.get_travel_time(Length(3200.), &vehicle),
             Time(200.) + Time(10.)
+        );
+    }
+
+    #[test]
+    fn restricted_edges_test() {
+        // Check that the node ids are still valid in the contracted graph.
+        // Build a graph 0 -> 1 -> 2.
+        // Edge 0 (0 -> 1) is forbidden.
+        let mut graph = DiGraph::new();
+        let n0 = graph.add_node(RoadNode {});
+        let n1 = graph.add_node(RoadNode {});
+        let n2 = graph.add_node(RoadNode {});
+        graph.add_edge(
+            n0,
+            n1,
+            RoadEdge::new(
+                Speed(1.0),
+                Length(1.0),
+                1,
+                SpeedDensityFunction::FreeFlow,
+                Flow(1.0),
+                Time(0.0),
+                true,
+            ),
+        );
+        graph.add_edge(
+            n1,
+            n2,
+            RoadEdge::new(
+                Speed(1.0),
+                Length(1.0),
+                1,
+                SpeedDensityFunction::FreeFlow,
+                Flow(1.0),
+                Time(0.0),
+                true,
+            ),
+        );
+        let vehicle = Vehicle::new(
+            Length(1.0),
+            PCE(1.0),
+            SpeedFunction::Base,
+            HashSet::new(),
+            [edge_index(0)].into_iter().collect(),
+        );
+        let network = RoadNetwork::new(graph, vec![vehicle.clone()]);
+        let weights =
+            network.get_free_flow_weights_inner(&UniqueVehicles::from_vehicles(&[vehicle]));
+        debug_assert!(weights[0][0].get_min().is_infinite());
+        let all_od_pairs = vec![ODPairs::from_vec(vec![(n1, n2)])];
+        let skims = network
+            .compute_skims_inner(&weights, &all_od_pairs, &Default::default())
+            .unwrap();
+        let skim = skims[0].as_ref().unwrap();
+        assert_eq!(
+            skim.profile_query(n1, n2).unwrap(),
+            Some(&TTF::Constant(Time(1.0)))
         );
     }
 }

@@ -13,6 +13,7 @@ use hashbrown::HashMap;
 use log::warn;
 use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
+use petgraph::visit::EdgeRef;
 use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
 use super::vehicle::Vehicle;
@@ -732,28 +733,34 @@ impl<T: TTFNum> RoadNetworkState<T> {
             .unique_vehicles
             .iter_uniques(&network.vehicles)
         {
-            let edge_refs_iter = network.graph.edge_weights();
+            let edge_refs_iter = network.graph.edge_references();
             let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs_iter) {
-                let road_ttf = match &funcs.road {
-                    XYF::Piecewise(road_pwl_length) => {
-                        let road_pwl_ttf =
-                            road_pwl_length.map(|l| edge_ref.get_travel_time(l, vehicle));
-                        if road_pwl_ttf.is_cst() {
-                            TTF::Constant(road_pwl_ttf.y_at_index(0))
-                        } else {
-                            let mut road_ttf = road_pwl_ttf.to_ttf();
-                            road_ttf.ensure_fifo();
-                            TTF::Piecewise(road_ttf)
+                if vehicle.can_access(edge_ref.id()) {
+                    let road_ttf = match &funcs.road {
+                        XYF::Piecewise(road_pwl_length) => {
+                            let road_pwl_ttf = road_pwl_length
+                                .map(|l| edge_ref.weight().get_travel_time(l, vehicle));
+                            if road_pwl_ttf.is_cst() {
+                                TTF::Constant(road_pwl_ttf.y_at_index(0))
+                            } else {
+                                let mut road_ttf = road_pwl_ttf.to_ttf();
+                                road_ttf.ensure_fifo();
+                                TTF::Piecewise(road_ttf)
+                            }
                         }
-                    }
-                    XYF::Constant(l) => TTF::Constant(edge_ref.get_travel_time(*l, vehicle)),
-                };
-                let mut ttf = funcs.entry.link(&road_ttf);
-                ttf.ensure_fifo();
-                ttf = ttf.link(&funcs.exit);
-                ttf.ensure_fifo();
-                vehicle_weights.push(ttf);
+                        XYF::Constant(l) => {
+                            TTF::Constant(edge_ref.weight().get_travel_time(*l, vehicle))
+                        }
+                    };
+                    let mut ttf = funcs.entry.link(&road_ttf);
+                    ttf.ensure_fifo();
+                    ttf = ttf.link(&funcs.exit);
+                    ttf.ensure_fifo();
+                    vehicle_weights.push(ttf);
+                } else {
+                    vehicle_weights.push(TTF::Constant(Time::infinity()));
+                }
             }
         }
         weights

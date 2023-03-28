@@ -38,6 +38,16 @@ impl<T> RoadNetworkWeights<T> {
         RoadNetworkWeights(vehicle_weights)
     }
 
+    /// Returns `true` if the [RoadNetworkWeights] is empty, i.e., there is no unique vehicle.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the number of unique vehicles in the weights.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     /// Returns the shape of the RoadNetworkWeights, i.e., a tuple with the number of unique
     /// vehicles and the number of edges.
     pub fn shape(&self) -> (usize, usize) {
