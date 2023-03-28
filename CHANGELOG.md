@@ -28,6 +28,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] Fix the progress bar of the within-day model.
 - [USER] Better formatting for the mean number of virtual legs in the HTML report.
+- [USER] Improve TCH speed when some edges are restricted by discarding them from the graph.
 - [DEV] Fix how waiting times and road length are recorded so that expected travel times are more
   accurate.
 - [DEV] Fix how the spillback indicator is computed and reset.

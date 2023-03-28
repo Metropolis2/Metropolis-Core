@@ -212,9 +212,16 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     where
         F: FnMut(EdgeIndex) -> TTF<T>,
     {
-        let construct_graph = graph.map(
-            |node_id, _| ToContractNode::new(node_id),
-            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id), edge_id),
+        let construct_graph = graph.filter_map(
+            |node_id, _| Some(ToContractNode::new(node_id)),
+            |edge_id, _| {
+                let c = edge_cost(edge_id);
+                if c.get_min().is_finite() {
+                    Some(ToContractEdge::new_original(edge_cost(edge_id), edge_id))
+                } else {
+                    None
+                }
+            },
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
         contraction.order()
