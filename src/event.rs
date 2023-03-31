@@ -12,6 +12,7 @@ use anyhow::Result;
 use ttf::TTFNum;
 
 use crate::agent::Agent;
+use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::RoadNetworkState;
 use crate::network::{Network, NetworkSkim};
 use crate::progress_bar::MetroProgressBar;
@@ -36,9 +37,15 @@ pub struct EventInput<'a, T> {
     pub(crate) progress_bar: MetroProgressBar,
 }
 
+/// Memory allocations that can be re-used when executing events.
+#[derive(Clone, Debug, Default)]
+pub struct EventAlloc<T: TTFNum> {
+    pub(crate) ea_alloc: EAAllocation<T>,
+}
+
 /// Trait to represent an event (e.g., from an agent, a vehicle, a network infrastructure) that can
 /// be executed.
-pub trait Event<T>: Debug {
+pub trait Event<T: TTFNum>: Debug {
     /// Executes the event.
     ///
     /// Returns `true` if an agent reached his / her destination during the event execution.
@@ -46,6 +53,7 @@ pub trait Event<T>: Debug {
         self: Box<Self>,
         input: &'event mut EventInput<'sim, T>,
         road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
         events: &'event mut EventQueue<T>,
     ) -> Result<bool>;
     /// Returns the time at which the event occurs.
@@ -153,6 +161,7 @@ mod tests {
             self: Box<Self>,
             _input: &'event mut EventInput<'sim, f64>,
             _road_network_state: &'event mut RoadNetworkState<f64>,
+            _alloc: &'event mut EventAlloc<f64>,
             _events: &'event mut EventQueue<f64>,
         ) -> Result<bool> {
             Ok(false)

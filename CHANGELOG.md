@@ -22,6 +22,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Add length of route difference in the output.
 - [DEV] Add a debug check that all agents have reached their destination.
 - [DEV] Add more debug checks for the routes computed by the contraction hierarchies.
+- [DEV] Use a memory allocation for events to speed-up their executions.
 
 ### Changed
 

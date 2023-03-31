@@ -27,7 +27,7 @@ use self::results::{
     SimulationResults,
 };
 use crate::agent::{agent_index, Agent};
-use crate::event::EventInput;
+use crate::event::{EventAlloc, EventInput};
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::RoadNetwork;
@@ -286,6 +286,7 @@ impl<T: TTFNum> Simulation<T> {
             agent_results,
             progress_bar: bp.clone(),
         };
+        let mut alloc = EventAlloc::default();
         while let Some(event) = events.pop() {
             nb_events += 1;
             if nb_events % UPDATE == 0 {
@@ -294,6 +295,7 @@ impl<T: TTFNum> Simulation<T> {
             let agent_has_arrived = event.execute(
                 &mut input,
                 state.get_mut_road_network().unwrap(),
+                &mut alloc,
                 &mut events,
             )?;
             if agent_has_arrived {

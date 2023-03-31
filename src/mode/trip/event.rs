@@ -17,7 +17,7 @@ use ttf::TTFNum;
 use super::results::LegResults;
 use super::{RoadLeg, TravelingMode};
 use crate::agent::AgentIndex;
-use crate::event::{Event, EventInput, EventQueue};
+use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim};
@@ -279,6 +279,7 @@ impl<T: TTFNum> VehicleEvent<T> {
         self,
         input: &'event mut EventInput<'sim, T>,
         road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
         events: &'event mut EventQueue<T>,
     ) -> Result<bool> {
         // Unwrap the network, skims and preprocess data into network variables.
@@ -348,8 +349,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.at_time,
                     vehicle_skims,
                     input.progress_bar.clone(),
-                    // TODO: Use an alloc.
-                    &mut Default::default(),
+                    &mut alloc.ea_alloc,
                 )?;
                 // Store the expected arrival time at destination in the results.
                 let road_leg_results = leg_results
@@ -393,6 +393,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     vehicle,
                     self.agent,
                     input,
+                    alloc,
                     events,
                 )?;
                 Some(self.into_next_step(Some(travel_time), trip))
@@ -429,6 +430,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.at_time,
                     vehicle,
                     input,
+                    alloc,
                     events,
                 )?;
                 Some(self.into_next_step(Some(leg.stopping_time), trip))
@@ -440,7 +442,7 @@ impl<T: TTFNum> VehicleEvent<T> {
         } {
             if next_event.at_time == current_time {
                 // Next event can be executed immediately.
-                return next_event.execute(input, road_network_state, events);
+                return next_event.execute(input, road_network_state, alloc, events);
             } else {
                 debug_assert!(next_event.at_time > current_time);
                 // Push next event to the queue.
@@ -456,9 +458,10 @@ impl<T: TTFNum> Event<T> for VehicleEvent<T> {
         self: Box<Self>,
         input: &'event mut EventInput<'sim, T>,
         road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
         events: &'event mut EventQueue<T>,
     ) -> Result<bool> {
-        (*self).execute(input, road_network_state, events)
+        (*self).execute(input, road_network_state, alloc, events)
     }
 
     fn get_time(&self) -> Time<T> {

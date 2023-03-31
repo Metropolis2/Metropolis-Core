@@ -20,7 +20,7 @@ use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
 use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData};
 use crate::agent::AgentIndex;
-use crate::event::{Event, EventInput, EventQueue};
+use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
 use crate::units::{Flow, Interval, Length, NoUnit, Time, PCE};
 
@@ -850,6 +850,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         vehicle: &'sim Vehicle<T>,
         agent_id: AgentIndex,
         event_input: &'event mut EventInput<'sim, T>,
+        event_alloc: &'event mut EventAlloc<T>,
         event_queue: &'event mut EventQueue<T>,
     ) -> Result<Time<T>> {
         let edge = &event_input.network.get_road_network().unwrap().graph[edge_index];
@@ -864,7 +865,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     // The vehicle entry has triggered the entry of a second vehicle.
                     // We can execute its event immediately.
                     debug_assert_eq!(event.get_time(), current_time);
-                    event.execute(event_input, self, event_queue)?;
+                    event.execute(event_input, self, event_alloc, event_queue)?;
                 }
                 Some(Either::Right(agent)) => {
                     // The given agent is pending to enter the edge.
@@ -895,6 +896,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 current_time,
                 vehicle,
                 event_input,
+                event_alloc,
                 event_queue,
             )?;
         }
@@ -914,6 +916,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         current_time: Time<T>,
         vehicle: &'sim Vehicle<T>,
         event_input: &'event mut EventInput<'sim, T>,
+        event_alloc: &'event mut EventAlloc<T>,
         event_queue: &'event mut EventQueue<T>,
     ) -> Result<()> {
         let edge = &mut self.graph[edge_index];
@@ -925,7 +928,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 if let Some((event, closing_time_opt)) = edge.open_exit_bottleneck(current_time) {
                     // The vehicle entry has triggered the entry of a second vehicle.
                     // We can execute its event immediately.
-                    event.execute(event_input, self, event_queue)?;
+                    event.execute(event_input, self, event_alloc, event_queue)?;
                     // No closing time should be returned because overtaking is disabled on this
                     // edge.
                     debug_assert!(closing_time_opt.is_none());
@@ -942,7 +945,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         }
         if let Some(event) = event_opt {
             // Execute the event of the release vehicle.
-            event.execute(event_input, self, event_queue)?;
+            event.execute(event_input, self, event_alloc, event_queue)?;
         }
         Ok(())
     }
@@ -964,6 +967,7 @@ impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
         self: Box<Self>,
         input: &'event mut EventInput<'sim, T>,
         road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
         events: &'event mut EventQueue<T>,
     ) -> Result<bool> {
         if road_network_state.pending_edges.get(&self.agent) != Some(&self.edge) {
@@ -989,7 +993,7 @@ impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
             }
             road_network_state.warnings += 1;
         }
-        event.execute(input, road_network_state, events)
+        event.execute(input, road_network_state, alloc, events)
     }
     fn get_time(&self) -> Time<T> {
         self.at_time
@@ -1012,6 +1016,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
         self: Box<Self>,
         input: &'event mut EventInput<'sim, T>,
         road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
         events: &'event mut EventQueue<T>,
     ) -> Result<bool> {
         let edge_state = &mut road_network_state.graph[self.edge_index];
@@ -1021,7 +1026,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                     Some(Either::Left(event)) => {
                         // Vehicle can enter.
                         debug_assert_eq!(self.at_time, event.get_time());
-                        event.execute(input, road_network_state, events)?;
+                        event.execute(input, road_network_state, alloc, events)?;
                     }
                     Some(Either::Right(agent)) => {
                         // The given agent is pending to enter the edge.
@@ -1046,7 +1051,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                     edge_state.open_exit_bottleneck(self.at_time)
                 {
                     debug_assert_eq!(self.at_time, event.get_time());
-                    event.execute(input, road_network_state, events)?;
+                    event.execute(input, road_network_state, alloc, events)?;
                     if let Some(closing_time) = closing_time_opt {
                         let bottleneck_event = Box::new(BottleneckEvent {
                             at_time: self.at_time + closing_time,
@@ -1055,7 +1060,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                         });
                         if closing_time.is_zero() {
                             // Execute immediately the bottleneck opening.
-                            bottleneck_event.execute(input, road_network_state, events)?;
+                            bottleneck_event.execute(input, road_network_state, alloc, events)?;
                         } else {
                             debug_assert!(closing_time.is_sign_positive());
                             // Push the bottleneck event to the queue.
