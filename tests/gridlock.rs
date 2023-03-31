@@ -127,6 +127,7 @@ fn get_simulation() -> Simulation<f64> {
                 recording_interval: Time(1.0),
                 spillback: true,
                 max_pending_duration: Time(10.0),
+                algorithm_type: Default::default(),
             }),
         },
         init_iteration_counter: 1,

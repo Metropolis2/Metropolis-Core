@@ -247,8 +247,7 @@ fn compute_free_flow_travel_times<T: TTFNum>(
 ) -> Result<Vec<ODTravelTimes<T>>> {
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
     let free_flow_weights = road_network.get_free_flow_weights_inner(unique_vehicles);
-    let skims =
-        road_network.compute_skims_inner(&free_flow_weights, od_pairs, &parameters.contraction)?;
+    let skims = road_network.compute_skims_inner(&free_flow_weights, od_pairs, parameters)?;
     for agent in agents {
         for mode in agent.iter_modes() {
             if let Mode::Trip(trip_mode) = mode {

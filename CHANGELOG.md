@@ -10,10 +10,13 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
-- [USER] Add road-network parameter `max_pending_duration` to specify the delay after which vehicles
-  are forced to enter the next edge in case of spillback.
-- [USER] Add edge parameter `overtaking` to allow vehicles to overtake each other at the edge's exit
-  bottleneck.
+- [INPUT] Add road-network parameter `max_pending_duration` to specify the delay after which
+  vehicles are forced to enter the next edge in case of spillback.
+- [INPUT] Add edge parameter `overtaking` to allow vehicles to overtake each other at the edge's
+  exit bottleneck.
+- [INPUT] Add road-network parameter `algorithm_type` to choose the algoritm used for
+  origin-destination profile queries (TCH or Intersect). Default is to let the simulator guess the
+  best algorithm.
 - [USER] Add the current time of the events in the within-day model progress bar.
 - [USER] Ignore warnings when more than 20 have already been emitted.
 - [USER] Add length of route difference in the output.

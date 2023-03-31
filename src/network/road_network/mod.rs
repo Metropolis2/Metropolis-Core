@@ -366,14 +366,14 @@ impl<T: TTFNum> RoadNetwork<T> {
         preprocess_data: &RoadNetworkPreprocessingData<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
-        self.compute_skims_inner(weights, &preprocess_data.od_pairs, &parameters.contraction)
+        self.compute_skims_inner(weights, &preprocess_data.od_pairs, parameters)
     }
 
     fn compute_skims_inner(
         &self,
         weights: &RoadNetworkWeights<T>,
         all_od_pairs: &Vec<ODPairs>,
-        parameters: &ContractionParameters,
+        parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
         let mut skims = Vec::with_capacity(all_od_pairs.len());
         assert_eq!(
@@ -394,7 +394,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             let hierarchy = HierarchyOverlay::order(
                 &self.graph,
                 |edge_id| weights[(uvehicle_id, edge_id)].clone(),
-                parameters.clone(),
+                parameters.contraction.clone(),
             );
             debug!(
                 "Number of edges in the Hierarchy Overlay: {}",
@@ -405,11 +405,28 @@ impl<T: TTFNum> RoadNetwork<T> {
                 hierarchy.complexity()
             );
             let mut skim = RoadNetworkSkim::new(hierarchy);
-            debug!("Computing search spaces");
-            let search_spaces =
-                skim.get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
-            debug!("Computing profile queries");
-            skim.pre_compute_profile_queries(od_pairs.pairs(), &search_spaces)?;
+            let use_intersect = match parameters.algorithm_type {
+                AlgorithmType::Intersect => true,
+                AlgorithmType::Tch => false,
+                AlgorithmType::Best => {
+                    let nb_unique_origins = od_pairs.unique_origins().len();
+                    let nb_unique_destinations = od_pairs.unique_destinations().len();
+                    // Use Intersect if unique origins and unique destinations both represent less
+                    // than 5 % of the graph nodes.
+                    std::cmp::max(nb_unique_origins, nb_unique_destinations) * 20
+                        <= self.graph.node_count()
+                }
+            };
+            if use_intersect {
+                debug!("Computing search spaces");
+                let search_spaces = skim
+                    .get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
+                debug!("Computing profile queries");
+                skim.pre_compute_profile_queries_intersect(od_pairs.pairs(), &search_spaces)?;
+            } else {
+                debug!("Computing profile queries");
+                skim.pre_compute_profile_queries_tch(od_pairs.pairs())?;
+            }
             skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))
@@ -508,6 +525,19 @@ const fn default_is_true() -> bool {
     true
 }
 
+/// Algorithm type to use for the profile queries.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum AlgorithmType {
+    /// Try to guess which algorithm will be the fastest.
+    #[default]
+    Best,
+    /// Time-dependent contraction hierarchies (TCH): long pre-processing time, fast queries.
+    #[serde(rename = "TCH")]
+    Tch,
+    /// Many-to-many TCH: Longest pre-processing time, fastest queries.
+    Intersect,
+}
+
 /// Set of parameters related to a [RoadNetwork].
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
@@ -522,12 +552,19 @@ pub struct RoadNetworkParameters<T> {
     pub contraction: ContractionParameters,
     /// Time interval for which travel times are recorded at the edge level during the simulation.
     pub recording_interval: Time<T>,
-    /// Maximum amount of time a vehicle can be pending to enter the next edge.
-    pub max_pending_duration: Time<T>,
     /// If `true` the total headways of vehicles on each edge of the road network is limited by the
     /// total length of the edges.
     #[serde(default = "default_is_true")]
     pub spillback: bool,
+    /// Maximum amount of time a vehicle can be pending to enter the next edge.
+    pub max_pending_duration: Time<T>,
+    /// Algorithm type to use when computing the origin-destination travel-time functions.
+    /// Possible values are: "Best" (default), "Intersect" and "TCH".
+    ///
+    /// Intersect is recommanded when the number of unique origins and destinations represent a
+    /// relatively small part of the total number of nodes in the graph.
+    #[serde(default)]
+    pub algorithm_type: AlgorithmType,
 }
 
 #[cfg(test)]
@@ -679,8 +716,15 @@ mod tests {
             network.get_free_flow_weights_inner(&UniqueVehicles::from_vehicles(&[vehicle]));
         debug_assert!(weights[0][0].get_min().is_infinite());
         let all_od_pairs = vec![ODPairs::from_vec(vec![(n1, n2)])];
+        let parameters = RoadNetworkParameters {
+            contraction: Default::default(),
+            recording_interval: Time(1.0),
+            spillback: false,
+            max_pending_duration: Time::zero(),
+            algorithm_type: AlgorithmType::Intersect,
+        };
         let skims = network
-            .compute_skims_inner(&weights, &all_od_pairs, &Default::default())
+            .compute_skims_inner(&weights, &all_od_pairs, &parameters)
             .unwrap();
         let skim = skims[0].as_ref().unwrap();
         assert_eq!(

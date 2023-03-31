@@ -96,6 +96,7 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
                 recording_interval: Time(1.0),
                 max_pending_duration: Time(f64::INFINITY),
                 spillback: false,
+                algorithm_type: Default::default(),
             }),
         },
         init_iteration_counter: 1,

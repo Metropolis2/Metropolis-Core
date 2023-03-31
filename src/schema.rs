@@ -180,6 +180,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
                 recording_interval: Time(300.0),
                 spillback: true,
                 max_pending_duration: Time(30.0),
+                algorithm_type: Default::default(),
                 contraction: Default::default(),
             }),
         },

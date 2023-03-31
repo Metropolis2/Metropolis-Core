@@ -5,6 +5,7 @@
       "recording_interval": 50.0,
       "spillback": true,
       "max_pending_duration": 20.0,
+      "algorithm_type": "Best",
       "contraction": {
         "complexity_quotient_weight": 2.0,
         "edge_quotient_weight": 2.0,

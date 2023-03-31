@@ -10,11 +10,12 @@ use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
+use object_pool::Pool;
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
 use schemars::JsonSchema;
 use serde::Serialize;
-use tch::algo;
+use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
 
@@ -86,7 +87,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     ///     Engineering time-dependent many-to-many shortest paths computation.
     ///     _10th Workshop on Algorithmic Approaches for Transportation Modelling, Optimization,
     ///     and Systems (ATMOS'10)_, 2010 .
-    pub fn pre_compute_profile_queries(
+    pub fn pre_compute_profile_queries_intersect(
         &mut self,
         od_pairs: &HashMap<NodeIndex, HashSet<NodeIndex>>,
         search_spaces: &SearchSpaces<Time<T>>,
@@ -103,13 +104,68 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         );
         self.profile_query_cache = od_pairs
             .par_iter()
-            .flat_map_iter(|(&source, targets)| {
+            .map(|(&source, targets)| {
                 bp.inc(1);
-                targets.iter().map(move |&target| {
-                    let ttf = algo::intersect_profile_query(source, target, search_spaces)?;
-                    Ok(((source, target), ttf))
-                })
+                let target_ttfs = targets
+                    .iter()
+                    .map(move |&target| {
+                        let ttf = algo::intersect_profile_query(source, target, search_spaces)?;
+                        Ok((target, ttf))
+                    })
+                    .collect::<Result<HashMap<NodeIndex, Option<TTF<Time<T>>>>>>()?;
+                Ok((source, target_ttfs))
             })
+            .collect::<Result<ODTravelTimeFunctions<T>>>()?;
+        bp.finish_and_clear();
+        Ok(())
+    }
+
+    /// Compute profile queries for a set of origin-destination pairs using TCH.
+    ///
+    /// The origin-destination pairs must be given as a [HashMap] where the keys are the source
+    /// nodes and the values are a [HashSet] of target nodes.
+    ///
+    /// The profile queries are run in parallel (one thread for each origin node) and the resulting
+    /// travel-time functions are stored in a cache.
+    pub fn pre_compute_profile_queries_tch(
+        &mut self,
+        od_pairs: &HashMap<NodeIndex, HashSet<NodeIndex>>,
+    ) -> Result<()> {
+        let bp = if log_enabled!(Level::Info) {
+            ProgressBar::new(od_pairs.len() as u64)
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:60} ETA: {eta}")
+                .unwrap(),
+        );
+        let pool: Pool<TCHProfileAlloc<T>> =
+            Pool::new(rayon::current_num_threads(), Default::default);
+        self.profile_query_cache = od_pairs
+            .par_iter()
+            .map_init(
+                || pool.pull(Default::default),
+                |alloc, (&source, targets)| {
+                    bp.inc(1);
+                    let target_ttfs = targets
+                        .iter()
+                        .map(|&target| {
+                            let (profile_alloc, candidate_map) = alloc.get_mut_variables();
+                            let ttf = self.hierarchy_overlay.profile_query(
+                                source,
+                                target,
+                                &mut profile_alloc.interval_search,
+                                &mut profile_alloc.profile_search,
+                                candidate_map,
+                            );
+                            Ok((target, ttf))
+                        })
+                        .collect::<Result<HashMap<NodeIndex, Option<TTF<Time<T>>>>>>()?;
+                    Ok((source, target_ttfs))
+                },
+            )
             .collect::<Result<ODTravelTimeFunctions<T>>>()?;
         bp.finish_and_clear();
         Ok(())
@@ -122,8 +178,9 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     /// Return `None` if there is no route between the two nodes.
     pub fn profile_query(&self, from: NodeIndex, to: NodeIndex) -> Result<Option<&TTF<Time<T>>>> {
         self.profile_query_cache
-            .get(&(from, to))
-            .map(|o| o.as_ref())
+            .get(&from)
+            .and_then(|targets| targets.get(&to))
+            .map(|opt_ttf| opt_ttf.as_ref())
             .ok_or_else(|| {
                 anyhow!(
                     "The profile query from {:?} to {:?} is not in the cache",
@@ -180,12 +237,14 @@ impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
         for vehicle_skims in skims.0 {
             let mut serialized_vehicle_skims = Vec::new();
             if let Some(vehicle_skims) = vehicle_skims {
-                for ((origin, destination), ttf) in vehicle_skims.profile_query_cache.into_iter() {
-                    serialized_vehicle_skims.push(ODPairTTF {
-                        origin: origin.index(),
-                        destination: destination.index(),
-                        ttf,
-                    });
+                for (origin, destination_ttfs) in vehicle_skims.profile_query_cache.into_iter() {
+                    for (destination, ttf) in destination_ttfs.into_iter() {
+                        serialized_vehicle_skims.push(ODPairTTF {
+                            origin: origin.index(),
+                            destination: destination.index(),
+                            ttf,
+                        });
+                    }
                 }
             }
             serialized_skims.push(serialized_vehicle_skims);
@@ -195,11 +254,29 @@ impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
 }
 
 /// Map for some origin nodes, an OD-level travel-time function, for some destination nodes.
-type ODTravelTimeFunctions<T> = HashMap<(NodeIndex, NodeIndex), Option<TTF<Time<T>>>>;
+type ODTravelTimeFunctions<T> = HashMap<NodeIndex, HashMap<NodeIndex, Option<TTF<Time<T>>>>>;
 
 /// A memory allocation that holds the structures required during earliest arrival queries.
 #[derive(Clone, Debug, Default)]
 pub struct EAAllocation<T: TTFNum> {
     ea_alloc: DefaultEarliestArrivalAllocation<Time<T>>,
     candidate_map: HashMap<NodeIndex, (Time<T>, Time<T>)>,
+}
+
+/// A memory allocation for TCH profile queries.
+#[derive(Clone, Debug, Default)]
+struct TCHProfileAlloc<T: TTFNum> {
+    profile_alloc: DefaultTCHProfileAllocation<Time<T>>,
+    candidate_map: HashMap<NodeIndex, Time<T>>,
+}
+
+impl<T: TTFNum> TCHProfileAlloc<T> {
+    fn get_mut_variables(
+        &mut self,
+    ) -> (
+        &mut DefaultTCHProfileAllocation<Time<T>>,
+        &mut HashMap<NodeIndex, Time<T>>,
+    ) {
+        (&mut self.profile_alloc, &mut self.candidate_map)
+    }
 }
