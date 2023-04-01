@@ -53,7 +53,7 @@ impl<Y: PartialOrd + Copy> MinMax<Y> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct DeserPwlXYF<X, Y> {
-    points: Vec<Y>,
+    points: Vec<Option<Y>>,
     start_x: X,
     interval_x: X,
 }
@@ -73,9 +73,15 @@ impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
                 value.interval_x
             ));
         }
-        let (&min, &max) = value.points.iter().minmax().into_option().unwrap();
+        // Deserialize `None` as infinity.
+        let points: Vec<_> = value
+            .points
+            .into_iter()
+            .map(|opt_y| opt_y.unwrap_or(Y::infinity()))
+            .collect();
+        let (&min, &max) = points.iter().minmax().into_option().unwrap();
         let pwl_xyf = PwlXYF {
-            points: value.points,
+            points,
             min,
             max,
             start_x: value.start_x,

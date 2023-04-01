@@ -34,6 +34,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Better formatting for the mean number of virtual legs in the HTML report.
 - [USER] Improve TCH speed when some edges are restricted by discarding them from the graph.
 - [USER] Fix how the weights are computed for restricted edges.
+- [USER] Deserialize `null` or `None` values in the travel-time functions' points as `Infinity`.
 - [DEV] Fix how waiting times and road length are recorded so that expected travel times are more
   accurate.
 - [DEV] Fix how the spillback indicator is computed and reset.
