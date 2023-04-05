@@ -852,7 +852,11 @@ where
     ) -> bool {
         if let Some(key) = forw_key {
             let node_data = forw_data.get(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
+            if node_data
+                .extra
+                .map(|t| t + T::margin() < key)
+                .unwrap_or(false)
+            {
                 // The node is already stalled with a smaller value.
                 return true;
             }

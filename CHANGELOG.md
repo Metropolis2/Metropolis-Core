@@ -39,6 +39,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
   accurate.
 - [DEV] Fix how the spillback indicator is computed and reset.
 - [DEV] Add a margin when checking FIFO property to avoid false positive.
+- [DEV] In the TCH algorithms, never stall the source and target nodes (this prevented finding the
+  best path when the source or the target was the candidate node).
+- [DEV] In the TCH algorithms, use a margin when checking if a node can be stalled to prevent
+  incorrect stalling because of rounding errors.
 
 ## [0.4.0] - 2023-03-12
 

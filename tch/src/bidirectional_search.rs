@@ -163,13 +163,17 @@ where
         match self.current_direction {
             Direction::Outgoing => {
                 if let Some((node, key)) = self.forward_search.pop_queue() {
-                    if ops.can_be_stalled(
-                        node,
-                        Some(key),
-                        None,
-                        self.forward_search.node_map_mut(),
-                        self.backward_search.node_map_mut(),
-                    ) {
+                    // The target node is not stalled so to make sure that the pre-settly check is
+                    // running on it.
+                    if Some(node) != query.target()
+                        && ops.can_be_stalled(
+                            node,
+                            Some(key),
+                            None,
+                            self.forward_search.node_map_mut(),
+                            self.backward_search.node_map_mut(),
+                        )
+                    {
                         return;
                     }
                     if let Some(back_label) = self.backward_search.get_data(&node) {
@@ -193,13 +197,17 @@ where
             }
             Direction::Incoming => {
                 if let Some((node, key)) = self.backward_search.pop_queue() {
-                    if ops.can_be_stalled(
-                        node,
-                        None,
-                        Some(key),
-                        self.forward_search.node_map_mut(),
-                        self.backward_search.node_map_mut(),
-                    ) {
+                    // The source node is not stalled so to make sure that the pre-settly check is
+                    // running on it.
+                    if query.sources().any(|s| s == node)
+                        && ops.can_be_stalled(
+                            node,
+                            None,
+                            Some(key),
+                            self.forward_search.node_map_mut(),
+                            self.backward_search.node_map_mut(),
+                        )
+                    {
                         return;
                     }
                     if let Some(forw_label) = self.forward_search.get_data(&node) {
