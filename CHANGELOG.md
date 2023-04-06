@@ -17,6 +17,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] Add road-network parameter `algorithm_type` to choose the algoritm used for
   origin-destination profile queries (TCH or Intersect). Default is to let the simulator guess the
   best algorithm.
+- [INPUT] Network weights can be read directly from the output `weight_results.json.zst` (no need to
+  decompress the file). Using a decompressed JSON file is still possible.
 - [USER] Add the current time of the events in the within-day model progress bar.
 - [USER] Ignore warnings when more than 20 have already been emitted.
 - [USER] Add length of route difference in the output.

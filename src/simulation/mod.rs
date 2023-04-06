@@ -504,11 +504,19 @@ fn get_simulation_from_json_files(
 
 /// Deserializes [NetworkWeights] from a JSON file.
 fn get_weights_from_json_file(weights: &Path) -> NetworkWeights<f64> {
-    let mut bytes = Vec::new();
-    File::open(weights)
-        .unwrap_or_else(|err| panic!("Unable to open network weights file `{weights:?}`: {err}"))
-        .read_to_end(&mut bytes)
-        .unwrap_or_else(|err| panic!("Unable to read network weights file `{weights:?}`: {err}"));
+    let mut file = File::open(weights)
+        .unwrap_or_else(|err| panic!("Unable to open network weights file `{weights:?}`: {err}"));
+    let bytes = if weights.extension().and_then(|s| s.to_str()) == Some("zst") {
+        zstd::decode_all(&file).unwrap_or_else(|err| {
+            panic!("Unable to decode network weights file `{weights:?}`: {err}")
+        })
+    } else {
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap_or_else(|err| {
+            panic!("Unable to read network weights file `{weights:?}`: {err}")
+        });
+        bytes
+    };
     serde_json::from_slice(&bytes).expect("Unable to parse network weights")
 }
 
