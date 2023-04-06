@@ -7,7 +7,7 @@
 pub mod results;
 
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
@@ -400,21 +400,56 @@ impl<T: TTFNum> Simulation<T> {
         }
         updates
     }
+
+    /// Computes the pre-day choices, using the given [NetworkWeights] as initial weights of the
+    /// network, and stores the results in the output directory.
+    ///
+    /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
+    pub fn compute_and_store_choices(
+        &self,
+        init_weights: Option<NetworkWeights<T>>,
+        output_dir: &Path,
+    ) -> Result<()> {
+        // Initialize the global rayon thread pool.
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(self.parameters.nb_threads)
+            .build_global()
+            .unwrap();
+        let preprocess_data = self.preprocess()?;
+        let weights = if let Some(weights) = init_weights {
+            weights
+        } else {
+            self.network.get_free_flow_weights(&preprocess_data.network)
+        };
+        info!("Computing skims");
+        let skims = self.network.compute_skims(
+            &weights,
+            &preprocess_data.network,
+            &self.parameters.network,
+        )?;
+
+        info!("Running pre-day model");
+        let agent_results = self.run_pre_day_model(
+            &skims,
+            &preprocess_data,
+            None,
+            self.parameters.init_iteration_counter,
+        )?;
+        info!("Saving results");
+        let filename: PathBuf = [output_dir.to_str().unwrap(), "agent_results.json.zst"]
+            .iter()
+            .collect();
+        let mut writer = File::create(filename)?;
+        let buffer = serde_json::to_vec(&agent_results)?;
+        let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+        writer.write_all(&encoded_buffer)?;
+        info!("Done");
+        Ok(())
+    }
 }
 
-/// Deserialize a simulation from JSON input files, run it and store the results to a given output
-/// directory.
-pub fn run_simulation_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-    weights: Option<&Path>,
-    output: &Path,
-) -> Result<()> {
-    // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
-
-    // Initialize logging.
+/// Initializes logging to a file and terminal.
+fn initialize_logging(output: &Path) {
     let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
     let log_file = File::create(log_filename).expect("Failed to create log file");
     CombinedLogger::init(vec![
@@ -427,7 +462,14 @@ pub fn run_simulation_from_json_files(
         WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
     ])
     .expect("Failed to initialize logging");
+}
 
+/// Deserializes a simulation from JSON files.
+fn get_simulation_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+) -> Simulation<f64> {
     // Read input files.
     info!("Reading input files");
     let mut bytes = Vec::new();
@@ -456,23 +498,59 @@ pub fn run_simulation_from_json_files(
         None
     };
 
-    let weights: Option<NetworkWeights<f64>> = if let Some(weights) = weights {
-        let mut bytes = Vec::new();
-        File::open(weights)
-            .unwrap_or_else(|err| {
-                panic!("Unable to open network weights file `{weights:?}`: {err}")
-            })
-            .read_to_end(&mut bytes)
-            .unwrap_or_else(|err| {
-                panic!("Unable to read network weights file `{weights:?}`: {err}")
-            });
-        Some(serde_json::from_slice(&bytes).expect("Unable to parse network weights"))
-    } else {
-        None
-    };
-
     let network = Network::new(road_network);
-    let simulation = Simulation::new(agents, network, parameters);
+    Simulation::new(agents, network, parameters)
+}
+
+/// Deserializes [NetworkWeights] from a JSON file.
+fn get_weights_from_json_file(weights: &Path) -> NetworkWeights<f64> {
+    let mut bytes = Vec::new();
+    File::open(weights)
+        .unwrap_or_else(|err| panic!("Unable to open network weights file `{weights:?}`: {err}"))
+        .read_to_end(&mut bytes)
+        .unwrap_or_else(|err| panic!("Unable to read network weights file `{weights:?}`: {err}"));
+    serde_json::from_slice(&bytes).expect("Unable to parse network weights")
+}
+
+/// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them
+/// in the given output directory.
+pub fn get_choices_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+    weights: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(output)?;
+
+    initialize_logging(output);
+
+    let simulation = get_simulation_from_json_files(agents, parameters, road_network);
+
+    let weights = weights.map(get_weights_from_json_file);
+
+    // Run the simulation.
+    simulation.compute_and_store_choices(weights, output)
+}
+
+/// Deserializes a simulation from JSON input files, runs it and stores the results to a given
+/// output directory.
+pub fn run_simulation_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+    weights: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(output)?;
+
+    initialize_logging(output);
+
+    let simulation = get_simulation_from_json_files(agents, parameters, road_network);
+
+    let weights = weights.map(get_weights_from_json_file);
 
     // Run the simulation.
     simulation.run_from_weights(weights, output)

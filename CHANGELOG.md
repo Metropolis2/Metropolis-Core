@@ -20,6 +20,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Add the current time of the events in the within-day model progress bar.
 - [USER] Ignore warnings when more than 20 have already been emitted.
 - [USER] Add length of route difference in the output.
+- [USER] Add `compute_choices` which can be used to compute choices from the pre-day model without
+  running a full iteration.
 - [DEV] Add a debug check that all agents have reached their destination.
 - [DEV] Add more debug checks for the routes computed by the contraction hierarchies.
 - [DEV] Use a memory allocation for events to speed-up their executions.
