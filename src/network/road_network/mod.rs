@@ -412,8 +412,8 @@ impl<T: TTFNum> RoadNetwork<T> {
                     let nb_unique_origins = od_pairs.unique_origins().len();
                     let nb_unique_destinations = od_pairs.unique_destinations().len();
                     // Use Intersect if unique origins and unique destinations both represent less
-                    // than 5 % of the graph nodes.
-                    std::cmp::max(nb_unique_origins, nb_unique_destinations) * 20
+                    // than 10 % of the graph nodes.
+                    std::cmp::max(nb_unique_origins, nb_unique_destinations) * 10
                         <= self.graph.node_count()
                 }
             };
