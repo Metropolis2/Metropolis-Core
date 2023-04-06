@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.4.1] - 2023-04-06
+
 ### Added
 
 - [INPUT] Add road-network parameter `max_pending_duration` to specify the delay after which
@@ -276,7 +278,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.1...HEAD
+[0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
 [0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0
 [0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
 [0.3.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.0
