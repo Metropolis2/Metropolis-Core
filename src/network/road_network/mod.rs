@@ -138,6 +138,10 @@ const fn default_lanes() -> u8 {
     1
 }
 
+const fn default_is_true() -> bool {
+    true
+}
+
 /// An edge of a road network.
 ///
 /// A RoadEdge is directed and connected to two [RoadNode]s.
@@ -180,7 +184,7 @@ pub struct RoadEdge<T> {
     constant_travel_time: Time<T>,
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
-    #[serde(default)]
+    #[serde(default = "default_is_true")]
     overtaking: bool,
 }
 
@@ -519,10 +523,6 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
     fn index(&self, index: VehicleIndex) -> &Self::Output {
         &self.vehicles[index.index()]
     }
-}
-
-const fn default_is_true() -> bool {
-    true
 }
 
 /// Algorithm type to use for the profile queries.

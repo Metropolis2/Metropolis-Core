@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [USER] Default is to allow overtaking on the edges.
+
 ## [0.4.1] - 2023-04-06
 
 ### Added
