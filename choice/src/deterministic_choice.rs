@@ -31,6 +31,18 @@ pub struct DeterministicChoiceModel<T> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
     #[validate(range(min = 0.0, max = 1.0))]
     u: T,
+    /// Constants added to the value of each alternative.
+    ///
+    /// The number of constants does not have to match the number of alternatives. If there are
+    /// less constants than alternatives, then the constants are cycled over.
+    ///
+    /// If `None`, no constant is added to the alternatives' value.
+    #[serde(default = "default_is_none::<T>")]
+    constants: Option<Vec<T>>,
+}
+
+fn default_is_none<T>() -> Option<Vec<T>> {
+    None
 }
 
 impl<T: TTFNum> DeterministicChoiceModel<T> {
@@ -38,7 +50,23 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
     pub fn new(u: T) -> Self {
-        DeterministicChoiceModel { u }
+        DeterministicChoiceModel { u, constants: None }
+    }
+
+    fn iter_values<'a, V: Copy + Into<T>>(
+        &'a self,
+        values: &'a [V],
+    ) -> Box<dyn Iterator<Item = T> + 'a> {
+        if let Some(csts) = &self.constants {
+            Box::new(
+                values
+                    .iter()
+                    .zip(csts.iter().cycle())
+                    .map(|(&v, &c)| v.into() + c),
+            )
+        } else {
+            Box::new(values.iter().map(|&v| v.into()))
+        }
     }
 
     /// Returns the id of the chosen alternative and its payoff, given a vector of payoffs.
@@ -48,7 +76,7 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
     /// - The vector of payoffs is empty.
     ///
     /// - The payoffs cannot be compared.
-    pub fn get_choice<V: TTFNum>(&self, values: &[V]) -> Result<(usize, V)> {
+    pub fn get_choice<V: Copy + Into<T> + From<T>>(&self, values: &[V]) -> Result<(usize, V)> {
         if values.is_empty() {
             return Err(anyhow!(
                 "Cannot compute choice from an empty slice of values"
@@ -56,11 +84,11 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
         }
         // Find the maximum value and the indices where the value is maximal.
         let mut max_indices = Vec::new();
-        let mut max_value = values[0];
-        for (i, value) in values.iter().enumerate() {
+        let mut max_value = T::neg_infinity();
+        for (i, value) in self.iter_values(values).enumerate() {
             match value.partial_cmp(&max_value) {
                 Some(Ordering::Greater) => {
-                    max_value = *value;
+                    max_value = value;
                     max_indices = vec![i];
                 }
                 Some(Ordering::Equal) => {
@@ -78,7 +106,7 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
         if let Some(nb_indices) = T::from_usize(max_indices.len()) {
             if let Some(i) = (self.u * nb_indices).to_usize() {
                 let choice_id = max_indices[i];
-                Ok((choice_id, max_value))
+                Ok((choice_id, <V as From<T>>::from(max_value)))
             } else {
                 Err(anyhow!(
                     "Cannot convert {:?} to `usize`",

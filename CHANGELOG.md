@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] Can add constant values to each alternative in the `DeterministicChoiceModel`.
+
 ### Changed
 
 - [USER] Default is to allow overtaking on the edges.
