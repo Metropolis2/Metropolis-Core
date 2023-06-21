@@ -5,7 +5,7 @@
 
 //! Everything related to trips.
 use anyhow::{anyhow, Result};
-use choice::ContinuousChoiceModel;
+use choice::{ChoiceModel, ContinuousChoiceModel};
 use enum_as_inner::EnumAsInner;
 use num_traits::{Float, FromPrimitive, Zero};
 use once_cell::sync::OnceCell;
@@ -517,30 +517,25 @@ impl<T: TTFNum> TravelingMode<T> {
         preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
     ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
         let leg_ttfs = self.get_leg_ttfs(rn_skims, preprocess_data)?;
-        match &self.departure_time_model {
+        let (expected_utility, time_callback) = match &self.departure_time_model {
             &DepartureTimeModel::Constant(departure_time) => {
                 let expected_utility = self.get_total_utility(departure_time, &leg_ttfs);
-                if self.is_virtual_only() {
-                    let virtual_results = self
-                        .choice
-                        .try_insert(VirtualOnlyPreDayResults {
-                            expected_utility,
-                            trip_results: self.get_trip_results_for_virtual_only(
-                                departure_time,
-                                expected_utility,
-                            ),
-                        })
-                        .unwrap();
-                    return Ok(virtual_results.to_expected_utility_and_mode_callback());
-                }
-                let callback = move || {
-                    Ok(ModeResults::Trip(self.init_trip_results(
-                        departure_time,
-                        expected_utility,
-                        &leg_ttfs,
-                    )))
-                };
-                Ok((expected_utility, Box::new(callback)))
+                let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
+                (expected_utility, time_callback)
+            }
+            DepartureTimeModel::DiscreteChoice {
+                values,
+                choice_model,
+                offset,
+            } => {
+                let utilities: Vec<_> = values
+                    .iter()
+                    .map(|&td| self.get_total_utility(td, &leg_ttfs))
+                    .collect();
+                let (chosen_id, expected_utility) = choice_model.get_choice(&utilities)?;
+                let departure_time = values[chosen_id] + *offset;
+                let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
+                (expected_utility, time_callback)
             }
             DepartureTimeModel::ContinuousChoice {
                 period,
@@ -548,31 +543,30 @@ impl<T: TTFNum> TravelingMode<T> {
             } => {
                 let utilities = self.get_utility_function(&leg_ttfs, *period);
                 let (time_callback, expected_utility) = choice_model.get_choice(utilities)?;
-                if self.is_virtual_only() {
-                    let departure_time = time_callback();
-                    let virtual_results = self
-                        .choice
-                        .try_insert(VirtualOnlyPreDayResults {
-                            expected_utility,
-                            trip_results: self.get_trip_results_for_virtual_only(
-                                departure_time,
-                                expected_utility,
-                            ),
-                        })
-                        .unwrap();
-                    return Ok(virtual_results.to_expected_utility_and_mode_callback());
-                }
-                let callback = move || {
-                    let departure_time = time_callback();
-                    Ok(ModeResults::Trip(self.init_trip_results(
-                        departure_time,
-                        expected_utility,
-                        &leg_ttfs,
-                    )))
-                };
-                Ok((expected_utility, Box::new(callback)))
+                (expected_utility, time_callback)
             }
+        };
+        if self.is_virtual_only() {
+            let departure_time = time_callback();
+            let virtual_results = self
+                .choice
+                .try_insert(VirtualOnlyPreDayResults {
+                    expected_utility,
+                    trip_results: self
+                        .get_trip_results_for_virtual_only(departure_time, expected_utility),
+                })
+                .unwrap();
+            return Ok(virtual_results.to_expected_utility_and_mode_callback());
         }
+        let callback = move || {
+            let departure_time = time_callback();
+            Ok(ModeResults::Trip(self.init_trip_results(
+                departure_time,
+                expected_utility,
+                &leg_ttfs,
+            )))
+        };
+        Ok((expected_utility, Box::new(callback)))
     }
 }
 
@@ -597,6 +591,17 @@ impl<T: Copy> VirtualOnlyPreDayResults<T> {
 pub enum DepartureTimeModel<T> {
     /// The departure time is always equal to the given value.
     Constant(Time<T>),
+    /// The departure time is chosen among a finite number of values.
+    DiscreteChoice {
+        /// Values among which the departure time is chosen.
+        values: Vec<Time<T>>,
+        /// Discrete choice model.
+        choice_model: ChoiceModel<NoUnit<T>>,
+        /// Offset time added to the chosen departure-time value (can be negative).
+        #[serde(default)]
+        #[schemars(default = "default_time_schema")]
+        offset: Time<T>,
+    },
     /// The departure time is chosen according to a continuous choice model.
     ContinuousChoice {
         /// Interval in which the departure time is chosen.
@@ -604,4 +609,8 @@ pub enum DepartureTimeModel<T> {
         /// Continuous choice model.
         choice_model: ContinuousChoiceModel<NoUnit<T>>,
     },
+}
+
+fn default_time_schema() -> String {
+    "0".to_owned()
 }

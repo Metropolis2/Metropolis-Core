@@ -107,6 +107,33 @@
             }
           }
         }
+      },
+      {
+        "type": "Trip",
+        "value": {
+          "legs": [
+            {
+              "class": {
+                "type": "Virtual",
+                "value": 60.0
+              }
+            }
+          ],
+          "departure_time_model": {
+            "type": "DiscreteChoice",
+            "value": {
+              "values": [25.0, 75.0, 125.0, 175.0],
+              "choice_model": {
+                "type": "Deterministic",
+                "value": {
+                  "u": 0.5,
+                  "constants": [1.0, 1.5, 0.5, 2.0]
+                },
+                "offset": 10.0
+              }
+            }
+          }
+        }
       }
     ]
   }

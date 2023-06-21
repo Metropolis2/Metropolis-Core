@@ -11,6 +11,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Added
 
 - [INPUT] Can add constant values to each alternative in the `DeterministicChoiceModel`.
+- [INPUT] Allow a discrete choice between different departure times for the departure-time choice
+  model of `Trip` mode.
 
 ### Changed
 
