@@ -199,6 +199,7 @@ fn legs_test() {
         travel_utility: Utility(1.0),
         schedule_utility: Utility(-0.5),
         class: LegTypeResults::Road(RoadLegResults {
+            expected_route: Some(vec![edge_index(0)]),
             route: vec![RoadEvent {
                 edge: edge_index(0),
                 edge_entry: Time(3.0),
@@ -227,6 +228,7 @@ fn legs_test() {
         travel_utility: Utility(5.0),
         schedule_utility: Utility(0.0),
         class: LegTypeResults::Road(RoadLegResults {
+            expected_route: Some(vec![edge_index(1)]),
             route: vec![RoadEvent {
                 edge: edge_index(1),
                 edge_entry: Time(13.0),

@@ -16,7 +16,9 @@ use self::trip::results::{AggregateTripResults, TripResults};
 use self::trip::TravelingMode;
 use crate::agent::AgentIndex;
 use crate::event::Event;
+use crate::network::road_network::skim::EAAllocation;
 use crate::network::{NetworkPreprocessingData, NetworkSkim};
+use crate::progress_bar::MetroProgressBar;
 use crate::units::{Distribution, Time, Utility};
 
 pub mod trip;
@@ -85,13 +87,15 @@ impl<T: TTFNum> Mode<T> {
     pub fn get_pre_day_choice<'a>(
         &'a self,
         exp_skims: &'a NetworkSkim<T>,
-        preprocess_data: &NetworkPreprocessingData<T>,
+        preprocess_data: &'a NetworkPreprocessingData<T>,
+        progress_bar: MetroProgressBar,
     ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
         match self {
-            Self::Constant(u) => Ok((*u, Box::new(|| Ok(ModeResults::None)))),
+            Self::Constant(u) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
             Self::Trip(mode) => mode.get_pre_day_choice(
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),
+                progress_bar,
             ),
         }
     }
@@ -104,7 +108,8 @@ impl<T: TTFNum> Mode<T> {
 ///
 /// For an agent with multiple modes, only the callback function of the mode chosen in the pre-day
 /// model is called.
-pub type ModeCallback<'a, T> = Box<dyn FnOnce() -> Result<ModeResults<T>> + 'a>;
+pub type ModeCallback<'a, T> =
+    Box<dyn FnOnce(&'a mut EAAllocation<T>) -> Result<ModeResults<T>> + 'a>;
 
 /// Additional mode-specific results for an agent.
 #[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]

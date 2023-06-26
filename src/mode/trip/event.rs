@@ -5,9 +5,7 @@
 
 //! Everything related to road events.
 
-use anyhow::{anyhow, Result};
-use hashbrown::HashSet;
-use log::warn;
+use anyhow::Result;
 use num_traits::Float;
 use petgraph::graph::EdgeIndex;
 use schemars::JsonSchema;
@@ -15,14 +13,12 @@ use serde::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 use super::results::LegResults;
-use super::{RoadLeg, TravelingMode};
+use super::TravelingMode;
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
-use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim};
 use crate::network::road_network::RoadNetworkState;
-use crate::progress_bar::MetroProgressBar;
 use crate::units::Time;
 
 /// Types of [VehicleEvent].
@@ -344,7 +340,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                 let vehicle_skims = skims[uvehicle]
                     .as_ref()
                     .expect("Road network skims are empty.");
-                let (exp_arrival_time, route) = get_arrival_time_and_route(
+                let (exp_arrival_time, route) = super::get_arrival_time_and_route(
                     road_leg,
                     self.at_time,
                     vehicle_skims,
@@ -466,42 +462,5 @@ impl<T: TTFNum> Event<T> for VehicleEvent<T> {
 
     fn get_time(&self) -> Time<T> {
         self.at_time
-    }
-}
-
-/// Run an earliest arrival query on the [RoadNetworkSkim] to get the arrival time and route, for a
-/// given origin, destination and departure time.
-///
-/// Return an error if the destination cannot be reached with the given departure time from origin.
-fn get_arrival_time_and_route<T: TTFNum>(
-    leg: &RoadLeg,
-    departure_time: Time<T>,
-    skims: &RoadNetworkSkim<T>,
-    progress_bar: MetroProgressBar,
-    alloc: &mut EAAllocation<T>,
-) -> Result<(Time<T>, Vec<EdgeIndex>)> {
-    if let Some((arrival_time, route)) =
-        skims.earliest_arrival_query(leg.origin, leg.destination, departure_time, alloc)?
-    {
-        // Check if there is a loop in the route.
-        let n = route.iter().collect::<HashSet<_>>().len();
-        if n != route.len() {
-            progress_bar.suspend(|| {
-                warn!(
-                    "Found a loop in route from {} to {} at time {}",
-                    leg.origin.index(),
-                    leg.destination.index(),
-                    departure_time
-                );
-            })
-        }
-        Ok((arrival_time, route))
-    } else {
-        Err(anyhow!(
-            "No route from {:?} to {:?} at departure time {:?}",
-            leg.origin,
-            leg.destination,
-            departure_time,
-        ))
     }
 }

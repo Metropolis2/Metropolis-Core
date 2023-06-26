@@ -6,6 +6,7 @@
 //! Structs to store results of road and virtual trips.
 use enum_as_inner::EnumAsInner;
 use num_traits::{Float, Zero};
+use petgraph::prelude::EdgeIndex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
@@ -23,6 +24,9 @@ use crate::units::{Distribution, Length, Time, Utility};
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadLegResults<T> {
+    /// The expected route to be taken by the vehicle.
+    #[serde(skip)]
+    pub expected_route: Option<Vec<EdgeIndex>>,
     /// The route taken by the vehicle, together with the timings of the events.
     #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
     pub route: Vec<RoadEvent<T>>,
@@ -56,8 +60,13 @@ impl<T> RoadLegResults<T> {
 impl<T: TTFNum> RoadLegResults<T> {
     /// Creates a new [RoadLegResults] with empty results (except for expected departure time and
     /// arrival time).
-    pub fn new(departure_time: Time<T>, arrival_time: Time<T>) -> Self {
+    pub fn new(
+        departure_time: Time<T>,
+        arrival_time: Time<T>,
+        expected_route: Option<Vec<EdgeIndex>>,
+    ) -> Self {
         Self {
+            expected_route,
             route: Vec::new(),
             road_time: Time::zero(),
             in_bottleneck_time: Time::zero(),
@@ -74,6 +83,7 @@ impl<T: TTFNum> RoadLegResults<T> {
     /// Clones and resets the road leg results in prevision for a new day.
     pub fn reset(&self) -> Self {
         Self {
+            expected_route: None,
             route: Vec::with_capacity(self.route.len()),
             global_free_flow_travel_time: self.global_free_flow_travel_time,
             pre_exp_departure_time: self.pre_exp_departure_time,

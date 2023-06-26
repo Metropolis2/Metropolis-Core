@@ -13,6 +13,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] Can add constant values to each alternative in the `DeterministicChoiceModel`.
 - [INPUT] Allow a discrete choice between different departure times for the departure-time choice
   model of `Trip` mode.
+- [INPUT] Parameter `pre_compute_route` can be used to compute the routes of the trip in the pre-day
+  model instead of the within-day model (better performances). By default, the parameter is `true`.
 
 ### Changed
 

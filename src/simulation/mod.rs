@@ -30,6 +30,7 @@ use crate::agent::{agent_index, Agent};
 use crate::event::{EventAlloc, EventInput};
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
+use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::parameters::Parameters;
@@ -235,24 +236,36 @@ impl<T: TTFNum> Simulation<T> {
             (&self.agents, previous_results.deref(), updates)
                 .into_par_iter()
                 .panic_fuse()
-                .map(|(agent, prev_agent_result, update)| {
-                    bp.inc();
-                    agent.make_pre_day_choice(
-                        exp_skims,
-                        preprocess_data,
-                        Some(prev_agent_result),
-                        update,
-                    )
-                })
+                .map_init(
+                    EAAllocation::default,
+                    |alloc, (agent, prev_agent_result, update)| {
+                        bp.inc();
+                        agent.make_pre_day_choice(
+                            exp_skims,
+                            preprocess_data,
+                            Some(prev_agent_result),
+                            update,
+                            bp.clone(),
+                            alloc,
+                        )
+                    },
+                )
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             // Everyone has to make a choice.
             self.agents
                 .par_iter()
                 .panic_fuse()
-                .map(|agent| {
+                .map_init(EAAllocation::default, |alloc, agent| {
                     bp.inc();
-                    agent.make_pre_day_choice(exp_skims, preprocess_data, None, true)
+                    agent.make_pre_day_choice(
+                        exp_skims,
+                        preprocess_data,
+                        None,
+                        true,
+                        bp.clone(),
+                        alloc,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?
         };

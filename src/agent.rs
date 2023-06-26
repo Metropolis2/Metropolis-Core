@@ -14,7 +14,9 @@ use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 use crate::mode::{mode_index, Mode, ModeIndex};
+use crate::network::road_network::skim::EAAllocation;
 use crate::network::NetworkSkim;
+use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
 use crate::units::NoUnit;
@@ -81,14 +83,20 @@ impl<T: TTFNum> Agent<T> {
         preprocess_data: &PreprocessingData<T>,
         previous_day_result: Option<&AgentResult<T>>,
         update: bool,
+        progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation<T>,
     ) -> Result<AgentResult<T>> {
         if update {
             if let Some(choice_model) = &self.mode_choice {
                 // Compute the mode-specific expected utilities and get the callback functions.
                 let (expected_utilities, mut callbacks) = itertools::process_results(
-                    self.modes
-                        .iter()
-                        .map(|mode| mode.get_pre_day_choice(exp_skims, &preprocess_data.network)),
+                    self.modes.iter().map(|mode| {
+                        mode.get_pre_day_choice(
+                            exp_skims,
+                            &preprocess_data.network,
+                            progress_bar.clone(),
+                        )
+                    }),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
                 )?;
                 // Get the id of the chosen mode and the global expected utility, from the mode
@@ -96,7 +104,7 @@ impl<T: TTFNum> Agent<T> {
                 let (choice_id, expected_utility) = choice_model.get_choice(&expected_utilities)?;
                 // Call the callback function of the chosen mode to get the mode-specific results.
                 let callback = callbacks.swap_remove(choice_id);
-                let mode_result = callback()?;
+                let mode_result = callback(alloc)?;
                 Ok(AgentResult::new(
                     self.id,
                     mode_index(choice_id),
@@ -106,9 +114,12 @@ impl<T: TTFNum> Agent<T> {
             } else {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
-                let (expected_utility, callback) =
-                    chosen_mode.get_pre_day_choice(exp_skims, &preprocess_data.network)?;
-                let mode_result = callback()?;
+                let (expected_utility, callback) = chosen_mode.get_pre_day_choice(
+                    exp_skims,
+                    &preprocess_data.network,
+                    progress_bar,
+                )?;
+                let mode_result = callback(alloc)?;
                 Ok(AgentResult::new(
                     self.id,
                     mode_index(0),
@@ -173,12 +184,28 @@ mod tests {
     #[test]
     fn make_pre_day_choice_test() {
         let mut agent = get_agent();
+        let mut alloc = EAAllocation::default();
+        let bp = MetroProgressBar::new(1);
         assert!(agent
-            .make_pre_day_choice(&Default::default(), &Default::default(), None, false,)
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                false,
+                bp.clone(),
+                &mut alloc
+            )
             .is_err());
 
         let result = agent
-            .make_pre_day_choice(&Default::default(), &Default::default(), None, true)
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                true,
+                bp.clone(),
+                &mut alloc,
+            )
             .unwrap();
         assert_eq!(result.mode, mode_index(0));
         assert_eq!(result.expected_utility, Utility(10.));
@@ -191,6 +218,8 @@ mod tests {
                     &Default::default(),
                     Some(&result),
                     false,
+                    bp.clone(),
+                    &mut alloc,
                 )
                 .unwrap(),
             result
@@ -198,7 +227,14 @@ mod tests {
 
         agent.modes.push(Mode::Constant(Utility(15.)));
         let result = agent
-            .make_pre_day_choice(&Default::default(), &Default::default(), None, true)
+            .make_pre_day_choice(
+                &Default::default(),
+                &Default::default(),
+                None,
+                true,
+                bp.clone(),
+                &mut alloc,
+            )
             .unwrap();
         assert_eq!(result.mode, mode_index(1));
         assert_eq!(result.expected_utility, Utility(15.));
