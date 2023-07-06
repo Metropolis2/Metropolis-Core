@@ -334,24 +334,29 @@ impl<T: TTFNum> VehicleEvent<T> {
                 Some(self.into_next_step(Some(travel_time + leg.stopping_time), trip))
             }
             VehicleEventType::BeginsRoadLeg => {
-                // Compute the route between origin and destination of the current leg.
                 let road_leg = leg.class.as_road().expect("Not a road leg");
-                let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
-                let vehicle_skims = skims[uvehicle]
-                    .as_ref()
-                    .expect("Road network skims are empty.");
-                let (exp_arrival_time, route) = super::get_arrival_time_and_route(
-                    road_leg,
-                    self.at_time,
-                    vehicle_skims,
-                    input.progress_bar.clone(),
-                    &mut alloc.ea_alloc,
-                )?;
-                // Store the expected arrival time at destination in the results.
                 let road_leg_results = leg_results
                     .class
                     .as_road_mut()
                     .expect("Invalid leg results: Incompatible leg type.");
+                let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
+                let (exp_arrival_time, route) =
+                    if let Some(route) = &road_leg_results.expected_route {
+                        (road_leg_results.pre_exp_arrival_time, route.clone())
+                    } else {
+                        // Compute the route between origin and destination of the current leg.
+                        let vehicle_skims = skims[uvehicle]
+                            .as_ref()
+                            .expect("Road network skims are empty.");
+                        super::get_arrival_time_and_route(
+                            road_leg,
+                            self.at_time,
+                            vehicle_skims,
+                            input.progress_bar.clone(),
+                            &mut alloc.ea_alloc,
+                        )?
+                    };
+                // Store the expected arrival time at destination in the results.
                 road_leg_results.exp_arrival_time = exp_arrival_time;
                 // Compute and store the route free-flow travel time and length.
                 road_leg_results.route_free_flow_travel_time = road_network
