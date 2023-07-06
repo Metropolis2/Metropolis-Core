@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 either = "1.6"
-itertools = "0.10"
+itertools = "0.11"
 num-traits = "0.2"
 serde = "1.0"
 schemars = "0.8"

@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.4.2] - 2023-07-06
+
 ### Added
 
 - [INPUT] Can add constant values to each alternative in the `DeterministicChoiceModel`.
@@ -290,7 +292,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.1...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.2...HEAD
+[0.4.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.2
 [0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
 [0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0
 [0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
