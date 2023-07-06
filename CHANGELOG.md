@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.4.3] - 2023-07-06
+
+### Changed
+
+- [DEV] Updated dependencies
+
 ## [0.4.2] - 2023-07-06
 
 ### Added
@@ -292,7 +298,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.2...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.3...HEAD
+[0.4.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.3
 [0.4.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.2
 [0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
 [0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0

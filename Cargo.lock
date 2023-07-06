@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "metropolis"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "askama",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1180,7 +1180,7 @@ dependencies = [
 
 [[package]]
 name = "ttf"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "either",
