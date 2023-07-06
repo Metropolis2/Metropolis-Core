@@ -342,7 +342,10 @@ impl<T: TTFNum> VehicleEvent<T> {
                 let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
                 let (exp_arrival_time, route) =
                     if let Some(route) = &road_leg_results.expected_route {
-                        (road_leg_results.pre_exp_arrival_time, route.clone())
+                        let exp_travel_time = road_leg_results.pre_exp_arrival_time
+                            - road_leg_results.pre_exp_departure_time;
+                        let exp_arrival_time = current_time + exp_travel_time;
+                        (exp_arrival_time, route.clone())
                     } else {
                         // Compute the route between origin and destination of the current leg.
                         let vehicle_skims = skims[uvehicle]
