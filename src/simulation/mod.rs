@@ -320,7 +320,11 @@ impl<T: TTFNum> Simulation<T> {
         debug!("Succesfully executed {} events", nb_events);
         // Compute network weights.
         debug!("Computing network weights");
-        let weights = state.into_weights(&self.network, &preprocess_data.network);
+        let weights = state.into_weights(
+            &self.network,
+            &self.parameters.network,
+            &preprocess_data.network,
+        );
         Ok(weights)
     }
 

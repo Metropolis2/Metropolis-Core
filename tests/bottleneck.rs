@@ -94,6 +94,7 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
             road_network: Some(RoadNetworkParameters {
                 contraction: Default::default(),
                 recording_interval: Time(1.0),
+                approximation_bound: Time(0.0),
                 max_pending_duration: Time(f64::INFINITY),
                 spillback: false,
                 algorithm_type: Default::default(),

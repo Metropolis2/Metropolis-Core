@@ -552,6 +552,11 @@ pub struct RoadNetworkParameters<T> {
     pub contraction: ContractionParameters,
     /// Time interval for which travel times are recorded at the edge level during the simulation.
     pub recording_interval: Time<T>,
+    #[serde(default)]
+    #[schemars(default = "default_time_schema")]
+    /// Approximation bound in seconds, used to simplify the travel-time functions when the
+    /// difference between the maximum and the minimum travel time is smaller than this bound.
+    pub approximation_bound: Time<T>,
     /// If `true` the total headways of vehicles on each edge of the road network is limited by the
     /// total length of the edges.
     #[serde(default = "default_is_true")]
@@ -719,6 +724,7 @@ mod tests {
         let parameters = RoadNetworkParameters {
             contraction: Default::default(),
             recording_interval: Time(1.0),
+            approximation_bound: Time(0.0),
             spillback: false,
             max_pending_duration: Time::zero(),
             algorithm_type: AlgorithmType::Intersect,

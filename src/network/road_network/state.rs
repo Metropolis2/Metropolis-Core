@@ -18,7 +18,7 @@ use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{RoadEdge, RoadNetwork, RoadNetworkPreprocessingData};
+use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData};
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
@@ -718,6 +718,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
     pub fn into_weights(
         self,
         network: &RoadNetwork<T>,
+        parameters: &RoadNetworkParameters<T>,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> RoadNetworkWeights<T> {
         let mut weights = RoadNetworkWeights::with_capacity(
@@ -741,7 +742,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                         XYF::Piecewise(road_pwl_length) => {
                             let road_pwl_ttf = road_pwl_length
                                 .map(|l| edge_ref.weight().get_travel_time(l, vehicle));
-                            if road_pwl_ttf.is_cst() {
+                            if road_pwl_ttf.is_practically_cst(parameters.approximation_bound) {
                                 TTF::Constant(road_pwl_ttf.y_at_index(0))
                             } else {
                                 let mut road_ttf = road_pwl_ttf.to_ttf();

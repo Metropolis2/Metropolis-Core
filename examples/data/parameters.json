@@ -3,6 +3,7 @@
   "network": {
     "road_network": {
       "recording_interval": 50.0,
+      "approximation_bound": 1.0,
       "spillback": true,
       "max_pending_duration": 20.0,
       "algorithm_type": "Best",

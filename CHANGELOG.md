@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] Road-network parameter `approximation_bound` can be used to simplify the travel-time
+  functions (and thus speed up the routing algorithm) at the cost of a small approximation.
+
 ## [0.4.3] - 2023-07-06
 
 ### Changed

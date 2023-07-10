@@ -178,6 +178,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         network: NetworkParameters {
             road_network: Some(RoadNetworkParameters {
                 recording_interval: Time(300.0),
+                approximation_bound: Time(1.0),
                 spillback: true,
                 max_pending_duration: Time(30.0),
                 algorithm_type: Default::default(),

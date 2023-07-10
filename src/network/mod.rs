@@ -167,11 +167,13 @@ impl<T: TTFNum> NetworkState<T> {
     pub fn into_weights(
         self,
         network: &Network<T>,
+        parameters: &NetworkParameters<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> NetworkWeights<T> {
         let rn_weights = self.road_network.map(|rn| {
             rn.into_weights(
                 network.road_network.as_ref().unwrap(),
+                parameters.road_network.as_ref().unwrap(),
                 preprocess_data.road_network.as_ref().unwrap(),
             )
         });

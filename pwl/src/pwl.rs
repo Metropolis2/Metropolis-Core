@@ -245,6 +245,12 @@ where
         self.min() == self.max()
     }
 
+    /// Returns `true` if the function is practically constant, i.e., all values are contained
+    /// within a given bound.
+    pub fn is_practically_cst(&self, bound: Y) -> bool {
+        (self.max() - self.min()) <= bound
+    }
+
     /// Returns the last `y` value.
     fn last_y(&self) -> Y {
         self.points[self.points.len() - 1]

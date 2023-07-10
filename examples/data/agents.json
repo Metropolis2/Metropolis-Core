@@ -105,7 +105,8 @@
               "beta": 1.0,
               "gamma": 4.0
             }
-          }
+          },
+          "pre_compute_route": true
         }
       },
       {
