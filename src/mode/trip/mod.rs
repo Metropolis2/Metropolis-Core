@@ -618,7 +618,6 @@ impl<T: TTFNum> TravelingMode<T> {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         for leg in self.iter_legs() {
-            println!("{current_time:?}");
             let (arrival_time, route) = match &leg.class {
                 LegType::Road(road_leg) => {
                     let uvehicle = preprocess_data
@@ -639,7 +638,6 @@ impl<T: TTFNum> TravelingMode<T> {
                 }
                 LegType::Virtual(ttf) => (current_time + ttf.eval(current_time), None),
             };
-            println!("{arrival_time:?}");
             let leg_result = leg.init_leg_results(current_time, arrival_time, route);
             leg_results.push(leg_result);
             current_time = arrival_time + leg.stopping_time;
