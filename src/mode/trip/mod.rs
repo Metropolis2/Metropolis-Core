@@ -713,17 +713,19 @@ fn get_arrival_time_and_route<T: TTFNum>(
     if let Some((arrival_time, route)) =
         skims.earliest_arrival_query(leg.origin, leg.destination, departure_time, alloc)?
     {
-        // Check if there is a loop in the route.
-        let n = route.iter().collect::<HashSet<_>>().len();
-        if n != route.len() {
-            progress_bar.suspend(|| {
-                warn!(
-                    "Found a loop in route from {} to {} at time {}",
-                    leg.origin.index(),
-                    leg.destination.index(),
-                    departure_time
-                );
-            })
+        if cfg!(debug_assertions) {
+            // Check if there is a loop in the route.
+            let n = route.iter().collect::<HashSet<_>>().len();
+            if n != route.len() {
+                progress_bar.suspend(|| {
+                    warn!(
+                        "Found a loop in route from {} to {} at time {}",
+                        leg.origin.index(),
+                        leg.destination.index(),
+                        departure_time
+                    );
+                })
+            }
         }
         Ok((arrival_time, route))
     } else {
