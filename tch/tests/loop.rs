@@ -53,7 +53,6 @@ fn node_order_fn(node_id: NodeIndex) -> usize {
 }
 
 #[test]
-#[ignore]
 fn no_loop_test() {
     let graph = get_network();
 

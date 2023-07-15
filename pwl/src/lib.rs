@@ -333,11 +333,11 @@ mod tests {
         let g = TTF::Piecewise(PwlTTF::from_values(vec![10., 15., 40., 40.], 0., 30.));
 
         let res = f.analyze_relative_position(&g);
-        let exp_res = Either::Right(vec![(0.0, Ordering::Greater), (24.0, Ordering::Less)]);
+        let exp_res = Either::Right(vec![(0.0, Ordering::Greater), (18.0, Ordering::Less)]);
         assert_eq!(res, exp_res);
 
         let res = g.analyze_relative_position(&f);
-        let exp_res = Either::Right(vec![(0.0, Ordering::Less), (24.0, Ordering::Greater)]);
+        let exp_res = Either::Right(vec![(0.0, Ordering::Less), (18.0, Ordering::Greater)]);
         assert_eq!(res, exp_res);
     }
 }

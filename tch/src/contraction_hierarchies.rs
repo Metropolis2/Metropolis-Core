@@ -236,18 +236,18 @@ impl<T: TTFNum> HierarchyOverlay<T> {
 
     /// Returns the unpacked version of a path, i.e., return the path as a vector of *original*
     /// edges.
-    fn unpack_path(&self, path: &[NodeIndex], departure_time: T) -> Result<Vec<EdgeIndex>> {
-        let mut unpacked_path = Vec::new();
+    fn unpack_path(&self, path: &[NodeIndex], departure_time: T) -> Result<(Vec<EdgeIndex>, T)> {
+        let mut unpacked_path = NoLoopPath::new();
         let mut current_time = departure_time;
         for (&source, &target) in path.iter().zip(path[1..].iter()) {
             self.unpack_edge(source, target, &mut current_time, &mut unpacked_path)
                 .with_context(|| {
                     format!(
-                        "Failed to unpack edge from {source:?} to {target:?} at time {current_time:?}"
-                    )
+                    "Failed to unpack edge from {source:?} to {target:?} at time {current_time:?}"
+                )
                 })?;
         }
-        Ok(unpacked_path)
+        Ok((unpacked_path.into_route(), current_time))
     }
 
     /// Unpacks recusively an edge in a path, i.e., unpack shortcut edges until a original edge is
@@ -257,12 +257,12 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         source: NodeIndex,
         target: NodeIndex,
         current_time: &mut T,
-        path: &mut Vec<EdgeIndex>,
+        path: &mut NoLoopPath,
     ) -> Result<()> {
         if let Some(edge) = self.graph.find_edge(source, target) {
             match &self.graph[edge].class {
                 &HierarchyEdgeClass::Original(id) => {
-                    path.push(id);
+                    path.push(id, source);
                     *current_time = *current_time + self.graph[edge].ttf.eval(*current_time);
                 }
                 &HierarchyEdgeClass::ShortcutThrough(inter_node) => {
@@ -283,7 +283,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                             self.unpack_edge(inter_node, target, current_time, path)?;
                         }
                         Packed::OriginalEdge(id) => {
-                            path.push(id);
+                            path.push(id, source);
                             *current_time =
                                 *current_time + self.graph[edge].ttf.eval(*current_time);
                         }
@@ -338,7 +338,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             edge_label,
             candidate_map,
         );
-        if let Some((arrival_time, packed_path)) = earliest_arrival_query(
+        if let Some((_arrival_time, packed_path)) = earliest_arrival_query(
             alloc,
             &query,
             &mut ops,
@@ -347,7 +347,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         )
         .context("Failed to run the TCHEA query")?
         {
-            let unpacked_path = self
+            let (unpacked_path, arrival_time) = self
                 .unpack_path(&packed_path, departure_time)
                 .with_context(|| {
                     format!(
@@ -547,6 +547,41 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     }
 }
 
+/// Structure to create a path of edges without any loop, i.e., the path never goes through the
+/// same node twice.
+#[derive(Clone, Debug)]
+struct NoLoopPath {
+    /// Path.
+    route: Vec<EdgeIndex>,
+    /// Map of the nodes traversed and the position of their edge in the path.
+    traversed_nodes: HashMap<NodeIndex, usize>,
+}
+
+impl NoLoopPath {
+    fn new() -> Self {
+        Self {
+            route: Vec::new(),
+            traversed_nodes: HashMap::new(),
+        }
+    }
+
+    fn push(&mut self, edge: EdgeIndex, source: NodeIndex) {
+        if let Some(pos) = self.traversed_nodes.get(&source) {
+            // The route already took an edge starting from `source`.
+            // `pos` is the position of the previously taken edge starting from `source` in
+            // `route`.
+            // We can remove the part of the route looping over `source`.
+            self.route.truncate(*pos);
+        }
+        self.traversed_nodes.insert(source, self.route.len());
+        self.route.push(edge);
+    }
+
+    fn into_route(self) -> Vec<EdgeIndex> {
+        self.route
+    }
+}
+
 #[derive(Default)]
 struct AllocatedSearchSpaceData<T: PartialOrd + TTFNum> {
     interval_search: DijkstraSearch<ProfileIntervalData<T>, MinPQ<NodeIndex, T>>,
@@ -575,5 +610,116 @@ impl<T> SearchSpaces<T> {
     /// exits.
     pub fn get_backward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {
         self.backward.get(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use petgraph::graph::{edge_index, node_index};
+
+    use super::*;
+
+    #[test]
+    fn no_loop_test() {
+        // 0---1---3
+        //     |
+        //     |
+        //     2
+        let edges = vec![edge_index(0), edge_index(1), edge_index(2), edge_index(3)];
+        let nodes = vec![node_index(0), node_index(1), node_index(2), node_index(1)];
+        let mut p = NoLoopPath::new();
+        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
+            p.push(e, n);
+        }
+        let exp_route = vec![edge_index(0), edge_index(3)];
+        assert_eq!(p.into_route(), exp_route);
+
+        // 0---1---2---4
+        //      \ /
+        //       3
+        let edges = vec![
+            edge_index(0),
+            edge_index(1),
+            edge_index(2),
+            edge_index(3),
+            edge_index(1),
+            edge_index(4),
+        ];
+        let nodes = vec![
+            node_index(0),
+            node_index(1),
+            node_index(2),
+            node_index(3),
+            node_index(1),
+            node_index(2),
+        ];
+        let mut p = NoLoopPath::new();
+        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
+            p.push(e, n);
+        }
+        let exp_route = vec![edge_index(0), edge_index(1), edge_index(4)];
+        assert_eq!(p.into_route(), exp_route);
+
+        //     4
+        //     |
+        //     |
+        // 0---1---3
+        //     |
+        //     |
+        //     2
+        let edges = vec![
+            edge_index(0),
+            edge_index(1),
+            edge_index(2),
+            edge_index(3),
+            edge_index(4),
+            edge_index(5),
+        ];
+        let nodes = vec![
+            node_index(0),
+            node_index(1),
+            node_index(2),
+            node_index(1),
+            node_index(4),
+            node_index(1),
+            node_index(3),
+        ];
+        let mut p = NoLoopPath::new();
+        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
+            p.push(e, n);
+        }
+        let exp_route = vec![edge_index(0), edge_index(5)];
+        assert_eq!(p.into_route(), exp_route);
+
+        // 0--1--2--3--5
+        //     \   /
+        //      \ /
+        //       4
+        let edges = vec![
+            edge_index(0),
+            edge_index(1),
+            edge_index(2),
+            edge_index(3),
+            edge_index(4),
+            edge_index(1),
+            edge_index(2),
+            edge_index(5),
+        ];
+        let nodes = vec![
+            node_index(0),
+            node_index(1),
+            node_index(2),
+            node_index(3),
+            node_index(4),
+            node_index(1),
+            node_index(2),
+            node_index(3),
+        ];
+        let mut p = NoLoopPath::new();
+        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
+            p.push(e, n);
+        }
+        let exp_route = vec![edge_index(0), edge_index(1), edge_index(2), edge_index(5)];
+        assert_eq!(p.into_route(), exp_route);
     }
 }

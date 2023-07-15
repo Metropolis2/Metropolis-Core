@@ -12,6 +12,16 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] Road-network parameter `approximation_bound` can be used to simplify the travel-time
   functions (and thus speed up the routing algorithm) at the cost of a small approximation.
+- [DEV] Add integration test `loop` to check for absence of loops in the routes.
+
+### Changed
+
+- [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
+- [USER] Compute the expected arrival time more accurately.
+
+### Fixed
+
+- [USER] Consider the origin delay when pre-computing routes.
 
 ## [0.4.3] - 2023-07-06
 
