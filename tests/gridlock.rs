@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
@@ -33,7 +33,7 @@ fn get_simulation() -> Simulation<f64> {
         .enumerate()
     {
         let leg = Leg::new(
-            LegType::Road(RoadLeg::new(node_index(o), node_index(d), vehicle_index(0))),
+            LegType::Road(RoadLeg::new(o, d, vehicle_index(0))),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
@@ -106,6 +106,10 @@ fn get_simulation() -> Simulation<f64> {
             ),
         ),
     ]);
+    let node_map: HashMap<_, _> = (0..=3)
+        .into_iter()
+        .map(|i| (i as u64, node_index(i)))
+        .collect();
     // Vehicles are 6 meters long: 1 vehicle is enough to block an edge.
     let vehicle = Vehicle::new(
         Length(6.0),
@@ -114,7 +118,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
         HashSet::new(),
     );
-    let road_network = RoadNetwork::new(graph, vec![vehicle]);
+    let road_network = RoadNetwork::new(graph, node_map, vec![vehicle]);
     let network = Network::new(Some(road_network));
 
     let parameters = Parameters {

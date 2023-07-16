@@ -13,7 +13,7 @@ mod weights;
 use std::ops::{Deref, Index};
 
 use anyhow::Result;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use log::debug;
 use num_traits::{Float, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
@@ -266,16 +266,21 @@ impl<T: TTFNum> RoadEdge<T> {
 }
 
 /// Description of the graph of a [RoadNetwork].
-///
-/// A RoadGraph is a directed graph of [RoadNode]s and [RoadEdge]s,
-/// Internally, it is represented as a [petgraph::graph::DiGraph].
 #[derive(Clone, Debug, Serialize)]
-pub struct RoadGraph<T>(DiGraph<RoadNode, RoadEdge<T>>);
+pub struct RoadGraph<T> {
+    /// Directed graph of [RoadNode]s and [RoadEdge]s.
+    graph: DiGraph<RoadNode, RoadEdge<T>>,
+    /// Mapping from original node id to simulation NodeIndex.
+    node_map: HashMap<u64, NodeIndex>,
+}
 
 impl<T> RoadGraph<T> {
     /// Creates a new RoadGraph.
-    pub const fn new(graph: DiGraph<RoadNode, RoadEdge<T>>) -> Self {
-        Self(graph)
+    pub const fn new(
+        graph: DiGraph<RoadNode, RoadEdge<T>>,
+        node_map: HashMap<u64, NodeIndex>,
+    ) -> Self {
+        Self { graph, node_map }
     }
 }
 
@@ -283,7 +288,7 @@ impl<T> Deref for RoadGraph<T> {
     type Target = DiGraph<RoadNode, RoadEdge<T>>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.graph
     }
 }
 
@@ -306,9 +311,13 @@ pub struct RoadNetwork<T> {
 
 impl<T> RoadNetwork<T> {
     /// Creates a new RoadNetwork.
-    pub fn new(graph: DiGraph<RoadNode, RoadEdge<T>>, vehicles: Vec<Vehicle<T>>) -> Self {
+    pub fn new(
+        graph: DiGraph<RoadNode, RoadEdge<T>>,
+        node_map: HashMap<u64, NodeIndex>,
+        vehicles: Vec<Vehicle<T>>,
+    ) -> Self {
         RoadNetwork {
-            graph: RoadGraph(graph),
+            graph: RoadGraph::new(graph, node_map),
             vehicles,
         }
     }
@@ -408,7 +417,7 @@ impl<T: TTFNum> RoadNetwork<T> {
                 "Complexity of the Hierarchy Overlay: {}",
                 hierarchy.complexity()
             );
-            let mut skim = RoadNetworkSkim::new(hierarchy);
+            let mut skim = RoadNetworkSkim::new(hierarchy, self.graph.node_map.clone());
             let use_intersect = match parameters.algorithm_type {
                 AlgorithmType::Intersect => true,
                 AlgorithmType::Tch => false,
@@ -575,7 +584,7 @@ pub struct RoadNetworkParameters<T> {
 #[cfg(test)]
 mod tests {
     use hashbrown::HashSet;
-    use petgraph::graph::edge_index;
+    use petgraph::graph::{edge_index, node_index};
 
     use super::vehicle::SpeedFunction;
     use super::*;
@@ -709,6 +718,10 @@ mod tests {
                 true,
             ),
         );
+        let node_map: HashMap<_, _> = (0..=2)
+            .into_iter()
+            .map(|i| (i as u64, node_index(i)))
+            .collect();
         let vehicle = Vehicle::new(
             Length(1.0),
             PCE(1.0),
@@ -716,11 +729,11 @@ mod tests {
             HashSet::new(),
             [edge_index(0)].into_iter().collect(),
         );
-        let network = RoadNetwork::new(graph, vec![vehicle.clone()]);
+        let network = RoadNetwork::new(graph, node_map, vec![vehicle.clone()]);
         let weights =
             network.get_free_flow_weights_inner(&UniqueVehicles::from_vehicles(&[vehicle]));
         debug_assert!(weights[0][0].get_min().is_infinite());
-        let all_od_pairs = vec![ODPairs::from_vec(vec![(n1, n2)])];
+        let all_od_pairs = vec![ODPairs::from_vec(vec![(1, 2)])];
         let parameters = RoadNetworkParameters {
             contraction: Default::default(),
             recording_interval: Time(1.0),
@@ -734,7 +747,7 @@ mod tests {
             .unwrap();
         let skim = skims[0].as_ref().unwrap();
         assert_eq!(
-            skim.profile_query(n1, n2).unwrap(),
+            skim.profile_query(1, 2).unwrap(),
             Some(&TTF::Constant(Time(1.0)))
         );
     }

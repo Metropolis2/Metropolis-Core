@@ -12,7 +12,8 @@ use clap::Parser;
 use log::{info, LevelFilter};
 use schemars::gen::SchemaSettings;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
-use tch::tools::{Graph, Output, Parameters, Query};
+use tch::tools::DeserGraph;
+use tch::tools::{Output, Parameters, Query};
 use ttf::TTF;
 
 /// Generate the JSON Schemas for the input and output files of METROPOLIS
@@ -50,7 +51,7 @@ fn main() -> Result<()> {
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;
 
     // Graph.
-    let schema = gen.clone().into_root_schema_for::<Graph>();
+    let schema = gen.clone().into_root_schema_for::<DeserGraph>();
     let filename = args.path.join("graph.json");
     let mut file = File::create(filename)?;
     write!(file, "{}", serde_json::to_string_pretty(&schema)?)?;

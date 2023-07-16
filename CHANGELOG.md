@@ -16,6 +16,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Changed
 
+- [INPUT] In the road-network input file, node ids no longer have to range from 0 to `n - 1` (where
+  `n` is the number of nodes).
 - [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
 - [USER] Compute the expected arrival time more accurately.
 

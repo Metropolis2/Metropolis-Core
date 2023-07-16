@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
@@ -83,6 +83,10 @@ fn get_simulation() -> Simulation<f64> {
             ),
         ),
     ]);
+    let node_map: HashMap<_, _> = (0..=3)
+        .into_iter()
+        .map(|i| (i as u64, node_index(i)))
+        .collect();
     // Create 4 identical vehicles types with different road restrictions.
     // Only vehicle type `v0` has acces to edge 2 (and thus to route 0 -> 1 -> 3).
     let v0 = Vehicle::new(
@@ -117,7 +121,7 @@ fn get_simulation() -> Simulation<f64> {
         [0, 1, 3].into_iter().map(|i| edge_index(i)).collect(),
         [1].into_iter().map(|i| edge_index(i)).collect(),
     );
-    let road_network = RoadNetwork::new(graph, vec![v0, v1, v2, v3]);
+    let road_network = RoadNetwork::new(graph, node_map, vec![v0, v1, v2, v3]);
     let network = Network::new(Some(road_network));
 
     // Create agents with different vehicle types.
@@ -135,7 +139,7 @@ fn get_simulation() -> Simulation<f64> {
             vehicle_index(i)
         };
         let leg = Leg::new(
-            LegType::Road(RoadLeg::new(node_index(0), node_index(3), v)),
+            LegType::Road(RoadLeg::new(0, 3, v)),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,

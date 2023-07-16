@@ -53,8 +53,8 @@
               "class": {
                 "type": "Road",
                 "value": {
-                  "origin": 0,
-                  "destination": 1,
+                  "origin": 10,
+                  "destination": 8,
                   "vehicle": 0
                 }
               },

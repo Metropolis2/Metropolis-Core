@@ -8,8 +8,6 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
-use petgraph::prelude::NodeIndex;
-use serde::Deserialize;
 use ttf::{TTFNum, TTF};
 
 use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
@@ -154,18 +152,17 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
 
 /// Structure representing the origin-destination pairs for which at least one agent can make a
 /// trip, with a given vehicle.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(from = "crate::serialization::DeserODPairs")]
+#[derive(Clone, Debug, Default)]
 pub struct ODPairs {
-    unique_origins: HashSet<NodeIndex>,
-    unique_destinations: HashSet<NodeIndex>,
-    pairs: HashMap<NodeIndex, HashSet<NodeIndex>>,
+    unique_origins: HashSet<u64>,
+    unique_destinations: HashSet<u64>,
+    pairs: HashMap<u64, HashSet<u64>>,
 }
 
 impl ODPairs {
     /// Create a new ODPairs from a Vec of tuples `(o, d)`, where `o` is the [NodeIndex] of the
     /// origin and `d` is the [NodeIndex] of the destination.
-    pub fn from_vec(raw_pairs: Vec<(NodeIndex, NodeIndex)>) -> Self {
+    pub fn from_vec(raw_pairs: Vec<(u64, u64)>) -> Self {
         let mut pairs = ODPairs::default();
         for (origin, destination) in raw_pairs {
             pairs.add_pair(origin, destination);
@@ -174,7 +171,7 @@ impl ODPairs {
     }
 
     /// Add an origin-destination pair to the ODPairs.
-    fn add_pair(&mut self, origin: NodeIndex, destination: NodeIndex) {
+    fn add_pair(&mut self, origin: u64, destination: u64) {
         self.unique_origins.insert(origin);
         self.unique_destinations.insert(destination);
         self.pairs
@@ -189,17 +186,17 @@ impl ODPairs {
     }
 
     /// Returns the set of unique origins.
-    pub fn unique_origins(&self) -> &HashSet<NodeIndex> {
+    pub fn unique_origins(&self) -> &HashSet<u64> {
         &self.unique_origins
     }
 
     /// Returns the set of unique destinations.
-    pub fn unique_destinations(&self) -> &HashSet<NodeIndex> {
+    pub fn unique_destinations(&self) -> &HashSet<u64> {
         &self.unique_destinations
     }
 
     /// Returns the list of valid destinations for each valid origin.
-    pub fn pairs(&self) -> &HashMap<NodeIndex, HashSet<NodeIndex>> {
+    pub fn pairs(&self) -> &HashMap<u64, HashSet<u64>> {
         &self.pairs
     }
 }
@@ -236,7 +233,7 @@ fn od_pairs_from_agents<T>(
 }
 
 /// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
-type ODTravelTimes<T> = HashMap<(NodeIndex, NodeIndex), Time<T>>;
+type ODTravelTimes<T> = HashMap<(u64, u64), Time<T>>;
 
 fn compute_free_flow_travel_times<T: TTFNum>(
     road_network: &RoadNetwork<T>,
@@ -266,15 +263,15 @@ fn compute_free_flow_travel_times<T: TTFNum>(
                         None => {
                             return Err(anyhow!(
                                 "No route from node {} to node {}",
-                                origin.index(),
-                                destination.index()
+                                origin,
+                                destination
                             ));
                         }
                         Some(TTF::Piecewise(_)) => {
                             return Err(anyhow!(
                                 "Free-flow travel time from {} to {} is not constant",
-                                origin.index(),
-                                destination.index()
+                                origin,
+                                destination
                             ));
                         }
                     };

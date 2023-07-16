@@ -5,7 +5,7 @@
 
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
 use hashbrown::HashSet;
-use petgraph::graph::{edge_index, node_index, EdgeIndex, NodeIndex};
+use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +65,7 @@ pub(crate) fn example_agent() -> Agent<f64> {
 
 pub(crate) fn example_trip() -> TravelingMode<f64> {
     let leg = Leg::new(
-        LegType::Road(RoadLeg::new(node_index(0), node_index(1), vehicle_index(0))),
+        LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
         Time(600.0),
         TravelUtility::Polynomial(PolynomialFunction {
             b: -0.02,

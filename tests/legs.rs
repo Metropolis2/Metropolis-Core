@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use metropolis::agent::{agent_index, Agent};
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::event::RoadEvent;
@@ -59,6 +59,10 @@ fn get_simulation() -> Simulation<f64> {
             ),
         ),
     ]);
+    let node_map: HashMap<_, _> = (0..=3)
+        .into_iter()
+        .map(|i| (i as u64, node_index(i)))
+        .collect();
     let v0 = Vehicle::new(
         Length(1.0),
         PCE(1.0),
@@ -73,13 +77,13 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
         HashSet::new(),
     );
-    let road_network = RoadNetwork::new(graph, vec![v0, v1]);
+    let road_network = RoadNetwork::new(graph, node_map, vec![v0, v1]);
     let network = Network::new(Some(road_network));
 
     // Create an agent with 3 legs (2 road and 1 virtual).
     let mut agents = Vec::with_capacity(1);
     let leg0 = Leg::new(
-        LegType::Road(RoadLeg::new(node_index(0), node_index(1), vehicle_index(0))),
+        LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
         Time(2.0),
         TravelUtility::Polynomial(PolynomialFunction {
             a: 1.0,
@@ -109,7 +113,7 @@ fn get_simulation() -> Simulation<f64> {
         ),
     );
     let leg2 = Leg::new(
-        LegType::Road(RoadLeg::new(node_index(2), node_index(3), vehicle_index(1))),
+        LegType::Road(RoadLeg::new(2, 3, vehicle_index(1))),
         Time(1.0),
         TravelUtility::Polynomial(PolynomialFunction {
             a: 5.0,

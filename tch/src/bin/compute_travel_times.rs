@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -133,17 +133,6 @@ fn main() -> Result<()> {
         .build_global()
         .unwrap();
 
-    // Check that all sources and targets are in the graph.
-    let max_source_id = queries.iter().map(|q| q.source).max().unwrap();
-    let max_target_id = queries.iter().map(|q| q.target).max().unwrap();
-    if max_source_id.index() >= graph.node_count() || max_target_id.index() >= graph.node_count() {
-        let max = std::cmp::max(max_source_id.index(), max_target_id.index());
-        return Err(anyhow!(
-            "Invalid query found. There is no node with id {}",
-            max
-        ));
-    }
-
     // Set the weights of the graph from the weights HashMap (if any).
     if let Some(w) = weights {
         for (edge_id, ttf) in w.into_iter() {
@@ -203,18 +192,18 @@ fn main() -> Result<()> {
                 |alloc, query| {
                     if let Some(td) = query.departure_time {
                         let bidir_query = BidirectionalPointToPointQuery::new(
-                            query.source,
-                            query.target,
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
                             td,
                             Default::default(),
                         );
                         let mut ops =
-                            BidirectionalTCHEA::new(&graph.0, ttf_func_edge, HashMap::new());
+                            BidirectionalTCHEA::new(&graph.graph, ttf_func_edge, HashMap::new());
                         let result = earliest_arrival_query(
                             &mut alloc.ea_alloc,
                             &bidir_query,
                             &mut ops,
-                            &graph.0,
+                            &graph.graph,
                             ttf_func_edge,
                         )
                         .unwrap();
@@ -241,13 +230,13 @@ fn main() -> Result<()> {
                         }
                     } else {
                         let mut ops = BidirectionalProfileDijkstra::new(
-                            &graph.0,
+                            &graph.graph,
                             ttf_func_edge,
                             HashMap::new(),
                         );
                         let bidir_query = BidirectionalPointToPointQuery::from_default(
-                            query.source,
-                            query.target,
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
                         );
                         let ttf_opt =
                             profile_query(&mut alloc.profile_search, &bidir_query, &mut ops);
@@ -294,8 +283,10 @@ fn main() -> Result<()> {
 
         if parameters.algorithm == AlgorithmType::Intersect {
             info!("Computing search spaces");
-            let (sources, targets): (HashSet<NodeIndex>, HashSet<NodeIndex>) =
-                queries.iter().map(|q| (q.source, q.target)).unzip();
+            let (sources, targets): (HashSet<NodeIndex>, HashSet<NodeIndex>) = queries
+                .iter()
+                .map(|q| (graph.get_node_id(q.source), graph.get_node_id(q.target)))
+                .unzip();
             let search_spaces = overlay.get_search_spaces(&sources, &targets);
 
             preprocessing_time = t1.elapsed();
@@ -319,8 +310,8 @@ fn main() -> Result<()> {
                     // the search spaces.
                     if let Some(td) = query.departure_time {
                         let ta_opt = intersect_earliest_arrival_query(
-                            query.source,
-                            query.target,
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
                             td,
                             &search_spaces,
                         )
@@ -332,9 +323,12 @@ fn main() -> Result<()> {
                             QueryResult::NotConnected
                         }
                     } else {
-                        let ttf_opt =
-                            intersect_profile_query(query.source, query.target, &search_spaces)
-                                .unwrap();
+                        let ttf_opt = intersect_profile_query(
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
+                            &search_spaces,
+                        )
+                        .unwrap();
                         bp.inc(1);
                         if let Some(ttf) = ttf_opt {
                             QueryResult::TravelTimeFunction((query.id, ttf))
@@ -376,8 +370,8 @@ fn main() -> Result<()> {
                             let (ea_alloc, ea_candidate_map) = alloc.get_ea_variables();
                             let result = overlay
                                 .earliest_arrival_query(
-                                    query.source,
-                                    query.target,
+                                    graph.get_node_id(query.source),
+                                    graph.get_node_id(query.target),
                                     td,
                                     ea_alloc,
                                     ea_candidate_map,
@@ -397,8 +391,8 @@ fn main() -> Result<()> {
                             let (profile_alloc, profile_candidate_map) =
                                 alloc.get_profile_variables();
                             let ttf_opt = overlay.profile_query(
-                                query.source,
-                                query.target,
+                                graph.get_node_id(query.source),
+                                graph.get_node_id(query.target),
                                 &mut profile_alloc.interval_search,
                                 &mut profile_alloc.profile_search,
                                 profile_candidate_map,

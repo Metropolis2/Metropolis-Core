@@ -11,7 +11,6 @@ use hashbrown::HashSet;
 use log::warn;
 use num_traits::{Float, FromPrimitive, Zero};
 use once_cell::sync::OnceCell;
-use petgraph::graph::NodeIndex;
 use petgraph::prelude::EdgeIndex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -25,7 +24,6 @@ use crate::network::road_network::vehicle::VehicleIndex;
 use crate::network::road_network::RoadNetworkPreprocessingData;
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
-use crate::schema::NodeIndexDef;
 use crate::travel_utility::TravelUtility;
 use crate::units::{Interval, NoUnit, Time, Utility};
 
@@ -143,18 +141,16 @@ impl<T: TTFNum> LegType<T> {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RoadLeg {
     /// Origin node of the leg.
-    #[schemars(with = "NodeIndexDef")]
-    pub(crate) origin: NodeIndex,
+    pub(crate) origin: u64,
     /// Destination node of the leg.
-    #[schemars(with = "NodeIndexDef")]
-    pub(crate) destination: NodeIndex,
+    pub(crate) destination: u64,
     /// Vehicle used for the leg.
     pub(crate) vehicle: VehicleIndex,
 }
 
 impl RoadLeg {
     /// Creates a new [RoadLeg].
-    pub fn new(origin: NodeIndex, destination: NodeIndex, vehicle: VehicleIndex) -> Self {
+    pub fn new(origin: u64, destination: u64, vehicle: VehicleIndex) -> Self {
         Self {
             origin,
             destination,
@@ -720,9 +716,7 @@ fn get_arrival_time_and_route<T: TTFNum>(
                 progress_bar.suspend(|| {
                     warn!(
                         "Found a loop in route from {} to {} at time {}",
-                        leg.origin.index(),
-                        leg.destination.index(),
-                        departure_time
+                        leg.origin, leg.destination, departure_time
                     );
                 })
             }

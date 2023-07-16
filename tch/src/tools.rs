@@ -12,7 +12,7 @@ use std::{
 
 use hashbrown::HashMap;
 use petgraph::{
-    graph::{EdgeIndex, NodeIndex},
+    graph::{node_index, EdgeIndex, NodeIndex},
     prelude::DiGraph,
 };
 use schemars::JsonSchema;
@@ -72,19 +72,34 @@ const fn one() -> TTF<f64> {
 }
 
 /// A set of nodes connected through directed edges.
-#[derive(Clone, Debug, JsonSchema)]
-pub struct Graph(#[schemars(with = "DeserGraph")] pub DiGraph<(), TTF<f64>>);
+#[derive(Clone, Debug)]
+pub struct Graph {
+    /// Directed graph where edges' weights are travel-time functions.
+    pub graph: DiGraph<(), TTF<f64>>,
+    /// Mapping from original node id to simulation NodeIndex.
+    pub node_map: HashMap<u64, NodeIndex>,
+}
+
+impl Graph {
+    /// Returns the NodeIndex of the node in the graph with the given original id.
+    pub fn get_node_id(&self, original_id: u64) -> NodeIndex {
+        *self
+            .node_map
+            .get(&original_id)
+            .unwrap_or_else(|| panic!("No node with id {original_id} in the graph"))
+    }
+}
 
 impl Deref for Graph {
     type Target = DiGraph<(), TTF<f64>>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.graph
     }
 }
 
 impl DerefMut for Graph {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.graph
     }
 }
 
@@ -94,20 +109,31 @@ impl<'de> Deserialize<'de> for Graph {
         D: Deserializer<'de>,
     {
         let deser_graph = DeserGraph::deserialize(deserializer)?;
-        let graph = DiGraph::from_edges(
-            deser_graph
-                .edges
-                .into_iter()
-                .map(|e| (e.source, e.target, e.weight)),
-        );
-        Ok(Graph(graph))
+        // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map u32 ->
+        // NodeIndex to re-index the nodes.
+        let node_map: HashMap<u64, NodeIndex> = deser_graph
+            .edges
+            .iter()
+            .map(|e| e.source)
+            .chain(deser_graph.edges.iter().map(|e| e.target))
+            .enumerate()
+            .map(|(idx, id)| (id, node_index(idx)))
+            .collect();
+        let edges: Vec<_> = deser_graph
+            .edges
+            .into_iter()
+            .map(|e| (node_map[&e.source], node_map[&e.target], e.weight))
+            .collect();
+        let graph = DiGraph::from_edges(edges);
+        Ok(Graph { graph, node_map })
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
+/// Variant of [Graph] used for deserialization.
+#[derive(Clone, Debug, Deserialize, JsonSchema)]
 #[serde(rename = "Graph")]
 #[serde(transparent)]
-pub(crate) struct DeserGraph {
+pub struct DeserGraph {
     /// Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source
     /// node, `t` is the id of the target node and `e` is the description of the edge.
     #[validate(length(min = 1))]
@@ -116,8 +142,8 @@ pub(crate) struct DeserGraph {
 
 #[derive(Clone, Debug, Deserialize, JsonSchema)]
 struct Edge {
-    source: u32,
-    target: u32,
+    source: u64,
+    target: u64,
     #[serde(default = "one")]
     weight: TTF<f64>,
 }
@@ -128,11 +154,9 @@ pub struct Query {
     /// Index of the query.
     pub id: u64,
     /// Index of the source node.
-    #[schemars(with = "usize")]
-    pub source: NodeIndex,
+    pub source: u64,
     /// Index of the target node.
-    #[schemars(with = "usize")]
-    pub target: NodeIndex,
+    pub target: u64,
     /// Departure time from source of the query (if not specified, the query is a profile query).
     #[serde(default)]
     pub departure_time: Option<f64>,
