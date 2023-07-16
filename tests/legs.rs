@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use metropolis::agent::{agent_index, Agent};
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::event::RoadEvent;
@@ -24,18 +24,19 @@ use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::{PolynomialFunction, TravelUtility};
 use metropolis::units::{Flow, Interval, Length, Speed, Time, Utility, ValueOfTime, PCE};
 use num_traits::Float;
-use petgraph::graph::{edge_index, node_index, DiGraph};
+use petgraph::graph::edge_index;
 use ttf::{PwlTTF, TTF};
 
 fn get_simulation() -> Simulation<f64> {
     // Create a network with 4 nodes and 2 edges.
     // Edge 0: 0 -> 1 (free-flow tt: 1).
     // Edge 1: 2 -> 3 (free-flow tt: 2).
-    let graph = DiGraph::from_edges(&[
+    let edges = vec![
         (
             0,
             1,
             RoadEdge::new(
+                0,
                 Speed(1.0),
                 Length(1.0),
                 1,
@@ -49,6 +50,7 @@ fn get_simulation() -> Simulation<f64> {
             2,
             3,
             RoadEdge::new(
+                1,
                 Speed(1.0),
                 Length(2.0),
                 1,
@@ -58,11 +60,7 @@ fn get_simulation() -> Simulation<f64> {
                 true,
             ),
         ),
-    ]);
-    let node_map: HashMap<_, _> = (0..=3)
-        .into_iter()
-        .map(|i| (i as u64, node_index(i)))
-        .collect();
+    ];
     let v0 = Vehicle::new(
         Length(1.0),
         PCE(1.0),
@@ -77,7 +75,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
         HashSet::new(),
     );
-    let road_network = RoadNetwork::new(graph, node_map, vec![v0, v1]);
+    let road_network = RoadNetwork::from_edges(edges, vec![v0, v1]);
     let network = Network::new(Some(road_network));
 
     // Create an agent with 3 legs (2 road and 1 virtual).
@@ -206,7 +204,7 @@ fn legs_test() {
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: Some(vec![edge_index(0)]),
             route: vec![RoadEvent {
-                edge: edge_index(0),
+                edge: 0,
                 edge_entry: Time(3.0),
             }],
             road_time: Time(1.0),
@@ -235,7 +233,7 @@ fn legs_test() {
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: Some(vec![edge_index(1)]),
             route: vec![RoadEvent {
-                edge: edge_index(1),
+                edge: 1,
                 edge_entry: Time(13.0),
             }],
             road_time: Time(4.0),

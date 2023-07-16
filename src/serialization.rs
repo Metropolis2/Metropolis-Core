@@ -3,11 +3,6 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::HashMap;
-use petgraph::{
-    graph::{node_index, DiGraph},
-    prelude::NodeIndex,
-};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use ttf::TTFNum;
@@ -23,23 +18,7 @@ where
         D: Deserializer<'de>,
     {
         let deser_graph = DeserRoadGraph::deserialize(deserializer)?;
-        // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map u64 ->
-        // NodeIndex to re-index the nodes.
-        let node_map: HashMap<u64, NodeIndex> = deser_graph
-            .edges
-            .iter()
-            .map(|(s, _, _)| s)
-            .chain(deser_graph.edges.iter().map(|(_, t, _)| t))
-            .enumerate()
-            .map(|(idx, &id)| (id, node_index(idx)))
-            .collect();
-        let edges: Vec<_> = deser_graph
-            .edges
-            .into_iter()
-            .map(|(s, t, e)| (node_map[&s], node_map[&t], e))
-            .collect();
-        let graph = DiGraph::from_edges(edges);
-        Ok(RoadGraph::new(graph, node_map))
+        Ok(RoadGraph::from_edges(deser_graph.edges))
     }
 }
 

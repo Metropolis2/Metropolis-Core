@@ -5,7 +5,7 @@
 
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
 use hashbrown::HashSet;
-use petgraph::graph::{edge_index, EdgeIndex, NodeIndex};
+use petgraph::graph::{EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,7 @@ pub(crate) fn example_vehicle2() -> Vehicle<f64> {
         [Speed(90.0), Speed(90.0)],
         [Speed(130.0), Speed(90.0)],
     ]);
-    let restricted_edges = [edge_index(0), edge_index(1)].into_iter().collect();
+    let restricted_edges = [0, 1].into_iter().collect();
     Vehicle::new(
         Length(20.0),
         PCE(3.0),
@@ -156,6 +156,7 @@ pub(crate) fn example_vehicle2() -> Vehicle<f64> {
 
 pub(crate) fn example_road_edge() -> RoadEdge<f64> {
     RoadEdge::new(
+        1,
         Speed(50.0 / 3.6),
         Length(100.0),
         2,

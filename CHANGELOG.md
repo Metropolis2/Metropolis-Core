@@ -10,6 +10,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
+- [INPUT] Add mandatory parameter `id` to edges (must be unique and non-negative). This is a
+  breaking change. The id is used in the output agent-results file (for the route) and in the
+  network weights file (see below).
 - [INPUT] Road-network parameter `approximation_bound` can be used to simplify the travel-time
   functions (and thus speed up the routing algorithm) at the cost of a small approximation.
 - [DEV] Add integration test `loop` to check for absence of loops in the routes.
@@ -18,6 +21,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] In the road-network input file, node ids no longer have to range from 0 to `n - 1` (where
   `n` is the number of nodes).
+- [INPUT] In the network-weights input and output file, the inner array of travel-time functions is
+  replaced by an object that maps edge ids (parameter `id` of the edge) to the travel-time function.
+  This is a breaking change.
 - [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
 - [USER] Compute the expected arrival time more accurately.
 

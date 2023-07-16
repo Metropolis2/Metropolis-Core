@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
@@ -19,7 +19,6 @@ use metropolis::simulation::Simulation;
 use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
-use petgraph::graph::{edge_index, node_index, DiGraph};
 use ttf::TTF;
 
 fn get_simulation() -> Simulation<f64> {
@@ -52,11 +51,12 @@ fn get_simulation() -> Simulation<f64> {
 
     // Create a road network with 2 edges, with infinite capacities, free-flow travel time of 10
     // seconds and length of 10 meters.
-    let graph = DiGraph::from_edges(&[
+    let edges = vec![
         (
             0,
             1,
             RoadEdge::new(
+                0,
                 Speed(1.0),
                 Length(10.0),
                 1,
@@ -70,6 +70,7 @@ fn get_simulation() -> Simulation<f64> {
             1,
             2,
             RoadEdge::new(
+                1,
                 Speed(1.0),
                 Length(10.0),
                 1,
@@ -79,11 +80,7 @@ fn get_simulation() -> Simulation<f64> {
                 true,
             ),
         ),
-    ]);
-    let node_map: HashMap<_, _> = (0..=2)
-        .into_iter()
-        .map(|i| (i as u64, node_index(i)))
-        .collect();
+    ];
     // Vehicles are 6 meters long: 2 vehicles are enough to block an edge.
     let vehicle = Vehicle::new(
         Length(6.0),
@@ -92,7 +89,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
         HashSet::new(),
     );
-    let road_network = RoadNetwork::new(graph, node_map, vec![vehicle]);
+    let road_network = RoadNetwork::from_edges(edges, vec![vehicle]);
     let network = Network::new(Some(road_network));
 
     let parameters = Parameters {
@@ -191,7 +188,7 @@ fn spillback_test() {
         .network_weights()
         .get_road_network()
         .unwrap();
-    let edge_weight = &weights[(0, edge_index(0))];
+    let edge_weight = &weights[(0, 0)];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
     };

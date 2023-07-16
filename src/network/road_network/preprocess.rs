@@ -285,7 +285,6 @@ fn compute_free_flow_travel_times<T: TTFNum>(
 
 #[cfg(test)]
 mod tests {
-    use petgraph::graph::edge_index;
 
     use super::*;
     use crate::network::road_network::vehicle::SpeedFunction;
@@ -306,20 +305,20 @@ mod tests {
             PCE(1.0),
             speed_function.clone(),
             HashSet::new(),
-            [edge_index(2)].into_iter().collect(),
+            [2].into_iter().collect(),
         );
         let v1 = Vehicle::new(
             Length(30.0),
             PCE(3.0),
             speed_function.clone(),
             HashSet::new(),
-            [edge_index(2)].into_iter().collect(),
+            [2].into_iter().collect(),
         );
         let v2 = Vehicle::new(
             Length(10.0),
             PCE(1.0),
             speed_function,
-            [edge_index(0), edge_index(1)].into_iter().collect(),
+            [0, 1].into_iter().collect(),
             HashSet::new(),
         );
         let vehicles = vec![v0, v1, v2];

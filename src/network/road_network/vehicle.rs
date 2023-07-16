@@ -5,12 +5,11 @@
 
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
 use hashbrown::HashSet;
-use petgraph::prelude::EdgeIndex;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-use crate::schema::EdgeIndexDef;
+use super::OriginalEdgeIndex;
 use crate::units::{Length, Speed, PCE};
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
@@ -90,13 +89,13 @@ pub struct Vehicle<T> {
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
     #[serde(default)]
-    #[schemars(with = "Vec<EdgeIndexDef>")]
-    allowed_edges: HashSet<EdgeIndex>,
+    #[schemars(with = "Vec<OriginalEdgeIndex>")]
+    allowed_edges: HashSet<OriginalEdgeIndex>,
     /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
     /// if `allowed_edges` is specified.
     #[serde(default)]
-    #[schemars(with = "Vec<EdgeIndexDef>")]
-    restricted_edges: HashSet<EdgeIndex>,
+    #[schemars(with = "Vec<OriginalEdgeIndex>")]
+    restricted_edges: HashSet<OriginalEdgeIndex>,
 }
 
 impl<T> Vehicle<T> {
@@ -105,8 +104,8 @@ impl<T> Vehicle<T> {
         headway: Length<T>,
         pce: PCE<T>,
         speed_function: SpeedFunction<T>,
-        allowed_edges: HashSet<EdgeIndex>,
-        restricted_edges: HashSet<EdgeIndex>,
+        allowed_edges: HashSet<OriginalEdgeIndex>,
+        restricted_edges: HashSet<OriginalEdgeIndex>,
     ) -> Self {
         Vehicle {
             headway,
@@ -118,7 +117,7 @@ impl<T> Vehicle<T> {
     }
 
     /// Returns `true` if the vehicle type has access to the given edge.
-    pub fn can_access(&self, edge_id: EdgeIndex) -> bool {
+    pub fn can_access(&self, edge_id: OriginalEdgeIndex) -> bool {
         // Edge is allowed explicitly.
         let is_allowed = self.allowed_edges.contains(&edge_id);
         // Edge is not allowed but other edges are explicitly allowed.

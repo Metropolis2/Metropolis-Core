@@ -13,7 +13,6 @@ use hashbrown::HashMap;
 use log::warn;
 use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
-use petgraph::visit::EdgeRef;
 use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
 use super::vehicle::Vehicle;
@@ -737,7 +736,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
             let edge_refs_iter = network.graph.edge_references();
             let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs_iter) {
-                if vehicle.can_access(edge_ref.id()) {
+                if vehicle.can_access(edge_ref.weight().id) {
                     let road_ttf = match &funcs.road {
                         XYF::Piecewise(road_pwl_length) => {
                             let road_pwl_ttf = road_pwl_length
@@ -758,9 +757,9 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     ttf.ensure_fifo();
                     ttf = ttf.link(&funcs.exit);
                     ttf.ensure_fifo();
-                    vehicle_weights.push(ttf);
+                    vehicle_weights.insert(edge_ref.weight().id, ttf);
                 } else {
-                    vehicle_weights.push(TTF::Constant(Time::infinity()));
+                    vehicle_weights.insert(edge_ref.weight().id, TTF::Constant(Time::infinity()));
                 }
             }
         }

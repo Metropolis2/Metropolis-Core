@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
@@ -19,7 +19,6 @@ use metropolis::simulation::Simulation;
 use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
-use petgraph::graph::{node_index, DiGraph};
 
 fn get_simulation() -> Simulation<f64> {
     // Create agents with fixed departure times.
@@ -52,11 +51,12 @@ fn get_simulation() -> Simulation<f64> {
 
     // Create a road network with 4 edges, with infinite capacities, free-flow travel time of 5
     // seconds and length of 5 meters.
-    let graph = DiGraph::from_edges(&[
+    let edges = vec![
         (
             0,
             1,
             RoadEdge::new(
+                0,
                 Speed(1.0),
                 Length(5.0),
                 1,
@@ -70,6 +70,7 @@ fn get_simulation() -> Simulation<f64> {
             1,
             2,
             RoadEdge::new(
+                1,
                 Speed(1.0),
                 Length(5.0),
                 1,
@@ -83,6 +84,7 @@ fn get_simulation() -> Simulation<f64> {
             2,
             3,
             RoadEdge::new(
+                2,
                 Speed(1.0),
                 Length(5.0),
                 1,
@@ -96,6 +98,7 @@ fn get_simulation() -> Simulation<f64> {
             3,
             0,
             RoadEdge::new(
+                3,
                 Speed(1.0),
                 Length(5.0),
                 1,
@@ -105,11 +108,7 @@ fn get_simulation() -> Simulation<f64> {
                 true,
             ),
         ),
-    ]);
-    let node_map: HashMap<_, _> = (0..=3)
-        .into_iter()
-        .map(|i| (i as u64, node_index(i)))
-        .collect();
+    ];
     // Vehicles are 6 meters long: 1 vehicle is enough to block an edge.
     let vehicle = Vehicle::new(
         Length(6.0),
@@ -118,7 +117,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
         HashSet::new(),
     );
-    let road_network = RoadNetwork::new(graph, node_map, vec![vehicle]);
+    let road_network = RoadNetwork::from_edges(edges, vec![vehicle]);
     let network = Network::new(Some(road_network));
 
     let parameters = Parameters {

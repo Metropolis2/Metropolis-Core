@@ -5,6 +5,7 @@
         10,
         6,
         {
+          "id": 1,
           "base_speed": 10.0,
           "length": 100.0
         }
@@ -13,6 +14,7 @@
         6,
         8,
         {
+          "id": 2,
           "base_speed": 10.0,
           "length": 100.0,
           "lanes": 2,
@@ -27,6 +29,7 @@
         10,
         7,
         {
+          "id": 3,
           "base_speed": 10.0,
           "length": 100.0,
           "speed_density": {
@@ -46,6 +49,7 @@
         7,
         8,
         {
+          "id": 4,
           "base_speed": 10.0,
           "length": 100.0,
           "speed_density": {

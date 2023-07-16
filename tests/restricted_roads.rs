@@ -3,7 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use metropolis::agent::Agent;
 use metropolis::learning::{ExponentialLearningModel, LearningModel};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
@@ -20,7 +20,6 @@ use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
 use num_traits::Float;
-use petgraph::graph::{edge_index, node_index, DiGraph};
 
 fn get_simulation() -> Simulation<f64> {
     // Create a network with 4 nodes and two different routes to go from node 0 to node 3.
@@ -29,11 +28,12 @@ fn get_simulation() -> Simulation<f64> {
     // Edge 1: 0 -> 2 (tt = 2).
     // Edge 2: 1 -> 3 (tt = 1).
     // Edge 3: 2 -> 3 (tt = 1).
-    let graph = DiGraph::from_edges(&[
+    let edges = vec![
         (
             0,
             1,
             RoadEdge::new(
+                0,
                 Speed(1.0),
                 Length(1.0),
                 1,
@@ -47,6 +47,7 @@ fn get_simulation() -> Simulation<f64> {
             0,
             2,
             RoadEdge::new(
+                1,
                 Speed(1.0),
                 Length(2.0),
                 1,
@@ -60,6 +61,7 @@ fn get_simulation() -> Simulation<f64> {
             1,
             3,
             RoadEdge::new(
+                2,
                 Speed(1.0),
                 Length(1.0),
                 1,
@@ -73,6 +75,7 @@ fn get_simulation() -> Simulation<f64> {
             2,
             3,
             RoadEdge::new(
+                3,
                 Speed(1.0),
                 Length(1.0),
                 1,
@@ -82,11 +85,7 @@ fn get_simulation() -> Simulation<f64> {
                 true,
             ),
         ),
-    ]);
-    let node_map: HashMap<_, _> = (0..=3)
-        .into_iter()
-        .map(|i| (i as u64, node_index(i)))
-        .collect();
+    ];
     // Create 4 identical vehicles types with different road restrictions.
     // Only vehicle type `v0` has acces to edge 2 (and thus to route 0 -> 1 -> 3).
     let v0 = Vehicle::new(
@@ -100,7 +99,7 @@ fn get_simulation() -> Simulation<f64> {
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
-        [0, 1, 3].into_iter().map(|i| edge_index(i)).collect(),
+        [0, 1, 3].into_iter().collect(),
         HashSet::new(),
     );
     let v2 = Vehicle::new(
@@ -108,7 +107,7 @@ fn get_simulation() -> Simulation<f64> {
         PCE(1.0),
         SpeedFunction::Base,
         HashSet::new(),
-        [2].into_iter().map(|i| edge_index(i)).collect(),
+        [2].into_iter().collect(),
     );
     // For vehicle type `v3`, only route 0 -> 2 -> 3 is feasible according to allowed edges but
     // only route 0 -> 1 -> 3 is feasible according to restricted edges.
@@ -118,10 +117,10 @@ fn get_simulation() -> Simulation<f64> {
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
-        [0, 1, 3].into_iter().map(|i| edge_index(i)).collect(),
-        [1].into_iter().map(|i| edge_index(i)).collect(),
+        [0, 1, 3].into_iter().collect(),
+        [1].into_iter().collect(),
     );
-    let road_network = RoadNetwork::new(graph, node_map, vec![v0, v1, v2, v3]);
+    let road_network = RoadNetwork::from_edges(edges, vec![v0, v1, v2, v3]);
     let network = Network::new(Some(road_network));
 
     // Create agents with different vehicle types.

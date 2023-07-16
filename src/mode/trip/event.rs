@@ -18,7 +18,7 @@ use crate::agent::AgentIndex;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
-use crate::network::road_network::RoadNetworkState;
+use crate::network::road_network::{OriginalEdgeIndex, RoadNetwork, RoadNetworkState};
 use crate::units::Time;
 
 /// Types of [VehicleEvent].
@@ -48,7 +48,7 @@ enum VehicleEventType {
 #[serde(bound(serialize = "T: Clone + Serialize"))]
 pub struct RoadEvent<T> {
     /// Id of the edge taken.
-    pub edge: EdgeIndex,
+    pub edge: OriginalEdgeIndex,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
     pub edge_entry: Time<T>,
 }
@@ -59,11 +59,11 @@ pub struct RoadEvent<T> {
 #[schemars(
     description = "Array `[e, t]`, where `e` is the index of the edge taken and `t` is the entry time of the vehicle on this edges"
 )]
-pub(crate) struct TransparentRoadEvent<T>(usize, Time<T>);
+pub(crate) struct TransparentRoadEvent<T>(OriginalEdgeIndex, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
     fn from(v: RoadEvent<T>) -> Self {
-        Self(v.edge.index(), v.edge_entry)
+        Self(v.edge, v.edge_entry)
     }
 }
 
@@ -137,7 +137,7 @@ impl<T> VehicleEvent<T> {
 }
 
 impl<T: TTFNum> VehicleEvent<T> {
-    fn record_event(&self, leg_results: &mut LegResults<T>) {
+    fn record_event(&self, leg_results: &mut LegResults<T>, road_network: &RoadNetwork<T>) {
         match self.event_type {
             VehicleEventType::BeginsVirtualLeg | VehicleEventType::BeginsRoadLeg => {
                 // Set the departure time of the leg.
@@ -162,7 +162,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                 road_leg_results.in_bottleneck_time += self.at_time - self.last_timing.unwrap();
                 // Record the entry time for the current edge.
                 road_leg_results.route.push(RoadEvent {
-                    edge: self.current_edge(),
+                    edge: road_network.original_edge_id_of(self.current_edge()),
                     edge_entry: self.at_time,
                 });
             }
@@ -321,7 +321,7 @@ impl<T: TTFNum> VehicleEvent<T> {
 
         let current_time = self.at_time;
 
-        self.record_event(leg_results);
+        self.record_event(leg_results, road_network);
 
         if let Some(next_event) = match self.event_type {
             VehicleEventType::TripStarts => Some(self.into_next_step(None, trip)),
