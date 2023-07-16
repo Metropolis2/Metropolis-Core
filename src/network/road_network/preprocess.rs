@@ -11,7 +11,7 @@ use hashbrown::{HashMap, HashSet};
 use ttf::{TTFNum, TTF};
 
 use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
-use super::{RoadNetwork, RoadNetworkParameters};
+use super::{OriginalNodeIndex, RoadNetwork, RoadNetworkParameters};
 use crate::agent::Agent;
 use crate::mode::Mode;
 use crate::units::Time;
@@ -154,15 +154,15 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
 /// trip, with a given vehicle.
 #[derive(Clone, Debug, Default)]
 pub struct ODPairs {
-    unique_origins: HashSet<u64>,
-    unique_destinations: HashSet<u64>,
-    pairs: HashMap<u64, HashSet<u64>>,
+    unique_origins: HashSet<OriginalNodeIndex>,
+    unique_destinations: HashSet<OriginalNodeIndex>,
+    pairs: HashMap<OriginalNodeIndex, HashSet<OriginalNodeIndex>>,
 }
 
 impl ODPairs {
     /// Create a new ODPairs from a Vec of tuples `(o, d)`, where `o` is the [NodeIndex] of the
     /// origin and `d` is the [NodeIndex] of the destination.
-    pub fn from_vec(raw_pairs: Vec<(u64, u64)>) -> Self {
+    pub fn from_vec(raw_pairs: Vec<(OriginalNodeIndex, OriginalNodeIndex)>) -> Self {
         let mut pairs = ODPairs::default();
         for (origin, destination) in raw_pairs {
             pairs.add_pair(origin, destination);
@@ -171,7 +171,7 @@ impl ODPairs {
     }
 
     /// Add an origin-destination pair to the ODPairs.
-    fn add_pair(&mut self, origin: u64, destination: u64) {
+    fn add_pair(&mut self, origin: OriginalNodeIndex, destination: OriginalNodeIndex) {
         self.unique_origins.insert(origin);
         self.unique_destinations.insert(destination);
         self.pairs
@@ -186,17 +186,17 @@ impl ODPairs {
     }
 
     /// Returns the set of unique origins.
-    pub fn unique_origins(&self) -> &HashSet<u64> {
+    pub fn unique_origins(&self) -> &HashSet<OriginalNodeIndex> {
         &self.unique_origins
     }
 
     /// Returns the set of unique destinations.
-    pub fn unique_destinations(&self) -> &HashSet<u64> {
+    pub fn unique_destinations(&self) -> &HashSet<OriginalNodeIndex> {
         &self.unique_destinations
     }
 
     /// Returns the list of valid destinations for each valid origin.
-    pub fn pairs(&self) -> &HashMap<u64, HashSet<u64>> {
+    pub fn pairs(&self) -> &HashMap<OriginalNodeIndex, HashSet<OriginalNodeIndex>> {
         &self.pairs
     }
 }
@@ -233,7 +233,7 @@ fn od_pairs_from_agents<T>(
 }
 
 /// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
-type ODTravelTimes<T> = HashMap<(u64, u64), Time<T>>;
+type ODTravelTimes<T> = HashMap<(OriginalNodeIndex, OriginalNodeIndex), Time<T>>;
 
 fn compute_free_flow_travel_times<T: TTFNum>(
     road_network: &RoadNetwork<T>,

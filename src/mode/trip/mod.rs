@@ -21,7 +21,7 @@ use super::{ModeCallback, ModeResults};
 use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
 use crate::network::road_network::vehicle::VehicleIndex;
-use crate::network::road_network::RoadNetworkPreprocessingData;
+use crate::network::road_network::{OriginalNodeIndex, RoadNetworkPreprocessingData};
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
 use crate::travel_utility::TravelUtility;
@@ -141,16 +141,20 @@ impl<T: TTFNum> LegType<T> {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RoadLeg {
     /// Origin node of the leg.
-    pub(crate) origin: u64,
+    pub(crate) origin: OriginalNodeIndex,
     /// Destination node of the leg.
-    pub(crate) destination: u64,
+    pub(crate) destination: OriginalNodeIndex,
     /// Vehicle used for the leg.
     pub(crate) vehicle: VehicleIndex,
 }
 
 impl RoadLeg {
     /// Creates a new [RoadLeg].
-    pub fn new(origin: u64, destination: u64, vehicle: VehicleIndex) -> Self {
+    pub fn new(
+        origin: OriginalNodeIndex,
+        destination: OriginalNodeIndex,
+        vehicle: VehicleIndex,
+    ) -> Self {
         Self {
             origin,
             destination,

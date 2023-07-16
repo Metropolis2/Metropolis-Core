@@ -34,6 +34,7 @@ use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
 use crate::units::{Flow, Length, Speed, Time};
 
+/// Index of the node as given by the user.
 pub type OriginalNodeIndex = u64;
 /// Index of the edge as given by the user.
 pub type OriginalEdgeIndex = u64;
@@ -197,7 +198,7 @@ impl<T: TTFNum> RoadEdge<T> {
     /// Creates a new RoadEdge.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
-        id: u64,
+        id: OriginalEdgeIndex,
         base_speed: Speed<T>,
         length: Length<T>,
         lanes: u8,
@@ -278,7 +279,7 @@ pub struct RoadGraph<T> {
     /// Directed graph of [RoadNode]s and [RoadEdge]s.
     graph: DiGraph<RoadNode, RoadEdge<T>>,
     /// Mapping from original node id to simulation NodeIndex.
-    node_map: HashMap<u64, NodeIndex>,
+    node_map: HashMap<OriginalNodeIndex, NodeIndex>,
     /// Mapping from original edge id to simulation EdgeIndex.
     edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
     /// Mapping from simulation EdgeIndex to original edge id.
@@ -289,7 +290,7 @@ impl<T> RoadGraph<T> {
     /// Creates a new RoadGraph.
     pub const fn new(
         graph: DiGraph<RoadNode, RoadEdge<T>>,
-        node_map: HashMap<u64, NodeIndex>,
+        node_map: HashMap<OriginalNodeIndex, NodeIndex>,
         edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
         rev_edge_map: HashMap<EdgeIndex, OriginalEdgeIndex>,
     ) -> Self {
@@ -302,10 +303,10 @@ impl<T> RoadGraph<T> {
     }
 
     /// Creates a new RoadGraph from a Vec of edges.
-    pub fn from_edges(edges: Vec<(u64, u64, RoadEdge<T>)>) -> Self {
-        // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map u64 ->
-        // NodeIndex to re-index the nodes.
-        let node_map: HashMap<u64, NodeIndex> = edges
+    pub fn from_edges(edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>) -> Self {
+        // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
+        // OriginalNodeIndex -> NodeIndex to re-index the nodes.
+        let node_map: HashMap<OriginalNodeIndex, NodeIndex> = edges
             .iter()
             .map(|(s, _, _)| s)
             .chain(edges.iter().map(|(_, t, _)| t))
@@ -368,7 +369,7 @@ impl<T> RoadNetwork<T> {
     /// Creates a new RoadNetwork.
     pub fn new(
         graph: DiGraph<RoadNode, RoadEdge<T>>,
-        node_map: HashMap<u64, NodeIndex>,
+        node_map: HashMap<OriginalNodeIndex, NodeIndex>,
         edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
         rev_edge_map: HashMap<EdgeIndex, OriginalEdgeIndex>,
         vehicles: Vec<Vehicle<T>>,
@@ -380,7 +381,10 @@ impl<T> RoadNetwork<T> {
     }
 
     /// Creates a new RoadNetwork from a Vec of edges and a Vec of [Vehicle].
-    pub fn from_edges(edges: Vec<(u64, u64, RoadEdge<T>)>, vehicles: Vec<Vehicle<T>>) -> Self {
+    pub fn from_edges(
+        edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>,
+        vehicles: Vec<Vehicle<T>>,
+    ) -> Self {
         RoadNetwork {
             graph: RoadGraph::from_edges(edges),
             vehicles,

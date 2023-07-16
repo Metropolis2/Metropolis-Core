@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use ttf::TTFNum;
 
-use crate::network::road_network::{RoadEdge, RoadGraph};
+use crate::network::road_network::{OriginalNodeIndex, RoadEdge, RoadGraph};
 
 impl<'de, T> Deserialize<'de> for RoadGraph<T>
 where
@@ -29,5 +29,5 @@ pub(crate) struct DeserRoadGraph<T> {
     /// Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source
     /// node, `t` is the id of the target node and `e` is the description of the edge.
     #[validate(length(min = 1))]
-    edges: Vec<(u64, u64, RoadEdge<T>)>,
+    edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>,
 }
