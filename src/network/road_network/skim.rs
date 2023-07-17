@@ -19,9 +19,8 @@ use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::{TTFNum, TTF};
 
-use crate::units::Time;
-
 use super::OriginalNodeIndex;
+use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).

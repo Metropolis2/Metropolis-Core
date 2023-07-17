@@ -254,9 +254,15 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// A vehicle has successfully entered the edge.
     ///
     /// Returns the closing time of the bottleneck.
-    fn vehicle_enters(&mut self, vehicle: &Vehicle<T>) -> Time<T> {
+    fn vehicle_enters(&mut self, vehicle: &Vehicle<T>, is_phantom: bool) -> Time<T> {
         debug_assert_ne!(self.status, EdgeEntryStatus::Open);
-        self.reduce_available_length(vehicle.get_headway());
+        let vehicle_length = if is_phantom {
+            // The vehicle has been phantomed, the available length is not reduced.
+            Length::zero()
+        } else {
+            vehicle.get_headway()
+        };
+        self.reduce_available_length(vehicle_length);
         self.status = EdgeEntryStatus::Closed;
         self.get_closing_time(vehicle)
     }
@@ -303,6 +309,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
         self.record(queued_vehicle.entry_time, current_time);
         let mut event = queued_vehicle.event;
         event.set_time(current_time);
+        event.set_phantom();
         event
     }
 
@@ -579,13 +586,14 @@ impl<T: TTFNum> RoadEdgeState<T> {
         vehicle: &Vehicle<T>,
         current_time: Time<T>,
         edge: &RoadEdge<T>,
+        is_phantom: bool,
     ) -> (Time<T>, Time<T>) {
         // Notify the EdgeEntryState that a vehicle is entering and gets the closing time of the
         // bottleneck.
         let closing_time = self
             .entry
             .as_mut()
-            .map(|entry| entry.vehicle_enters(vehicle))
+            .map(|entry| entry.vehicle_enters(vehicle, is_phantom))
             .unwrap_or(Time::zero());
         let travel_time = self.enters_road_segment(vehicle, current_time, edge);
         (travel_time, closing_time)
@@ -634,12 +642,17 @@ impl<T: TTFNum> RoadEdgeState<T> {
         &mut self,
         current_time: Time<T>,
         vehicle: &Vehicle<T>,
+        was_phantom: bool,
     ) -> (Option<VehicleEvent<T>>, Option<Time<T>>) {
-        // Try to release a vehicle at the entry of the edge.
-        let released_vehicle_event = self
-            .entry
-            .as_mut()
-            .and_then(|entry| entry.vehicle_exits(current_time, vehicle));
+        let released_vehicle_event = if was_phantom {
+            // The vehicle was a phantom so we do not increase the available length on the edge.
+            None
+        } else {
+            // Try to release a vehicle at the entry of the edge.
+            self.entry
+                .as_mut()
+                .and_then(|entry| entry.vehicle_exits(current_time, vehicle))
+        };
         // Remove the vehicle from the road segment.
         self.road.exits(vehicle, current_time);
         // Close the exit bottleneck.
@@ -842,6 +855,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Events to trigger the bottleneck re-opening at the edge entry and at the exit of the
     /// previous edge (if any) might be pushed to the event queue.
+    #[allow(clippy::too_many_arguments)]
     pub fn enters_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
@@ -849,6 +863,8 @@ impl<T: TTFNum> RoadNetworkState<T> {
         current_time: Time<T>,
         vehicle: &'sim Vehicle<T>,
         agent_id: AgentIndex,
+        is_phantom: bool,
+        was_phantom: bool,
         event_input: &'event mut EventInput<'sim, T>,
         event_alloc: &'event mut EventAlloc<T>,
         event_queue: &'event mut EventQueue<T>,
@@ -857,7 +873,8 @@ impl<T: TTFNum> RoadNetworkState<T> {
         let edge_state = &mut self.graph[edge_index];
         // The agent is no longer pending.
         self.pending_edges.remove(&agent_id);
-        let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, edge);
+        let (travel_time, closing_time) =
+            edge_state.enters(vehicle, current_time, edge, is_phantom);
         if closing_time.is_zero() {
             // The edge's entry bottleneck can be open immediately.
             match edge_state.open_entry_bottleneck(current_time) {
@@ -895,6 +912,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 previous_edge_index,
                 current_time,
                 vehicle,
+                was_phantom,
                 event_input,
                 event_alloc,
                 event_queue,
@@ -910,18 +928,20 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// If the edge has a limited bottleneck flow, an event will be triggered later to re-open the
     /// edge's exit bottleneck.
+    #[allow(clippy::too_many_arguments)]
     pub fn release_from_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time<T>,
         vehicle: &'sim Vehicle<T>,
+        was_phantom: bool,
         event_input: &'event mut EventInput<'sim, T>,
         event_alloc: &'event mut EventAlloc<T>,
         event_queue: &'event mut EventQueue<T>,
     ) -> Result<()> {
         let edge = &mut self.graph[edge_index];
         // Removes the vehicle from its previous edge and release any pending vehicle.
-        let (event_opt, closing_time_opt) = edge.vehicle_exits(current_time, vehicle);
+        let (event_opt, closing_time_opt) = edge.vehicle_exits(current_time, vehicle, was_phantom);
         if let Some(closing_time) = closing_time_opt {
             if closing_time.is_zero() {
                 // The edge's exit bottleneck can be open immediately.

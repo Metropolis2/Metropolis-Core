@@ -26,6 +26,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   This is a breaking change.
 - [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
 - [USER] Compute the expected arrival time more accurately.
+- [USER] When a vehicle is forced to be released on the next edge, it does not use any additionnal
+  length so that the edge will not stay full for too long.
 
 ### Fixed
 

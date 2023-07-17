@@ -164,18 +164,17 @@ fn gridlock_test() {
     //
     // They all reach the second edge of their trip at time 15 + 5 = 20.
     //
-    // They is a gridlock for 10 seconds.
-    // All vehicles are released at time 30.
+    // Vehicle 1 is a phantom so there is no gridlock to enter the third edge.
     //
-    // They all reached their destination at time 35.
+    // They all reached their destination at time 25.
 
-    let expected_arrival_times = vec![35., 35., 35., 35.];
+    let expected_arrival_times = vec![25., 25., 25., 25.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
     }
 
-    let expected_in_bottleneck_times = vec![20., 18., 19., 17.];
+    let expected_in_bottleneck_times = vec![10., 8., 9., 7.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())

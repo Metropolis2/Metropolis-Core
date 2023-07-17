@@ -88,12 +88,21 @@ pub struct VehicleEvent<T> {
     route: Vec<EdgeIndex>,
     /// Type of event.
     event_type: VehicleEventType,
+    /// If `true`, the vehicle is a phatom, i.e., it does not take any room on the edge.
+    is_phantom: bool,
+    /// If `true`, the vehicle was a phatom for the last edge it took.
+    was_phantom: bool,
 }
 
 impl<T> VehicleEvent<T> {
     /// Changes the time of the event.
     pub fn set_time(&mut self, at_time: Time<T>) {
         self.at_time = at_time;
+    }
+
+    /// Set the vehicle to be a phantom.
+    pub fn set_phantom(&mut self) {
+        self.is_phantom = true;
     }
 
     /// Index of the edge the vehicle was previously on (if any).
@@ -132,6 +141,8 @@ impl<T> VehicleEvent<T> {
             edge_position: 0,
             route: Vec::new(),
             event_type: VehicleEventType::TripStarts,
+            is_phantom: false,
+            was_phantom: false,
         }
     }
 }
@@ -191,6 +202,8 @@ impl<T: TTFNum> VehicleEvent<T> {
     /// Consumes the event and returns a [VehicleEvent] for the next step of the trip.
     fn into_next_step(mut self, travel_time: Option<Time<T>>, trip: &TravelingMode<T>) -> Self {
         self.last_timing = Some(self.at_time);
+        self.was_phantom = self.is_phantom;
+        self.is_phantom = false;
         match self.event_type {
             VehicleEventType::TripStarts => {
                 // Increase the event time according to the delay at origin.
@@ -396,6 +409,8 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.at_time,
                     vehicle,
                     self.agent,
+                    self.is_phantom,
+                    self.was_phantom,
                     input,
                     alloc,
                     events,
@@ -433,6 +448,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     self.previous_edge().unwrap(),
                     self.at_time,
                     vehicle,
+                    self.is_phantom,
                     input,
                     alloc,
                     events,
