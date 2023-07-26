@@ -374,15 +374,15 @@ impl<T: TTFNum> VehicleEvent<T> {
                     };
                 // Store the expected arrival time at destination in the results.
                 road_leg_results.exp_arrival_time = exp_arrival_time;
-                // Compute and store the route free-flow travel time and length.
-                road_leg_results.route_free_flow_travel_time = road_network
-                    .route_free_flow_travel_time(route.iter().copied(), road_leg.vehicle);
-                road_leg_results.length = road_network.route_length(route.iter().copied());
-                // Store the global free-flow travel time.
-                road_leg_results.global_free_flow_travel_time = *preprocess_data
-                    .free_flow_travel_times[uvehicle]
-                    .get(&(road_leg.origin, road_leg.destination))
-                    .expect("The free flow travel time of the OD pair has not been computed.");
+                // Compute and store the route free-flow travel time and length (if it was not
+                // computed already).
+                if road_leg_results.route_free_flow_travel_time.is_nan() {
+                    road_leg_results.route_free_flow_travel_time = road_network
+                        .route_free_flow_travel_time(route.iter().copied(), road_leg.vehicle);
+                }
+                if road_leg_results.length.is_nan() {
+                    road_leg_results.length = road_network.route_length(route.iter().copied());
+                }
                 Some(self.with_route(route).into_next_step(None, trip))
             }
 
