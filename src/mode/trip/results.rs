@@ -58,22 +58,24 @@ impl<T> RoadLegResults<T> {
 }
 
 impl<T: TTFNum> RoadLegResults<T> {
-    /// Creates a new [RoadLegResults] with empty results (except for expected departure time and
-    /// arrival time).
+    /// Creates a new [RoadLegResults] where only the results known at this time are filled.
     pub fn new(
         departure_time: Time<T>,
         arrival_time: Time<T>,
         expected_route: Option<Vec<EdgeIndex>>,
+        length: Option<Length<T>>,
+        route_free_flow_travel_time: Option<Time<T>>,
+        global_free_flow_travel_time: Time<T>,
     ) -> Self {
         Self {
             expected_route,
+            length: length.unwrap_or_else(Length::nan),
+            route_free_flow_travel_time: route_free_flow_travel_time.unwrap_or_else(Time::nan),
+            global_free_flow_travel_time,
             route: Vec::new(),
             road_time: Time::zero(),
             in_bottleneck_time: Time::zero(),
             out_bottleneck_time: Time::zero(),
-            route_free_flow_travel_time: Time::nan(),
-            global_free_flow_travel_time: Time::nan(),
-            length: Length::nan(),
             pre_exp_departure_time: departure_time,
             pre_exp_arrival_time: arrival_time,
             exp_arrival_time: Time::nan(),

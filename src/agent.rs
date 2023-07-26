@@ -15,7 +15,7 @@ use ttf::TTFNum;
 
 use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::NetworkSkim;
+use crate::network::{Network, NetworkSkim};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
@@ -79,6 +79,7 @@ impl<T: TTFNum> Agent<T> {
     /// day.
     pub fn make_pre_day_choice(
         &self,
+        network: &Network<T>,
         exp_skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
         previous_day_result: Option<&AgentResult<T>>,
@@ -92,6 +93,7 @@ impl<T: TTFNum> Agent<T> {
                 let (expected_utilities, mut callbacks) = itertools::process_results(
                     self.modes.iter().map(|mode| {
                         mode.get_pre_day_choice(
+                            network,
                             exp_skims,
                             &preprocess_data.network,
                             progress_bar.clone(),
@@ -115,6 +117,7 @@ impl<T: TTFNum> Agent<T> {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
                 let (expected_utility, callback) = chosen_mode.get_pre_day_choice(
+                    network,
                     exp_skims,
                     &preprocess_data.network,
                     progress_bar,
@@ -184,10 +187,12 @@ mod tests {
     #[test]
     fn make_pre_day_choice_test() {
         let mut agent = get_agent();
+        let network = Network::new(None);
         let mut alloc = EAAllocation::default();
         let bp = MetroProgressBar::new(1);
         assert!(agent
             .make_pre_day_choice(
+                &network,
                 &Default::default(),
                 &Default::default(),
                 None,
@@ -199,6 +204,7 @@ mod tests {
 
         let result = agent
             .make_pre_day_choice(
+                &network,
                 &Default::default(),
                 &Default::default(),
                 None,
@@ -214,6 +220,7 @@ mod tests {
         assert_eq!(
             agent
                 .make_pre_day_choice(
+                    &network,
                     &Default::default(),
                     &Default::default(),
                     Some(&result),
@@ -228,6 +235,7 @@ mod tests {
         agent.modes.push(Mode::Constant(Utility(15.)));
         let result = agent
             .make_pre_day_choice(
+                &network,
                 &Default::default(),
                 &Default::default(),
                 None,

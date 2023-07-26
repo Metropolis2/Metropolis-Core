@@ -15,6 +15,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   network weights file (see below).
 - [INPUT] Road-network parameter `approximation_bound` can be used to simplify the travel-time
   functions (and thus speed up the routing algorithm) at the cost of a small approximation.
+- [OUTPUT] Add route length, route free-flow travel time and global free-flow travel time in the
+  output of the `compute_choices` executable (whenever the route is pre-computed).
 - [DEV] Add integration test `loop` to check for absence of loops in the routes.
 
 ### Changed

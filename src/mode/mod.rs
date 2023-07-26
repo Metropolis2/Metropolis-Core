@@ -17,7 +17,7 @@ use self::trip::TravelingMode;
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::{NetworkPreprocessingData, NetworkSkim};
+use crate::network::{Network, NetworkPreprocessingData, NetworkSkim};
 use crate::progress_bar::MetroProgressBar;
 use crate::units::{Distribution, Time, Utility};
 
@@ -86,6 +86,7 @@ impl<T: TTFNum> Mode<T> {
     /// for a given [Mode], [NetworkSkim] and [NetworkPreprocessingData].
     pub fn get_pre_day_choice<'a>(
         &'a self,
+        network: &'a Network<T>,
         exp_skims: &'a NetworkSkim<T>,
         preprocess_data: &'a NetworkPreprocessingData<T>,
         progress_bar: MetroProgressBar,
@@ -93,6 +94,7 @@ impl<T: TTFNum> Mode<T> {
         match self {
             Self::Constant(u) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
             Self::Trip(mode) => mode.get_pre_day_choice(
+                network.get_road_network(),
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),
                 progress_bar,

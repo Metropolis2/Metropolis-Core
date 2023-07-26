@@ -241,6 +241,7 @@ impl<T: TTFNum> Simulation<T> {
                     |alloc, (agent, prev_agent_result, update)| {
                         bp.inc();
                         agent.make_pre_day_choice(
+                            &self.network,
                             exp_skims,
                             preprocess_data,
                             Some(prev_agent_result),
@@ -259,6 +260,7 @@ impl<T: TTFNum> Simulation<T> {
                 .map_init(EAAllocation::default, |alloc, agent| {
                     bp.inc();
                     agent.make_pre_day_choice(
+                        &self.network,
                         exp_skims,
                         preprocess_data,
                         None,
