@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.5.0] - 2023-07-28
+
 ### Added
 
 - [INPUT] Add mandatory parameter `id` to edges (must be unique and non-negative). This is a
@@ -325,7 +327,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.4.3...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.0
 [0.4.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.3
 [0.4.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.2
 [0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
