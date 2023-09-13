@@ -78,19 +78,17 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
         let (nb_vehicles, nb_edges) = self.shape();
         let mut new_weights = RoadNetworkWeights::with_capacity(nb_vehicles, nb_edges);
         for (i, (self_weights, other_weights)) in self.0.iter().zip(other.0.iter()).enumerate() {
-            for ((self_id, self_ttf), (other_id, other_ttf)) in
-                self_weights.iter().zip(other_weights.iter())
-            {
-                assert_eq!(
-                    self_id, other_id,
-                    "The weights do not have the same edge ids"
-                );
-                new_weights.0[i].insert(
-                    *self_id,
-                    self_ttf.apply(other_ttf, |w1, w2| {
-                        Time(coefficient * w1.0 + (T::one() - coefficient) * w2.0)
-                    }),
-                );
+            for (self_id, self_ttf) in self_weights.iter() {
+                if let Some(other_ttf) = other_weights.get(self_id) {
+                    new_weights.0[i].insert(
+                        *self_id,
+                        self_ttf.apply(other_ttf, |w1, w2| {
+                            Time(coefficient * w1.0 + (T::one() - coefficient) * w2.0)
+                        }),
+                    );
+                } else {
+                    panic!("The weights do not have the same edge ids");
+                }
             }
         }
         new_weights
@@ -113,19 +111,17 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
         let (nb_vehicles, nb_edges) = self.shape();
         let mut new_weights = RoadNetworkWeights::with_capacity(nb_vehicles, nb_edges);
         for (i, (self_weights, other_weights)) in self.0.iter().zip(other.0.iter()).enumerate() {
-            for ((self_id, self_ttf), (other_id, other_ttf)) in
-                self_weights.iter().zip(other_weights.iter())
-            {
-                assert_eq!(
-                    self_id, other_id,
-                    "The weights do not have the same edge ids"
-                );
-                new_weights.0[i].insert(
-                    *self_id,
-                    self_ttf.apply(other_ttf, |w1, w2| {
-                        Time(w1.0.powf(a / (a + b)) * w2.0.powf(b / (a + b)))
-                    }),
-                );
+            for (self_id, self_ttf) in self_weights.iter() {
+                if let Some(other_ttf) = other_weights.get(self_id) {
+                    new_weights.0[i].insert(
+                        *self_id,
+                        self_ttf.apply(other_ttf, |w1, w2| {
+                            Time(w1.0.powf(a / (a + b)) * w2.0.powf(b / (a + b)))
+                        }),
+                    );
+                } else {
+                    panic!("The weights do not have the same edge ids");
+                }
             }
         }
         new_weights

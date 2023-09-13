@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Fixed
+
+- [USER] The order in which ids are stored in the network-weights input is no longer relevant.
+
 ## [0.5.0] - 2023-07-28
 
 ### Added
