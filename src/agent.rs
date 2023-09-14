@@ -77,6 +77,7 @@ impl<T: TTFNum> Agent<T> {
     ///
     /// It is an error to call this function with `update = false` and no results for the previous
     /// day.
+    #[allow(clippy::too_many_arguments)]
     pub fn make_pre_day_choice(
         &self,
         network: &Network<T>,

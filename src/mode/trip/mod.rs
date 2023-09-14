@@ -417,8 +417,8 @@ impl<T: TTFNum> TravelingMode<T> {
         // Add total travel utility (stopping time needs to be excluded).
         utilities
             .iter_mut()
-            .zip(current_times.into_iter())
-            .zip(tds.into_iter())
+            .zip(current_times)
+            .zip(tds)
             .for_each(|((u, t), td)| {
                 let tot_tt = (t - td) - self.get_total_stopping_time();
                 *u += self.total_travel_utility.get_travel_utility(tot_tt)
@@ -633,6 +633,7 @@ impl<T: TTFNum> TravelingMode<T> {
     ///
     /// Not all values of the trip results are filled. Some values should be filled in the
     /// within-day model.
+    #[allow(clippy::too_many_arguments)]
     fn init_trip_results_with_route(
         &self,
         departure_time: Time<T>,
