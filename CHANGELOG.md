@@ -8,11 +8,16 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [OUTPUT] The pre-computed route is no longer stored with the agent results for the
+  `compute_choices` executable, instead, it is stored in a separate JSON file.
+
 ## [0.5.1] - 2023-09-14
 
 ### Changed
 
-- [INPUT] In the agent results, the pre-compute route is stored (field `expected_route`) whenever
+- [OUTPUT] In the agent results, the pre-computed route is stored (field `expected_route`) whenever
   the field `route` is empty. For now, this only occurs when running the `compute_choices`
   executable.
 

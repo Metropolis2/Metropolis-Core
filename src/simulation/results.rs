@@ -10,15 +10,19 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use hashbrown::HashMap;
 use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use ttf::TTFNum;
 
-use crate::agent::{agent_index, AgentIndex};
+use crate::agent::{agent_index, Agent, AgentIndex};
 use crate::event::{Event, EventQueue};
+use crate::mode::trip::event::RoadEvent;
 use crate::mode::{AggregateModeResults, ModeIndex, ModeResults};
+use crate::network::road_network::preprocess::UniqueVehicles;
+use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
 use crate::network::{NetworkSkim, NetworkWeights};
 use crate::units::{Distribution, Time, Utility};
 
@@ -255,6 +259,20 @@ impl<T: TTFNum> AgentResult<T> {
     pub fn get_event(&self, agent_id: AgentIndex) -> Option<Box<dyn Event<T>>> {
         self.mode_results.get_event(agent_id, self.mode)
     }
+
+    /// Returns the route that the agent is expected to be taken, if any.
+    pub(crate) fn get_expected_route(
+        &self,
+        agent: &Agent<T>,
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
+        debug_assert_eq!(agent.id, self.id);
+        let chosen_mode = &agent[self.mode];
+        self.mode_results
+            .get_expected_route(chosen_mode, road_network, weights, unique_vehicles)
+    }
 }
 
 /// Struct to store the [AgentResult] of each agent in the Simulation.
@@ -290,6 +308,33 @@ impl<T: TTFNum> AgentResults<T> {
     /// Returns the number of agents who finished their trips.
     pub fn nb_agents_arrived(&self) -> usize {
         self.0.iter().filter(|a| a.is_finished()).count()
+    }
+
+    /// Serializes the expected routes to be taken by the agents into a JSON file.
+    pub(crate) fn serialize_expected_route(
+        &self,
+        filename: PathBuf,
+        agents: &[Agent<T>],
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Result<()> {
+        let expected_routes: HashMap<usize, Vec<Option<Vec<RoadEvent<T>>>>> = self
+            .0
+            .iter()
+            .zip(agents.iter())
+            .map(|(agent_result, agent)| {
+                (
+                    agent.id,
+                    agent_result.get_expected_route(agent, road_network, weights, unique_vehicles),
+                )
+            })
+            .collect();
+        let mut writer = File::create(filename)?;
+        let buffer = serde_json::to_vec(&expected_routes)?;
+        let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
+        writer.write_all(&encoded_buffer)?;
+        Ok(())
     }
 }
 

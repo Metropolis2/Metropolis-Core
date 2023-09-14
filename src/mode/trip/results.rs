@@ -16,9 +16,9 @@ use super::{Leg, LegType, TravelingMode};
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::mode::ModeIndex;
-use crate::network::road_network::RoadNetwork;
+use crate::network::road_network::preprocess::UniqueVehicles;
+use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
 use crate::network::Network;
-use crate::schema::EdgeIndexDef;
 use crate::units::{Distribution, Length, Time, Utility};
 
 /// The results for a [LegType::Road].
@@ -26,8 +26,7 @@ use crate::units::{Distribution, Length, Time, Utility};
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadLegResults<T> {
     /// The expected route to be taken by the vehicle.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<Vec<EdgeIndexDef>>")]
+    #[serde(skip)]
     pub expected_route: Option<Vec<EdgeIndex>>,
     /// The route taken by the vehicle, together with the timings of the events.
     #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
@@ -148,6 +147,37 @@ impl<T: TTFNum> LegResults<T> {
             leg.get_utility_decomposition(self.departure_time, travel_time);
         self.travel_utility = travel_utility;
         self.schedule_utility = schedule_utility;
+    }
+
+    fn get_expected_route(
+        &self,
+        leg: &Leg<T>,
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Option<Vec<RoadEvent<T>>> {
+        if let LegTypeResults::Road(road_leg_result) = &self.class {
+            if let Some(expected_route) = &road_leg_result.expected_route {
+                let mut output_route = Vec::with_capacity(expected_route.len());
+                let vehicle_id = unique_vehicles[leg.class.as_road().unwrap().vehicle];
+                let mut current_time = road_leg_result.pre_exp_departure_time;
+                for &edge_id in expected_route.iter() {
+                    let original_id = road_network.original_edge_id_of(edge_id);
+                    let road_event = RoadEvent {
+                        edge: original_id,
+                        edge_entry: current_time,
+                    };
+                    current_time += weights[(vehicle_id, original_id)].eval(current_time);
+                    output_route.push(road_event);
+                }
+                debug_assert!(current_time.approx_eq(&road_leg_result.pre_exp_arrival_time));
+                Some(output_route)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -277,6 +307,23 @@ impl<T: TTFNum> TripResults<T> {
                 self.departure_time,
             )))
         }
+    }
+
+    /// Returns the route that the agent is expected to be taken (if any), for each leg.
+    pub(crate) fn get_expected_route(
+        &self,
+        trip: &TravelingMode<T>,
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
+        self.legs
+            .iter()
+            .zip(trip.iter_legs())
+            .map(|(leg_result, leg)| {
+                leg_result.get_expected_route(leg, road_network, weights, unique_vehicles)
+            })
+            .collect()
     }
 }
 

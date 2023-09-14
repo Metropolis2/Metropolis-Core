@@ -455,6 +455,25 @@ impl<T: TTFNum> Simulation<T> {
             self.parameters.init_iteration_counter,
         )?;
         info!("Saving results");
+        // Expected routes are serialize here separetely so that we can get the original edge index
+        // and entry times.
+        if let Some(road_network) = self.network.get_road_network() {
+            let filename: PathBuf = [output_dir.to_str().unwrap(), "expected_route.json.zst"]
+                .iter()
+                .collect();
+            let rn_weights = weights.get_road_network().unwrap();
+            agent_results.serialize_expected_route(
+                filename,
+                &self.agents,
+                road_network,
+                rn_weights,
+                &preprocess_data
+                    .network
+                    .get_road_network()
+                    .unwrap()
+                    .unique_vehicles,
+            )?;
+        }
         let filename: PathBuf = [output_dir.to_str().unwrap(), "agent_results.json.zst"]
             .iter()
             .collect();

@@ -12,11 +12,14 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
+use self::trip::event::RoadEvent;
 use self::trip::results::{AggregateTripResults, TripResults};
 use self::trip::TravelingMode;
 use crate::agent::AgentIndex;
 use crate::event::Event;
+use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::skim::EAAllocation;
+use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim};
 use crate::progress_bar::MetroProgressBar;
 use crate::units::{Distribution, Time, Utility};
@@ -159,6 +162,25 @@ impl<T: TTFNum> ModeResults<T> {
         match self {
             Self::Trip(trip_results) => trip_results.get_event(agent_id, mode_id),
             Self::None => None,
+        }
+    }
+
+    /// Returns the route that the agent is expected to be taken, if any.
+    pub(crate) fn get_expected_route(
+        &self,
+        mode: &Mode<T>,
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
+        match self {
+            Self::Trip(trip_results) => trip_results.get_expected_route(
+                mode.as_trip().unwrap(),
+                road_network,
+                weights,
+                unique_vehicles,
+            ),
+            Self::None => vec![],
         }
     }
 }
