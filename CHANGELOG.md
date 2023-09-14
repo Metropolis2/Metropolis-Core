@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [INPUT] In the agent results, the pre-compute route is stored (field `expected_route`) whenever
+  the field `route` is empty. For now, this only occurs when running the `compute_choices`
+  executable.
+
 ### Fixed
 
 - [USER] The order in which ids are stored in the network-weights input is no longer relevant.

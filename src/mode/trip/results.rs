@@ -18,6 +18,7 @@ use crate::event::Event;
 use crate::mode::ModeIndex;
 use crate::network::road_network::RoadNetwork;
 use crate::network::Network;
+use crate::schema::EdgeIndexDef;
 use crate::units::{Distribution, Length, Time, Utility};
 
 /// The results for a [LegType::Road].
@@ -25,7 +26,8 @@ use crate::units::{Distribution, Length, Time, Utility};
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadLegResults<T> {
     /// The expected route to be taken by the vehicle.
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<Vec<EdgeIndexDef>>")]
     pub expected_route: Option<Vec<EdgeIndex>>,
     /// The route taken by the vehicle, together with the timings of the events.
     #[schemars(with = "Vec<TransparentRoadEvent<T>>")]

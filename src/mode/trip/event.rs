@@ -354,7 +354,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     .expect("Invalid leg results: Incompatible leg type.");
                 let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
                 let (exp_arrival_time, route) =
-                    if let Some(route) = &road_leg_results.expected_route {
+                    if let Some(route) = std::mem::take(&mut road_leg_results.expected_route) {
                         let exp_travel_time = road_leg_results.pre_exp_arrival_time
                             - road_leg_results.pre_exp_departure_time;
                         let exp_arrival_time = current_time + exp_travel_time;
