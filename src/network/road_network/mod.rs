@@ -479,7 +479,7 @@ impl<T: TTFNum> RoadNetwork<T> {
         assert_eq!(
             all_od_pairs.len(),
             weights.len(),
-            "The road-network weights are incomatible with the numbe of unique vehicles"
+            "The road-network weights are incompatible with the number of unique vehicles"
         );
         for uvehicle_id in 0..all_od_pairs.len() {
             let od_pairs = &all_od_pairs[uvehicle_id];
