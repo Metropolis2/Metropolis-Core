@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.5.2] - 2023-09-15
+
 ### Changed
 
 - [OUTPUT] The pre-computed route is no longer stored with the agent results for the
@@ -344,7 +346,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.5.1...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
 [0.5.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.1
 [0.5.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.0
 [0.4.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.3

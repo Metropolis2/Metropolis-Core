@@ -311,7 +311,7 @@ impl<T: TTFNum> AgentResults<T> {
     }
 
     /// Serializes the expected routes to be taken by the agents into a JSON file.
-    pub(crate) fn serialize_expected_route(
+    pub(crate) fn serialize_expected_routes(
         &self,
         filename: PathBuf,
         agents: &[Agent<T>],
