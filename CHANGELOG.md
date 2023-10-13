@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Fixed
+
+- [OUTPUT] Utility was not computed correctly for trips with only virtual legs.
+
 ## [0.5.2] - 2023-09-15
 
 ### Changed

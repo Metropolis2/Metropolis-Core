@@ -456,15 +456,18 @@ impl<T: TTFNum> TravelingMode<T> {
             let travel_time = ttf.eval(current_time);
             let arrival_time = current_time + travel_time;
             total_travel_time += travel_time;
+            let travel_utility = leg.travel_utility.get_travel_utility(travel_time);
+            let schedule_utility = leg.schedule_utility.get_utility(arrival_time);
             let lr = LegResults {
                 departure_time: current_time,
                 arrival_time: current_time + travel_time,
-                travel_utility: leg.travel_utility.get_travel_utility(travel_time),
-                schedule_utility: leg.schedule_utility.get_utility(arrival_time),
+                travel_utility,
+                schedule_utility,
                 class: LegTypeResults::Virtual,
             };
             leg_results.push(lr);
             current_time = arrival_time + leg.stopping_time;
+            utility += travel_utility + schedule_utility;
         }
         utility += self
             .total_travel_utility
