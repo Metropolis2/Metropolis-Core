@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "metropolis"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "bincode",

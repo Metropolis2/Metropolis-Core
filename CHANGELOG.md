@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.6.0] - 2023-10-24
+
 ### Added
 
 - [INPUT] The parameter `saving_format` can be used to choose the format of the output files (only
@@ -357,7 +359,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.5.2...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
 [0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
 [0.5.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.1
 [0.5.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.0

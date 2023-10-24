@@ -1,6 +1,6 @@
 [package]
 name = "tch"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "Time-dependent contraction hierarchies"
