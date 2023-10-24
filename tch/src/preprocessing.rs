@@ -227,8 +227,7 @@ impl<T: TTFNum> ContractionGraph<T> {
     ) -> Self {
         let pool = Pool::new(rayon::current_num_threads(), Default::default);
 
-        let mut order = Vec::new();
-        order.resize(graph.node_count(), 0);
+        let order = vec![0; graph.node_count()];
 
         let mut new_ids = Vec::with_capacity(graph.node_count());
         for i in 0..graph.node_count() {

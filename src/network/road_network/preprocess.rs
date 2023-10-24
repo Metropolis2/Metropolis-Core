@@ -174,10 +174,7 @@ impl ODPairs {
     fn add_pair(&mut self, origin: OriginalNodeIndex, destination: OriginalNodeIndex) {
         self.unique_origins.insert(origin);
         self.unique_destinations.insert(destination);
-        self.pairs
-            .entry(origin)
-            .or_insert_with(HashSet::new)
-            .insert(destination);
+        self.pairs.entry(origin).or_default().insert(destination);
     }
 
     /// Returns `true` if the [ODPairs] is empty.
