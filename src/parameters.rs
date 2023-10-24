@@ -22,6 +22,18 @@ const fn default_update_ratio() -> f64 {
     1.0
 }
 
+/// Format to be used when saving files.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
+pub enum SavingFormat {
+    /// Zstd-compressed JSON files.
+    #[default]
+    JSON,
+    /// Parquet files.
+    Parquet,
+    /// CSV files.
+    CSV,
+}
+
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
@@ -65,6 +77,9 @@ pub struct Parameters<T> {
     /// Default (0) is to use all the threads of the CPU.
     #[serde(default)]
     pub nb_threads: usize,
+    /// Format to use for saving the output files.
+    #[serde(default)]
+    pub saving_format: SavingFormat,
 }
 
 impl<T: TTFNum> Parameters<T> {

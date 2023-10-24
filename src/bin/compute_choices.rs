@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use metropolis::simulation::get_choices_from_json_files;
 
 /// Computes the agents' choices.
 #[derive(Parser, Debug)]
@@ -33,7 +32,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    get_choices_from_json_files(
+    metropolis::get_choices_from_json_files(
         &args.agents,
         &args.parameters,
         args.road_network.as_deref(),

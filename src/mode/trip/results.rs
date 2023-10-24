@@ -101,6 +101,42 @@ impl<T: TTFNum> RoadLegResults<T> {
     }
 }
 
+/// The pre-day results for a [LegType::Road].
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub struct PreDayRoadLegResults<T> {
+    /// The sequence of edges expected to be taken by the agent, if it has been computed.
+    #[serde(skip)]
+    pub(crate) expected_route: Option<Vec<EdgeIndex>>,
+    /// The expected route to be taken by the agent, together with the timings.
+    #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
+    pub route: Vec<RoadEvent<T>>,
+    /// Travel time of taking the same route, assuming no congestion.
+    pub route_free_flow_travel_time: Time<T>,
+    /// Travel time of the fastest no-congestion route between origin and destination of the leg.
+    pub global_free_flow_travel_time: Time<T>,
+    /// Length of the route taken.
+    pub length: Length<T>,
+    /// Expected departure time, in the pre-day model.
+    pub pre_exp_departure_time: Time<T>,
+    /// Expected arrival time at destination (excluding the stopping time), in the pre-day model.
+    pub pre_exp_arrival_time: Time<T>,
+}
+
+impl<T> From<RoadLegResults<T>> for PreDayRoadLegResults<T> {
+    fn from(value: RoadLegResults<T>) -> Self {
+        Self {
+            expected_route: value.expected_route,
+            route: Vec::new(),
+            route_free_flow_travel_time: value.route_free_flow_travel_time,
+            global_free_flow_travel_time: value.global_free_flow_travel_time,
+            length: value.length,
+            pre_exp_departure_time: value.pre_exp_departure_time,
+            pre_exp_arrival_time: value.pre_exp_arrival_time,
+        }
+    }
+}
+
 /// Results that depend on the leg type (see [LegType]).
 #[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
@@ -112,10 +148,32 @@ pub enum LegTypeResults<T> {
     Virtual,
 }
 
+/// Pre-day results that depend on the leg type (see [LegType]).
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
+#[serde(tag = "type", content = "value")]
+pub enum PreDayLegTypeResults<T> {
+    /// The leg is a road leg.
+    Road(PreDayRoadLegResults<T>),
+    /// The leg is a virtual leg.
+    Virtual,
+}
+
+impl<T> From<LegTypeResults<T>> for PreDayLegTypeResults<T> {
+    fn from(value: LegTypeResults<T>) -> Self {
+        match value {
+            LegTypeResults::Road(road_leg) => Self::Road(road_leg.into()),
+            LegTypeResults::Virtual => Self::Virtual,
+        }
+    }
+}
+
 /// Results specific to a leg of the trip (see [Leg]).
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct LegResults<T> {
+    /// Id of the leg.
+    pub id: usize,
     /// Departure time of the leg.
     pub departure_time: Time<T>,
     /// Arrival time of the leg (before the stopping time).
@@ -148,35 +206,56 @@ impl<T: TTFNum> LegResults<T> {
         self.travel_utility = travel_utility;
         self.schedule_utility = schedule_utility;
     }
+}
 
-    fn get_expected_route(
-        &self,
+/// Pre-day results specific to a leg of the trip (see [Leg]).
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub struct PreDayLegResults<T> {
+    /// Id of the leg.
+    pub id: usize,
+    /// Results specific to the leg's class (road, virtual).
+    pub class: PreDayLegTypeResults<T>,
+}
+
+impl<T> From<LegResults<T>> for PreDayLegResults<T> {
+    fn from(value: LegResults<T>) -> Self {
+        Self {
+            id: value.id,
+            class: value.class.into(),
+        }
+    }
+}
+
+impl<T: TTFNum> PreDayLegResults<T> {
+    fn add_expected_route(
+        &mut self,
         leg: &Leg<T>,
         road_network: &RoadNetwork<T>,
         weights: &RoadNetworkWeights<T>,
         unique_vehicles: &UniqueVehicles,
-    ) -> Option<Vec<RoadEvent<T>>> {
-        if let LegTypeResults::Road(road_leg_result) = &self.class {
+    ) {
+        if let PreDayLegTypeResults::Road(road_leg_result) = &mut self.class {
             if let Some(expected_route) = &road_leg_result.expected_route {
                 let mut output_route = Vec::with_capacity(expected_route.len());
-                let vehicle_id = unique_vehicles[leg.class.as_road().unwrap().vehicle];
+                let original_vehicle = leg.class.as_road().unwrap().vehicle;
+                let vehicle_id = unique_vehicles[original_vehicle];
                 let mut current_time = road_leg_result.pre_exp_departure_time;
                 for &edge_id in expected_route.iter() {
                     let original_id = road_network.original_edge_id_of(edge_id);
                     let road_event = RoadEvent {
                         edge: original_id,
-                        edge_entry: current_time,
+                        entry_time: current_time,
                     };
                     current_time += weights[(vehicle_id, original_id)].eval(current_time);
                     output_route.push(road_event);
                 }
                 debug_assert!(current_time.approx_eq(&road_leg_result.pre_exp_arrival_time));
-                Some(output_route)
-            } else {
-                None
+                road_leg_result.route = output_route;
+                road_leg_result.length = road_network.route_length(expected_route.iter().copied());
+                road_leg_result.route_free_flow_travel_time = road_network
+                    .route_free_flow_travel_time(expected_route.iter().copied(), original_vehicle);
             }
-        } else {
-            None
         }
     }
 }
@@ -242,6 +321,7 @@ impl<T: TTFNum> TripResults<T> {
                 .legs
                 .iter()
                 .map(|l| LegResults {
+                    id: l.id,
                     departure_time: Time::nan(),
                     arrival_time: Time::nan(),
                     travel_utility: Utility::nan(),
@@ -308,22 +388,43 @@ impl<T: TTFNum> TripResults<T> {
             )))
         }
     }
+}
 
-    /// Returns the route that the agent is expected to be taken (if any), for each leg.
-    pub(crate) fn get_expected_route(
-        &self,
+/// Struct used to store the pre-day results for a [TravelingMode].
+#[derive(Debug, Default, Clone, PartialEq, Serialize, JsonSchema)]
+#[schemars(title = "Pre-day trip results")]
+#[schemars(description = "Results from the pre-day model, for a traveling mode.")]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub struct PreDayTripResults<T> {
+    /// The results specific to each leg of the trip.
+    pub legs: Vec<PreDayLegResults<T>>,
+    /// Departure time from the origin of the first leg (before the delay time at origin).
+    pub departure_time: Time<T>,
+    /// Expected utility for the trip (from the pre-day model).
+    pub expected_utility: Utility<T>,
+}
+
+impl<T> From<TripResults<T>> for PreDayTripResults<T> {
+    fn from(value: TripResults<T>) -> Self {
+        Self {
+            legs: value.legs.into_iter().map(|l| l.into()).collect(),
+            departure_time: value.departure_time,
+            expected_utility: value.expected_utility,
+        }
+    }
+}
+
+impl<T: TTFNum> PreDayTripResults<T> {
+    pub(crate) fn add_expected_route(
+        &mut self,
         trip: &TravelingMode<T>,
         road_network: &RoadNetwork<T>,
         weights: &RoadNetworkWeights<T>,
         unique_vehicles: &UniqueVehicles,
-    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
-        self.legs
-            .iter()
-            .zip(trip.iter_legs())
-            .map(|(leg_result, leg)| {
-                leg_result.get_expected_route(leg, road_network, weights, unique_vehicles)
-            })
-            .collect()
+    ) {
+        for (leg_result, leg) in self.legs.iter_mut().zip(trip.iter_legs()) {
+            leg_result.add_expected_route(leg, road_network, weights, unique_vehicles);
+        }
     }
 }
 

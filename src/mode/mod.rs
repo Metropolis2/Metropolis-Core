@@ -12,8 +12,7 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-use self::trip::event::RoadEvent;
-use self::trip::results::{AggregateTripResults, TripResults};
+use self::trip::results::{AggregateTripResults, PreDayTripResults, TripResults};
 use self::trip::TravelingMode;
 use crate::agent::AgentIndex;
 use crate::event::Event;
@@ -70,16 +69,26 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 #[schemars(bound = "T: TTFNum + JsonSchema")]
 pub enum Mode<T> {
     /// An activity (e.g., staying home, traveling) that always provide the same utility level.
-    Constant(Utility<T>),
+    Constant((usize, Utility<T>)),
     /// A trip consisting in a sequence of legs (either on the road or virtual).
     Trip(TravelingMode<T>),
+}
+
+impl<T> Mode<T> {
+    /// Returns the id of the mode.
+    pub fn id(&self) -> usize {
+        match self {
+            Self::Constant((id, _)) => *id,
+            Self::Trip(mode) => mode.id,
+        }
+    }
 }
 
 impl<T> fmt::Display for Mode<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Constant(_) => write!(f, "Constant"),
-            Self::Trip(_) => write!(f, "Trip"),
+            Self::Constant((id, _)) => write!(f, "Constant {id}"),
+            Self::Trip(mode) => write!(f, "Trip {}", mode.id),
         }
     }
 }
@@ -95,7 +104,7 @@ impl<T: TTFNum> Mode<T> {
         progress_bar: MetroProgressBar,
     ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
         match self {
-            Self::Constant(u) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
+            Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
             Self::Trip(mode) => mode.get_pre_day_choice(
                 network.get_road_network(),
                 exp_skims.get_road_network(),
@@ -164,23 +173,44 @@ impl<T: TTFNum> ModeResults<T> {
             Self::None => None,
         }
     }
+}
 
-    /// Returns the route that the agent is expected to be taken, if any.
-    pub(crate) fn get_expected_route(
-        &self,
+/// Additional mode-specific pre-day results for an agent.
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[serde(tag = "type", content = "value")]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub enum PreDayModeResults<T> {
+    /// Results for a traveling mode.
+    Trip(PreDayTripResults<T>),
+    /// Alternative for modes or activities that do not recquire additional results.
+    None,
+}
+
+impl<T> From<ModeResults<T>> for PreDayModeResults<T> {
+    fn from(value: ModeResults<T>) -> Self {
+        match value {
+            ModeResults::Trip(trip_results) => Self::Trip(trip_results.into()),
+            ModeResults::None => Self::None,
+        }
+    }
+}
+
+impl<T: TTFNum> PreDayModeResults<T> {
+    pub(crate) fn add_expected_route(
+        &mut self,
         mode: &Mode<T>,
         road_network: &RoadNetwork<T>,
         weights: &RoadNetworkWeights<T>,
         unique_vehicles: &UniqueVehicles,
-    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
+    ) {
         match self {
-            Self::Trip(trip_results) => trip_results.get_expected_route(
+            Self::Trip(trip_results) => trip_results.add_expected_route(
                 mode.as_trip().unwrap(),
                 road_network,
                 weights,
                 unique_vehicles,
             ),
-            Self::None => vec![],
+            Self::None => (),
         }
     }
 }

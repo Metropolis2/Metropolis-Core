@@ -3,7 +3,7 @@
     "modes": [
       {
         "type": "Constant",
-        "value": 0.0
+        "value": [1, 0.0]
       }
     ]
   },
@@ -48,8 +48,10 @@
       {
         "type": "Trip",
         "value": {
+          "id": 1,
           "legs": [
             {
+              "id": 1,
               "class": {
                 "type": "Road",
                 "value": {

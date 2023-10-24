@@ -4,13 +4,10 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Structs holding the results of a simulation.
-use std::fs::File;
-use std::io::Write;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
-use hashbrown::HashMap;
 use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,11 +16,12 @@ use ttf::TTFNum;
 
 use crate::agent::{agent_index, Agent, AgentIndex};
 use crate::event::{Event, EventQueue};
-use crate::mode::trip::event::RoadEvent;
-use crate::mode::{AggregateModeResults, ModeIndex, ModeResults};
+use crate::io;
+use crate::mode::{AggregateModeResults, ModeIndex, ModeResults, PreDayModeResults};
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
 use crate::network::{NetworkSkim, NetworkWeights};
+use crate::parameters::{Parameters, SavingFormat};
 use crate::units::{Distribution, Time, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
@@ -190,8 +188,10 @@ impl RunningTimes {
 pub struct AgentResult<T> {
     /// Id of the agent.
     pub(crate) id: usize,
+    /// Id of the chosen mode.
+    pub(crate) mode_id: usize,
     /// Index of the chosen mode.
-    pub(crate) mode: ModeIndex,
+    pub(crate) mode_index: ModeIndex,
     /// Expected utility from the trip.
     pub(crate) expected_utility: Utility<T>,
     /// Mode-specific results.
@@ -202,13 +202,15 @@ impl<T> AgentResult<T> {
     /// Creates a new AgentResult.
     pub const fn new(
         id: usize,
+        mode_id: usize,
         mode: ModeIndex,
         expected_utility: Utility<T>,
         mode_results: ModeResults<T>,
     ) -> Self {
         AgentResult {
             id,
-            mode,
+            mode_id,
+            mode_index: mode,
             expected_utility,
             mode_results,
         }
@@ -225,7 +227,8 @@ impl<T: TTFNum> AgentResult<T> {
     pub fn reset(&self) -> Self {
         Self {
             id: self.id,
-            mode: self.mode,
+            mode_id: 0,
+            mode_index: ModeIndex::new(0),
             expected_utility: self.expected_utility,
             mode_results: self.mode_results.reset(),
         }
@@ -257,21 +260,7 @@ impl<T: TTFNum> AgentResult<T> {
 impl<T: TTFNum> AgentResult<T> {
     /// Returns the initial event associated with an [AgentResult] (if any).
     pub fn get_event(&self, agent_id: AgentIndex) -> Option<Box<dyn Event<T>>> {
-        self.mode_results.get_event(agent_id, self.mode)
-    }
-
-    /// Returns the route that the agent is expected to be taken, if any.
-    pub(crate) fn get_expected_route(
-        &self,
-        agent: &Agent<T>,
-        road_network: &RoadNetwork<T>,
-        weights: &RoadNetworkWeights<T>,
-        unique_vehicles: &UniqueVehicles,
-    ) -> Vec<Option<Vec<RoadEvent<T>>>> {
-        debug_assert_eq!(agent.id, self.id);
-        let chosen_mode = &agent[self.mode];
-        self.mode_results
-            .get_expected_route(chosen_mode, road_network, weights, unique_vehicles)
+        self.mode_results.get_event(agent_id, self.mode_index)
     }
 }
 
@@ -280,7 +269,7 @@ impl<T: TTFNum> AgentResult<T> {
 #[schemars(title = "Agent Results")]
 #[schemars(description = "Results for each agent in the simulation.")]
 #[serde(bound(serialize = "T: TTFNum"))]
-pub struct AgentResults<T>(Vec<AgentResult<T>>);
+pub struct AgentResults<T>(pub(crate) Vec<AgentResult<T>>);
 
 impl<T> AgentResults<T> {
     /// Creates a new AgentResults from a vector of [AgentResult].
@@ -308,33 +297,6 @@ impl<T: TTFNum> AgentResults<T> {
     /// Returns the number of agents who finished their trips.
     pub fn nb_agents_arrived(&self) -> usize {
         self.0.iter().filter(|a| a.is_finished()).count()
-    }
-
-    /// Serializes the expected routes to be taken by the agents into a JSON file.
-    pub(crate) fn serialize_expected_routes(
-        &self,
-        filename: PathBuf,
-        agents: &[Agent<T>],
-        road_network: &RoadNetwork<T>,
-        weights: &RoadNetworkWeights<T>,
-        unique_vehicles: &UniqueVehicles,
-    ) -> Result<()> {
-        let expected_routes: HashMap<usize, Vec<Option<Vec<RoadEvent<T>>>>> = self
-            .0
-            .iter()
-            .zip(agents.iter())
-            .map(|(agent_result, agent)| {
-                (
-                    agent.id,
-                    agent_result.get_expected_route(agent, road_network, weights, unique_vehicles),
-                )
-            })
-            .collect();
-        let mut writer = File::create(filename)?;
-        let buffer = serde_json::to_vec(&expected_routes)?;
-        let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
-        writer.write_all(&encoded_buffer)?;
-        Ok(())
     }
 }
 
@@ -365,6 +327,77 @@ impl<T> DerefMut for AgentResults<T> {
     }
 }
 
+/// Pre-day results of an agent.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub struct PreDayAgentResult<T> {
+    /// Id of the agent.
+    pub(crate) id: usize,
+    /// Id of the chosen mode.
+    pub(crate) mode_id: usize,
+    /// Index of the chosen mode.
+    pub(crate) mode_index: ModeIndex,
+    /// Expected utility from the trip.
+    pub(crate) expected_utility: Utility<T>,
+    /// Mode-specific pre-day results.
+    pub(crate) mode_results: PreDayModeResults<T>,
+}
+
+impl<T> From<AgentResult<T>> for PreDayAgentResult<T> {
+    fn from(value: AgentResult<T>) -> Self {
+        Self {
+            id: value.id,
+            mode_id: value.mode_id,
+            mode_index: value.mode_index,
+            expected_utility: value.expected_utility,
+            mode_results: value.mode_results.into(),
+        }
+    }
+}
+
+impl<T: TTFNum> PreDayAgentResult<T> {
+    fn add_expected_route(
+        &mut self,
+        agent: &Agent<T>,
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) {
+        debug_assert_eq!(agent.id, self.id);
+        let chosen_mode = &agent[self.mode_index];
+        self.mode_results
+            .add_expected_route(chosen_mode, road_network, weights, unique_vehicles)
+    }
+}
+
+/// Struct to store the [PreDayAgentResult] of each agent in the Simulation.
+#[derive(Debug, Default, Clone, Serialize, JsonSchema)]
+#[schemars(title = "Pre-day Agent Results")]
+#[schemars(description = "Pre-day results for each agent in the simulation.")]
+#[serde(bound(serialize = "T: TTFNum"))]
+pub struct PreDayAgentResults<T>(pub(crate) Vec<PreDayAgentResult<T>>);
+
+impl<T> PreDayAgentResults<T> {
+    /// Creates a new PreDayAgentResults from a vector of partially initialized [AgentResult].
+    pub(crate) fn from_agent_results(results: Vec<AgentResult<T>>) -> Self {
+        Self(results.into_iter().map(|ar| ar.into()).collect())
+    }
+}
+
+impl<T: TTFNum> PreDayAgentResults<T> {
+    pub(crate) fn add_expected_routes(
+        &mut self,
+        agents: &[Agent<T>],
+        road_network: &RoadNetwork<T>,
+        weights: &RoadNetworkWeights<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) {
+        for (agent_result, agent) in self.0.iter_mut().zip(agents.iter()) {
+            agent_result.add_expected_route(agent, road_network, weights, unique_vehicles);
+        }
+    }
+}
+
 /// Stores [AggregateResults] in the given output directory.
 ///
 /// The AggregateResults are stored in the file `iteration[counter].json`.
@@ -373,49 +406,40 @@ pub fn save_aggregate_results<T: TTFNum>(
     iteration_counter: u32,
     output_dir: &Path,
 ) -> Result<()> {
-    let filename: PathBuf = [
-        output_dir.to_str().unwrap(),
-        &format!("iteration{iteration_counter}.json"),
-    ]
-    .iter()
-    .collect();
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&aggregate_results)?;
-    writer.write_all(&buffer)?;
+    io::json::write_json(
+        aggregate_results,
+        output_dir,
+        &format!("iteration{iteration_counter}"),
+    )?;
     Ok(())
 }
 
 /// Stores [IterationResults] in the given output directory.
-///
-/// The IterationResults are stored in the files `agent_results.json` and `weight_results.json`.
 pub fn save_iteration_results<T: TTFNum>(
     iteration_results: IterationResults<T>,
     output_dir: &Path,
+    parameters: &Parameters<T>,
 ) -> Result<()> {
     // Save agent results.
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "agent_results.json.zst"]
-        .iter()
-        .collect();
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&iteration_results.agent_results)?;
-    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
-    writer.write_all(&encoded_buffer)?;
+    match parameters.saving_format {
+        SavingFormat::JSON => {
+            io::json::write_compressed_json(
+                &iteration_results.agent_results,
+                output_dir,
+                "agent_results",
+            )?;
+        }
+        SavingFormat::Parquet => {
+            io::parquet::write_parquet(iteration_results.agent_results, output_dir)?;
+        }
+        SavingFormat::CSV => {
+            io::csv::write_csv(iteration_results.agent_results, output_dir)?;
+        }
+    }
     // Save weight results.
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "weight_results.json.zst"]
-        .iter()
-        .collect();
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&iteration_results.weights)?;
-    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
-    writer.write_all(&encoded_buffer)?;
+    io::json::write_compressed_json(&iteration_results.weights, output_dir, "weight_results")?;
     // Save skims results.
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "skim_results.json.zst"]
-        .iter()
-        .collect();
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&iteration_results.skims)?;
-    let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
-    writer.write_all(&encoded_buffer)?;
+    io::json::write_compressed_json(&iteration_results.skims, output_dir, "skim_results")?;
     Ok(())
 }
 
@@ -423,11 +447,26 @@ pub fn save_iteration_results<T: TTFNum>(
 ///
 /// The RunningTimes are stored in the file `running_times.json`.
 pub fn save_running_times(running_times: RunningTimes, output_dir: &Path) -> Result<()> {
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "running_times.json"]
-        .iter()
-        .collect();
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&running_times)?;
-    writer.write_all(&buffer)?;
+    io::json::write_json(running_times, output_dir, "running_times")?;
+    Ok(())
+}
+
+/// Stores [AgentResults] in the given output directory.
+pub fn save_choices<T: TTFNum>(
+    agent_results: PreDayAgentResults<T>,
+    output_dir: &Path,
+    parameters: &Parameters<T>,
+) -> Result<()> {
+    match parameters.saving_format {
+        SavingFormat::JSON => {
+            io::json::write_compressed_json(agent_results, output_dir, "agent_results")?;
+        }
+        SavingFormat::Parquet => {
+            io::parquet::write_parquet(agent_results, output_dir)?;
+        }
+        SavingFormat::CSV => {
+            io::csv::write_csv(agent_results, output_dir)?;
+        }
+    }
     Ok(())
 }

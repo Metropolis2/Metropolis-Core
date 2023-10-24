@@ -17,7 +17,7 @@ use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
 use crate::network::NetworkParameters;
-use crate::parameters::Parameters;
+use crate::parameters::{Parameters, SavingFormat};
 use crate::schedule_utility::ScheduleUtility;
 use crate::stop::StopCriterion;
 use crate::travel_utility::{PolynomialFunction, TravelUtility};
@@ -55,7 +55,10 @@ impl From<EdgeIndexDef> for EdgeIndex {
 pub(crate) fn example_agent() -> Agent<f64> {
     Agent::new(
         1,
-        vec![Mode::Constant(Utility(1.0)), Mode::Trip(example_trip())],
+        vec![
+            Mode::Constant((1, Utility(1.0))),
+            Mode::Trip(example_trip()),
+        ],
         Some(ChoiceModel::Logit(LogitModel::new(
             NoUnit(0.5),
             NoUnit(2.0),
@@ -65,6 +68,7 @@ pub(crate) fn example_agent() -> Agent<f64> {
 
 pub(crate) fn example_trip() -> TravelingMode<f64> {
     let leg = Leg::new(
+        0,
         LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
         Time(600.0),
         TravelUtility::Polynomial(PolynomialFunction {
@@ -82,6 +86,7 @@ pub(crate) fn example_trip() -> TravelingMode<f64> {
         ),
     );
     TravelingMode::new(
+        1,
         vec![leg],
         Time(300.0),
         example_departure_time_model(),
@@ -194,5 +199,6 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         update_ratio: 1.0,
         random_seed: Some(13081996),
         nb_threads: 8,
+        saving_format: SavingFormat::JSON,
     }
 }

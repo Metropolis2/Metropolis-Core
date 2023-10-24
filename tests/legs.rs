@@ -80,6 +80,7 @@ fn get_simulation() -> Simulation<f64> {
     // Create an agent with 3 legs (2 road and 1 virtual).
     let mut agents = Vec::with_capacity(1);
     let leg0 = Leg::new(
+        1,
         LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
         Time(2.0),
         TravelUtility::Polynomial(PolynomialFunction {
@@ -94,6 +95,7 @@ fn get_simulation() -> Simulation<f64> {
         ),
     );
     let leg1 = Leg::new(
+        2,
         LegType::Virtual(TTF::Piecewise(PwlTTF::from_values(
             vec![Time(0.), Time(10.), Time(5.)],
             Time(0.),
@@ -110,6 +112,7 @@ fn get_simulation() -> Simulation<f64> {
         ),
     );
     let leg2 = Leg::new(
+        3,
         LegType::Road(RoadLeg::new(2, 3, vehicle_index(1))),
         Time(1.0),
         TravelUtility::Polynomial(PolynomialFunction {
@@ -119,6 +122,7 @@ fn get_simulation() -> Simulation<f64> {
         ScheduleUtility::None,
     );
     let trip = TravelingMode::new(
+        1,
         vec![leg0, leg1, leg2],
         Time(3.0),
         DepartureTimeModel::Constant(Time(0.)),
@@ -156,6 +160,7 @@ fn get_simulation() -> Simulation<f64> {
         update_ratio: 1.0,
         random_seed: None,
         nb_threads: 0,
+        saving_format: Default::default(),
     };
 
     Simulation::new(agents, network, parameters)
@@ -196,6 +201,7 @@ fn legs_test() {
     //
     // Total utility = -250.9.
     let leg0_results = LegResults {
+        id: 1,
         departure_time: Time(3.0),
         arrival_time: Time(4.0),
         travel_utility: Utility(1.0),
@@ -204,7 +210,7 @@ fn legs_test() {
             expected_route: None,
             route: vec![RoadEvent {
                 edge: 0,
-                edge_entry: Time(3.0),
+                entry_time: Time(3.0),
             }],
             road_time: Time(1.0),
             in_bottleneck_time: Time(0.0),
@@ -218,6 +224,7 @@ fn legs_test() {
         }),
     };
     let leg1_results = LegResults {
+        id: 2,
         departure_time: Time(6.0),
         arrival_time: Time(12.0),
         travel_utility: Utility(-6.0),
@@ -225,6 +232,7 @@ fn legs_test() {
         class: LegTypeResults::Virtual,
     };
     let leg2_results = LegResults {
+        id: 3,
         departure_time: Time(13.0),
         arrival_time: Time(17.0),
         travel_utility: Utility(5.0),
@@ -233,7 +241,7 @@ fn legs_test() {
             expected_route: None,
             route: vec![RoadEvent {
                 edge: 1,
-                edge_entry: Time(13.0),
+                entry_time: Time(13.0),
             }],
             road_time: Time(4.0),
             in_bottleneck_time: Time(0.0),
@@ -248,6 +256,7 @@ fn legs_test() {
     };
     let expected_agent_results = AgentResult::new(
         0,
+        1,
         mode_index(0),
         Utility(-250.9),
         ModeResults::Trip(TripResults {

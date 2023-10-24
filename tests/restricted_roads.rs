@@ -138,12 +138,14 @@ fn get_simulation() -> Simulation<f64> {
             vehicle_index(i)
         };
         let leg = Leg::new(
+            1,
             LegType::Road(RoadLeg::new(0, 3, v)),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
         );
         let trip = TravelingMode::new(
+            1,
             vec![leg],
             Time::default(),
             DepartureTimeModel::Constant(Time(0.)),
@@ -173,6 +175,7 @@ fn get_simulation() -> Simulation<f64> {
         update_ratio: 1.0,
         random_seed: None,
         nb_threads: 0,
+        saving_format: Default::default(),
     };
 
     Simulation::new(agents, network, parameters)

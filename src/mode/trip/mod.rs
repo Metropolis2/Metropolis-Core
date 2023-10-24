@@ -37,6 +37,9 @@ const NB_INTERVALS: usize = 1500;
 #[serde(bound = "T: TTFNum")]
 #[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct Leg<T> {
+    /// Id used when writing the results of the leg.
+    #[serde(default)]
+    pub(crate) id: usize,
     /// Type of the leg (road or virtual).
     pub(crate) class: LegType<T>,
     /// Time spent at the stopping point of the leg, before starting the next leg (if any).
@@ -54,12 +57,14 @@ pub struct Leg<T> {
 impl<T: TTFNum> Leg<T> {
     /// Creates a new [Leg].
     pub fn new(
+        id: usize,
         class: LegType<T>,
         stopping_time: Time<T>,
         travel_utility: TravelUtility<T>,
         schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         Self {
+            id,
             class,
             stopping_time,
             travel_utility,
@@ -91,6 +96,7 @@ impl<T: TTFNum> Leg<T> {
     /// time and arrival time.
     fn init_virtual_leg_results(&self) -> LegResults<T> {
         LegResults {
+            id: self.id,
             departure_time: Time::nan(),
             arrival_time: Time::nan(),
             travel_utility: Utility::nan(),
@@ -112,6 +118,7 @@ impl<T: TTFNum> Leg<T> {
         global_free_flow_travel_time: Time<T>,
     ) -> LegResults<T> {
         LegResults {
+            id: self.id,
             departure_time: Time::nan(),
             arrival_time: Time::nan(),
             travel_utility: Utility::nan(),
@@ -208,6 +215,9 @@ fn default_is_true() -> bool {
 #[serde(bound = "T: TTFNum")]
 #[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct TravelingMode<T> {
+    /// Id of the mode, used in the output.
+    #[serde(default)]
+    pub(crate) id: usize,
     /// The legs of the trips.
     ///
     /// The full trip consists realizing this legs one after the other.
@@ -241,6 +251,7 @@ pub struct TravelingMode<T> {
 impl<T> TravelingMode<T> {
     /// Creates a new [TravelingMode].
     pub fn new(
+        id: usize,
         legs: Vec<Leg<T>>,
         origin_delay: Time<T>,
         departure_time_model: DepartureTimeModel<T>,
@@ -249,6 +260,7 @@ impl<T> TravelingMode<T> {
         destination_schedule_utility: ScheduleUtility<T>,
     ) -> Self {
         Self {
+            id,
             legs,
             origin_delay,
             departure_time_model,
@@ -459,6 +471,7 @@ impl<T: TTFNum> TravelingMode<T> {
             let travel_utility = leg.travel_utility.get_travel_utility(travel_time);
             let schedule_utility = leg.schedule_utility.get_utility(arrival_time);
             let lr = LegResults {
+                id: leg.id,
                 departure_time: current_time,
                 arrival_time: current_time + travel_time,
                 travel_utility,

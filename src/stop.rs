@@ -57,7 +57,7 @@ fn get_mean_departure_time_shift<T: TTFNum>(
         .iter()
         .zip(prev_results.iter())
         .map(|(res, prev_res)| {
-            if res.mode == prev_res.mode {
+            if res.mode_index == prev_res.mode_index {
                 res.departure_time_shift(prev_res)
             } else {
                 // The agent has switched to another mode.
@@ -105,7 +105,7 @@ mod tests {
             expected_utility: Utility::nan(),
             virtual_only: false,
         });
-        let r = AgentResult::new(1, mode_index(0), Utility::nan(), mode_results);
+        let r = AgentResult::new(1, 1, mode_index(0), Utility::nan(), mode_results);
         prev_agent_results.push(r);
         let mode_results = ModeResults::Trip(TripResults {
             legs: vec![],
@@ -116,7 +116,7 @@ mod tests {
             expected_utility: Utility::nan(),
             virtual_only: false,
         });
-        let r = AgentResult::new(2, mode_index(0), Utility::nan(), mode_results);
+        let r = AgentResult::new(2, 1, mode_index(0), Utility::nan(), mode_results);
         prev_agent_results.push(r);
 
         let mut agent_results = AgentResults::with_capacity(2);
@@ -129,7 +129,7 @@ mod tests {
             expected_utility: Utility::nan(),
             virtual_only: false,
         });
-        let r = AgentResult::new(1, mode_index(0), Utility::nan(), mode_results);
+        let r = AgentResult::new(1, 1, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
         let mode_results = ModeResults::Trip(TripResults {
             legs: vec![],
@@ -140,7 +140,7 @@ mod tests {
             expected_utility: Utility::nan(),
             virtual_only: false,
         });
-        let r = AgentResult::new(2, mode_index(0), Utility::nan(), mode_results);
+        let r = AgentResult::new(2, 1, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
 
         assert_eq!(
@@ -163,7 +163,7 @@ mod tests {
             expected_utility: Utility::nan(),
             virtual_only: false,
         });
-        let r = AgentResult::new(2, mode_index(1), Utility::nan(), mode_results);
+        let r = AgentResult::new(2, 2, mode_index(1), Utility::nan(), mode_results);
         agent_results[agent_index(1)] = r;
 
         assert_eq!(

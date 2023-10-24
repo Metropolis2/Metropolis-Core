@@ -110,6 +110,7 @@ impl<T: TTFNum> Agent<T> {
                 let mode_result = callback(alloc)?;
                 Ok(AgentResult::new(
                     self.id,
+                    self.modes[choice_id].id(),
                     mode_index(choice_id),
                     expected_utility,
                     mode_result,
@@ -126,6 +127,7 @@ impl<T: TTFNum> Agent<T> {
                 let mode_result = callback(alloc)?;
                 Ok(AgentResult::new(
                     self.id,
+                    self.modes[0].id(),
                     mode_index(0),
                     expected_utility,
                     mode_result,
@@ -179,7 +181,7 @@ mod tests {
     use crate::units::Utility;
 
     fn get_agent() -> Agent<f64> {
-        let modes = vec![Mode::Constant(Utility(10.))];
+        let modes = vec![Mode::Constant((0, Utility(10.)))];
         let choice_model =
             ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)));
         Agent::new(1, modes, Some(choice_model))
@@ -214,7 +216,7 @@ mod tests {
                 &mut alloc,
             )
             .unwrap();
-        assert_eq!(result.mode, mode_index(0));
+        assert_eq!(result.mode_index, mode_index(0));
         assert_eq!(result.expected_utility, Utility(10.));
         assert_eq!(result.mode_results, ModeResults::None);
 
@@ -233,7 +235,7 @@ mod tests {
             result
         );
 
-        agent.modes.push(Mode::Constant(Utility(15.)));
+        agent.modes.push(Mode::Constant((1, Utility(15.))));
         let result = agent
             .make_pre_day_choice(
                 &network,
@@ -245,7 +247,7 @@ mod tests {
                 &mut alloc,
             )
             .unwrap();
-        assert_eq!(result.mode, mode_index(1));
+        assert_eq!(result.mode_index, mode_index(1));
         assert_eq!(result.expected_utility, Utility(15.));
         assert_eq!(result.mode_results, ModeResults::None);
     }

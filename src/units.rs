@@ -137,6 +137,12 @@ macro_rules! impl_ttf_on_unit(
                 fn to_u64(&self) -> Option<u64> {
                     self.0.to_u64()
                 }
+                fn to_f32(&self) -> Option<f32> {
+                    self.0.to_f32()
+                }
+                fn to_f64(&self) -> Option<f64> {
+                    self.0.to_f64()
+                }
             }
 
             impl<T: NumCast> NumCast for $t<T> {

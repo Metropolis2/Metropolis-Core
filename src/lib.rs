@@ -26,7 +26,9 @@
 
 pub mod agent;
 pub mod event;
+pub mod io;
 pub mod learning;
+pub mod logging;
 pub mod mode;
 pub mod network;
 pub mod parameters;
@@ -40,9 +42,11 @@ pub mod stop;
 pub mod travel_utility;
 pub mod units;
 
+use std::path::Path;
+
+use anyhow::Result;
 // Re-exports.
 pub use report::write_report;
-pub use simulation::run_simulation_from_json_files;
 
 #[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
 #[global_allocator]
@@ -68,4 +72,47 @@ pub fn show_stats() {}
 
 // Dependencies only used in the bins.
 use clap as _;
-use simplelog as _;
+
+/// Deserializes a simulation from JSON input files, runs it and stores the results to a given
+/// output directory.
+pub fn run_simulation_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+    weights: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(output)?;
+
+    logging::initialize_logging(output);
+
+    let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
+
+    let weights = weights.map(io::json::read_json).transpose()?;
+
+    // Run the simulation.
+    simulation.run_from_weights(weights, output)
+}
+
+/// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them
+/// in the given output directory.
+pub fn get_choices_from_json_files(
+    agents: &Path,
+    parameters: &Path,
+    road_network: Option<&Path>,
+    weights: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(output)?;
+
+    logging::initialize_logging(output);
+
+    let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
+
+    let weights = weights.map(io::json::read_json).transpose()?;
+
+    // Run the simulation.
+    simulation.compute_and_store_choices(weights, output)
+}

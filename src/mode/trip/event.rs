@@ -50,7 +50,7 @@ pub struct RoadEvent<T> {
     /// Id of the edge taken.
     pub edge: OriginalEdgeIndex,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
-    pub edge_entry: Time<T>,
+    pub entry_time: Time<T>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
@@ -63,7 +63,7 @@ pub(crate) struct TransparentRoadEvent<T>(OriginalEdgeIndex, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
     fn from(v: RoadEvent<T>) -> Self {
-        Self(v.edge, v.edge_entry)
+        Self(v.edge, v.entry_time)
     }
 }
 
@@ -174,7 +174,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                 // Record the entry time for the current edge.
                 road_leg_results.route.push(RoadEvent {
                     edge: road_network.original_edge_id_of(self.current_edge()),
-                    edge_entry: self.at_time,
+                    entry_time: self.at_time,
                 });
             }
             VehicleEventType::ReachesEdgeExit => {

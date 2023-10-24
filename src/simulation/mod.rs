@@ -6,19 +6,16 @@
 //! Everything related to simulations.
 pub mod results;
 
-use std::fs::File;
-use std::io::{Read, Write};
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Result;
-use log::{debug, info, LevelFilter};
+use log::{debug, info};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 use time::{Duration, Instant};
 use ttf::TTFNum;
 
@@ -31,11 +28,11 @@ use crate::event::{EventAlloc, EventInput};
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::road_network::RoadNetwork;
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::parameters::Parameters;
 use crate::progress_bar::MetroProgressBar;
 use crate::report;
+use crate::simulation::results::PreDayAgentResults;
 use crate::units::Distribution;
 
 /// Number of events before the time on the within-day progress bar is refreshed.
@@ -128,7 +125,11 @@ impl<T: TTFNum> Simulation<T> {
                 report::write_report(&sim_results, output_dir)?;
                 info!("Saving detailed results");
                 results::save_running_times(running_times, output_dir)?;
-                results::save_iteration_results(sim_results.last_iteration.unwrap(), output_dir)?;
+                results::save_iteration_results(
+                    sim_results.last_iteration.unwrap(),
+                    output_dir,
+                    &self.parameters,
+                )?;
                 info!("Done");
                 break;
             }
@@ -360,7 +361,7 @@ impl<T: TTFNum> Simulation<T> {
         let mut cst_utilities = Vec::with_capacity(self.agents.len());
         for i in 0..(results.agent_results().len()) {
             let agent_result = &results.agent_results()[agent_index(i)];
-            let mode_id = agent_result.mode;
+            let mode_id = agent_result.mode_index;
             match (&self.agents[i][mode_id], &agent_result.mode_results) {
                 (Mode::Trip(trip_mode), ModeResults::Trip(trip_result)) => {
                     let prev_trip_result = if let Some(ModeResults::Trip(prev_trip_result)) =
@@ -372,7 +373,7 @@ impl<T: TTFNum> Simulation<T> {
                     };
                     trip_entries.push((trip_mode, trip_result, prev_trip_result));
                 }
-                (&Mode::Constant(utility), ModeResults::None) => cst_utilities.push(utility),
+                (&Mode::Constant((_, utility)), ModeResults::None) => cst_utilities.push(utility),
                 _ => panic!("Unsupported mode and mode results combination"),
             }
         }
@@ -419,7 +420,9 @@ impl<T: TTFNum> Simulation<T> {
         }
         updates
     }
+}
 
+impl<T: TTFNum + Into<f64>> Simulation<T> {
     /// Computes the pre-day choices, using the given [NetworkWeights] as initial weights of the
     /// network, and stores the results in the output directory.
     ///
@@ -446,160 +449,49 @@ impl<T: TTFNum> Simulation<T> {
             &preprocess_data.network,
             &self.parameters.network,
         )?;
-
         info!("Running pre-day model");
-        let agent_results = self.run_pre_day_model(
-            &skims,
-            &preprocess_data,
-            None,
-            self.parameters.init_iteration_counter,
-        )?;
-        info!("Saving results");
-        // Expected routes are serialize here separetely so that we can get the original edge index
-        // and entry times.
-        if let Some(road_network) = self.network.get_road_network() {
-            let filename: PathBuf = [output_dir.to_str().unwrap(), "expected_routes.json.zst"]
-                .iter()
-                .collect();
-            let rn_weights = weights.get_road_network().unwrap();
-            agent_results.serialize_expected_routes(
-                filename,
+        let bp = MetroProgressBar::new(self.agents.len());
+        let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(
+            self.agents
+                .par_iter()
+                .panic_fuse()
+                .map_init(EAAllocation::default, |alloc, agent| {
+                    bp.inc();
+                    agent.make_pre_day_choice(
+                        &self.network,
+                        &skims,
+                        &preprocess_data,
+                        None,
+                        true,
+                        bp.clone(),
+                        alloc,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        bp.finish();
+        // At this point, we have the pre-day agent results but the route, route length and route
+        // free-flow travel time is empty. We compute them now (if `pre_compute_route` is `true`).
+        if let (Some(road_network), Some(rn_weights)) =
+            (self.network.get_road_network(), weights.get_road_network())
+        {
+            let unique_vehicles = &preprocess_data
+                .network
+                .get_road_network()
+                .unwrap()
+                .unique_vehicles;
+            pre_day_agent_results.add_expected_routes(
                 &self.agents,
                 road_network,
                 rn_weights,
-                &preprocess_data
-                    .network
-                    .get_road_network()
-                    .unwrap()
-                    .unique_vehicles,
-            )?;
+                unique_vehicles,
+            );
         }
-        let filename: PathBuf = [output_dir.to_str().unwrap(), "agent_results.json.zst"]
-            .iter()
-            .collect();
-        let mut writer = File::create(filename)?;
-        let buffer = serde_json::to_vec(&agent_results)?;
-        let encoded_buffer = zstd::encode_all(buffer.as_slice(), 0)?;
-        writer.write_all(&encoded_buffer)?;
+        info!("Saving results");
+        results::save_choices(pre_day_agent_results, output_dir, &self.parameters)?;
         info!("Done");
         Ok(())
     }
-}
-
-/// Initializes logging to a file and terminal.
-fn initialize_logging(output: &Path) {
-    let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
-    let log_file = File::create(log_filename).expect("Failed to create log file");
-    CombinedLogger::init(vec![
-        TermLogger::new(
-            LevelFilter::Info,
-            Config::default(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        ),
-        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
-    ])
-    .expect("Failed to initialize logging");
-}
-
-/// Deserializes a simulation from JSON files.
-fn get_simulation_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-) -> Simulation<f64> {
-    // Read input files.
-    info!("Reading input files");
-    let mut bytes = Vec::new();
-    File::open(agents)
-        .unwrap_or_else(|err| panic!("Unable to open agents file `{agents:?}`: {err}"))
-        .read_to_end(&mut bytes)
-        .unwrap_or_else(|err| panic!("Unable to read agents file `{agents:?}`: {err}"));
-    let agents: Vec<Agent<f64>> = serde_json::from_slice(&bytes).expect("Unable to parse agents");
-
-    let mut bytes = Vec::new();
-    File::open(parameters)
-        .unwrap_or_else(|err| panic!("Unable to open parameters file `{parameters:?}`: {err}"))
-        .read_to_end(&mut bytes)
-        .unwrap_or_else(|err| panic!("Unable to read parameters file `{parameters:?}`: {err}"));
-    let parameters: Parameters<f64> =
-        serde_json::from_slice(&bytes).expect("Unable to parse parameters");
-
-    let road_network: Option<RoadNetwork<f64>> = if let Some(rn) = road_network {
-        let mut bytes = Vec::new();
-        File::open(rn)
-            .unwrap_or_else(|err| panic!("Unable to open road network file `{rn:?}`: {err}"))
-            .read_to_end(&mut bytes)
-            .unwrap_or_else(|err| panic!("Unable to read road network file `{rn:?}`: {err}"));
-        Some(serde_json::from_slice(&bytes).expect("Unable to parse road network"))
-    } else {
-        None
-    };
-
-    let network = Network::new(road_network);
-    Simulation::new(agents, network, parameters)
-}
-
-/// Deserializes [NetworkWeights] from a JSON file.
-fn get_weights_from_json_file(weights: &Path) -> NetworkWeights<f64> {
-    let mut file = File::open(weights)
-        .unwrap_or_else(|err| panic!("Unable to open network weights file `{weights:?}`: {err}"));
-    let bytes = if weights.extension().and_then(|s| s.to_str()) == Some("zst") {
-        zstd::decode_all(&file).unwrap_or_else(|err| {
-            panic!("Unable to decode network weights file `{weights:?}`: {err}")
-        })
-    } else {
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).unwrap_or_else(|err| {
-            panic!("Unable to read network weights file `{weights:?}`: {err}")
-        });
-        bytes
-    };
-    serde_json::from_slice(&bytes).expect("Unable to parse network weights")
-}
-
-/// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them
-/// in the given output directory.
-pub fn get_choices_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-    weights: Option<&Path>,
-    output: &Path,
-) -> Result<()> {
-    // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
-
-    initialize_logging(output);
-
-    let simulation = get_simulation_from_json_files(agents, parameters, road_network);
-
-    let weights = weights.map(get_weights_from_json_file);
-
-    // Run the simulation.
-    simulation.compute_and_store_choices(weights, output)
-}
-
-/// Deserializes a simulation from JSON input files, runs it and stores the results to a given
-/// output directory.
-pub fn run_simulation_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-    weights: Option<&Path>,
-    output: &Path,
-) -> Result<()> {
-    // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
-
-    initialize_logging(output);
-
-    let simulation = get_simulation_from_json_files(agents, parameters, road_network);
-
-    let weights = weights.map(get_weights_from_json_file);
-
-    // Run the simulation.
-    simulation.run_from_weights(weights, output)
 }
 
 /// Additional input data for the simulation which is computed before running the simulation.

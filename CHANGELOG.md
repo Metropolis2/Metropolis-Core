@@ -8,6 +8,13 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] The parameter `saving_format` can be used to choose the format of the output files (only
+  for agent results for now). Possible values: `JSON` (default, previous format), `Parquet`, `CSV`.
+- [INPUT] An `id` can be specify for the modes and the legs. These ids are then shown in the
+  agent-results output.
+
 ### Fixed
 
 - [OUTPUT] Utility was not computed correctly for trips with only virtual legs.

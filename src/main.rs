@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use metropolis::simulation::run_simulation_from_json_files;
 
 /// METROPOLIS simulator.
 #[derive(Parser, Debug)]
@@ -33,7 +32,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    run_simulation_from_json_files(
+    metropolis::run_simulation_from_json_files(
         &args.agents,
         &args.parameters,
         args.road_network.as_deref(),

@@ -32,12 +32,14 @@ fn get_simulation() -> Simulation<f64> {
         .enumerate()
     {
         let leg = Leg::new(
+            1,
             LegType::Road(RoadLeg::new(o, d, vehicle_index(0))),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
         );
         let trip = TravelingMode::new(
+            1,
             vec![leg],
             Time::default(),
             DepartureTimeModel::Constant(Time(dt)),
@@ -138,6 +140,7 @@ fn get_simulation() -> Simulation<f64> {
         update_ratio: 1.0,
         random_seed: None,
         nb_threads: 0,
+        saving_format: Default::default(),
     };
 
     Simulation::new(agents, network, parameters)
