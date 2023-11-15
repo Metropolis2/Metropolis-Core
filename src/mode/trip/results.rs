@@ -584,12 +584,20 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
         let global_free_flow_travel_time =
             get_distribution(results, |_, rlr| rlr.global_free_flow_travel_time);
         let route_congestion = get_distribution(results, |lr, rlr| {
-            (lr.travel_time().0 - rlr.route_free_flow_travel_time.0)
-                / rlr.route_free_flow_travel_time.0
+            if rlr.route_free_flow_travel_time.is_zero() {
+                T::zero()
+            } else {
+                (lr.travel_time().0 - rlr.route_free_flow_travel_time.0)
+                    / rlr.route_free_flow_travel_time.0
+            }
         });
         let global_congestion = get_distribution(results, |lr, rlr| {
-            (lr.travel_time().0 - rlr.global_free_flow_travel_time.0)
-                / rlr.global_free_flow_travel_time.0
+            if rlr.global_free_flow_travel_time.is_zero() {
+                T::zero()
+            } else {
+                (lr.travel_time().0 - rlr.global_free_flow_travel_time.0)
+                    / rlr.global_free_flow_travel_time.0
+            }
         });
         let length = get_distribution(results, |_, rlr| rlr.length);
         let edge_count =
@@ -639,13 +647,13 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
 /// Struct to store aggregate results specific to the virtual legs.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateVirtualLegResults<T> {
-    /// Number of road legs taken.
+    /// Number of virtual legs taken.
     pub count: usize,
-    /// Number of chosen modes with at least one road leg.
+    /// Number of chosen modes with at least one virtual leg.
     pub mode_count_one: usize,
-    /// Number of chosen modes with only road legs.
+    /// Number of chosen modes with only virtual legs.
     pub mode_count_all: usize,
-    /// Distribution of the number of road legs per trip.
+    /// Distribution of the number of virtual legs per trip.
     pub count_distribution: Distribution<T>,
     /// Distribution of departure times from leg's origin.
     pub departure_time: Distribution<Time<T>>,

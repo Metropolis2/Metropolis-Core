@@ -82,3 +82,26 @@ pub fn write_compressed_json<D: Serialize>(data: D, output_dir: &Path, name: &st
     writer.write_all(&encoded_buffer)?;
     Ok(())
 }
+
+/// Append some serializable data to a JSON file.
+///
+/// The JSON file must contain a list of the data type `D`.
+///
+/// If the JSON does not exist, the file is created, with the data to append in a list.
+pub fn append_json<D: Serialize + DeserializeOwned>(
+    to_append: D,
+    output_dir: &Path,
+    name: &str,
+) -> Result<()> {
+    let filename: PathBuf = [output_dir.to_str().unwrap(), &format!("{name}.json")]
+        .iter()
+        .collect();
+    let mut data: Vec<D> = if filename.is_file() {
+        read_json(&filename)?
+    } else {
+        vec![]
+    };
+    data.push(to_append);
+    write_json(data, output_dir, name)?;
+    Ok(())
+}

@@ -48,6 +48,8 @@ impl<T: TTFNum> SimulationResults<T> {
 /// Aggregate results summarizing the results of an iteration.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AggregateResults<T> {
+    /// Current value of the iteration counter.
+    pub iteration_counter: u32,
     /// Distribution of the surplus of the agents.
     pub surplus: Distribution<Utility<T>>,
     /// Mode-specific aggregate results.
@@ -403,14 +405,24 @@ impl<T: TTFNum> PreDayAgentResults<T> {
 /// The AggregateResults are stored in the file `iteration[counter].json`.
 pub fn save_aggregate_results<T: TTFNum>(
     aggregate_results: &AggregateResults<T>,
-    iteration_counter: u32,
     output_dir: &Path,
+    parameters: &Parameters<T>,
 ) -> Result<()> {
-    io::json::write_json(
-        aggregate_results,
-        output_dir,
-        &format!("iteration{iteration_counter}"),
-    )?;
+    match parameters.saving_format {
+        SavingFormat::JSON => {
+            io::json::append_json(aggregate_results.clone(), output_dir, "iteration_results")?;
+        }
+        SavingFormat::Parquet => {
+            io::parquet::append_parquet(
+                aggregate_results.clone(),
+                output_dir,
+                "iteration_results",
+            )?;
+        }
+        SavingFormat::CSV => {
+            io::csv::append_csv(aggregate_results.clone(), output_dir, "iteration_results")?;
+        }
+    }
     Ok(())
 }
 

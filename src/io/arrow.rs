@@ -9,19 +9,28 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use arrow::array::{Float64Builder, UInt64Builder};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType, Field, Schema as ArrowSchema};
 use arrow::record_batch::RecordBatch;
 use num_traits::ToPrimitive;
+use polars::prelude::DataType as PolarsDataType;
+use polars::prelude::*;
+use smartstring::SmartString;
+use ttf::TTFNum;
 
 use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
 use crate::mode::{ModeResults, PreDayModeResults};
 use crate::simulation::results::{
-    AgentResult, AgentResults, PreDayAgentResult, PreDayAgentResults,
+    AgentResult, AgentResults, AggregateResults, PreDayAgentResult, PreDayAgentResults,
 };
 
 pub trait ToArrow<const J: usize> {
     fn to_arrow(data: Self) -> Result<[RecordBatch; J]>;
     fn names<'a>() -> [&'a str; J];
+}
+
+pub trait ToPolars {
+    fn to_dataframe(self) -> Result<DataFrame>;
+    fn schema() -> Schema;
 }
 
 #[derive(Debug, Default)]
@@ -169,7 +178,7 @@ impl AgentResultsBuilder {
     }
 
     fn finish(&mut self) -> Result<[RecordBatch; 3]> {
-        let agent_schema = Schema::new(vec![
+        let agent_schema = ArrowSchema::new(vec![
             Field::new("id", DataType::UInt64, false),
             Field::new("mode_id", DataType::UInt64, false),
             Field::new("mode_index", DataType::UInt64, false),
@@ -198,7 +207,7 @@ impl AgentResultsBuilder {
                 Arc::new(self.nb_virtual_legs.finish()),
             ],
         )?;
-        let leg_schema = Schema::new(vec![
+        let leg_schema = ArrowSchema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
             Field::new("leg_id", DataType::UInt64, false),
             Field::new("leg_index", DataType::UInt64, false),
@@ -239,7 +248,7 @@ impl AgentResultsBuilder {
                 Arc::new(self.leg_nb_edges.finish()),
             ],
         )?;
-        let route_schema = Schema::new(vec![
+        let route_schema = ArrowSchema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
             Field::new("leg_id", DataType::UInt64, false),
             Field::new("leg_index", DataType::UInt64, false),
@@ -379,7 +388,7 @@ impl PreDayAgentResultsBuilder {
     }
 
     fn finish(&mut self) -> Result<[RecordBatch; 3]> {
-        let agent_schema = Schema::new(vec![
+        let agent_schema = ArrowSchema::new(vec![
             Field::new("id", DataType::UInt64, false),
             Field::new("mode_id", DataType::UInt64, false),
             Field::new("mode_index", DataType::UInt64, false),
@@ -402,7 +411,7 @@ impl PreDayAgentResultsBuilder {
                 Arc::new(self.nb_virtual_legs.finish()),
             ],
         )?;
-        let leg_schema = Schema::new(vec![
+        let leg_schema = ArrowSchema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
             Field::new("leg_id", DataType::UInt64, false),
             Field::new("leg_index", DataType::UInt64, false),
@@ -427,7 +436,7 @@ impl PreDayAgentResultsBuilder {
                 Arc::new(self.leg_nb_edges.finish()),
             ],
         )?;
-        let route_schema = Schema::new(vec![
+        let route_schema = ArrowSchema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
             Field::new("leg_id", DataType::UInt64, false),
             Field::new("leg_index", DataType::UInt64, false),
@@ -458,5 +467,341 @@ impl<T: ToPrimitive> ToArrow<3> for PreDayAgentResults<T> {
     }
     fn names<'a>() -> [&'a str; 3] {
         ["agent_results", "leg_results", "route_results"]
+    }
+}
+
+macro_rules! add_const {
+    ($df:ident, $name:expr, $const:expr) => {
+        $df.with_column(Series::new($name, &[$const]))?;
+    };
+}
+
+macro_rules! add_null_const {
+    ($df:ident, $name:expr, $type:expr) => {
+        $df.with_column(Series::full_null($name, 1, &$type))?;
+    };
+}
+
+macro_rules! add_distr {
+    ($df:ident, $name:expr, $var:expr) => {
+        $df.with_column(Series::new(
+            concat!($name, "_mean"),
+            &[$var.mean().to_f64().unwrap()],
+        ))?;
+        $df.with_column(Series::new(
+            concat!($name, "_std"),
+            &[$var.std().to_f64().unwrap()],
+        ))?;
+        $df.with_column(Series::new(
+            concat!($name, "_min"),
+            &[$var.min().to_f64().unwrap()],
+        ))?;
+        $df.with_column(Series::new(
+            concat!($name, "_max"),
+            &[$var.max().to_f64().unwrap()],
+        ))?;
+    };
+}
+
+macro_rules! add_null_distr {
+    ($df:ident, $name:expr) => {
+        $df.with_column(Series::full_null(
+            concat!($name, "_mean"),
+            1,
+            &PolarsDataType::Float64,
+        ))?;
+        $df.with_column(Series::full_null(
+            concat!($name, "_std"),
+            1,
+            &PolarsDataType::Float64,
+        ))?;
+        $df.with_column(Series::full_null(
+            concat!($name, "_min"),
+            1,
+            &PolarsDataType::Float64,
+        ))?;
+        $df.with_column(Series::full_null(
+            concat!($name, "_max"),
+            1,
+            &PolarsDataType::Float64,
+        ))?;
+    };
+}
+
+macro_rules! add_null_road_leg_columns {
+    ($df:ident) => {
+        add_null_const!($df, "road_leg_count", PolarsDataType::UInt64);
+        add_null_const!(
+            $df,
+            "nb_agents_at_least_one_road_leg",
+            PolarsDataType::UInt64
+        );
+        add_null_const!($df, "nb_agents_all_road_legs", PolarsDataType::UInt64);
+        add_null_distr!($df, "road_leg_count_by_agent");
+        add_null_distr!($df, "road_leg_departure_time");
+        add_null_distr!($df, "road_leg_arrival_time");
+        add_null_distr!($df, "road_leg_road_time");
+        add_null_distr!($df, "road_leg_in_bottleneck_time");
+        add_null_distr!($df, "road_leg_out_bottleneck_time");
+        add_null_distr!($df, "road_leg_travel_time");
+        add_null_distr!($df, "road_leg_route_free_flow_travel_time");
+        add_null_distr!($df, "road_leg_global_free_flow_travel_time");
+        add_null_distr!($df, "road_leg_route_congestion");
+        add_null_distr!($df, "road_leg_global_congestion");
+        add_null_distr!($df, "road_leg_length");
+        add_null_distr!($df, "road_leg_edge_count");
+        add_null_distr!($df, "road_leg_utility");
+        add_null_distr!($df, "road_leg_exp_travel_time");
+        add_null_distr!($df, "road_leg_exp_travel_time_diff");
+        add_null_distr!($df, "road_leg_length_diff");
+    };
+}
+
+macro_rules! add_null_virtual_leg_columns {
+    ($df:ident) => {
+        add_null_const!($df, "virtual_leg_count", PolarsDataType::UInt64);
+        add_null_const!(
+            $df,
+            "nb_agents_at_least_one_virtual_leg",
+            PolarsDataType::UInt64
+        );
+        add_null_const!($df, "nb_agents_all_virtual_legs", PolarsDataType::UInt64);
+        add_null_distr!($df, "virtual_leg_count_by_agent");
+        add_null_distr!($df, "virtual_leg_departure_time");
+        add_null_distr!($df, "virtual_leg_arrival_time");
+        add_null_distr!($df, "virtual_leg_travel_time");
+        add_null_distr!($df, "virtual_leg_global_free_flow_travel_time");
+        add_null_distr!($df, "virtual_leg_global_congestion");
+        add_null_distr!($df, "virtual_leg_utility");
+    };
+}
+
+macro_rules! add_distr_to_schema {
+    ($schema:ident, $name:expr) => {
+        $schema.with_column(
+            SmartString::from(concat!($name, "_mean")),
+            PolarsDataType::Float64,
+        );
+        $schema.with_column(
+            SmartString::from(concat!($name, "_std")),
+            PolarsDataType::Float64,
+        );
+        $schema.with_column(
+            SmartString::from(concat!($name, "_min")),
+            PolarsDataType::Float64,
+        );
+        $schema.with_column(
+            SmartString::from(concat!($name, "_max")),
+            PolarsDataType::Float64,
+        );
+    };
+}
+
+impl<T: TTFNum> ToPolars for AggregateResults<T> {
+    fn to_dataframe(self) -> Result<DataFrame> {
+        let mut df = DataFrame::new(vec![Series::new(
+            "iteration_counter",
+            &[self.iteration_counter],
+        )])?;
+        add_distr!(df, "surplus", self.surplus);
+        if let Some(trip_results) = self.mode_results.trip_modes {
+            add_const!(df, "trip_count", trip_results.count as u64);
+            add_distr!(df, "trip_departure_time", trip_results.departure_time);
+            add_distr!(df, "trip_arrival_time", trip_results.arrival_time);
+            add_distr!(df, "trip_travel_time", trip_results.travel_time);
+            add_distr!(df, "trip_utility", trip_results.utility);
+            add_distr!(df, "trip_expected_utility", trip_results.expected_utility);
+            if let Some(dep_time_shift) = trip_results.dep_time_shift {
+                add_distr!(df, "trip_dep_time_shift", dep_time_shift);
+            } else {
+                add_null_distr!(df, "trip_dep_time_shift");
+            }
+            if let Some(road_results) = trip_results.road_leg {
+                add_const!(df, "road_leg_count", road_results.count as u64);
+                add_const!(
+                    df,
+                    "nb_agents_at_least_one_road_leg",
+                    road_results.mode_count_one as u64
+                );
+                add_const!(
+                    df,
+                    "nb_agents_all_road_legs",
+                    road_results.mode_count_all as u64
+                );
+                add_distr!(
+                    df,
+                    "road_leg_count_by_agent",
+                    road_results.count_distribution
+                );
+                add_distr!(df, "road_leg_departure_time", road_results.departure_time);
+                add_distr!(df, "road_leg_arrival_time", road_results.arrival_time);
+                add_distr!(df, "road_leg_road_time", road_results.road_time);
+                add_distr!(
+                    df,
+                    "road_leg_in_bottleneck_time",
+                    road_results.in_bottleneck_time
+                );
+                add_distr!(
+                    df,
+                    "road_leg_out_bottleneck_time",
+                    road_results.out_bottleneck_time
+                );
+                add_distr!(df, "road_leg_travel_time", road_results.travel_time);
+                add_distr!(
+                    df,
+                    "road_leg_route_free_flow_travel_time",
+                    road_results.route_free_flow_travel_time
+                );
+                add_distr!(
+                    df,
+                    "road_leg_global_free_flow_travel_time",
+                    road_results.global_free_flow_travel_time
+                );
+                add_distr!(
+                    df,
+                    "road_leg_route_congestion",
+                    road_results.route_congestion
+                );
+                add_distr!(
+                    df,
+                    "road_leg_global_congestion",
+                    road_results.global_congestion
+                );
+                add_distr!(df, "road_leg_length", road_results.length);
+                add_distr!(df, "road_leg_edge_count", road_results.edge_count);
+                add_distr!(df, "road_leg_utility", road_results.utility);
+                add_distr!(df, "road_leg_exp_travel_time", road_results.exp_travel_time);
+                add_distr!(
+                    df,
+                    "road_leg_exp_travel_time_diff",
+                    road_results.exp_travel_time_diff
+                );
+                if let Some(length_diff) = road_results.length_diff {
+                    add_distr!(df, "road_leg_length_diff", length_diff);
+                } else {
+                    add_null_distr!(df, "road_leg_length_diff");
+                }
+            } else {
+                add_null_road_leg_columns!(df);
+            }
+            if let Some(virtual_results) = trip_results.virtual_leg {
+                add_const!(df, "virtual_leg_count", virtual_results.count as u64);
+                add_const!(
+                    df,
+                    "nb_agents_at_least_one_virtual_leg",
+                    virtual_results.mode_count_one as u64
+                );
+                add_const!(
+                    df,
+                    "nb_agents_all_virtual_legs",
+                    virtual_results.mode_count_all as u64
+                );
+                add_distr!(
+                    df,
+                    "virtual_leg_count_by_agent",
+                    virtual_results.count_distribution
+                );
+                add_distr!(
+                    df,
+                    "virtual_leg_departure_time",
+                    virtual_results.departure_time
+                );
+                add_distr!(df, "virtual_leg_arrival_time", virtual_results.arrival_time);
+                add_distr!(df, "virtual_leg_travel_time", virtual_results.travel_time);
+                add_distr!(
+                    df,
+                    "virtual_leg_global_free_flow_travel_time",
+                    virtual_results.global_free_flow_travel_time
+                );
+                add_distr!(
+                    df,
+                    "virtual_leg_global_congestion",
+                    virtual_results.global_congestion
+                );
+                add_distr!(df, "virtual_leg_utility", virtual_results.utility);
+            } else {
+                add_null_virtual_leg_columns!(df);
+            }
+        } else {
+            add_null_const!(df, "trip_count", PolarsDataType::UInt64);
+            add_null_distr!(df, "trip_departure_time");
+            add_null_distr!(df, "trip_arrival_time");
+            add_null_distr!(df, "trip_travel_time");
+            add_null_distr!(df, "trip_utility");
+            add_null_distr!(df, "trip_expected_utility");
+            add_null_road_leg_columns!(df);
+            add_null_virtual_leg_columns!(df);
+        }
+        if let Some(cst_results) = self.mode_results.constant {
+            add_const!(df, "constant_count", cst_results.count as u64);
+            add_distr!(df, "constant_utility", cst_results.utility);
+        } else {
+            add_null_const!(df, "constant_count", PolarsDataType::UInt64);
+            add_null_distr!(df, "constant_utility");
+        }
+        Ok(df)
+    }
+    fn schema() -> Schema {
+        let mut schema = Schema::with_capacity(256);
+        schema.with_column(
+            SmartString::from("iteration_counter"),
+            PolarsDataType::UInt32,
+        );
+        add_distr_to_schema!(schema, "surplus");
+        schema.with_column(SmartString::from("trip_count"), PolarsDataType::UInt64);
+        add_distr_to_schema!(schema, "trip_departure_time");
+        add_distr_to_schema!(schema, "trip_arrival_time");
+        add_distr_to_schema!(schema, "trip_travel_time");
+        add_distr_to_schema!(schema, "trip_utility");
+        add_distr_to_schema!(schema, "trip_expected_utility");
+        add_distr_to_schema!(schema, "trip_dep_time_shift");
+        schema.with_column(SmartString::from("road_leg_count"), PolarsDataType::UInt64);
+        schema.with_column(
+            SmartString::from("nb_agents_at_least_one_road_leg"),
+            PolarsDataType::UInt64,
+        );
+        schema.with_column(
+            SmartString::from("nb_agents_all_road_legs"),
+            PolarsDataType::UInt64,
+        );
+        add_distr_to_schema!(schema, "road_leg_count_by_agent");
+        add_distr_to_schema!(schema, "road_leg_departure_time");
+        add_distr_to_schema!(schema, "road_leg_arrival_time");
+        add_distr_to_schema!(schema, "road_leg_road_time");
+        add_distr_to_schema!(schema, "road_leg_in_bottleneck_time");
+        add_distr_to_schema!(schema, "road_leg_out_bottleneck_time");
+        add_distr_to_schema!(schema, "road_leg_travel_time");
+        add_distr_to_schema!(schema, "road_leg_route_free_flow_travel_time");
+        add_distr_to_schema!(schema, "road_leg_global_free_flow_travel_time");
+        add_distr_to_schema!(schema, "road_leg_route_congestion");
+        add_distr_to_schema!(schema, "road_leg_global_congestion");
+        add_distr_to_schema!(schema, "road_leg_length");
+        add_distr_to_schema!(schema, "road_leg_edge_count");
+        add_distr_to_schema!(schema, "road_leg_utility");
+        add_distr_to_schema!(schema, "road_leg_exp_travel_time");
+        add_distr_to_schema!(schema, "road_leg_exp_travel_time_diff");
+        add_distr_to_schema!(schema, "road_leg_length_diff");
+        schema.with_column(
+            SmartString::from("virtual_leg_count"),
+            PolarsDataType::UInt64,
+        );
+        schema.with_column(
+            SmartString::from("nb_agents_at_least_one_virtual_leg"),
+            PolarsDataType::UInt64,
+        );
+        schema.with_column(
+            SmartString::from("nb_agents_all_virtual_legs"),
+            PolarsDataType::UInt64,
+        );
+        add_distr_to_schema!(schema, "virtual_leg_count_by_agent");
+        add_distr_to_schema!(schema, "virtual_leg_departure_time");
+        add_distr_to_schema!(schema, "virtual_leg_arrival_time");
+        add_distr_to_schema!(schema, "virtual_leg_travel_time");
+        add_distr_to_schema!(schema, "virtual_leg_global_free_flow_travel_time");
+        add_distr_to_schema!(schema, "virtual_leg_global_congestion");
+        add_distr_to_schema!(schema, "virtual_leg_utility");
+        schema.with_column(SmartString::from("constant_count"), PolarsDataType::UInt64);
+        add_distr_to_schema!(schema, "constant_utility");
+        schema
     }
 }

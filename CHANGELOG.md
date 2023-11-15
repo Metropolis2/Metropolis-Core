@@ -8,6 +8,14 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [OUTPUT] The iteration results are saved in a single file, `iteration_results.ext`, updated at
+  each iteration. Previously they were saved in a different file for each iteration. The filetype
+  and extension are based on the `saving_format` parameter (`JSON`, `Parquet` or `CSV`).
+- [USER] Congestion is set to zero when free-flow travel time is zero, as a convention. Previously,
+  congestion was set to NaN.
+
 ## [0.6.0] - 2023-10-24
 
 ### Added

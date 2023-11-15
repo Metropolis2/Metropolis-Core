@@ -42,9 +42,11 @@ pub mod stop;
 pub mod travel_utility;
 pub mod units;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use log::warn;
+use parameters::SavingFormat;
 // Re-exports.
 pub use report::write_report;
 
@@ -82,12 +84,31 @@ pub fn run_simulation_from_json_files(
     weights: Option<&Path>,
     output: &Path,
 ) -> Result<()> {
-    // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
-
     logging::initialize_logging(output);
 
     let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
+
+    if output.is_dir() {
+        // The previous iteration_results file need to be removed if it exists.
+        let extension = match simulation.get_parameters().saving_format {
+            SavingFormat::JSON => "json",
+            SavingFormat::Parquet => "parquet",
+            SavingFormat::CSV => "csv",
+        };
+        let filename: PathBuf = [
+            output.to_str().unwrap(),
+            &format!("iteration_results.{extension}"),
+        ]
+        .iter()
+        .collect();
+        if filename.is_file() {
+            warn!("Removing already existing file `{filename:?}`");
+            std::fs::remove_file(filename)?;
+        }
+    } else {
+        // Create output directory if it does not exists yet.
+        std::fs::create_dir_all(output)?;
+    }
 
     let weights = weights.map(io::json::read_json).transpose()?;
 

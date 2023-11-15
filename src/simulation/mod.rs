@@ -112,8 +112,8 @@ impl<T: TTFNum> Simulation<T> {
             )?;
             results::save_aggregate_results(
                 &iteration_output.aggregate_results,
-                iteration_counter,
                 output_dir,
+                &self.parameters,
             )?;
             sim_results.push_iteration(iteration_output.aggregate_results);
             running_times.update(&iteration_output.running_times);
@@ -190,7 +190,11 @@ impl<T: TTFNum> Simulation<T> {
         let iteration_results = IterationResults::new(agent_results, new_weights, skims);
         info!("Computing aggregate results");
         let (aggregate_results, t5) = record_time(|| {
-            Ok(self.compute_aggregate_results(&iteration_results, previous_results_opt))
+            Ok(self.compute_aggregate_results(
+                iteration_counter,
+                &iteration_results,
+                previous_results_opt,
+            ))
         })?;
         info!("Checking stopping rules");
         let (stop_simulation, t6) = record_time(|| {
@@ -348,6 +352,7 @@ impl<T: TTFNum> Simulation<T> {
     /// [AgentResults] of the previous iteration (if any).
     pub fn compute_aggregate_results(
         &self,
+        iteration_counter: u32,
         results: &IterationResults<T>,
         prev_agent_results: Option<&AgentResults<T>>,
     ) -> AggregateResults<T> {
@@ -395,6 +400,7 @@ impl<T: TTFNum> Simulation<T> {
             constant: cst_results,
         };
         AggregateResults {
+            iteration_counter,
             surplus,
             mode_results,
         }
