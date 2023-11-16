@@ -15,6 +15,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   and extension are based on the `saving_format` parameter (`JSON`, `Parquet` or `CSV`).
 - [USER] Congestion is set to zero when free-flow travel time is zero, as a convention. Previously,
   congestion was set to NaN.
+- [DEV] Use `debug=false` for dependencies to decrease the binary size.
 
 ### Fixed
 
