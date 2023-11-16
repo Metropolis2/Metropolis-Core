@@ -11,10 +11,12 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use itertools::izip;
 use parquet::{arrow::ArrowWriter, basic::Compression, file::properties::WriterProperties};
 use polars::prelude::*;
 
 use super::arrow::{ToArrow, ToPolars};
+use crate::agent::Agent;
 
 /// Write data that can be converted to arrow format as a parquet file.
 pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) -> Result<()> {
@@ -71,4 +73,51 @@ pub fn append_parquet<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Re
         .finish(&mut df)
         .with_context(|| format!("Cannot write file `{filename:?}`"))?;
     Ok(())
+}
+
+#[allow(dead_code, unused_variables, unused_mut, missing_docs)]
+pub fn get_agents_from_parquet_files<T>(input_dir: &Path) -> Result<Vec<Agent<T>>> {
+    // Read agents parquet file.
+    let agents_filename: PathBuf = [input_dir.to_str().unwrap(), &"agents.parquet"]
+        .iter()
+        .collect();
+    let agents_df = LazyFrame::scan_parquet(agents_filename, Default::default())?.collect()?;
+    println!("{:?}", agents_df.schema());
+    // let schema = Schema::from_iter([Field::new("agent_id", DataType::UInt64))
+    // let agents_df = LazyFrame::scan_parquet(agents_filename, Default::default())?
+    // .collect()?
+    // .select_with_schema(["agent_id", "mode_choice"], schema)?;
+    assert_eq!(
+        agents_df.height(),
+        agents_df["agent_id"].n_unique()?,
+        "Agent ids must be unique in file `agents.parquet`"
+    );
+    // Read modes parquet file.
+    let modes_filename: PathBuf = [input_dir.to_str().unwrap(), &"modes.parquet"]
+        .iter()
+        .collect();
+    let modes_df = LazyFrame::scan_parquet(modes_filename, Default::default())?.collect()?;
+    // Read legs parquet file.
+    let legs_filename: PathBuf = [input_dir.to_str().unwrap(), &"legs.parquet"]
+        .iter()
+        .collect();
+    let legs_df = LazyFrame::scan_parquet(legs_filename, Default::default())?.collect()?;
+    // Create DataFrame with the indices in `modes_df` corresponding to each agent id.
+    let mut mode_ids = modes_df.group_by(["agent_id"])?.groups()?;
+    mode_ids.rename("groups", "mode_ids")?;
+    // Create DataFrame with the indices in `legs_df` corresponding to each agent id.
+    let mut leg_ids = legs_df.group_by(["agent_id"])?.groups()?;
+    leg_ids.rename("groups", "leg_ids")?;
+    // Add the mode indices and leg indices of the agents to `agent_df`.
+    let agents_df = agents_df
+        .left_join(&mode_ids, ["agent_id"], ["agent_id"])?
+        .left_join(&leg_ids, ["agent_id"], ["agent_id"])?;
+    let mut agents = Vec::with_capacity(agents_df.height());
+    for (agent_id, choice_model, mode_ids, leg_ids) in izip!(
+        agents_df["agent_id"].iter(),
+        agents_df["choice_model"].iter(),
+        agents_df["mode_ids"].iter(),
+        agents_df["leg_ids"].iter(),
+    ) {}
+    Ok(agents)
 }
