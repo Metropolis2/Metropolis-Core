@@ -135,7 +135,6 @@ toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
 command = "cargo"
 args = [
   "run",
-  "--release",
   "--bin",
   "generate_metropolis_schemas",
   "./schemas/metropolis",

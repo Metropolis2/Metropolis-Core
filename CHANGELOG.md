@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [DEV] Run schemas generation with dev profile to reduce compile time.
+
 ## [0.7.0] - 2023-11-16
 
 ### Changed
