@@ -16,6 +16,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Congestion is set to zero when free-flow travel time is zero, as a convention. Previously,
   congestion was set to NaN.
 
+### Fixed
+
+- [USER] A crash occuring for road legs with same origin as destination is fixed.
+
 ## [0.6.0] - 2023-10-24
 
 ### Added

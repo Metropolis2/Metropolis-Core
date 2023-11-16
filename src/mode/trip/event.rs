@@ -216,11 +216,15 @@ impl<T: TTFNum> VehicleEvent<T> {
                 self.into_next_leg(trip, false)
             }
             VehicleEventType::BeginsRoadLeg => {
-                // Next event is the entry in the first leg of the edge.
                 self.edge_position = 0;
-                self.event_type = VehicleEventType::ReachesEdgeEntry;
-                // At this point, the route should be set.
-                debug_assert!(!self.route.is_empty());
+                if self.route.is_empty() {
+                    // Empty route (origin = destination), the vehicle immediately reaches the
+                    // destination.
+                    self.event_type = VehicleEventType::EndsRoadLeg;
+                } else {
+                    // Next event is the entry in the first leg of the edge.
+                    self.event_type = VehicleEventType::ReachesEdgeEntry;
+                }
                 self
             }
             VehicleEventType::ReachesEdgeEntry => {
@@ -443,16 +447,18 @@ impl<T: TTFNum> VehicleEvent<T> {
                     + road_leg_results.in_bottleneck_time
                     + road_leg_results.out_bottleneck_time;
                 leg_results.save_results(travel_time, leg);
-                // Release the vehicle from the last edge taken.
-                road_network_state.release_from_edge(
-                    self.previous_edge().unwrap(),
-                    self.at_time,
-                    vehicle,
-                    self.is_phantom,
-                    input,
-                    alloc,
-                    events,
-                )?;
+                if let Some(previous_edge) = self.previous_edge() {
+                    // Release the vehicle from the last edge taken.
+                    road_network_state.release_from_edge(
+                        previous_edge,
+                        self.at_time,
+                        vehicle,
+                        self.is_phantom,
+                        input,
+                        alloc,
+                        events,
+                    )?;
+                }
                 Some(self.into_next_step(Some(leg.stopping_time), trip))
             }
 

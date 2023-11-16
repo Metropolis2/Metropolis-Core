@@ -77,7 +77,7 @@ fn get_simulation() -> Simulation<f64> {
     let road_network = RoadNetwork::from_edges(edges, vec![v0, v1]);
     let network = Network::new(Some(road_network));
 
-    // Create an agent with 3 legs (2 road and 1 virtual).
+    // Create an agent with 4 legs (3 road and 1 virtual).
     let mut agents = Vec::with_capacity(1);
     let leg0 = Leg::new(
         1,
@@ -121,9 +121,17 @@ fn get_simulation() -> Simulation<f64> {
         }),
         ScheduleUtility::None,
     );
+    // 4th leg is a road leg with origin = destination (to test if this case works).
+    let leg3 = Leg::new(
+        4,
+        LegType::Road(RoadLeg::new(2, 2, vehicle_index(1))),
+        Time(0.0),
+        TravelUtility::default(),
+        ScheduleUtility::None,
+    );
     let trip = TravelingMode::new(
         1,
-        vec![leg0, leg1, leg2],
+        vec![leg0, leg1, leg2, leg3],
         Time(3.0),
         DepartureTimeModel::Constant(Time(0.)),
         TravelUtility::Polynomial(PolynomialFunction {
@@ -188,6 +196,8 @@ fn legs_test() {
     // Departure time from origin of leg 2: 13.
     // Travel time on leg 2: 4 (2 fftt with multiplicator of 0.5).
     // Arrival time at destination of leg 2: 17.
+    // Departure time from origin of leg 3: 18.
+    // Arrival time at destination of leg 3: 18.
     // Arrival time at final destination: 18.
     //
     // Total travel time: 11.
@@ -195,6 +205,7 @@ fn legs_test() {
     // Utility for leg 0: (1 + (-1) * 1 + 1 * 1^2) - (5 - 4) * 0.5 = 1 - 0.5 = 0.5.
     // Utility for leg 1: (-1 * 6) - (12 - 10) * 0.2 = -6 - 0.4 = -6.4.
     // Utility for leg 2: 5 + 0 = 5.
+    // Utility for leg 3: 0.
     // Origin schedule utility: -(1 - 0) * 2 = -2.
     // Destination schedule utility: -(18 - 15) * 2 = -6.
     // Total travel utility: -2 * 11^2 = -242.
@@ -254,13 +265,33 @@ fn legs_test() {
             exp_arrival_time: Time(17.0),
         }),
     };
+    let leg3_results = LegResults {
+        id: 4,
+        departure_time: Time(18.0),
+        arrival_time: Time(18.0),
+        travel_utility: Utility(0.0),
+        schedule_utility: Utility(0.0),
+        class: LegTypeResults::Road(RoadLegResults {
+            expected_route: None,
+            route: vec![],
+            road_time: Time(0.0),
+            in_bottleneck_time: Time(0.0),
+            out_bottleneck_time: Time(0.0),
+            route_free_flow_travel_time: Time(0.0),
+            global_free_flow_travel_time: Time(0.0),
+            length: Length(0.0),
+            pre_exp_departure_time: Time(18.0),
+            pre_exp_arrival_time: Time(18.0),
+            exp_arrival_time: Time(18.0),
+        }),
+    };
     let expected_agent_results = AgentResult::new(
         0,
         1,
         mode_index(0),
         Utility(-250.9),
         ModeResults::Trip(TripResults {
-            legs: vec![leg0_results, leg1_results, leg2_results],
+            legs: vec![leg0_results, leg1_results, leg2_results, leg3_results],
             departure_time: Time(0.0),
             arrival_time: Time(18.0),
             total_travel_time: Time(11.0),
@@ -298,6 +329,16 @@ fn legs_test() {
             .unwrap()
             .legs[2],
         "Problem with leg 2"
+    );
+
+    assert_eq!(
+        agent_results.mode_results().as_trip().unwrap().legs[3],
+        expected_agent_results
+            .mode_results()
+            .as_trip()
+            .unwrap()
+            .legs[3],
+        "Problem with leg 3"
     );
 
     assert_eq!(agent_results, &expected_agent_results);
