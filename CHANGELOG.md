@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.7.0] - 2023-11-16
+
 ### Changed
 
 - [OUTPUT] The iteration results are saved in a single file, `iteration_results.ext`, updated at
@@ -372,7 +374,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.6.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
 [0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
 [0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
 [0.5.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.1
