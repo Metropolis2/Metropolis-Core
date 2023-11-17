@@ -43,7 +43,7 @@
 						<th scope="col" rowspan="2" class="text-center">Surplus</th>
 						<th scope="col" colspan="2" class="text-center">No Trip</th>
 						<th scope="col" colspan="8" class="text-center">Trips</th>
-						<th scope="col" colspan="20" class="text-center">Road Legs</th>
+						<th scope="col" colspan="22" class="text-center">Road Legs</th>
 						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
 					</tr>
 					<tr class="second">
@@ -78,7 +78,9 @@
 						<th scope="col" class="text-center">Mean edge count</th>
 						<th scope="col" class="text-center">Mean utility</th>
 						<th scope="col" class="text-center">Mean expected travel time</th>
-						<th scope="col" class="text-center">Mean expected travel time difference</th>
+						<th scope="col" class="text-center">Mean expected travel time difference (rel.)</th>
+						<th scope="col" class="text-center">Mean expected travel time difference (abs.)</th>
+						<th scope="col" class="text-center">Expected travel time difference RMSE</th>
 						<th scope="col" class="text-center">Mean length difference (m)</th>
 						<!-- VIRTUAL LEGS -->
 						<th scope="col" class="text-center"># Legs</th>
@@ -148,7 +150,9 @@
 									<td class="text-center">{{ "{:.2}"|format(rlr.edge_count.mean()) }}</td>
 									<td class="text-center">{{ "{:.4}"|format(rlr.utility.mean().0) }}</td>
 									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_diff.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_rel_diff.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_abs_diff.mean()) }}</td>
+									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_diff_rmse) }}</td>
 									{% match rlr.length_diff %}
 										{% when Some with (distr) %}
 										<td class="text-center">{{ "{:.2}"|format(distr.mean().0) }}</td>
@@ -262,7 +266,7 @@
 				var t = new Date(0);
 				t.setSeconds(data[i].mode_results.trip_modes.departure_time.mean);
 				road_mean_departure_time.push(t.toISOString());
-				road_expect.push(data[i].mode_results.trip_modes.road_leg.exp_travel_time_diff.mean);
+				road_expect.push(data[i].mode_results.trip_modes.road_leg.exp_travel_time_rel_diff.mean);
 			}
 
 			var surplus_trace = {

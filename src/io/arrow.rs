@@ -678,8 +678,18 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
                 add_distr!(df, "road_leg_exp_travel_time", road_results.exp_travel_time);
                 add_distr!(
                     df,
-                    "road_leg_exp_travel_time_diff",
-                    road_results.exp_travel_time_diff
+                    "road_leg_exp_travel_time_rel_diff",
+                    road_results.exp_travel_time_rel_diff
+                );
+                add_distr!(
+                    df,
+                    "road_leg_exp_travel_time_abs_diff",
+                    road_results.exp_travel_time_abs_diff
+                );
+                add_const!(
+                    df,
+                    "road_leg_exp_travel_time_diff_rmse",
+                    road_results.exp_travel_time_diff_rmse.to_f64().unwrap()
                 );
                 if let Some(length_diff) = road_results.length_diff {
                     add_distr!(df, "road_leg_length_diff", length_diff);
@@ -788,7 +798,12 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
         add_distr_to_schema!(schema, "road_leg_edge_count");
         add_distr_to_schema!(schema, "road_leg_utility");
         add_distr_to_schema!(schema, "road_leg_exp_travel_time");
-        add_distr_to_schema!(schema, "road_leg_exp_travel_time_diff");
+        add_distr_to_schema!(schema, "road_leg_exp_travel_time_rel_diff");
+        add_distr_to_schema!(schema, "road_leg_exp_travel_time_abs_diff");
+        schema.with_column(
+            SmartString::from("road_leg_exp_travel_time_diff_rmse"),
+            PolarsDataType::Float64,
+        );
         add_distr_to_schema!(schema, "road_leg_length_diff");
         schema.with_column(
             SmartString::from("virtual_leg_count"),

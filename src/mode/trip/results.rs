@@ -499,7 +499,11 @@ pub struct AggregateRoadLegResults<T> {
     /// Distribution of expected total travel time.
     pub exp_travel_time: Distribution<Time<T>>,
     /// Distribution of relative difference between expected travel time and actual travel time.
-    pub exp_travel_time_diff: Distribution<T>,
+    pub exp_travel_time_rel_diff: Distribution<T>,
+    /// Distribution of absolute difference between expected travel time and actual travel time.
+    pub exp_travel_time_abs_diff: Distribution<Time<T>>,
+    /// Root mean squared difference between expected travel time and actual travel time.
+    pub exp_travel_time_diff_rmse: Time<T>,
     /// Distribution of length of the current route that was not used in the previous route.
     pub length_diff: Option<Distribution<Length<T>>>,
 }
@@ -609,7 +613,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
         let utility = get_distribution(results, |lr, _| lr.total_utility());
         let exp_travel_time =
             get_distribution(results, |lr, rlr| rlr.exp_arrival_time - lr.departure_time);
-        let exp_travel_time_diff = get_distribution(results, |lr, rlr| {
+        let exp_travel_time_rel_diff = get_distribution(results, |lr, rlr| {
             let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
             if exp_travel_time > Time::zero() {
                 (exp_travel_time - lr.travel_time()).abs().0 / exp_travel_time.0
@@ -617,6 +621,11 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
                 T::zero()
             }
         });
+        let exp_travel_time_abs_diff = get_distribution(results, |lr, rlr| {
+            let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
+            (exp_travel_time - lr.travel_time()).abs()
+        });
+        let exp_travel_time_diff_rmse = compute_exp_travel_time_diff_rmse(results);
         let length_diff = get_distribution_with_prev(results, |rlr, prev_rlr| {
             road_network.unwrap().route_length_diff(
                 rlr.route.iter().map(|e| e.edge),
@@ -642,7 +651,9 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             edge_count,
             utility,
             exp_travel_time,
-            exp_travel_time_diff,
+            exp_travel_time_rel_diff,
+            exp_travel_time_abs_diff,
+            exp_travel_time_diff_rmse,
             length_diff,
         })
     }
@@ -811,7 +822,7 @@ impl<T: TTFNum> AggregateTripResults<T> {
 fn compute_dep_time_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Option<Time<T>> {
     let (sum_squared_dist, n) = results
         .iter()
-        .flat_map(|(_, res, prev_res_opt)| {
+        .filter_map(|(_, res, prev_res_opt)| {
             prev_res_opt.map(|prev_res| (res.departure_time - prev_res.departure_time).powi(2))
         })
         .fold((Time::zero(), 0), |(sum, n), squared_dist| {
@@ -823,4 +834,23 @@ fn compute_dep_time_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Option
         let mean_squared_dist = sum_squared_dist / Time::from_usize(n).unwrap();
         Some(mean_squared_dist.sqrt())
     }
+}
+
+/// Returns the root mean squared error of the difference between the agent's travel time and their
+/// expected travel time.
+fn compute_exp_travel_time_diff_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Time<T> {
+    let sum_squared_dist = results
+        .iter()
+        .flat_map(|(_, res, _)| {
+            res.legs.iter().flat_map(|lr| match &lr.class {
+                LegTypeResults::Road(rlr) => {
+                    let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
+                    Some((exp_travel_time - lr.travel_time()).powi(2))
+                }
+                _ => None,
+            })
+        })
+        .sum::<Time<T>>();
+    let mean_squared_dist = sum_squared_dist / Time::from_usize(results.len()).unwrap();
+    mean_squared_dist.sqrt()
 }

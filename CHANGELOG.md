@@ -11,6 +11,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Added
 
 - [OUTPUT] Add the root mean squared difference of departure time in the iteration results.
+- [OUTPUT] Add the root mean squared difference between simulated and expected travel time in the
+  iteration results.
 
 ### Changed
 
