@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [OUTPUT] Add the root mean squared difference of departure time in the iteration results.
+
 ### Changed
 
 - [DEV] Run schemas generation with dev profile to reduce compile time.

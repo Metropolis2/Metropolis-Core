@@ -616,6 +616,11 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
             } else {
                 add_null_distr!(df, "trip_dep_time_shift");
             }
+            if let Some(dep_time_rmse) = trip_results.dep_time_rmse {
+                add_const!(df, "trip_dep_time_rmse", dep_time_rmse.to_f64().unwrap());
+            } else {
+                add_null_const!(df, "trip_dep_time_rmse", PolarsDataType::Float64);
+            }
             if let Some(road_results) = trip_results.road_leg {
                 add_const!(df, "road_leg_count", road_results.count as u64);
                 add_const!(
@@ -755,6 +760,10 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
         add_distr_to_schema!(schema, "trip_utility");
         add_distr_to_schema!(schema, "trip_expected_utility");
         add_distr_to_schema!(schema, "trip_dep_time_shift");
+        schema.with_column(
+            SmartString::from("trip_dep_time_rmse"),
+            PolarsDataType::Float64,
+        );
         schema.with_column(SmartString::from("road_leg_count"), PolarsDataType::UInt64);
         schema.with_column(
             SmartString::from("nb_agents_at_least_one_road_leg"),

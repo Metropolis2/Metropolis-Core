@@ -42,7 +42,7 @@
 						<th scope="col" rowspan="2" class="text-center">Iteration</th>
 						<th scope="col" rowspan="2" class="text-center">Surplus</th>
 						<th scope="col" colspan="2" class="text-center">No Trip</th>
-						<th scope="col" colspan="7" class="text-center">Trips</th>
+						<th scope="col" colspan="8" class="text-center">Trips</th>
 						<th scope="col" colspan="20" class="text-center">Road Legs</th>
 						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
 					</tr>
@@ -58,6 +58,7 @@
 						<th scope="col" class="text-center">Mean utility</th>
 						<th scope="col" class="text-center">Mean expected utility</th>
 						<th scope="col" class="text-center">Mean departure-time shift</th>
+						<th scope="col" class="text-center">Departure time RMSE</th>
 						<!-- ROAD LEGS -->
 						<th scope="col" class="text-center"># Legs</th>
 						<th scope="col" class="text-center"># Trips (1+ road leg)</th>
@@ -117,6 +118,12 @@
 								{% match trip_results.dep_time_shift %}
 									{% when Some with (distr) %}
 									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
+									{% when None %}
+									<td class="text-center">N/A</td>
+								{% endmatch %}
+								{% match trip_results.dep_time_rmse %}
+									{% when Some with (value) %}
+									<td class="text-center">{{ "{}"|format(value) }}</td>
 									{% when None %}
 									<td class="text-center">N/A</td>
 								{% endmatch %}

@@ -5,7 +5,7 @@
 
 //! Structs to store results of road and virtual trips.
 use enum_as_inner::EnumAsInner;
-use num_traits::{Float, Zero};
+use num_traits::{Float, FromPrimitive, Zero};
 use petgraph::prelude::EdgeIndex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -447,6 +447,10 @@ pub struct AggregateTripResults<T> {
     /// iteration; excluding agents who choose a different mode compared to the previous
     /// iteration).
     pub dep_time_shift: Option<Distribution<Time<T>>>,
+    /// Root mean squared distance of departure time compared to the previous iteration (except for
+    /// the first iteration; excluding agents who choose a different mode compared to the previous
+    /// iteration).
+    pub dep_time_rmse: Option<Time<T>>,
     /// Results specific to road legs.
     pub road_leg: Option<AggregateRoadLegResults<T>>,
     /// Results specific to virtual legs.
@@ -503,12 +507,12 @@ pub struct AggregateRoadLegResults<T> {
 impl<T: TTFNum> AggregateRoadLegResults<T> {
     /// Returns [AggregateRoadLegResults] from the results of an iteration.
     fn from_agent_results(
-        results: &RoadAgentResults<'_, T>,
+        results: &TripAgentResults<'_, T>,
         road_network: Option<&RoadNetwork<T>>,
     ) -> Option<Self> {
         /// Return a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
         fn get_distribution<U, V: TTFNum, F>(
-            results: &RoadAgentResults<'_, U>,
+            results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Distribution<V>
         where
@@ -533,7 +537,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             V: TTFNum,
             F: Fn(&RoadLegResults<U>, &RoadLegResults<U>) -> V,
         >(
-            results: &RoadAgentResults<'_, U>,
+            results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Option<Distribution<V>> {
             if results[0].2.is_none() {
@@ -672,10 +676,10 @@ pub struct AggregateVirtualLegResults<T> {
 
 impl<T: TTFNum> AggregateVirtualLegResults<T> {
     /// Returns [AggregateVirtualLegResults] from the results of an iteration.
-    fn from_agent_results(results: &RoadAgentResults<'_, T>) -> Option<Self> {
+    fn from_agent_results(results: &TripAgentResults<'_, T>) -> Option<Self> {
         /// Return a [Distribution] by applying a function over [Leg], [TTF] and [LegResults].
         fn get_distribution<U, V: TTFNum, F>(
-            results: &RoadAgentResults<'_, U>,
+            results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Distribution<V>
         where
@@ -736,7 +740,7 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
 
 /// Shorthand for a Vec to store tuples with, for each agent, the [TravelingMode], the
 /// [TripResults] and (optionally) the [TripResults] from previous iteration.
-pub type RoadAgentResults<'a, T> = Vec<(
+pub type TripAgentResults<'a, T> = Vec<(
     &'a TravelingMode<T>,
     &'a TripResults<T>,
     Option<&'a TripResults<T>>,
@@ -744,10 +748,10 @@ pub type RoadAgentResults<'a, T> = Vec<(
 
 impl<T: TTFNum> AggregateTripResults<T> {
     /// Returns [AggregateTripResults] from the results of an iteration.
-    pub fn from_agent_results(results: RoadAgentResults<'_, T>, network: &Network<T>) -> Self {
+    pub fn from_agent_results(results: TripAgentResults<'_, T>, network: &Network<T>) -> Self {
         /// Return a [Distribution] by applying a function over [TravelingMode] and [TripResults].
         fn get_distribution<U, V: TTFNum, F: Fn(&TravelingMode<U>, &TripResults<U>) -> V>(
-            results: &RoadAgentResults<'_, U>,
+            results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Distribution<V> {
             Distribution::from_iterator(results.iter().map(|(m, r, _)| func(m, r))).unwrap()
@@ -759,7 +763,7 @@ impl<T: TTFNum> AggregateTripResults<T> {
             V: TTFNum,
             F: Fn(&TravelingMode<U>, &TripResults<U>, &TripResults<U>) -> V,
         >(
-            results: &RoadAgentResults<'_, U>,
+            results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Option<Distribution<V>> {
             Distribution::from_iterator(
@@ -780,6 +784,7 @@ impl<T: TTFNum> AggregateTripResults<T> {
         let dep_time_shift = get_distribution_with_prev(&results, |_, r, prev_r| {
             (r.departure_time - prev_r.departure_time).abs()
         });
+        let dep_time_rmse = compute_dep_time_rmse(&results);
         AggregateTripResults {
             count: results.len(),
             departure_time,
@@ -788,11 +793,34 @@ impl<T: TTFNum> AggregateTripResults<T> {
             utility,
             expected_utility,
             dep_time_shift,
+            dep_time_rmse,
             road_leg: AggregateRoadLegResults::from_agent_results(
                 &results,
                 network.get_road_network(),
             ),
             virtual_leg: AggregateVirtualLegResults::from_agent_results(&results),
         }
+    }
+}
+
+/// Returns the root mean squared error of the agent's departure time from one iteration to
+/// another.
+///
+/// Returns `None` if no agent have results for the previous iteration (first iteration or all
+/// agents switched mode).
+fn compute_dep_time_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Option<Time<T>> {
+    let (sum_squared_dist, n) = results
+        .iter()
+        .flat_map(|(_, res, prev_res_opt)| {
+            prev_res_opt.map(|prev_res| (res.departure_time - prev_res.departure_time).powi(2))
+        })
+        .fold((Time::zero(), 0), |(sum, n), squared_dist| {
+            (sum + squared_dist, n + 1)
+        });
+    if n == 0 {
+        None
+    } else {
+        let mean_squared_dist = sum_squared_dist / Time::from_usize(n).unwrap();
+        Some(mean_squared_dist.sqrt())
     }
 }
