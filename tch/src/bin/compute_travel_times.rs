@@ -3,6 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Binary to compute earliest-arrival or profile queries from input files.
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;

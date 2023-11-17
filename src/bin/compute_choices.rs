@@ -3,6 +3,7 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Binary to run the pre-day model of Metropolis from a set of input files.
 use std::path::PathBuf;
 
 use anyhow::Result;

@@ -3,6 +3,8 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Binary to generate the JSON Schemas of the input and output files for the
+//! `compute_travel_times` binary.
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;

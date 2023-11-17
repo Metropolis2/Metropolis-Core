@@ -14,3 +14,6 @@ ttf = { path = "../pwl" }
 anyhow = "1.0"
 serde = "1.0"
 schemars = "0.8"
+
+[lints]
+workspace = true

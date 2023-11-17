@@ -133,12 +133,7 @@ category = "Documentation"
 install_crate = false
 toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
 command = "cargo"
-args = [
-  "run",
-  "--bin",
-  "generate_metropolis_schemas",
-  "./schemas/metropolis",
-]
+args = ["run", "--bin", "generate_metropolis_schemas", "./schemas/metropolis"]
 
 [tasks.schemas-tch]
 description = "Generate I/O schemas for TCH."

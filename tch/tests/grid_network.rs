@@ -38,7 +38,7 @@ fn profile_interval_test() {
 
     let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(vec![10., 20., 10.], 0., 45.));
     let cst_tt = TTF::Constant(15.);
-    let mut ops = ops::ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<()>| {
+    let mut ops = ops::ProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<'_, ()>| {
         if e.source() == node_index(0) && e.target() == node_index(1) {
             // First vertical edge from top-left corner node.
             &profile_tt
@@ -91,14 +91,15 @@ fn thin_profile_interval_test() {
 
     let profile_tt: TTF<f64> = TTF::Piecewise(PwlTTF::from_values(vec![10., 20., 10.], 0., 45.));
     let cst_tt = TTF::Constant(15.);
-    let mut ops = ops::ThinProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<()>| {
-        if e.source() == node_index(0) && e.target() == node_index(1) {
-            // First vertical edge from top-left corner node.
-            &profile_tt
-        } else {
-            &cst_tt
-        }
-    });
+    let mut ops =
+        ops::ThinProfileIntervalDijkstra::new_forward(&graph, |e: EdgeReference<'_, ()>| {
+            if e.source() == node_index(0) && e.target() == node_index(1) {
+                // First vertical edge from top-left corner node.
+                &profile_tt
+            } else {
+                &cst_tt
+            }
+        });
     let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
     let query = query::SingleSourceQuery::from_default(node_index(0));
     search.solve_query(&query, &mut ops);
@@ -150,7 +151,7 @@ fn tchea_test() {
     let cst_tt = TTF::Constant(15.);
     let mut ops = bidirectional_ops::BidirectionalTCHEA::new(
         &graph,
-        |e: EdgeReference<()>| {
+        |e: EdgeReference<'_, ()>| {
             if e.source() == node_index(0) && e.target() == node_index(1) {
                 // First vertical edge from top-left corner node.
                 &profile_tt

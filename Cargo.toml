@@ -67,3 +67,23 @@ incremental = false
 codegen-units = 16
 rpath = false
 strip = true
+
+[workspace.lints.rust]
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+macro_use_extern_crate = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+non_ascii_idents = "warn"
+noop_method_call = "warn"
+trivial_numeric_casts = "warn"
+trivial_casts = "warn"
+unreachable_pub = "warn"
+# unused_crate_dependencies = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = "warn"

@@ -11,6 +11,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Changed
 
 - [DEV] Run schemas generation with dev profile to reduce compile time.
+- [DEV] Lints are configured directly in `Cargo.toml`, using Rust 1.74.0.
 
 ## [0.7.0] - 2023-11-16
 

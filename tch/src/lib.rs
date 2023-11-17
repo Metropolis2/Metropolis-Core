@@ -4,25 +4,6 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Set of algorithms based on Time-Dependent Contraction Hierarchies.
-#![warn(
-    elided_lifetimes_in_paths,
-    explicit_outlives_requirements,
-    macro_use_extern_crate,
-    missing_debug_implementations,
-    missing_docs,
-    non_ascii_idents,
-    noop_method_call,
-    single_use_lifetimes,
-    trivial_casts,
-    trivial_numeric_casts,
-    unreachable_pub,
-    unused_crate_dependencies,
-    unused_extern_crates,
-    unused_import_braces,
-    unused_lifetimes,
-    unused_qualifications
-)]
-#![warn(clippy::all)]
 #![doc(html_no_source)]
 
 pub mod algo;
