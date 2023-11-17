@@ -13,6 +13,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] Run schemas generation with dev profile to reduce compile time.
 - [DEV] Lints are configured directly in `Cargo.toml`, using Rust 1.74.0.
 
+### Fixed
+
+- [OUTPUT] Fix a crash when running `metropolis` with an output directory that does not exist.
+
 ## [0.7.0] - 2023-11-16
 
 ### Changed
