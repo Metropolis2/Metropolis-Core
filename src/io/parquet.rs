@@ -15,7 +15,8 @@ use itertools::izip;
 use parquet::{arrow::ArrowWriter, basic::Compression, file::properties::WriterProperties};
 use polars::prelude::*;
 
-use super::arrow::{ToArrow, ToPolars};
+use super::arrow::ToArrow;
+use super::polars::ToPolars;
 use crate::agent::Agent;
 
 /// Write data that can be converted to arrow format as a parquet file.

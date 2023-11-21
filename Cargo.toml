@@ -35,7 +35,7 @@ object-pool = "0.5"
 once_cell = "1.17"
 parquet = "49.0"
 petgraph = { version = "0.6", default-features = false }
-polars = { version = "0.34", features = ["lazy", "csv", "parquet"] }
+polars = { version = "0.35", features = ["lazy", "csv", "parquet"] }
 rand = "0.8"
 rand_xorshift = "0.3"
 rayon = "1.5"

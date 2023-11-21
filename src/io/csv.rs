@@ -14,7 +14,8 @@ use anyhow::{Context, Result};
 use arrow::csv::Writer;
 use polars::prelude::*;
 
-use super::arrow::{ToArrow, ToPolars};
+use super::arrow::ToArrow;
+use super::polars::ToPolars;
 
 /// Write data that can be converted to arrow format as a CSV file.
 pub fn write_csv<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) -> Result<()> {
@@ -44,7 +45,7 @@ pub fn append_csv<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Result
         let mut file =
             File::open(&filename).with_context(|| format!("Cannot open file `{filename:?}`"))?;
         let mut df = CsvReader::new(&mut file)
-            .with_schema(Some(Arc::new(D::schema())))
+            .with_schema(Some(Arc::new(Schema::from(D::schema()))))
             .finish()
             .with_context(|| format!("Cannot read file `{filename:?}`"))?;
         df.vstack_mut(&append_df)
