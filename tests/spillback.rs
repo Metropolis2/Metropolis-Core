@@ -126,7 +126,7 @@ fn spillback_test() {
         .get_network()
         .get_free_flow_weights(&preprocess_data.network);
     let results = simulation
-        .run_iteration(&weights, None, 1, &preprocess_data)
+        .run_iteration(weights, None, None, 1, &preprocess_data)
         .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
@@ -188,8 +188,8 @@ fn spillback_test() {
 
     let weights = results
         .iteration_results
-        .network_weights()
-        .get_road_network()
+        .new_exp_weights
+        .road_network()
         .unwrap();
     let edge_weight = &weights[(0, 0)];
     let TTF::Piecewise(ttf) = edge_weight else {

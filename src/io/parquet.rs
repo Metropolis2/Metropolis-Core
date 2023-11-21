@@ -82,7 +82,6 @@ pub fn get_agents_from_parquet_files<T>(input_dir: &Path) -> Result<Vec<Agent<T>
         .iter()
         .collect();
     let agents_df = LazyFrame::scan_parquet(agents_filename, Default::default())?.collect()?;
-    println!("{:?}", agents_df.schema());
     // let schema = Schema::from_iter([Field::new("agent_id", DataType::UInt64))
     // let agents_df = LazyFrame::scan_parquet(agents_filename, Default::default())?
     // .collect()?

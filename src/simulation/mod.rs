@@ -93,20 +93,22 @@ impl<T: TTFNum> Simulation<T> {
             .build_global()
             .unwrap();
         let preprocess_data = self.preprocess()?;
-        let mut weights = if let Some(weights) = init_weights {
-            weights
+        let mut exp_weights = if init_weights.is_some() {
+            init_weights.map(|w| w.with_network(&self.network, &preprocess_data.network))
         } else {
-            self.network.get_free_flow_weights(&preprocess_data.network)
+            Some(self.network.get_free_flow_weights(&preprocess_data.network))
         };
         let mut prev_agent_results = None;
+        let mut prev_sim_weights = None;
         let mut iteration_counter: u32 = self.parameters.init_iteration_counter;
         let mut sim_results = SimulationResults::new();
         let mut running_times = RunningTimes::default();
         loop {
             info!("===== Iteration {} =====", iteration_counter);
             let iteration_output = self.run_iteration(
-                &weights,
-                prev_agent_results.as_ref(),
+                std::mem::take(&mut exp_weights).unwrap(),
+                std::mem::take(&mut prev_sim_weights),
+                std::mem::take(&mut prev_agent_results),
                 iteration_counter,
                 &preprocess_data,
             )?;
@@ -133,8 +135,9 @@ impl<T: TTFNum> Simulation<T> {
                 info!("Done");
                 break;
             }
-            (weights, prev_agent_results) = (
-                iteration_output.iteration_results.weights,
+            (exp_weights, prev_sim_weights, prev_agent_results) = (
+                Some(iteration_output.iteration_results.new_exp_weights),
+                Some(iteration_output.iteration_results.sim_weights),
                 Some(iteration_output.iteration_results.agent_results),
             );
             iteration_counter += 1;
@@ -160,23 +163,27 @@ impl<T: TTFNum> Simulation<T> {
     /// the day-to-day model.
     pub fn run_iteration(
         &self,
-        weights: &NetworkWeights<T>,
-        previous_results_opt: Option<&AgentResults<T>>,
+        exp_weights: NetworkWeights<T>,
+        prev_sim_weights: Option<NetworkWeights<T>>,
+        previous_results_opt: Option<AgentResults<T>>,
         iteration_counter: u32,
         preprocess_data: &PreprocessingData<T>,
     ) -> Result<IterationOutput<T>> {
         let now = Instant::now();
         info!("Computing skims");
         let (skims, t1) = record_time(|| {
-            self.network
-                .compute_skims(weights, &preprocess_data.network, &self.parameters.network)
+            self.network.compute_skims(
+                &exp_weights,
+                &preprocess_data.network,
+                &self.parameters.network,
+            )
         })?;
         info!("Running pre-day model");
         let (mut agent_results, t2) = record_time(|| {
             self.run_pre_day_model(
                 &skims,
                 preprocess_data,
-                previous_results_opt,
+                previous_results_opt.as_ref(),
                 iteration_counter,
             )
         })?;
@@ -184,16 +191,23 @@ impl<T: TTFNum> Simulation<T> {
         let (sim_weights, t3) =
             record_time(|| self.run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
         info!("Running day-to-day model");
-        let (new_weights, t4) = record_time(|| {
-            Ok(self.run_day_to_day_model(weights, &sim_weights, iteration_counter))
+        let (new_exp_weights, t4) = record_time(|| {
+            Ok(self.run_day_to_day_model(&exp_weights, &sim_weights, iteration_counter))
         })?;
-        let iteration_results = IterationResults::new(agent_results, new_weights, skims);
+        let iteration_results = IterationResults::new(
+            agent_results,
+            exp_weights,
+            sim_weights,
+            new_exp_weights,
+            skims,
+        );
         info!("Computing aggregate results");
         let (aggregate_results, t5) = record_time(|| {
             Ok(self.compute_aggregate_results(
                 iteration_counter,
                 &iteration_results,
-                previous_results_opt,
+                prev_sim_weights.as_ref(),
+                previous_results_opt.as_ref(),
             ))
         })?;
         info!("Checking stopping rules");
@@ -201,7 +215,7 @@ impl<T: TTFNum> Simulation<T> {
             Ok(self.parameters.stop(
                 iteration_counter,
                 iteration_results.agent_results(),
-                previous_results_opt,
+                previous_results_opt.as_ref(),
             ))
         })?;
         crate::show_stats();
@@ -354,6 +368,7 @@ impl<T: TTFNum> Simulation<T> {
         &self,
         iteration_counter: u32,
         results: &IterationResults<T>,
+        prev_sim_weights: Option<&NetworkWeights<T>>,
         prev_agent_results: Option<&AgentResults<T>>,
     ) -> AggregateResults<T> {
         let surplus = Distribution::from_iterator(
@@ -382,6 +397,8 @@ impl<T: TTFNum> Simulation<T> {
                 _ => panic!("Unsupported mode and mode results combination"),
             }
         }
+        trip_entries.shrink_to_fit();
+        cst_utilities.shrink_to_fit();
         let road_results = if trip_entries.is_empty() {
             None
         } else {
@@ -399,10 +416,26 @@ impl<T: TTFNum> Simulation<T> {
             trip_modes: road_results,
             constant: cst_results,
         };
+        // The RMSE for simulated road-network weights use the expected weights for the first
+        // iteration (whenever `prev_sim_weights` is `None`).
+        let sim_road_network_weights_rmse = results.sim_weights.road_network().map(|w| {
+            w.rmse(
+                prev_sim_weights
+                    .unwrap_or(&results.exp_weights)
+                    .road_network()
+                    .unwrap(),
+            )
+        });
+        let exp_road_network_weights_rmse = results
+            .new_exp_weights
+            .road_network()
+            .map(|w| w.rmse(results.exp_weights.road_network().unwrap()));
         AggregateResults {
             iteration_counter,
             surplus,
             mode_results,
+            sim_road_network_weights_rmse,
+            exp_road_network_weights_rmse,
         }
     }
 
@@ -479,7 +512,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
         // At this point, we have the pre-day agent results but the route, route length and route
         // free-flow travel time is empty. We compute them now (if `pre_compute_route` is `true`).
         if let (Some(road_network), Some(rn_weights)) =
-            (self.network.get_road_network(), weights.get_road_network())
+            (self.network.get_road_network(), weights.road_network())
         {
             let unique_vehicles = &preprocess_data
                 .network

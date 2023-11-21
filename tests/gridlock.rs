@@ -154,7 +154,7 @@ fn gridlock_test() {
         .get_network()
         .get_free_flow_weights(&preprocess_data.network);
     let results = simulation
-        .run_iteration(&weights, None, 1, &preprocess_data)
+        .run_iteration(weights, None, None, 1, &preprocess_data)
         .unwrap();
     let agent_results = results.iteration_results.agent_results();
 

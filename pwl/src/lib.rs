@@ -239,6 +239,21 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Returns the integral of the squared difference between `self` and `other`, divided by the
+    /// length of the period.
+    pub fn squared_difference(&self, other: &Self) -> T {
+        match (self, other) {
+            (Self::Piecewise(f), Self::Piecewise(g)) => pwl::squared_difference(f, g),
+            (Self::Piecewise(f), &Self::Constant(c)) => pwl::squared_difference_cst(f, c),
+            (&Self::Constant(c), Self::Piecewise(g)) => pwl::squared_difference_cst(g, c),
+            (&Self::Constant(a), &Self::Constant(b)) => {
+                let diff = (a - b).powi(2);
+                debug_assert!(diff.is_finite(), "a: {a:?}, b: {b:?}");
+                diff
+            }
+        }
+    }
+
     /// Returns a new TTF by applying a given function on the `y` values of the two input TTFs.
     #[must_use]
     pub fn apply<F>(&self, other: &Self, func: F) -> Self

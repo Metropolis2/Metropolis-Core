@@ -199,7 +199,7 @@ impl<T> NetworkWeights<T> {
     /// Returns a reference to the [RoadNetworkWeights] of the [NetworkWeights], as an option.
     ///
     /// If the NetworkWeights have no road-network weights, return `None`.
-    pub const fn get_road_network(&self) -> Option<&RoadNetworkWeights<T>> {
+    pub const fn road_network(&self) -> Option<&RoadNetworkWeights<T>> {
         self.road_network.as_ref()
     }
 }
@@ -234,6 +234,36 @@ impl<T: TTFNum> NetworkWeights<T> {
             None
         };
         NetworkWeights {
+            road_network: rn_weights,
+        }
+    }
+
+    /// Consumes a [NetworkWeights] and returns a [NetworkWeights] that is compatible with the
+    /// given network and pre-process data.
+    pub fn with_network(
+        self,
+        network: &Network<T>,
+        preprocess_data: &NetworkPreprocessingData<T>,
+    ) -> Self {
+        let rn_weights =
+            if let Some(road_network) = &network.road_network {
+                if let Some(rn_weights) = self.road_network {
+                    Some(rn_weights.with_road_network(
+                        road_network,
+                        preprocess_data.road_network.as_ref().expect(
+                            "There is a road network but no road-network preprocessing data",
+                        ),
+                    ))
+                } else {
+                    Some(
+                        road_network
+                            .get_free_flow_weights(preprocess_data.road_network.as_ref().unwrap()),
+                    )
+                }
+            } else {
+                None
+            };
+        Self {
             road_network: rn_weights,
         }
     }

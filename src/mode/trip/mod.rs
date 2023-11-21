@@ -453,7 +453,10 @@ impl<T: TTFNum> TravelingMode<T> {
         departure_time: Time<T>,
         expected_utility: Utility<T>,
     ) -> TripResults<T> {
-        assert!(self.is_virtual_only(), "The function `get_trip_results_for_virtual_only` is only available for virtual only trips");
+        assert!(
+            self.is_virtual_only(),
+            "The function `get_trip_results_for_virtual_only` is only available for virtual only trips"
+        );
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         let mut utility = self.origin_schedule_utility.get_utility(departure_time);

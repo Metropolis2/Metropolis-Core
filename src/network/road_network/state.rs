@@ -771,10 +771,9 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     ttf = ttf.link(&funcs.exit);
                     ttf.ensure_fifo();
                     vehicle_weights.insert(edge_ref.weight().id, ttf);
-                } else {
-                    vehicle_weights.insert(edge_ref.weight().id, TTF::Constant(Time::infinity()));
                 }
             }
+            vehicle_weights.shrink_to_fit();
         }
         weights
     }

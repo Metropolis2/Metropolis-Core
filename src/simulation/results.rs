@@ -54,6 +54,17 @@ pub struct AggregateResults<T> {
     pub surplus: Distribution<Utility<T>>,
     /// Mode-specific aggregate results.
     pub mode_results: AggregateModeResults<T>,
+    /// Root mean square difference between the simulated road-network weights of the current and
+    /// previous iteration (except for the first iteration, where the expected weights are used
+    /// instead).
+    ///
+    /// `None` if there is no road network.
+    pub sim_road_network_weights_rmse: Option<Time<T>>,
+    /// Root mean square difference between the expected road-network weights of the current and
+    /// previous iteration.
+    ///
+    /// `None` if there is no road network.
+    pub exp_road_network_weights_rmse: Option<Time<T>>,
 }
 
 /// Detailed results of an iteration.
@@ -61,8 +72,12 @@ pub struct AggregateResults<T> {
 pub struct IterationResults<T> {
     /// Agent-specific results.
     pub agent_results: AgentResults<T>,
-    /// Simulated weights of the network.
-    pub weights: NetworkWeights<T>,
+    /// Expected weights of the network, before the day-to-day model.
+    pub exp_weights: NetworkWeights<T>,
+    /// Simulated weights of the network, during the within-day model.
+    pub sim_weights: NetworkWeights<T>,
+    /// Expected weights of the network, after the day-to-day model.
+    pub new_exp_weights: NetworkWeights<T>,
     /// Skims of the network.
     pub skims: NetworkSkim<T>,
 }
@@ -71,12 +86,16 @@ impl<T> IterationResults<T> {
     /// Creates a new IterationResults.
     pub const fn new(
         agent_results: AgentResults<T>,
-        weights: NetworkWeights<T>,
+        exp_weights: NetworkWeights<T>,
+        sim_weights: NetworkWeights<T>,
+        new_exp_weights: NetworkWeights<T>,
         skims: NetworkSkim<T>,
     ) -> Self {
         IterationResults {
             agent_results,
-            weights,
+            exp_weights,
+            sim_weights,
+            new_exp_weights,
             skims,
         }
     }
@@ -84,16 +103,6 @@ impl<T> IterationResults<T> {
     /// Returns a reference to the [AgentResults].
     pub const fn agent_results(&self) -> &AgentResults<T> {
         &self.agent_results
-    }
-
-    /// Returns a reference to the [NetworkWeights].
-    pub const fn network_weights(&self) -> &NetworkWeights<T> {
-        &self.weights
-    }
-
-    /// Returns the [NetworkWeights], consuming the IterationResults.
-    pub fn into_network_weights(self) -> NetworkWeights<T> {
-        self.weights
     }
 
     /// Iterates over the [AgentIndex] and [AgentResult] of the [IterationResults].
@@ -449,7 +458,21 @@ pub fn save_iteration_results<T: TTFNum>(
         }
     }
     // Save weight results.
-    io::json::write_compressed_json(&iteration_results.weights, output_dir, "weight_results")?;
+    io::json::write_compressed_json(
+        &iteration_results.exp_weights,
+        output_dir,
+        "exp_weight_results",
+    )?;
+    io::json::write_compressed_json(
+        &iteration_results.sim_weights,
+        output_dir,
+        "sim_weight_results",
+    )?;
+    io::json::write_compressed_json(
+        &iteration_results.new_exp_weights,
+        output_dir,
+        "next_exp_weight_results",
+    )?;
     // Save skims results.
     io::json::write_compressed_json(&iteration_results.skims, output_dir, "skim_results")?;
     Ok(())

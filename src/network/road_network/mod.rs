@@ -412,6 +412,10 @@ impl<T> RoadNetwork<T> {
             .map(|(i, v)| (vehicle_index(i), v))
     }
 
+    pub fn iter_original_edge_ids(&self) -> impl Iterator<Item = OriginalEdgeIndex> + '_ {
+        self.graph.edge_map.keys().copied()
+    }
+
     /// Returns the EdgeIndex of an edge given its original id.
     pub fn edge_id_of(&self, original_id: OriginalEdgeIndex) -> EdgeIndex {
         *self
@@ -493,7 +497,10 @@ impl<T: TTFNum> RoadNetwork<T> {
             // to another.
             let weight_fn = |edge_id| {
                 let original_id = self.original_edge_id_of(edge_id);
-                weights[(uvehicle_id, original_id)].clone()
+                weights
+                    .get(uvehicle_id, original_id)
+                    .cloned()
+                    .unwrap_or_else(|| TTF::Constant(Time::infinity()))
             };
             let hierarchy =
                 HierarchyOverlay::order(&self.graph, weight_fn, parameters.contraction.clone());
@@ -553,12 +560,29 @@ impl<T: TTFNum> RoadNetwork<T> {
                 if vehicle.can_access(edge.weight().id) {
                     let tt = edge.weight().get_free_flow_travel_time(vehicle);
                     weights.insert(edge.weight().id, TTF::Constant(tt));
-                } else {
-                    weights.insert(edge.weight().id, TTF::Constant(Time::infinity()));
                 }
             }
+            weights.shrink_to_fit();
         }
         weights_vec
+    }
+
+    /// Returns the free-flow travel time for the given edge and vehicle.
+    pub fn get_free_flow_travel_time_of_edge(
+        &self,
+        edge_id: OriginalEdgeIndex,
+        vehicle: &Vehicle<T>,
+    ) -> Time<T> {
+        self.graph
+            .edge_weight(
+                *self
+                    .graph
+                    .edge_map
+                    .get(&edge_id)
+                    .expect("Inval original edge index"),
+            )
+            .unwrap()
+            .get_free_flow_travel_time(vehicle)
     }
 
     /// Returns the free-flow travel time of traveling through the given route, with the given
@@ -819,7 +843,7 @@ mod tests {
         let network = RoadNetwork::from_edges(edges, vec![vehicle.clone()]);
         let weights =
             network.get_free_flow_weights_inner(&UniqueVehicles::from_vehicles(&[vehicle]));
-        debug_assert!(weights[(0, 0)].get_min().is_infinite());
+        debug_assert!(weights.get(0, 0).is_none());
         let all_od_pairs = vec![ODPairs::from_vec(vec![(1, 2)])];
         let parameters = RoadNetworkParameters {
             contraction: Default::default(),

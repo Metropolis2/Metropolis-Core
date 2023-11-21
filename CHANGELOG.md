@@ -13,11 +13,15 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [OUTPUT] Add the root mean squared difference of departure time in the iteration results.
 - [OUTPUT] Add the root mean squared difference between simulated and expected travel time in the
   iteration results.
+- [OUTPUT] Add the simulated and expected road-network weights RMSE (root mean squared difference)
+  in the iteration results.
 
 ### Changed
 
 - [DEV] Run schemas generation with dev profile to reduce compile time.
 - [DEV] Lints are configured directly in `Cargo.toml`, using Rust 1.74.0.
+- [DEV] Road-network weights only store the weights of the edges which are accessible by the
+  vehicle.
 
 ### Fixed
 

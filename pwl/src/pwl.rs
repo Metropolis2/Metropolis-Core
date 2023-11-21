@@ -211,6 +211,11 @@ where
         (self.start_x, self.x_at_index(self.points.len() - 1))
     }
 
+    /// Returns the length of the period of the function.
+    pub fn period_length(&self) -> X {
+        X::from(self.points.len() - 1).unwrap() * self.interval_x
+    }
+
     /// Returns the middle `x` value.
     pub fn middle_x(&self) -> X {
         self.x_at_index(self.points.len() / 2)
@@ -534,6 +539,104 @@ pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutD
     (h, descr)
 }
 
+/// Returns the integral of the squared difference between function `f` and function `g`, divided
+/// by the length of the period.
+pub(crate) fn squared_difference<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> T {
+    debug_assert!(!f.is_empty());
+    debug_assert!(!g.is_empty());
+    debug_assert_eq!(f.len(), g.len());
+    debug_assert_eq!(f.start_x, g.start_x);
+    debug_assert_eq!(f.interval_x, g.interval_x);
+    let mut diff = T::zero();
+    for (((x0, f_y0), (x1, f_y1)), ((_, g_y0), (_, g_y1))) in f.double_iter().zip(g.double_iter()) {
+        // Two possible cases.
+        if ((f_y0 >= g_y0) && (f_y1 <= g_y1)) || ((f_y0 <= g_y0) && (f_y1 >= g_y1)) {
+            // Case 1: the `f` segment intersects the `g` segment somewhere between `x0` and `x1`.
+            // The two segments intersects at point `(x, y)`.
+            let x = get_x_intersection(x0, f_y0, g_y0, x1, f_y1, g_y1);
+            let y = f_y1 + (f_y1 - f_y0) * (x - x0) / (x1 - x0);
+            // There are two triangles:
+            // - `(x0, f_y0), (x0, g_y0), (x, y)`,
+            // - `(x, y) (x1, f_y1), (x1, g_y1)`.
+            diff += triangle_squared_area((x0, x), (f_y0, y), (g_y0, y));
+            diff += triangle_squared_area((x, x1), (y, f_y1), (y, g_y1));
+        } else {
+            // Case 2: either f is always below g or g is always below f on the interval.
+            diff += trapezoid_squared_area((x0, x1), (f_y0, f_y1), (g_y0, g_y1));
+        }
+    }
+    diff /= f.period_length();
+    debug_assert!(diff.is_finite());
+    diff
+}
+
+/// Returns the integral of the squared difference between function `f` and constant value `y`,
+/// divided by the length of the period.
+pub(crate) fn squared_difference_cst<T: TTFNum>(f: &PwlTTF<T>, y: T) -> T {
+    debug_assert!(!f.is_empty());
+    let mut diff = T::zero();
+    for ((x0, f_y0), (x1, f_y1)) in f.double_iter() {
+        // Two possible cases.
+        if ((f_y0 >= y) && (f_y1 <= y)) || ((f_y0 <= y) && (f_y1 >= y)) {
+            // Case 1: the `f` segment intersects the constant segment somewhere between `x0` and
+            // `x1`.
+            // The two segments intersects at point `(x, y)`.
+            let x = get_x_intersection(x0, f_y0, y, x1, f_y1, y);
+            // There are two triangles:
+            // - `(x0, f_y0), (x0, y), (x, y)`,
+            // - `(x, y) (x1, f_y1), (x1, y)`.
+            diff += triangle_squared_area((x0, x), (f_y0, y), (y, y));
+            diff += triangle_squared_area((x, x1), (y, f_y1), (y, y));
+        } else {
+            // Case 2: either f is always below y or y is always below f on the interval.
+            diff += trapezoid_squared_area((x0, x1), (f_y0, f_y1), (y, y));
+        }
+    }
+    diff /= f.period_length();
+    debug_assert!(diff.is_finite());
+    diff
+}
+
+/// Returns the integral of `[f(x) - g(x)]^2` from `x0` to `x1`, where
+/// - `f` is a linear function with `f(x0) = f_y0` and `f(x1) = f_y1`,
+/// - `g` is a linear function with `g(x0) = g_y0` and `g(x1) = g_y1`.
+///
+/// The following must be true: `f(x0) = g(x0)` or `f(x1) = g(x1)`.
+/// This implies that there is a triangle defined by the points `f(x0), f(x1), g(x1)` or
+/// `f(x0), g(x0), g(x1)`.
+fn triangle_squared_area<T: TTFNum>(
+    (x0, x1): (T, T),
+    (f_y0, f_y1): (T, T),
+    (g_y0, g_y1): (T, T),
+) -> T {
+    debug_assert!(f_y0 == g_y0 || f_y1 == g_y1);
+    if f_y0 == g_y0 {
+        (x1 - x0) * (f_y1 - g_y1).powi(2) / T::from_f64(3.0).unwrap()
+    } else {
+        (x1 - x0) * (f_y0 - g_y0).powi(2) / T::from_f64(3.0).unwrap()
+    }
+}
+
+/// Returns the integral of `[f(x) - g(x)]^2` from `x0` to `x1`, where
+/// - `f` is a linear function with `f(x0) = f_y0` and `f(x1) = f_y1`,
+/// - `g` is a linear function with `g(x0) = g_y0` and `g(x1) = g_y1`.
+///
+/// The following must be true: `f` is either always below `g` or above `g` between `x0` and `x1`,
+/// i.e., `f_y0 >= g_y0` XOR `f_y1 >= g_y1` must be `false`.
+/// This implies that there is a trapezoid defined by the points `f(x0), g(x0), g(x1), f(x1)`.
+fn trapezoid_squared_area<T: TTFNum>(
+    (x0, x1): (T, T),
+    (f_y0, f_y1): (T, T),
+    (g_y0, g_y1): (T, T),
+) -> T {
+    debug_assert!(
+        ((f_y0 >= g_y0) && (f_y1 >= g_y1)) || ((f_y0 <= g_y0) && (f_y1 <= g_y1)),
+        "f_y0: {f_y0:?}, f_y1: {f_y1:?}, g_y0: {g_y0:?}, g_y1: {g_y1:?}"
+    );
+    ((x1 - x0) / T::from_f64(3.0).unwrap())
+        * ((f_y0 - g_y0).powi(2) + (f_y1 - g_y1).powi(2) + (f_y0 - g_y0) * (f_y1 - g_y1))
+}
+
 pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
     f: &PwlTTF<T>,
     g: &PwlTTF<T>,
@@ -714,4 +817,31 @@ pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
     debug_assert_eq!(results[0].0, f.start_x);
 
     Either::Right(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn squared_difference_test() {
+        let f = PwlTTF::from_values(vec![0., 0., 0.], 0., 1.);
+        let g = PwlTTF::from_values(vec![2., 2., 2.], 0., 1.);
+        assert_eq!(squared_difference(&f, &g), 4.);
+        let f = PwlTTF::from_values(vec![0., 1., 2.], 0., 1.);
+        let g = PwlTTF::from_values(vec![1., 0., 0.], 0., 1.);
+        let expected_res: f64 = (1. / 6. + 1. / 6. + 7. / 3.) / 2.;
+        assert!((squared_difference(&f, &g) - expected_res).abs() < 1.0e-8);
+    }
+
+    #[test]
+    fn squared_difference_cst_test() {
+        let f = PwlTTF::from_values(vec![0., 0., 0.], 0., 1.);
+        assert_eq!(squared_difference_cst(&f, 2.0), 4.);
+        let f = PwlTTF::from_values(vec![0., 2., 3., 1., 0.], 0., 1.);
+        assert_eq!(
+            squared_difference_cst(&f, 1.0),
+            (1. / 6. + 1. / 6. + 7. / 3. + 4. / 3. + 1. / 3.) / 4.
+        );
+    }
 }

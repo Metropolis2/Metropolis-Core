@@ -45,6 +45,7 @@
 						<th scope="col" colspan="8" class="text-center">Trips</th>
 						<th scope="col" colspan="22" class="text-center">Road Legs</th>
 						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
+						<th scope="col" colspan="2" class="text-center">Road Network</th>
 					</tr>
 					<tr class="second">
 						<!-- CONSTANT UTILITY -->
@@ -93,6 +94,9 @@
 						<th scope="col" class="text-center">Mean global free-flow travel time</th>
 						<th scope="col" class="text-center">Mean global congestion</th>
 						<th scope="col" class="text-center">Mean utility</th>
+						<!-- ROAD NETWORK -->
+						<th scope="col" class="text-center">Simulated road-network weights RMSE</th>
+						<th scope="col" class="text-center">Expected road-network weights RMSE</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -187,6 +191,18 @@
 								{% for _ in 0..35 %}
 								<td class="text-center">N/A</td>
 								{% endfor %}
+						{% endmatch %}
+						{% match it.sim_road_network_weights_rmse %}
+							{% when Some with (value) %}
+							<td class="text-center">{{ "{}"|format(value.0) }}</td>
+							{% when None %}
+							<td class="text-center">N/A</td>
+						{% endmatch %}
+						{% match it.exp_road_network_weights_rmse %}
+							{% when Some with (value) %}
+							<td class="text-center">{{ "{}"|format(value.0) }}</td>
+							{% when None %}
+							<td class="text-center">N/A</td>
 						{% endmatch %}
 					</tr>
 					{% endfor %}

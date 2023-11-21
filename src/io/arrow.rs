@@ -597,6 +597,12 @@ macro_rules! add_distr_to_schema {
     };
 }
 
+macro_rules! add_cst_to_schema {
+    ($schema:ident, $name:expr, $dtype:expr) => {
+        $schema.with_column(SmartString::from($name), $dtype);
+    };
+}
+
 impl<T: TTFNum> ToPolars for AggregateResults<T> {
     fn to_dataframe(self) -> Result<DataFrame> {
         let mut df = DataFrame::new(vec![Series::new(
@@ -754,35 +760,37 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
             add_null_const!(df, "constant_count", PolarsDataType::UInt64);
             add_null_distr!(df, "constant_utility");
         }
+        if let Some(rmse) = self.sim_road_network_weights_rmse {
+            add_const!(df, "sim_road_network_weights_rmse", rmse.to_f64().unwrap());
+        } else {
+            add_null_distr!(df, "sim_road_network_weights_rmse");
+        }
+        if let Some(rmse) = self.exp_road_network_weights_rmse {
+            add_const!(df, "exp_road_network_weights_rmse", rmse.to_f64().unwrap());
+        } else {
+            add_null_distr!(df, "exp_road_network_weights_rmse");
+        }
         Ok(df)
     }
     fn schema() -> Schema {
         let mut schema = Schema::with_capacity(256);
-        schema.with_column(
-            SmartString::from("iteration_counter"),
-            PolarsDataType::UInt32,
-        );
+        add_cst_to_schema!(schema, "iteration_counter", PolarsDataType::UInt32);
         add_distr_to_schema!(schema, "surplus");
-        schema.with_column(SmartString::from("trip_count"), PolarsDataType::UInt64);
+        add_cst_to_schema!(schema, "trip_count", PolarsDataType::UInt64);
         add_distr_to_schema!(schema, "trip_departure_time");
         add_distr_to_schema!(schema, "trip_arrival_time");
         add_distr_to_schema!(schema, "trip_travel_time");
         add_distr_to_schema!(schema, "trip_utility");
         add_distr_to_schema!(schema, "trip_expected_utility");
         add_distr_to_schema!(schema, "trip_dep_time_shift");
-        schema.with_column(
-            SmartString::from("trip_dep_time_rmse"),
-            PolarsDataType::Float64,
+        add_cst_to_schema!(schema, "trip_dep_time_rmse", PolarsDataType::Float64);
+        add_cst_to_schema!(schema, "road_leg_count", PolarsDataType::UInt64);
+        add_cst_to_schema!(
+            schema,
+            "nb_agents_at_least_one_road_leg",
+            PolarsDataType::UInt64
         );
-        schema.with_column(SmartString::from("road_leg_count"), PolarsDataType::UInt64);
-        schema.with_column(
-            SmartString::from("nb_agents_at_least_one_road_leg"),
-            PolarsDataType::UInt64,
-        );
-        schema.with_column(
-            SmartString::from("nb_agents_all_road_legs"),
-            PolarsDataType::UInt64,
-        );
+        add_cst_to_schema!(schema, "nb_agents_all_road_legs", PolarsDataType::UInt64);
         add_distr_to_schema!(schema, "road_leg_count_by_agent");
         add_distr_to_schema!(schema, "road_leg_departure_time");
         add_distr_to_schema!(schema, "road_leg_arrival_time");
@@ -800,23 +808,19 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
         add_distr_to_schema!(schema, "road_leg_exp_travel_time");
         add_distr_to_schema!(schema, "road_leg_exp_travel_time_rel_diff");
         add_distr_to_schema!(schema, "road_leg_exp_travel_time_abs_diff");
-        schema.with_column(
-            SmartString::from("road_leg_exp_travel_time_diff_rmse"),
-            PolarsDataType::Float64,
+        add_cst_to_schema!(
+            schema,
+            "road_leg_exp_travel_time_diff_rmse",
+            PolarsDataType::Float64
         );
         add_distr_to_schema!(schema, "road_leg_length_diff");
-        schema.with_column(
-            SmartString::from("virtual_leg_count"),
-            PolarsDataType::UInt64,
+        add_cst_to_schema!(schema, "virtual_leg_count", PolarsDataType::UInt64);
+        add_cst_to_schema!(
+            schema,
+            "nb_agents_at_least_one_virtual_leg",
+            PolarsDataType::UInt64
         );
-        schema.with_column(
-            SmartString::from("nb_agents_at_least_one_virtual_leg"),
-            PolarsDataType::UInt64,
-        );
-        schema.with_column(
-            SmartString::from("nb_agents_all_virtual_legs"),
-            PolarsDataType::UInt64,
-        );
+        add_cst_to_schema!(schema, "nb_agents_all_virtual_legs", PolarsDataType::UInt64);
         add_distr_to_schema!(schema, "virtual_leg_count_by_agent");
         add_distr_to_schema!(schema, "virtual_leg_departure_time");
         add_distr_to_schema!(schema, "virtual_leg_arrival_time");
@@ -824,8 +828,18 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
         add_distr_to_schema!(schema, "virtual_leg_global_free_flow_travel_time");
         add_distr_to_schema!(schema, "virtual_leg_global_congestion");
         add_distr_to_schema!(schema, "virtual_leg_utility");
-        schema.with_column(SmartString::from("constant_count"), PolarsDataType::UInt64);
+        add_cst_to_schema!(schema, "constant_count", PolarsDataType::UInt64);
         add_distr_to_schema!(schema, "constant_utility");
+        add_cst_to_schema!(
+            schema,
+            "sim_road_network_weights_rmse",
+            PolarsDataType::Float64
+        );
+        add_cst_to_schema!(
+            schema,
+            "exp_road_network_weights_rmse",
+            PolarsDataType::Float64
+        );
         schema
     }
 }
