@@ -178,11 +178,8 @@ fn bottleneck_no_overtaking_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let weights = results
-        .iteration_results
-        .new_exp_weights
-        .road_network()
-        .unwrap();
+    let weights = results.iteration_results.new_exp_weights.unwrap().clone();
+    let weights = weights.road_network().unwrap();
     let edge_weight = &weights[(0, 0)];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
@@ -259,11 +256,8 @@ fn bottleneck_overtaking_test() {
         assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
     }
 
-    let weights = results
-        .iteration_results
-        .new_exp_weights
-        .road_network()
-        .unwrap();
+    let weights = results.iteration_results.new_exp_weights.unwrap().clone();
+    let weights = weights.road_network().unwrap();
     let edge_weight = &weights[(0, 0)];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");

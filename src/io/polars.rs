@@ -306,12 +306,12 @@ impl<T: TTFNum> ToPolars for AggregateResults<T> {
         if let Some(rmse) = self.sim_road_network_weights_rmse {
             add_const!(df, "sim_road_network_weights_rmse", rmse.to_f64().unwrap());
         } else {
-            add_null_distr!(df, "sim_road_network_weights_rmse");
+            add_null_const!(df, "sim_road_network_weights_rmse", DataType::Float64);
         }
         if let Some(rmse) = self.exp_road_network_weights_rmse {
             add_const!(df, "exp_road_network_weights_rmse", rmse.to_f64().unwrap());
         } else {
-            add_null_distr!(df, "exp_road_network_weights_rmse");
+            add_null_const!(df, "exp_road_network_weights_rmse", DataType::Float64);
         }
         Ok(df)
     }

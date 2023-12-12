@@ -10,7 +10,7 @@ use ttf::TTFNum;
 
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
-use crate::simulation::results::AgentResults;
+use crate::simulation::results::{AgentResults, AggregateResults};
 use crate::stop::StopCriterion;
 use crate::units::Interval;
 
@@ -103,9 +103,14 @@ impl<T: TTFNum> Parameters<T> {
         old_weights: &NetworkWeights<T>,
         weights: &NetworkWeights<T>,
         iteration_counter: u32,
+        aggregate_results: Option<&AggregateResults<T>>,
     ) -> NetworkWeights<T> {
         // At this point, the iteration counter has not been increment yet.
-        self.learning_model
-            .learn(old_weights, weights, iteration_counter + 1)
+        self.learning_model.learn(
+            old_weights,
+            weights,
+            iteration_counter + 1,
+            aggregate_results,
+        )
     }
 }

@@ -77,7 +77,7 @@ pub struct IterationResults<T> {
     /// Simulated weights of the network, during the within-day model.
     pub sim_weights: NetworkWeights<T>,
     /// Expected weights of the network, after the day-to-day model.
-    pub new_exp_weights: NetworkWeights<T>,
+    pub new_exp_weights: Option<NetworkWeights<T>>,
     /// Skims of the network.
     pub skims: NetworkSkim<T>,
 }
@@ -88,7 +88,7 @@ impl<T> IterationResults<T> {
         agent_results: AgentResults<T>,
         exp_weights: NetworkWeights<T>,
         sim_weights: NetworkWeights<T>,
-        new_exp_weights: NetworkWeights<T>,
+        new_exp_weights: Option<NetworkWeights<T>>,
         skims: NetworkSkim<T>,
     ) -> Self {
         IterationResults {

@@ -112,6 +112,7 @@ impl<T: TTFNum> Simulation<T> {
                 iteration_counter,
                 &preprocess_data,
             )?;
+            info!("Saving aggregate results");
             results::save_aggregate_results(
                 &iteration_output.aggregate_results,
                 output_dir,
@@ -136,7 +137,7 @@ impl<T: TTFNum> Simulation<T> {
                 break;
             }
             (exp_weights, prev_sim_weights, prev_agent_results) = (
-                Some(iteration_output.iteration_results.new_exp_weights),
+                iteration_output.iteration_results.new_exp_weights,
                 Some(iteration_output.iteration_results.sim_weights),
                 Some(iteration_output.iteration_results.agent_results),
             );
@@ -190,18 +191,9 @@ impl<T: TTFNum> Simulation<T> {
         info!("Running within-day model");
         let (sim_weights, t3) =
             record_time(|| self.run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
-        info!("Running day-to-day model");
-        let (new_exp_weights, t4) = record_time(|| {
-            Ok(self.run_day_to_day_model(&exp_weights, &sim_weights, iteration_counter))
-        })?;
-        let iteration_results = IterationResults::new(
-            agent_results,
-            exp_weights,
-            sim_weights,
-            new_exp_weights,
-            skims,
-        );
         info!("Computing aggregate results");
+        let mut iteration_results =
+            IterationResults::new(agent_results, exp_weights, sim_weights, None, skims);
         let (aggregate_results, t5) = record_time(|| {
             Ok(self.compute_aggregate_results(
                 iteration_counter,
@@ -210,6 +202,16 @@ impl<T: TTFNum> Simulation<T> {
                 previous_results_opt.as_ref(),
             ))
         })?;
+        info!("Running day-to-day model");
+        let (new_exp_weights, t4) = record_time(|| {
+            Ok(self.run_day_to_day_model(
+                &iteration_results.exp_weights,
+                &iteration_results.sim_weights,
+                iteration_counter,
+                &aggregate_results,
+            ))
+        })?;
+        iteration_results.new_exp_weights = Some(new_exp_weights);
         info!("Checking stopping rules");
         let (stop_simulation, t6) = record_time(|| {
             Ok(self.parameters.stop(
@@ -357,9 +359,14 @@ impl<T: TTFNum> Simulation<T> {
         old_weights: &NetworkWeights<T>,
         weights: &NetworkWeights<T>,
         iteration_counter: u32,
+        aggregate_results: &AggregateResults<T>,
     ) -> NetworkWeights<T> {
-        self.parameters
-            .learn(old_weights, weights, iteration_counter)
+        self.parameters.learn(
+            old_weights,
+            weights,
+            iteration_counter,
+            Some(aggregate_results),
+        )
     }
 
     /// Returns [AggregateResults] given the [IterationResults] of the current iteration and the
@@ -426,16 +433,16 @@ impl<T: TTFNum> Simulation<T> {
                     .unwrap(),
             )
         });
-        let exp_road_network_weights_rmse = results
-            .new_exp_weights
-            .road_network()
-            .map(|w| w.rmse(results.exp_weights.road_network().unwrap()));
+        // let exp_road_network_weights_rmse = results
+        // .new_exp_weights
+        // .road_network()
+        // .map(|w| w.rmse(results.exp_weights.road_network().unwrap()));
         AggregateResults {
             iteration_counter,
             surplus,
             mode_results,
             sim_road_network_weights_rmse,
-            exp_road_network_weights_rmse,
+            exp_road_network_weights_rmse: None,
         }
     }
 
