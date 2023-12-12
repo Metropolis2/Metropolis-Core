@@ -239,6 +239,17 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
             &mut alloc.candidate_map,
         )
     }
+
+    pub fn profile_query_cache_complexity(&self) -> usize {
+        self.profile_query_cache
+            .values()
+            .map(|map| {
+                map.values()
+                    .filter_map(|ttf_opt| ttf_opt.as_ref().map(|ttf| ttf.complexity()))
+                    .sum::<usize>()
+            })
+            .sum()
+    }
 }
 
 #[derive(Clone, Default, Debug, Serialize, JsonSchema)]

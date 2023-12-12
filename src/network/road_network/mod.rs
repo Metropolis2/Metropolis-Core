@@ -529,12 +529,20 @@ impl<T: TTFNum> RoadNetwork<T> {
                 debug!("Computing search spaces");
                 let search_spaces = skim
                     .get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
+                debug!(
+                    "Complexity of the search spaces: {}",
+                    search_spaces.complexity()
+                );
                 debug!("Computing profile queries");
                 skim.pre_compute_profile_queries_intersect(od_pairs.pairs(), &search_spaces)?;
             } else {
                 debug!("Computing profile queries");
                 skim.pre_compute_profile_queries_tch(od_pairs.pairs())?;
             }
+            debug!(
+                "Complexity of the profile-query cache: {}",
+                skim.profile_query_cache_complexity()
+            );
             skims.push(Some(skim));
         }
         Ok(RoadNetworkSkims(skims))

@@ -613,6 +613,23 @@ impl<T> SearchSpaces<T> {
     }
 }
 
+impl<T: TTFNum> SearchSpaces<T> {
+    /// Returns the complexity of the SearchSpaces.
+    ///
+    /// The complexity is the sum of the complexity of all the [TTF]s stored.
+    pub fn complexity(&self) -> usize {
+        self.forward
+            .values()
+            .map(|ss| ss.values().map(|ttf| ttf.complexity()).sum::<usize>())
+            .sum::<usize>()
+            + self
+                .backward
+                .values()
+                .map(|ss| ss.values().map(|ttf| ttf.complexity()).sum::<usize>())
+                .sum::<usize>()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use petgraph::graph::{edge_index, node_index};
