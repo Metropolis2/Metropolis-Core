@@ -60,8 +60,8 @@ pub struct AggregateResults<T> {
     ///
     /// `None` if there is no road network.
     pub sim_road_network_weights_rmse: Option<Time<T>>,
-    /// Root mean square difference between the expected road-network weights of the current and
-    /// previous iteration.
+    /// Root mean square difference between the simulated road-network weights of the current
+    /// iteration and the expected road-network weights of the previous iteration.
     ///
     /// `None` if there is no road network.
     pub exp_road_network_weights_rmse: Option<Time<T>>,

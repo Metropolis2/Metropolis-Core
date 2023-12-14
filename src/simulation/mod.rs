@@ -433,16 +433,16 @@ impl<T: TTFNum> Simulation<T> {
                     .unwrap(),
             )
         });
-        // let exp_road_network_weights_rmse = results
-        // .new_exp_weights
-        // .road_network()
-        // .map(|w| w.rmse(results.exp_weights.road_network().unwrap()));
+        let exp_road_network_weights_rmse = results
+            .sim_weights
+            .road_network()
+            .map(|w| w.rmse(results.exp_weights.road_network().unwrap()));
         AggregateResults {
             iteration_counter,
             surplus,
             mode_results,
             sim_road_network_weights_rmse,
-            exp_road_network_weights_rmse: None,
+            exp_road_network_weights_rmse,
         }
     }
 
