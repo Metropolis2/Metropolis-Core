@@ -306,12 +306,16 @@ impl<T> RoadGraph<T> {
     pub fn from_edges(edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>) -> Self {
         // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
         // OriginalNodeIndex -> NodeIndex to re-index the nodes.
-        let node_map: HashMap<OriginalNodeIndex, NodeIndex> = edges
+        let nodes: HashSet<OriginalNodeIndex> = edges
             .iter()
             .map(|(s, _, _)| s)
             .chain(edges.iter().map(|(_, t, _)| t))
+            .copied()
+            .collect();
+        let node_map: HashMap<OriginalNodeIndex, NodeIndex> = nodes
+            .into_iter()
             .enumerate()
-            .map(|(i, &id)| (id, node_index(i)))
+            .map(|(i, id)| (id, node_index(i)))
             .collect();
         let edges: Vec<_> = edges
             .into_iter()
