@@ -671,8 +671,11 @@ impl<T: TTFNum> RoadEdgeState<T> {
         current_time: Time<T>,
         edge: &RoadEdge<T>,
     ) -> Time<T> {
+        // The travel time needs to be computed before the vehicle enters so that it does not
+        // generate its own congestion.
+        let tt = edge.get_travel_time(self.road.occupied_length, vehicle);
         self.road.enters(vehicle, current_time);
-        edge.get_travel_time(self.road.occupied_length, vehicle)
+        tt
     }
 
     fn into_simulated_functions(self) -> SimulatedFunctions<T> {
