@@ -18,6 +18,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Changed
 
+- [USER] For speed-density functions, the travel time of a vehicle on an edge is based on the
+  density before the vehicle enters the edge (i.e., not the density including the vehicle's own
+  length as it was done previously).
 - [DEV] Run schemas generation with dev profile to reduce compile time.
 - [DEV] Lints are configured directly in `Cargo.toml`, using Rust 1.74.0.
 - [DEV] Road-network weights only store the weights of the edges which are accessible by the
