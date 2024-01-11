@@ -18,9 +18,7 @@
   },
   "learning_model": {
     "type": "Exponential",
-    "value": {
-      "alpha": 0.99
-    }
+    "value": 0.01
   },
   "init_iteration_counter": 1,
   "stopping_criteria": [

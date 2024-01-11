@@ -208,7 +208,6 @@ impl<T: TTFNum> Simulation<T> {
                 &iteration_results.exp_weights,
                 &iteration_results.sim_weights,
                 iteration_counter,
-                &aggregate_results,
             ))
         })?;
         iteration_results.new_exp_weights = Some(new_exp_weights);
@@ -359,14 +358,9 @@ impl<T: TTFNum> Simulation<T> {
         old_weights: &NetworkWeights<T>,
         weights: &NetworkWeights<T>,
         iteration_counter: u32,
-        aggregate_results: &AggregateResults<T>,
     ) -> NetworkWeights<T> {
-        self.parameters.learn(
-            old_weights,
-            weights,
-            iteration_counter,
-            Some(aggregate_results),
-        )
+        self.parameters
+            .learn(old_weights, weights, iteration_counter)
     }
 
     /// Returns [AggregateResults] given the [IterationResults] of the current iteration and the

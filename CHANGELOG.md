@@ -10,6 +10,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
+- [INPUT] Add the `ExponentialUnadjusted` learning model (exponential model with no adjustment for
+  the first iteration).
 - [OUTPUT] Add the root mean squared difference of departure time in the iteration results.
 - [OUTPUT] Add the root mean squared difference between simulated and expected travel time in the
   iteration results.
@@ -18,6 +20,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Changed
 
+- [INPUT] For the `Exponential` learning model, the `alpha` value is no longer nested in a
+  structure.
+- [USER] For the `Exponential` learning model, the `alpha` value represents the weight of the
+  simulated weights (previously, it was the expected weights).
 - [USER] For speed-density functions, the travel time of a vehicle on an edge is based on the
   density before the vehicle enters the edge (i.e., not the density including the vehicle's own
   length as it was done previously).

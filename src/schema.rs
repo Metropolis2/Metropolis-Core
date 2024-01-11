@@ -9,7 +9,7 @@ use petgraph::graph::{EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::learning::{ExponentialLearningModel, LearningModel};
+use crate::learning::LearningModel;
 use crate::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use crate::mode::Mode;
 use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
@@ -191,7 +191,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
                 contraction: Default::default(),
             }),
         },
-        learning_model: LearningModel::Exponential(ExponentialLearningModel::new(0.9)),
+        learning_model: LearningModel::Exponential(0.9),
         stopping_criteria: vec![
             StopCriterion::MaxIteration(100),
             StopCriterion::DepartureTime(Time(2.0), Time(3600.0)),

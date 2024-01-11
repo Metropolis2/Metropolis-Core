@@ -5,7 +5,7 @@
 
 use hashbrown::HashSet;
 use metropolis::agent::Agent;
-use metropolis::learning::{ExponentialLearningModel, LearningModel};
+use metropolis::learning::LearningModel;
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::Mode;
 use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
@@ -91,7 +91,7 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
 
     let parameters = Parameters {
         period: Interval([Time(0.0), Time(50.0)]),
-        learning_model: LearningModel::Exponential(ExponentialLearningModel::new(0.0)),
+        learning_model: LearningModel::Exponential(0.0),
         stopping_criteria: vec![StopCriterion::MaxIteration(1)],
         network: NetworkParameters {
             road_network: Some(RoadNetworkParameters {
