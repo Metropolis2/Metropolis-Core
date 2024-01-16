@@ -15,7 +15,7 @@ use ttf::TTFNum;
 
 use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::{Network, NetworkSkim};
+use crate::network::{Network, NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
@@ -81,6 +81,7 @@ impl<T: TTFNum> Agent<T> {
     pub fn make_pre_day_choice(
         &self,
         network: &Network<T>,
+        weights: &NetworkWeights<T>,
         exp_skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
         previous_day_result: Option<&AgentResult<T>>,
@@ -95,6 +96,7 @@ impl<T: TTFNum> Agent<T> {
                     self.modes.iter().map(|mode| {
                         mode.get_pre_day_choice(
                             network,
+                            weights,
                             exp_skims,
                             &preprocess_data.network,
                             progress_bar.clone(),
@@ -120,6 +122,7 @@ impl<T: TTFNum> Agent<T> {
                 let chosen_mode = &self.modes[0];
                 let (expected_utility, callback) = chosen_mode.get_pre_day_choice(
                     network,
+                    weights,
                     exp_skims,
                     &preprocess_data.network,
                     progress_bar,
@@ -198,6 +201,7 @@ mod tests {
                 &network,
                 &Default::default(),
                 &Default::default(),
+                &Default::default(),
                 None,
                 false,
                 bp.clone(),
@@ -208,6 +212,7 @@ mod tests {
         let result = agent
             .make_pre_day_choice(
                 &network,
+                &Default::default(),
                 &Default::default(),
                 &Default::default(),
                 None,
@@ -226,6 +231,7 @@ mod tests {
                     &network,
                     &Default::default(),
                     &Default::default(),
+                    &Default::default(),
                     Some(&result),
                     false,
                     bp.clone(),
@@ -239,6 +245,7 @@ mod tests {
         let result = agent
             .make_pre_day_choice(
                 &network,
+                &Default::default(),
                 &Default::default(),
                 &Default::default(),
                 None,

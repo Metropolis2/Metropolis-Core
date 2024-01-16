@@ -190,6 +190,12 @@ pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,
 }
 
+impl<T> Default for NetworkWeights<T> {
+    fn default() -> Self {
+        Self { road_network: None }
+    }
+}
+
 impl<T> NetworkWeights<T> {
     /// Creates a new NetworkWeights.
     pub const fn new(road_network: Option<RoadNetworkWeights<T>>) -> Self {

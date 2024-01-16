@@ -4,8 +4,11 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to trips.
+use std::ops::Deref;
+
 use anyhow::{anyhow, Result};
 use choice::{ChoiceModel, ContinuousChoiceModel};
+use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashSet;
 use log::warn;
@@ -21,7 +24,10 @@ use super::{ModeCallback, ModeResults};
 use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
 use crate::network::road_network::vehicle::VehicleIndex;
-use crate::network::road_network::{OriginalNodeIndex, RoadNetwork, RoadNetworkPreprocessingData};
+use crate::network::road_network::{
+    OriginalEdgeIndex, OriginalNodeIndex, RoadNetwork, RoadNetworkPreprocessingData,
+    RoadNetworkWeights,
+};
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
 use crate::travel_utility::TravelUtility;
@@ -156,6 +162,10 @@ pub struct RoadLeg {
     pub(crate) destination: OriginalNodeIndex,
     /// Vehicle used for the leg.
     pub(crate) vehicle: VehicleIndex,
+    /// Route to be followed by the vehicle to connect `origin` to `destination`.
+    ///
+    /// If `None`, the fastest route is chosen.
+    pub(crate) route: Option<Vec<OriginalEdgeIndex>>,
 }
 
 impl RoadLeg {
@@ -169,6 +179,7 @@ impl RoadLeg {
             origin,
             destination,
             vehicle,
+            route: None,
         }
     }
 }
@@ -315,6 +326,23 @@ impl<T> TravelingMode<T> {
     }
 }
 
+// Type for the TTFs of the legs of a trip.
+//
+// The TTFs can be either owned or be references.
+type LegTTFs<'a, T> = Vec<LegTTF<'a, T>>;
+
+struct LegTTF<'a, T>(Either<&'a TTF<Time<T>>, TTF<Time<T>>>);
+
+impl<'a, T: TTFNum> Deref for LegTTF<'a, T> {
+    type Target = TTF<Time<T>>;
+    fn deref(&self) -> &Self::Target {
+        match &self.0 {
+            Either::Left(referenced) => referenced,
+            Either::Right(_) => self.0.as_ref().unwrap_right(),
+        }
+    }
+}
+
 impl<T: TTFNum> TravelingMode<T> {
     /// Returns a Vec of TTFs, corresponding to the TTF of each leg given the road-network skims.
     ///
@@ -322,41 +350,65 @@ impl<T: TTFNum> TravelingMode<T> {
     /// origin and destination are disconnected).
     fn get_leg_ttfs<'a>(
         &'a self,
+        rn_weights: Option<&'a RoadNetworkWeights<T>>,
         rn_skims: Option<&'a RoadNetworkSkims<T>>,
         preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
-    ) -> Result<Vec<&'a TTF<Time<T>>>> {
+    ) -> Result<LegTTFs<'a, T>> {
         self.legs
             .iter()
             .map(|l| {
                 match &l.class {
                     LegType::Road(road_leg) => {
-                        let skims = rn_skims.expect("Found a road leg with no road-network skims")
-                            [preprocess_data
-                                .expect("Found a road leg with no road-network preprocessing data")
-                                .get_unique_vehicle_index(road_leg.vehicle)]
-                        .as_ref()
-                        .ok_or_else(|| {
-                            anyhow!("No skims were computed for the vehicle of this leg")
-                        })?;
-                        skims
-                            .profile_query(road_leg.origin, road_leg.destination)?
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            let weights = &rn_weights
+                                .expect("Found a road leg with no road-network weights")
+                                [preprocess_data
+                                    .expect(
+                                        "Found a road leg with no road-network preprocessing data",
+                                    )
+                                    .get_unique_vehicle_index(road_leg.vehicle)];
+                            let mut ttf = TTF::default();
+                            for edge in input_route {
+                                ttf = ttf.link(
+                                    weights
+                                        .get(edge)
+                                        .unwrap_or_else(|| panic!("Invalid edge id: {}", edge)),
+                                );
+                            }
+                            Ok(LegTTF(Either::Right(ttf)))
+                        } else {
+                            let skims = rn_skims
+                                .expect("Found a road leg with no road-network skims")
+                                [preprocess_data
+                                    .expect(
+                                        "Found a road leg with no road-network preprocessing data",
+                                    )
+                                    .get_unique_vehicle_index(road_leg.vehicle)]
+                            .as_ref()
                             .ok_or_else(|| {
-                                // No route from origin to destination.
-                                anyhow!(
+                                anyhow!("No skims were computed for the vehicle of this leg")
+                            })?;
+                            skims
+                                .profile_query(road_leg.origin, road_leg.destination)?
+                                .ok_or_else(|| {
+                                    // No route from origin to destination.
+                                    anyhow!(
                                     "No route on road network from origin {:?} to destination {:?}",
                                     road_leg.origin,
                                     road_leg.destination,
                                 )
-                            })
+                                })
+                                .map(|ttf| LegTTF(Either::Left(ttf)))
+                        }
                     }
-                    LegType::Virtual(ttf) => Ok(ttf),
+                    LegType::Virtual(ttf) => Ok(LegTTF(Either::Left(ttf))),
                 }
             })
             .collect()
     }
 
     /// Returns the total utility of the trip given the departure time and the legs' TTFs.
-    fn get_total_utility(&self, departure_time: Time<T>, leg_ttfs: &[&TTF<Time<T>>]) -> Utility<T> {
+    fn get_total_utility(&self, departure_time: Time<T>, leg_ttfs: &LegTTFs<'_, T>) -> Utility<T> {
         let mut current_time = departure_time + self.origin_delay;
         let mut total_travel_time = Time::default();
         let mut total_utility = self.origin_schedule_utility.get_utility(departure_time);
@@ -385,7 +437,7 @@ impl<T: TTFNum> TravelingMode<T> {
     /// legs' TTFs.
     fn get_utility_function(
         &self,
-        leg_ttfs: &[&TTF<Time<T>>],
+        leg_ttfs: &LegTTFs<'_, T>,
         period: Interval<T>,
     ) -> PwlXYF<Time<T>, Utility<T>, NoUnit<T>> {
         let interval = period.length() / Time::from_usize(NB_INTERVALS).unwrap();
@@ -507,8 +559,10 @@ impl<T: TTFNum> TravelingMode<T> {
         &self,
         departure_time: Time<T>,
         expected_utility: Utility<T>,
-        leg_ttfs: &[&TTF<Time<T>>],
+        leg_ttfs: &LegTTFs<'_, T>,
+        road_network: Option<&RoadNetwork<T>>,
         preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
+        weights: Option<&RoadNetworkWeights<T>>,
     ) -> TripResults<T> {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
@@ -520,6 +574,24 @@ impl<T: TTFNum> TravelingMode<T> {
                     let preprocess_data = preprocess_data
                         .expect("Got a road leg without road-network preprocessing data");
                     let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
+                    let (arrival_time, route_opt) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            // A route is given as input so the route is `pre-computed` anyway.
+                            let road_network = road_network
+                                .expect("Got a road leg but there is not road network.");
+                            let vehicle_weights = &weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uvehicle];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + vehicle_weights[edge].eval(t);
+                                route.push(road_network.edge_id_of(*edge));
+                            }
+                            (t, Some(route))
+                        } else {
+                            (arrival_time, None)
+                        };
                     let global_free_flow_travel_time = *preprocess_data.free_flow_travel_times
                         [uvehicle]
                         .get(&(road_leg.origin, road_leg.destination))
@@ -527,7 +599,7 @@ impl<T: TTFNum> TravelingMode<T> {
                     leg.init_road_leg_results(
                         current_time,
                         arrival_time,
-                        None,
+                        route_opt,
                         None,
                         None,
                         global_free_flow_travel_time,
@@ -556,6 +628,7 @@ impl<T: TTFNum> TravelingMode<T> {
     pub fn get_pre_day_choice<'a: 'b, 'b>(
         &'a self,
         road_network: Option<&'b RoadNetwork<T>>,
+        rn_weights: Option<&'b RoadNetworkWeights<T>>,
         rn_skims: Option<&'b RoadNetworkSkims<T>>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
         progress_bar: MetroProgressBar,
@@ -564,7 +637,13 @@ impl<T: TTFNum> TravelingMode<T> {
             // The TravelingMode is virtual only and the pre-day choices were already computed.
             return Ok(choice.to_expected_utility_and_mode_callback());
         }
-        self.make_pre_day_choice(road_network, rn_skims, preprocess_data, progress_bar)
+        self.make_pre_day_choice(
+            road_network,
+            rn_weights,
+            rn_skims,
+            preprocess_data,
+            progress_bar,
+        )
     }
 
     /// Computes the pre-day choice for this mode.
@@ -578,11 +657,12 @@ impl<T: TTFNum> TravelingMode<T> {
     fn make_pre_day_choice<'a: 'b, 'b>(
         &'a self,
         road_network: Option<&'b RoadNetwork<T>>,
+        rn_weights: Option<&'b RoadNetworkWeights<T>>,
         rn_skims: Option<&'b RoadNetworkSkims<T>>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
         progress_bar: MetroProgressBar,
     ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
-        let leg_ttfs = self.get_leg_ttfs(rn_skims, preprocess_data)?;
+        let leg_ttfs = self.get_leg_ttfs(rn_weights, rn_skims, preprocess_data)?;
         let (expected_utility, time_callback) = match &self.departure_time_model {
             &DepartureTimeModel::Constant(departure_time) => {
                 let expected_utility = self.get_total_utility(departure_time, &leg_ttfs);
@@ -632,6 +712,7 @@ impl<T: TTFNum> TravelingMode<T> {
                     expected_utility,
                     road_network,
                     preprocess_data,
+                    rn_weights,
                     rn_skims,
                     progress_bar,
                     alloc,
@@ -641,7 +722,9 @@ impl<T: TTFNum> TravelingMode<T> {
                     departure_time,
                     expected_utility,
                     &leg_ttfs,
+                    road_network,
                     preprocess_data,
+                    rn_weights,
                 )))
             }
         };
@@ -659,6 +742,7 @@ impl<T: TTFNum> TravelingMode<T> {
         expected_utility: Utility<T>,
         road_network: Option<&RoadNetwork<T>>,
         preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
+        weights: Option<&RoadNetworkWeights<T>>,
         skims: Option<&RoadNetworkSkims<T>>,
         progress_bar: MetroProgressBar,
         alloc: &mut EAAllocation<T>,
@@ -673,17 +757,30 @@ impl<T: TTFNum> TravelingMode<T> {
                     let uvehicle = preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
                         .unique_vehicles[road_leg.vehicle];
-                    let vehicle_skims = skims
-                        .expect("Got a road leg but there is no road network skims.")[uvehicle]
-                        .as_ref()
-                        .expect("Road network skims are empty.");
-                    let (arrival_time, route) = get_arrival_time_and_route(
-                        road_leg,
-                        current_time,
-                        vehicle_skims,
-                        progress_bar.clone(),
-                        alloc,
-                    )?;
+                    let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
+                        let vehicle_weights = &weights
+                            .expect("Got a road leg but there is no road network weights.")
+                            [uvehicle];
+                        let mut t = current_time;
+                        let mut route = Vec::with_capacity(input_route.len());
+                        for edge in input_route {
+                            t = t + vehicle_weights[edge].eval(t);
+                            route.push(road_network.edge_id_of(*edge));
+                        }
+                        (t, route)
+                    } else {
+                        let vehicle_skims = skims
+                            .expect("Got a road leg but there is no road network skims.")[uvehicle]
+                            .as_ref()
+                            .expect("Road network skims are empty.");
+                        get_arrival_time_and_route(
+                            road_leg,
+                            current_time,
+                            vehicle_skims,
+                            progress_bar.clone(),
+                            alloc,
+                        )?
+                    };
                     // Compute the route free-flow travel time and length.
                     let length = road_network.route_length(route.iter().copied());
                     let route_free_flow_travel_time = road_network

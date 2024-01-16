@@ -182,6 +182,7 @@ impl<T: TTFNum> Simulation<T> {
         info!("Running pre-day model");
         let (mut agent_results, t2) = record_time(|| {
             self.run_pre_day_model(
+                &exp_weights,
                 &skims,
                 preprocess_data,
                 previous_results_opt.as_ref(),
@@ -245,6 +246,7 @@ impl<T: TTFNum> Simulation<T> {
     /// simulated day. In particular, agents choose their mode and departure time.
     pub fn run_pre_day_model(
         &self,
+        weights: &NetworkWeights<T>,
         exp_skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
         previous_results_opt: Option<&AgentResults<T>>,
@@ -262,6 +264,7 @@ impl<T: TTFNum> Simulation<T> {
                         bp.inc();
                         agent.make_pre_day_choice(
                             &self.network,
+                            weights,
                             exp_skims,
                             preprocess_data,
                             Some(prev_agent_result),
@@ -281,6 +284,7 @@ impl<T: TTFNum> Simulation<T> {
                     bp.inc();
                     agent.make_pre_day_choice(
                         &self.network,
+                        weights,
                         exp_skims,
                         preprocess_data,
                         None,
@@ -499,6 +503,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
                     bp.inc();
                     agent.make_pre_day_choice(
                         &self.network,
+                        &weights,
                         &skims,
                         &preprocess_data,
                         None,

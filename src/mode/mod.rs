@@ -19,7 +19,7 @@ use crate::event::Event;
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
-use crate::network::{Network, NetworkPreprocessingData, NetworkSkim};
+use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::units::{Distribution, Time, Utility};
 
@@ -99,6 +99,7 @@ impl<T: TTFNum> Mode<T> {
     pub fn get_pre_day_choice<'a>(
         &'a self,
         network: &'a Network<T>,
+        weights: &'a NetworkWeights<T>,
         exp_skims: &'a NetworkSkim<T>,
         preprocess_data: &'a NetworkPreprocessingData<T>,
         progress_bar: MetroProgressBar,
@@ -107,6 +108,7 @@ impl<T: TTFNum> Mode<T> {
             Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
             Self::Trip(mode) => mode.get_pre_day_choice(
                 network.get_road_network(),
+                weights.road_network(),
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),
                 progress_bar,
