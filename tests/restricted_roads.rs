@@ -18,7 +18,7 @@ use metropolis::schedule_utility::ScheduleUtility;
 use metropolis::simulation::Simulation;
 use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
-use metropolis::units::{Flow, Interval, Length, Speed, Time, PCE};
+use metropolis::units::{Flow, Interval, Lanes, Length, Speed, Time, PCE};
 use num_traits::Float;
 
 fn get_simulation() -> Simulation<f64> {
@@ -36,7 +36,7 @@ fn get_simulation() -> Simulation<f64> {
                 0,
                 Speed(1.0),
                 Length(1.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
@@ -50,7 +50,7 @@ fn get_simulation() -> Simulation<f64> {
                 1,
                 Speed(1.0),
                 Length(2.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
@@ -64,7 +64,7 @@ fn get_simulation() -> Simulation<f64> {
                 2,
                 Speed(1.0),
                 Length(1.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
@@ -78,7 +78,7 @@ fn get_simulation() -> Simulation<f64> {
                 3,
                 Speed(1.0),
                 Length(1.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),

@@ -22,7 +22,7 @@ use metropolis::simulation::results::AgentResult;
 use metropolis::simulation::Simulation;
 use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::{PolynomialFunction, TravelUtility};
-use metropolis::units::{Flow, Interval, Length, Speed, Time, Utility, ValueOfTime, PCE};
+use metropolis::units::{Flow, Interval, Lanes, Length, Speed, Time, Utility, ValueOfTime, PCE};
 use num_traits::Float;
 use ttf::{PwlTTF, TTF};
 
@@ -38,7 +38,7 @@ fn get_simulation() -> Simulation<f64> {
                 0,
                 Speed(1.0),
                 Length(1.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),
@@ -52,7 +52,7 @@ fn get_simulation() -> Simulation<f64> {
                 1,
                 Speed(1.0),
                 Length(2.0),
-                1,
+                Lanes(1.0),
                 SpeedDensityFunction::FreeFlow,
                 Flow::infinity(),
                 Time(0.),

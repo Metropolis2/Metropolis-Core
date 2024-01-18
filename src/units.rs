@@ -464,6 +464,19 @@ impl<T: TTFNum> fmt::Display for Length<T> {
     }
 }
 
+/// Representation of a number of lanes.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(
+    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
+)]
+pub struct Lanes<T>(pub T);
+
+impl<T: TTFNum> fmt::Display for Lanes<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} lanes", self.0)
+    }
+}
+
 /// Representation of a speed, expressed in meters per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(
@@ -503,9 +516,19 @@ impl<T: TTFNum> fmt::Display for Flow<T> {
     }
 }
 
-impl_ttf_on_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Flow, NoUnit);
+impl_ttf_on_unit!(
+    Time,
+    Utility,
+    ValueOfTime,
+    Lanes,
+    Length,
+    Speed,
+    PCE,
+    Flow,
+    NoUnit
+);
 
-impl_from_into_no_unit!(Time, Utility, ValueOfTime, Length, Speed, PCE, Flow);
+impl_from_into_no_unit!(Time, Utility, ValueOfTime, Lanes, Length, Speed, PCE, Flow);
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
@@ -539,35 +562,8 @@ impl_ops!(Length / Time = Speed);
 impl_ops!(Flow * Time = PCE);
 impl_ops!(PCE / Flow = Time);
 impl_ops!(PCE / Time = Flow);
-
-/// Length * lane number = Length.
-impl<T: TTFNum> Mul<u8> for Length<T> {
-    type Output = Length<T>;
-    fn mul(self, other: u8) -> Self::Output {
-        Length(self.0 * T::from_u8(other).unwrap())
-    }
-}
-/// Lane number * Length = Length.
-impl<T: TTFNum> Mul<Length<T>> for u8 {
-    type Output = Length<T>;
-    fn mul(self, other: Length<T>) -> Self::Output {
-        Length(T::from_u8(self).unwrap() * other.0)
-    }
-}
-/// Flow * lane number = Flow.
-impl<T: TTFNum> Mul<u8> for Flow<T> {
-    type Output = Flow<T>;
-    fn mul(self, other: u8) -> Self::Output {
-        Flow(self.0 * T::from_u8(other).unwrap())
-    }
-}
-/// Lane number * Flow = Flow.
-impl<T: TTFNum> Mul<Flow<T>> for u8 {
-    type Output = Flow<T>;
-    fn mul(self, other: Flow<T>) -> Self::Output {
-        Flow(T::from_u8(self).unwrap() * other.0)
-    }
-}
+impl_ops!(Length * Lanes = Length);
+impl_ops!(Flow * Lanes = Flow);
 
 /// An interval between two [Time] units.
 #[derive(Default, Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]

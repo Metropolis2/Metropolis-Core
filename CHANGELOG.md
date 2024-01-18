@@ -23,6 +23,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] For the `Exponential` learning model, the `alpha` value is no longer nested in a
   structure.
+- [INPUT] Road edge's lane number can take non-integer values.
 - [USER] For the `Exponential` learning model, the `alpha` value represents the weight of the
   simulated weights (previously, it was the expected weights).
 - [USER] For speed-density functions, the travel time of a vehicle on an edge is based on the

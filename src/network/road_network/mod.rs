@@ -32,7 +32,7 @@ pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
 use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
-use crate::units::{Flow, Length, Speed, Time};
+use crate::units::{Flow, Lanes, Length, Speed, Time};
 
 /// If `true`, the travel times are truncated to the smallest integer.
 const TRUNC_TT: bool = false;
@@ -141,8 +141,12 @@ fn default_time_schema() -> String {
     "0".to_owned()
 }
 
-const fn default_lanes() -> u8 {
-    1
+fn default_lanes<T: TTFNum>() -> Lanes<T> {
+    Lanes::one()
+}
+
+fn default_lanes_schema() -> String {
+    "1.0".to_owned()
 }
 
 const fn default_is_true() -> bool {
@@ -176,8 +180,8 @@ pub struct RoadEdge<T> {
     length: Length<T>,
     /// The number of lanes on the edge.
     #[serde(default = "default_lanes")]
-    #[validate(range(min = 1))]
-    lanes: u8,
+    #[schemars(default = "default_lanes_schema")]
+    lanes: Lanes<T>,
     /// Speed-density function for the running part of the edge.
     #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
@@ -204,7 +208,7 @@ impl<T: TTFNum> RoadEdge<T> {
         id: OriginalEdgeIndex,
         base_speed: Speed<T>,
         length: Length<T>,
-        lanes: u8,
+        lanes: Lanes<T>,
         speed_density: SpeedDensityFunction<T>,
         bottleneck_flow: Flow<T>,
         constant_travel_time: Time<T>,
@@ -241,7 +245,7 @@ impl<T: TTFNum> RoadEdge<T> {
                 if occupied_length.0 <= capacity * (self.total_length() / self.base_speed).0 {
                     self.length / vehicle_speed
                 } else {
-                    Time(occupied_length.0 / (capacity * T::from_u8(self.lanes).unwrap()))
+                    Time(occupied_length.0 / (capacity * self.lanes.0))
                 }
             }
             SpeedDensityFunction::ThreeRegimes(func) => {
@@ -730,7 +734,7 @@ mod tests {
             id: 1,
             base_speed: Speed(25.), // 50 km/h
             length: Length(1000.),  // 1 km
-            lanes: 2,
+            lanes: Lanes(2.0),
             speed_density: SpeedDensityFunction::FreeFlow,
             bottleneck_flow: Flow(f64::INFINITY),
             constant_travel_time: Time(10.),
@@ -831,7 +835,7 @@ mod tests {
                     0,
                     Speed(1.0),
                     Length(1.0),
-                    1,
+                    Lanes(1.0),
                     SpeedDensityFunction::FreeFlow,
                     Flow(1.0),
                     Time(0.0),
@@ -845,7 +849,7 @@ mod tests {
                     1,
                     Speed(1.0),
                     Length(1.0),
-                    1,
+                    Lanes(1.0),
                     SpeedDensityFunction::FreeFlow,
                     Flow(1.0),
                     Time(0.0),

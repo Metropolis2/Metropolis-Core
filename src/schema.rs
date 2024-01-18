@@ -164,7 +164,7 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
         1,
         Speed(50.0 / 3.6),
         Length(100.0),
-        2,
+        Lanes(2.0),
         SpeedDensityFunction::ThreeRegimes(ThreeRegimesSpeedDensityFunction::new(
             0.3,
             0.8,
