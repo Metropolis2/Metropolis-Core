@@ -128,6 +128,12 @@ macro_rules! impl_ttf_on_unit(
                 fn from_u64(n: u64) -> Option<Self> {
                     T::from_u64(n).map(Self)
                 }
+                fn from_f32(n: f32) -> Option<Self> {
+                    T::from_f32(n).map(Self)
+                }
+                fn from_f64(n: f64) -> Option<Self> {
+                    T::from_f64(n).map(Self)
+                }
             }
 
             impl<T: ToPrimitive> ToPrimitive for $t<T> {
