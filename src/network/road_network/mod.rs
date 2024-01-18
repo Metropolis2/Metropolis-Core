@@ -15,7 +15,7 @@ use std::ops::{Deref, Index};
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
 use log::debug;
-use num_traits::{Float, Zero};
+use num_traits::{Float, One, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -33,6 +33,9 @@ use crate::agent::Agent;
 use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
 use crate::units::{Flow, Length, Speed, Time};
+
+/// If `true`, the travel times are truncated to the smallest integer.
+const TRUNC_TT: bool = false;
 
 /// Index of the node as given by the user.
 pub type OriginalNodeIndex = u64;
@@ -247,7 +250,12 @@ impl<T: TTFNum> RoadEdge<T> {
                 self.length / speed
             }
         };
-        variable_tt + self.constant_travel_time
+        let tt = variable_tt + self.constant_travel_time;
+        if TRUNC_TT {
+            Float::max(tt.trunc(), Time::one())
+        } else {
+            tt
+        }
     }
 
     /// Return the free-flow travel time on the road for the given vehicle.
