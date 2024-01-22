@@ -194,7 +194,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         learning_model: LearningModel::Exponential(0.9),
         stopping_criteria: vec![
             StopCriterion::MaxIteration(100),
-            StopCriterion::DepartureTime(Time(2.0), Time(3600.0)),
+            StopCriterion::DepartureTime(Time(2.0)),
         ],
         update_ratio: 1.0,
         random_seed: Some(13081996),

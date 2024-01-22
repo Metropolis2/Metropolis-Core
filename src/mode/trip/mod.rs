@@ -108,6 +108,7 @@ impl<T: TTFNum> Leg<T> {
             travel_utility: Utility::nan(),
             schedule_utility: Utility::nan(),
             class: LegTypeResults::Virtual,
+            departure_time_shift: None,
         }
     }
 
@@ -137,6 +138,7 @@ impl<T: TTFNum> Leg<T> {
                 route_free_flow_travel_time,
                 global_free_flow_travel_time,
             )),
+            departure_time_shift: None,
         }
     }
 }
@@ -532,6 +534,7 @@ impl<T: TTFNum> TravelingMode<T> {
                 travel_utility,
                 schedule_utility,
                 class: LegTypeResults::Virtual,
+                departure_time_shift: None,
             };
             leg_results.push(lr);
             current_time = arrival_time + leg.stopping_time;
@@ -548,6 +551,7 @@ impl<T: TTFNum> TravelingMode<T> {
             utility,
             expected_utility,
             virtual_only: true,
+            departure_time_shift: None,
         }
     }
 
@@ -610,15 +614,7 @@ impl<T: TTFNum> TravelingMode<T> {
             leg_results.push(leg_result);
             current_time = arrival_time + leg.stopping_time;
         }
-        TripResults {
-            legs: leg_results,
-            departure_time,
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility,
-            virtual_only: false,
-        }
+        TripResults::new(leg_results, departure_time, expected_utility, false)
     }
 
     /// Returns the pre-day choice for this mode.
@@ -809,15 +805,12 @@ impl<T: TTFNum> TravelingMode<T> {
             leg_results.push(leg_result);
             current_time = arrival_time + leg.stopping_time;
         }
-        Ok(TripResults {
-            legs: leg_results,
+        Ok(TripResults::new(
+            leg_results,
             departure_time,
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
             expected_utility,
-            virtual_only: false,
-        })
+            false,
+        ))
     }
 }
 

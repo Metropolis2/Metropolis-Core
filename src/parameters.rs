@@ -86,15 +86,10 @@ impl<T: TTFNum> Parameters<T> {
     /// Returns `true` if the Simulation must be stopped.
     ///
     /// The Simulation is stopped if at least one of the stopping criteria is active.
-    pub fn stop(
-        &self,
-        iteration_counter: u32,
-        results: &AgentResults<T>,
-        prev_results: Option<&AgentResults<T>>,
-    ) -> bool {
+    pub fn stop(&self, iteration_counter: u32, results: &AgentResults<T>) -> bool {
         self.stopping_criteria
             .iter()
-            .any(|c| c.stop(iteration_counter, results, prev_results))
+            .any(|c| c.stop(iteration_counter, results))
     }
 
     /// Returns the new [NetworkWeights] given the old weights and the simulated weights.

@@ -175,6 +175,15 @@ impl<T: TTFNum> ModeResults<T> {
             Self::None => None,
         }
     }
+
+    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+        match self {
+            Self::Trip(trip_results) => {
+                trip_results.with_previous_results(previous_results.as_trip().unwrap(), network)
+            }
+            Self::None => (),
+        }
+    }
 }
 
 /// Additional mode-specific pre-day results for an agent.

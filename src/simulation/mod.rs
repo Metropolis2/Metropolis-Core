@@ -137,7 +137,7 @@ impl<T: TTFNum> Simulation<T> {
                 break;
             }
             (exp_weights, prev_sim_weights, prev_agent_results) = (
-                iteration_output.iteration_results.new_exp_weights,
+                Some(iteration_output.iteration_results.new_exp_weights),
                 Some(iteration_output.iteration_results.sim_weights),
                 Some(iteration_output.iteration_results.agent_results),
             );
@@ -192,33 +192,32 @@ impl<T: TTFNum> Simulation<T> {
         info!("Running within-day model");
         let (sim_weights, t3) =
             record_time(|| self.run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
+        info!("Running day-to-day model");
+        let (new_exp_weights, t4) = record_time(|| {
+            Ok(self.run_day_to_day_model(&exp_weights, &sim_weights, iteration_counter))
+        })?;
         info!("Computing aggregate results");
-        let mut iteration_results =
-            IterationResults::new(agent_results, exp_weights, sim_weights, None, skims);
+        let iteration_results = IterationResults::new(
+            agent_results,
+            exp_weights,
+            sim_weights,
+            new_exp_weights,
+            &self.network,
+            skims,
+            previous_results_opt.as_ref(),
+        );
         let (aggregate_results, t5) = record_time(|| {
             Ok(self.compute_aggregate_results(
                 iteration_counter,
                 &iteration_results,
                 prev_sim_weights.as_ref(),
-                previous_results_opt.as_ref(),
             ))
         })?;
-        info!("Running day-to-day model");
-        let (new_exp_weights, t4) = record_time(|| {
-            Ok(self.run_day_to_day_model(
-                &iteration_results.exp_weights,
-                &iteration_results.sim_weights,
-                iteration_counter,
-            ))
-        })?;
-        iteration_results.new_exp_weights = Some(new_exp_weights);
         info!("Checking stopping rules");
         let (stop_simulation, t6) = record_time(|| {
-            Ok(self.parameters.stop(
-                iteration_counter,
-                iteration_results.agent_results(),
-                previous_results_opt.as_ref(),
-            ))
+            Ok(self
+                .parameters
+                .stop(iteration_counter, iteration_results.agent_results()))
         })?;
         crate::show_stats();
         let running_times = IterationRunningTimes {
@@ -374,7 +373,6 @@ impl<T: TTFNum> Simulation<T> {
         iteration_counter: u32,
         results: &IterationResults<T>,
         prev_sim_weights: Option<&NetworkWeights<T>>,
-        prev_agent_results: Option<&AgentResults<T>>,
     ) -> AggregateResults<T> {
         let surplus = Distribution::from_iterator(
             results
@@ -389,14 +387,7 @@ impl<T: TTFNum> Simulation<T> {
             let mode_id = agent_result.mode_index;
             match (&self.agents[i][mode_id], &agent_result.mode_results) {
                 (Mode::Trip(trip_mode), ModeResults::Trip(trip_result)) => {
-                    let prev_trip_result = if let Some(ModeResults::Trip(prev_trip_result)) =
-                        prev_agent_results.map(|r| &r[agent_index(i)].mode_results)
-                    {
-                        Some(prev_trip_result)
-                    } else {
-                        None
-                    };
-                    trip_entries.push((trip_mode, trip_result, prev_trip_result));
+                    trip_entries.push((trip_mode, trip_result));
                 }
                 (&Mode::Constant((_, utility)), ModeResults::None) => cst_utilities.push(utility),
                 _ => panic!("Unsupported mode and mode results combination"),
@@ -407,10 +398,7 @@ impl<T: TTFNum> Simulation<T> {
         let road_results = if trip_entries.is_empty() {
             None
         } else {
-            Some(AggregateTripResults::from_agent_results(
-                trip_entries,
-                &self.network,
-            ))
+            Some(AggregateTripResults::from_agent_results(trip_entries))
         };
         let cst_results = if cst_utilities.is_empty() {
             None

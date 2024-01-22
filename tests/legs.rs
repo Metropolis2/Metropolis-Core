@@ -217,6 +217,7 @@ fn legs_test() {
         arrival_time: Time(4.0),
         travel_utility: Utility(1.0),
         schedule_utility: Utility(-0.5),
+        departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
@@ -229,6 +230,7 @@ fn legs_test() {
             route_free_flow_travel_time: Time(1.0),
             global_free_flow_travel_time: Time(1.0),
             length: Length(1.0),
+            length_diff: None,
             pre_exp_departure_time: Time(3.0),
             pre_exp_arrival_time: Time(4.0),
             exp_arrival_time: Time(4.0),
@@ -240,6 +242,7 @@ fn legs_test() {
         arrival_time: Time(12.0),
         travel_utility: Utility(-6.0),
         schedule_utility: Utility(-0.4),
+        departure_time_shift: None,
         class: LegTypeResults::Virtual,
     };
     let leg2_results = LegResults {
@@ -248,6 +251,7 @@ fn legs_test() {
         arrival_time: Time(17.0),
         travel_utility: Utility(5.0),
         schedule_utility: Utility(0.0),
+        departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
@@ -260,6 +264,7 @@ fn legs_test() {
             route_free_flow_travel_time: Time(4.0),
             global_free_flow_travel_time: Time(4.0),
             length: Length(2.0),
+            length_diff: None,
             pre_exp_departure_time: Time(13.0),
             pre_exp_arrival_time: Time(17.0),
             exp_arrival_time: Time(17.0),
@@ -271,6 +276,7 @@ fn legs_test() {
         arrival_time: Time(18.0),
         travel_utility: Utility(0.0),
         schedule_utility: Utility(0.0),
+        departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![],
@@ -280,6 +286,7 @@ fn legs_test() {
             route_free_flow_travel_time: Time(0.0),
             global_free_flow_travel_time: Time(0.0),
             length: Length(0.0),
+            length_diff: None,
             pre_exp_departure_time: Time(18.0),
             pre_exp_arrival_time: Time(18.0),
             exp_arrival_time: Time(18.0),
@@ -298,6 +305,7 @@ fn legs_test() {
             utility: Utility(-250.9),
             expected_utility: Utility(-250.9),
             virtual_only: false,
+            departure_time_shift: None,
         }),
     );
 

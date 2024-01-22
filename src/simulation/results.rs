@@ -8,7 +8,6 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::Path;
 
 use anyhow::Result;
-use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Duration;
@@ -20,7 +19,7 @@ use crate::io;
 use crate::mode::{AggregateModeResults, ModeIndex, ModeResults, PreDayModeResults};
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
-use crate::network::{NetworkSkim, NetworkWeights};
+use crate::network::{Network, NetworkSkim, NetworkWeights};
 use crate::parameters::{Parameters, SavingFormat};
 use crate::units::{Distribution, Time, Utility};
 
@@ -77,20 +76,25 @@ pub struct IterationResults<T> {
     /// Simulated weights of the network, during the within-day model.
     pub sim_weights: NetworkWeights<T>,
     /// Expected weights of the network, after the day-to-day model.
-    pub new_exp_weights: Option<NetworkWeights<T>>,
+    pub new_exp_weights: NetworkWeights<T>,
     /// Skims of the network.
     pub skims: NetworkSkim<T>,
 }
 
-impl<T> IterationResults<T> {
+impl<T: TTFNum> IterationResults<T> {
     /// Creates a new IterationResults.
-    pub const fn new(
-        agent_results: AgentResults<T>,
+    pub fn new(
+        mut agent_results: AgentResults<T>,
         exp_weights: NetworkWeights<T>,
         sim_weights: NetworkWeights<T>,
-        new_exp_weights: Option<NetworkWeights<T>>,
+        new_exp_weights: NetworkWeights<T>,
+        network: &Network<T>,
         skims: NetworkSkim<T>,
+        previous_results_opt: Option<&AgentResults<T>>,
     ) -> Self {
+        if let Some(previous_agent_results) = previous_results_opt {
+            agent_results.with_previous_results(previous_agent_results, network);
+        }
         IterationResults {
             agent_results,
             exp_weights,
@@ -99,7 +103,9 @@ impl<T> IterationResults<T> {
             skims,
         }
     }
+}
 
+impl<T> IterationResults<T> {
     /// Returns a reference to the [AgentResults].
     pub const fn agent_results(&self) -> &AgentResults<T> {
         &self.agent_results
@@ -207,6 +213,8 @@ pub struct AgentResult<T> {
     pub(crate) expected_utility: Utility<T>,
     /// Mode-specific results.
     pub(crate) mode_results: ModeResults<T>,
+    /// Did the agent shifted to another mode from previous to current iteration?
+    pub(crate) shifted_mode: bool,
 }
 
 impl<T> AgentResult<T> {
@@ -224,6 +232,7 @@ impl<T> AgentResult<T> {
             mode_index: mode,
             expected_utility,
             mode_results,
+            shifted_mode: false,
         }
     }
 
@@ -242,6 +251,7 @@ impl<T: TTFNum> AgentResult<T> {
             mode_index: ModeIndex::new(0),
             expected_utility: self.expected_utility,
             mode_results: self.mode_results.reset(),
+            shifted_mode: false,
         }
     }
 
@@ -251,24 +261,16 @@ impl<T: TTFNum> AgentResult<T> {
         self.mode_results.is_finished()
     }
 
-    /// Computes the absolute difference between the departure time for the current result and the
-    /// departure time of a previous result.
-    ///
-    /// Returns zero if one of the two result does not have a departure time (i.e., for non-trip
-    /// modes).
-    pub fn departure_time_shift(&self, previous_result: &AgentResult<T>) -> Time<T> {
-        if let (Some(dt), Some(prev_dt)) = (
-            self.mode_results.departure_time(),
-            previous_result.mode_results.departure_time(),
-        ) {
-            (dt - prev_dt).abs()
+    pub fn with_previous_results(&mut self, previous_result: &Self, network: &Network<T>) {
+        if self.mode_index == previous_result.mode_index {
+            self.shifted_mode = false;
+            self.mode_results
+                .with_previous_results(&previous_result.mode_results, network);
         } else {
-            Time::zero()
+            self.shifted_mode = true;
         }
     }
-}
 
-impl<T: TTFNum> AgentResult<T> {
     /// Returns the initial event associated with an [AgentResult] (if any).
     pub fn get_event(&self, agent_id: AgentIndex) -> Option<Box<dyn Event<T>>> {
         self.mode_results.get_event(agent_id, self.mode_index)
@@ -308,6 +310,13 @@ impl<T: TTFNum> AgentResults<T> {
     /// Returns the number of agents who finished their trips.
     pub fn nb_agents_arrived(&self) -> usize {
         self.0.iter().filter(|a| a.is_finished()).count()
+    }
+
+    /// Computes some additional values using the results of the previous iteration (if needed).
+    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+        for (ar, prev_ar) in self.iter_mut().zip(previous_results.iter()) {
+            ar.with_previous_results(prev_ar, network);
+        }
     }
 }
 
@@ -352,6 +361,8 @@ pub struct PreDayAgentResult<T> {
     pub(crate) expected_utility: Utility<T>,
     /// Mode-specific pre-day results.
     pub(crate) mode_results: PreDayModeResults<T>,
+    /// Did the agent shifted to another mode from previous to current iteration?
+    pub(crate) shifted_mode: bool,
 }
 
 impl<T> From<AgentResult<T>> for PreDayAgentResult<T> {
@@ -362,6 +373,7 @@ impl<T> From<AgentResult<T>> for PreDayAgentResult<T> {
             mode_index: value.mode_index,
             expected_utility: value.expected_utility,
             mode_results: value.mode_results.into(),
+            shifted_mode: value.shifted_mode,
         }
     }
 }

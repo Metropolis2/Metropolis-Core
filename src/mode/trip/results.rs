@@ -43,6 +43,8 @@ pub struct RoadLegResults<T> {
     pub global_free_flow_travel_time: Time<T>,
     /// Length of the route taken.
     pub length: Length<T>,
+    /// Length of the route taken that was not taken during the previous iteration.
+    pub length_diff: Option<Length<T>>,
     /// Expected departure time, in the pre-day model.
     pub pre_exp_departure_time: Time<T>,
     /// Expected arrival time at destination (excluding the stopping time), in the pre-day model.
@@ -79,6 +81,7 @@ impl<T: TTFNum> RoadLegResults<T> {
             out_bottleneck_time: Time::zero(),
             pre_exp_departure_time: departure_time,
             pre_exp_arrival_time: arrival_time,
+            length_diff: None,
             exp_arrival_time: Time::nan(),
         }
     }
@@ -96,8 +99,16 @@ impl<T: TTFNum> RoadLegResults<T> {
             out_bottleneck_time: Time::zero(),
             route_free_flow_travel_time: Time::nan(),
             length: Length::nan(),
+            length_diff: None,
             exp_arrival_time: Time::nan(),
         }
+    }
+
+    fn with_previous_results(&mut self, previous_results: &Self, road_network: &RoadNetwork<T>) {
+        self.length_diff = Some(road_network.route_length_diff(
+            self.route.iter().map(|e| e.edge),
+            previous_results.route.iter().map(|e| e.edge),
+        ))
     }
 }
 
@@ -148,6 +159,18 @@ pub enum LegTypeResults<T> {
     Virtual,
 }
 
+impl<T: TTFNum> LegTypeResults<T> {
+    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+        match self {
+            Self::Road(road_leg_results) => road_leg_results.with_previous_results(
+                previous_results.as_road().unwrap(),
+                network.get_road_network().unwrap(),
+            ),
+            Self::Virtual => (),
+        }
+    }
+}
+
 /// Pre-day results that depend on the leg type (see [LegType]).
 #[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
 #[serde(bound(serialize = "T: TTFNum"))]
@@ -184,6 +207,8 @@ pub struct LegResults<T> {
     pub schedule_utility: Utility<T>,
     /// Results specific to the leg's class (road, virtual).
     pub class: LegTypeResults<T>,
+    /// Difference between the departure time of the previous and current iteration.
+    pub departure_time_shift: Option<Time<T>>,
 }
 
 impl<T: TTFNum> LegResults<T> {
@@ -205,6 +230,13 @@ impl<T: TTFNum> LegResults<T> {
             leg.get_utility_decomposition(self.departure_time, travel_time);
         self.travel_utility = travel_utility;
         self.schedule_utility = schedule_utility;
+    }
+
+    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+        debug_assert_eq!(self.id, previous_results.id);
+        self.departure_time_shift = Some(self.departure_time - previous_results.departure_time);
+        self.class
+            .with_previous_results(&previous_results.class, network);
     }
 }
 
@@ -280,6 +312,28 @@ pub struct TripResults<T> {
     pub expected_utility: Utility<T>,
     /// If `true`, the trip is composed only of virtual legs.
     pub virtual_only: bool,
+    /// Difference between the departure time of the previous and current iteration.
+    pub departure_time_shift: Option<Time<T>>,
+}
+
+impl<T: TTFNum> TripResults<T> {
+    pub(crate) fn new(
+        legs: Vec<LegResults<T>>,
+        departure_time: Time<T>,
+        expected_utility: Utility<T>,
+        virtual_only: bool,
+    ) -> Self {
+        Self {
+            legs,
+            departure_time,
+            expected_utility,
+            arrival_time: Time::nan(),
+            total_travel_time: Time::nan(),
+            utility: Utility::nan(),
+            virtual_only,
+            departure_time_shift: None,
+        }
+    }
 }
 
 impl<T: Copy> TripResults<T> {
@@ -330,6 +384,7 @@ impl<T: TTFNum> TripResults<T> {
                         LegTypeResults::Road(road_leg) => LegTypeResults::Road(road_leg.reset()),
                         LegTypeResults::Virtual => LegTypeResults::Virtual,
                     },
+                    departure_time_shift: None,
                 })
                 .collect();
             Self {
@@ -340,6 +395,7 @@ impl<T: TTFNum> TripResults<T> {
                 utility: Utility::nan(),
                 expected_utility: self.expected_utility,
                 virtual_only: false,
+                departure_time_shift: None,
             }
         }
     }
@@ -386,6 +442,13 @@ impl<T: TTFNum> TripResults<T> {
                 mode_id,
                 self.departure_time,
             )))
+        }
+    }
+
+    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+        self.departure_time_shift = Some(self.departure_time - previous_results.departure_time);
+        for (leg_res, prev_leg_res) in self.legs.iter_mut().zip(previous_results.legs.iter()) {
+            leg_res.with_previous_results(prev_leg_res, network);
         }
     }
 }
@@ -510,11 +573,8 @@ pub struct AggregateRoadLegResults<T> {
 
 impl<T: TTFNum> AggregateRoadLegResults<T> {
     /// Returns [AggregateRoadLegResults] from the results of an iteration.
-    fn from_agent_results(
-        results: &TripAgentResults<'_, T>,
-        road_network: Option<&RoadNetwork<T>>,
-    ) -> Option<Self> {
-        /// Return a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
+    fn from_agent_results(results: &TripAgentResults<'_, T>) -> Option<Self> {
+        /// Returns a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
         fn get_distribution<U, V: TTFNum, F>(
             results: &TripAgentResults<'_, U>,
             func: F,
@@ -522,7 +582,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
         where
             F: Fn(&LegResults<U>, &RoadLegResults<U>) -> V,
         {
-            Distribution::from_iterator(results.iter().flat_map(|(_, r, _)| {
+            Distribution::from_iterator(results.iter().flat_map(|(_, r)| {
                 r.legs
                     .iter()
                     .flat_map(|leg_result| match &leg_result.class {
@@ -534,38 +594,27 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             }))
             .unwrap()
         }
-        /// Return a [Distribution] by applying a function over [RoadLegResults] and the previous
-        /// iteration's [RoadLegResults].
-        fn get_distribution_with_prev<
-            U,
-            V: TTFNum,
-            F: Fn(&RoadLegResults<U>, &RoadLegResults<U>) -> V,
-        >(
+        /// Returns a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
+        ///
+        /// Only the values which are not NaN are considered.
+        fn get_distribution_with_filter<U, V: TTFNum, F>(
             results: &TripAgentResults<'_, U>,
             func: F,
-        ) -> Option<Distribution<V>> {
-            if results[0].2.is_none() {
-                None
-            } else {
-                Distribution::from_iterator(results.iter().flat_map(|(_, r, prev_r_opt)| {
-                    let prev_r = prev_r_opt.unwrap();
-                    r.legs
-                        .iter()
-                        .zip(prev_r.legs.iter())
-                        .flat_map(
-                            |(leg_r, prev_leg_r)| match (&leg_r.class, &prev_leg_r.class) {
-                                (
-                                    LegTypeResults::Road(road_leg_r),
-                                    LegTypeResults::Road(prev_road_leg_r),
-                                ) => Some(func(road_leg_r, prev_road_leg_r)),
-                                _ => None,
-                            },
-                        )
-                }))
-            }
+        ) -> Option<Distribution<V>>
+        where
+            F: Fn(&LegResults<U>, &RoadLegResults<U>) -> Option<V>,
+        {
+            Distribution::from_iterator(results.iter().flat_map(|(_, r)| {
+                r.legs
+                    .iter()
+                    .flat_map(|leg_result| match &leg_result.class {
+                        LegTypeResults::Road(road_leg_result) => func(leg_result, road_leg_result),
+                        _ => None,
+                    })
+            }))
         }
         let (count, mode_count_one, mode_count_all) =
-            results.iter().fold((0, 0, 0), |acc, (m, _, _)| {
+            results.iter().fold((0, 0, 0), |acc, (m, _)| {
                 let c = m.nb_road_legs();
                 let one = (c > 0) as usize;
                 let all = (c == m.nb_legs()) as usize;
@@ -578,7 +627,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
         let count_distribution = Distribution::from_iterator(
             results
                 .iter()
-                .map(|(m, _, _)| T::from_usize(m.nb_legs()).unwrap()),
+                .map(|(m, _)| T::from_usize(m.nb_legs()).unwrap()),
         )
         .unwrap();
         let departure_time = get_distribution(results, |lr, _| lr.departure_time);
@@ -626,12 +675,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             (exp_travel_time - lr.travel_time()).abs()
         });
         let exp_travel_time_diff_rmse = compute_exp_travel_time_diff_rmse(results);
-        let length_diff = get_distribution_with_prev(results, |rlr, prev_rlr| {
-            road_network.unwrap().route_length_diff(
-                rlr.route.iter().map(|e| e.edge),
-                prev_rlr.route.iter().map(|e| e.edge),
-            )
-        });
+        let length_diff = get_distribution_with_filter(results, |_, rlr| rlr.length_diff);
         Some(AggregateRoadLegResults {
             count,
             mode_count_one,
@@ -696,7 +740,7 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
         where
             F: Fn(&Leg<U>, &TTF<Time<U>>, &LegResults<U>) -> V,
         {
-            Distribution::from_iterator(results.iter().flat_map(|(m, r, _)| {
+            Distribution::from_iterator(results.iter().flat_map(|(m, r)| {
                 m.legs
                     .iter()
                     .zip(r.legs.iter())
@@ -710,7 +754,7 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
             .unwrap()
         }
         let (count, mode_count_one, mode_count_all) =
-            results.iter().fold((0, 0, 0), |acc, (m, _, _)| {
+            results.iter().fold((0, 0, 0), |acc, (m, _)| {
                 let c = m.nb_virtual_legs();
                 let one = (c > 0) as usize;
                 let all = (c == m.nb_legs()) as usize;
@@ -723,7 +767,7 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
         let count_distribution = Distribution::from_iterator(
             results
                 .iter()
-                .map(|(m, _, _)| T::from_usize(m.nb_legs()).unwrap()),
+                .map(|(m, _)| T::from_usize(m.nb_legs()).unwrap()),
         )
         .unwrap();
         let departure_time = get_distribution(results, |_, _, lr| lr.departure_time);
@@ -749,39 +793,32 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
     }
 }
 
-/// Shorthand for a Vec to store tuples with, for each agent, the [TravelingMode], the
-/// [TripResults] and (optionally) the [TripResults] from previous iteration.
-pub type TripAgentResults<'a, T> = Vec<(
-    &'a TravelingMode<T>,
-    &'a TripResults<T>,
-    Option<&'a TripResults<T>>,
-)>;
+/// Shorthand for a Vec to store tuples with, for each agent, the [TravelingMode] and the
+/// [TripResults].
+pub type TripAgentResults<'a, T> = Vec<(&'a TravelingMode<T>, &'a TripResults<T>)>;
 
 impl<T: TTFNum> AggregateTripResults<T> {
     /// Returns [AggregateTripResults] from the results of an iteration.
-    pub fn from_agent_results(results: TripAgentResults<'_, T>, network: &Network<T>) -> Self {
-        /// Return a [Distribution] by applying a function over [TravelingMode] and [TripResults].
+    pub fn from_agent_results(results: TripAgentResults<'_, T>) -> Self {
+        /// Returns a [Distribution] by applying a function over [TravelingMode] and [TripResults].
         fn get_distribution<U, V: TTFNum, F: Fn(&TravelingMode<U>, &TripResults<U>) -> V>(
             results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Distribution<V> {
-            Distribution::from_iterator(results.iter().map(|(m, r, _)| func(m, r))).unwrap()
+            Distribution::from_iterator(results.iter().map(|(m, r)| func(m, r))).unwrap()
         }
-        /// Return a [Distribution] by applying a function over [TravelingMode], [TripResults] and
-        /// the previous iteration's [TripResults].
-        fn get_distribution_with_prev<
+        /// Returns a [Distribution] by applying a function over [TravelingMode] and [TripResults].
+        ///
+        /// Only the values which are not NaN are considered.
+        fn get_distribution_with_filter<
             U,
             V: TTFNum,
-            F: Fn(&TravelingMode<U>, &TripResults<U>, &TripResults<U>) -> V,
+            F: Fn(&TravelingMode<U>, &TripResults<U>) -> Option<V>,
         >(
             results: &TripAgentResults<'_, U>,
             func: F,
         ) -> Option<Distribution<V>> {
-            Distribution::from_iterator(
-                results
-                    .iter()
-                    .flat_map(|(m, r, prev_r_opt)| prev_r_opt.map(|prev_r| func(m, r, prev_r))),
-            )
+            Distribution::from_iterator(results.iter().filter_map(|(m, r)| func(m, r)))
         }
         assert!(
             !results.is_empty(),
@@ -792,8 +829,8 @@ impl<T: TTFNum> AggregateTripResults<T> {
         let travel_time = get_distribution(&results, |_, r| r.total_travel_time);
         let utility = get_distribution(&results, |_, r| r.utility);
         let expected_utility = get_distribution(&results, |_, r| r.expected_utility);
-        let dep_time_shift = get_distribution_with_prev(&results, |_, r, prev_r| {
-            (r.departure_time - prev_r.departure_time).abs()
+        let dep_time_shift = get_distribution_with_filter(&results, |_, r| {
+            r.departure_time_shift.map(|dts| dts.abs())
         });
         let dep_time_rmse = compute_dep_time_rmse(&results);
         AggregateTripResults {
@@ -805,10 +842,7 @@ impl<T: TTFNum> AggregateTripResults<T> {
             expected_utility,
             dep_time_shift,
             dep_time_rmse,
-            road_leg: AggregateRoadLegResults::from_agent_results(
-                &results,
-                network.get_road_network(),
-            ),
+            road_leg: AggregateRoadLegResults::from_agent_results(&results),
             virtual_leg: AggregateVirtualLegResults::from_agent_results(&results),
         }
     }
@@ -822,9 +856,7 @@ impl<T: TTFNum> AggregateTripResults<T> {
 fn compute_dep_time_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Option<Time<T>> {
     let (sum_squared_dist, n) = results
         .iter()
-        .filter_map(|(_, res, prev_res_opt)| {
-            prev_res_opt.map(|prev_res| (res.departure_time - prev_res.departure_time).powi(2))
-        })
+        .filter_map(|(_, res)| res.departure_time_shift.map(|dts| dts.powi(2)))
         .fold((Time::zero(), 0), |(sum, n), squared_dist| {
             (sum + squared_dist, n + 1)
         });
@@ -841,7 +873,7 @@ fn compute_dep_time_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Option
 fn compute_exp_travel_time_diff_rmse<T: TTFNum>(results: &TripAgentResults<'_, T>) -> Time<T> {
     let sum_squared_dist = results
         .iter()
-        .flat_map(|(_, res, _)| {
+        .flat_map(|(_, res)| {
             res.legs.iter().flat_map(|lr| match &lr.class {
                 LegTypeResults::Road(rlr) => {
                     let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;

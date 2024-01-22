@@ -18,6 +18,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
   iteration results.
 - [OUTPUT] Add the simulated and expected road-network weights RMSE (root mean squared difference)
   in the iteration results.
+- [OUTPUT] Add the length of the route that is new compared to the previous iteration in the
+  leg-level results.
+- [OUTPUT] Add the departure time shift compared to the previous iteration in the trip-level and
+  leg-level results.
+- [OUTPUT] Add a boolean indicator indicating if an agent shifted mode compared to the previous
+  iteration.
 
 ### Changed
 
@@ -29,6 +35,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] For speed-density functions, the travel time of a vehicle on an edge is based on the
   density before the vehicle enters the edge (i.e., not the density including the vehicle's own
   length as it was done previously).
+- [USER] The departure-time stop criterion only considers the agents who did not switch to another
+  mode (breaking change: the default value to use in case of mode switch is no longer required).
 - [DEV] Run schemas generation with dev profile to reduce compile time.
 - [DEV] Lints are configured directly in `Cargo.toml`, using Rust 1.74.0.
 - [DEV] Road-network weights only store the weights of the edges which are accessible by the

@@ -4,7 +4,7 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to stopping criteria.
-use num_traits::{FromPrimitive, Zero};
+use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -22,25 +22,17 @@ pub enum StopCriterion<T> {
     /// Stop when the mean departure-time shift from one iteration to another is below a threshold
     /// value.
     ///
-    /// The first value represents the threshold value.
-    /// The second value represents the backup value to use when an agent switch from a mode to
-    /// another mode.
-    DepartureTime(Time<T>, Time<T>),
+    /// The mean departure-time shift is computed over agents who did not shift to another mode
+    /// from the previous to the current iteration and whose chosen mode has a departure time.
+    DepartureTime(Time<T>),
 }
 
 impl<T: TTFNum> StopCriterion<T> {
     /// Returns `true` if the simulation must be stopped according to the current `StopCriterion`.
-    pub fn stop(
-        &self,
-        iteration_counter: u32,
-        results: &AgentResults<T>,
-        prev_results: Option<&AgentResults<T>>,
-    ) -> bool {
+    pub fn stop(&self, iteration_counter: u32, results: &AgentResults<T>) -> bool {
         match *self {
             Self::MaxIteration(max_iter) => max_iter <= iteration_counter,
-            Self::DepartureTime(threshold, default) => prev_results.map_or(false, |prev_results| {
-                get_mean_departure_time_shift(results, prev_results, default) <= threshold
-            }),
+            Self::DepartureTime(threshold) => get_mean_departure_time_shift(results) <= threshold,
         }
     }
 }
@@ -48,24 +40,20 @@ impl<T: TTFNum> StopCriterion<T> {
 /// Return the mean departure time shift between two iterations.
 ///
 /// The `default` value is used when an agent switched to another mode.
-fn get_mean_departure_time_shift<T: TTFNum>(
-    results: &AgentResults<T>,
-    prev_results: &AgentResults<T>,
-    default: Time<T>,
-) -> Time<T> {
-    results
+fn get_mean_departure_time_shift<T: TTFNum>(results: &AgentResults<T>) -> Time<T> {
+    let (total, count) = results
         .iter()
-        .zip(prev_results.iter())
-        .map(|(res, prev_res)| {
-            if res.mode_index == prev_res.mode_index {
-                res.departure_time_shift(prev_res)
-            } else {
-                // The agent has switched to another mode.
-                default
-            }
+        .filter_map(|res| {
+            res.mode_results
+                .as_trip()
+                .and_then(|r| r.departure_time_shift.map(|dts| dts.abs()))
         })
-        .fold(Time::zero(), |acc, x| acc + x)
-        / Time::from_usize(results.len()).unwrap()
+        .fold((T::zero(), 0), |acc, x| (acc.0 + x.0, acc.1 + 1));
+    if count == 0 {
+        Time::zero()
+    } else {
+        Time(total / T::from_usize(count).unwrap())
+    }
 }
 
 #[cfg(test)]
@@ -82,98 +70,42 @@ mod tests {
     #[test]
     fn max_iteration_test() {
         let c: StopCriterion<f64> = StopCriterion::MaxIteration(10);
-        assert!(!c.stop(5, &Default::default(), None));
-        assert!(c.stop(10, &Default::default(), None));
-        assert!(c.stop(15, &Default::default(), None));
+        assert!(!c.stop(5, &Default::default()));
+        assert!(c.stop(10, &Default::default()));
+        assert!(c.stop(15, &Default::default()));
     }
 
     #[test]
     fn departure_time_shift_test() {
-        let c = StopCriterion::DepartureTime(Time(2.0f64), Time(100.0));
-        assert!(!c.stop(0, &Default::default(), None));
+        let c = StopCriterion::DepartureTime(Time(2.0f64));
 
         // === Departure times ===
         // Iteration 1: [0., 0.].
         // Iteration 2: [0., 2.].
-        let mut prev_agent_results = AgentResults::with_capacity(2);
-        let mode_results = ModeResults::Trip(TripResults {
-            legs: vec![],
-            departure_time: Time(0.),
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility: Utility::nan(),
-            virtual_only: false,
-        });
-        let r = AgentResult::new(1, 1, mode_index(0), Utility::nan(), mode_results);
-        prev_agent_results.push(r);
-        let mode_results = ModeResults::Trip(TripResults {
-            legs: vec![],
-            departure_time: Time(0.),
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility: Utility::nan(),
-            virtual_only: false,
-        });
-        let r = AgentResult::new(2, 1, mode_index(0), Utility::nan(), mode_results);
-        prev_agent_results.push(r);
-
         let mut agent_results = AgentResults::with_capacity(2);
-        let mode_results = ModeResults::Trip(TripResults {
-            legs: vec![],
-            departure_time: Time(0.),
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility: Utility::nan(),
-            virtual_only: false,
-        });
+        let mut trip_results = TripResults::new(vec![], Time(0.), Utility::nan(), false);
+        trip_results.departure_time_shift = Some(Time(0.));
+        let mode_results = ModeResults::Trip(trip_results);
         let r = AgentResult::new(1, 1, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
-        let mode_results = ModeResults::Trip(TripResults {
-            legs: vec![],
-            departure_time: Time(2.),
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility: Utility::nan(),
-            virtual_only: false,
-        });
+        let mut trip_results = TripResults::new(vec![], Time(2.), Utility::nan(), false);
+        trip_results.departure_time_shift = Some(Time(-2.));
+        let mode_results = ModeResults::Trip(trip_results);
         let r = AgentResult::new(2, 1, mode_index(0), Utility::nan(), mode_results);
         agent_results.push(r);
 
-        assert_eq!(
-            get_mean_departure_time_shift(&prev_agent_results, &agent_results, Time(100.)),
-            Time(1.)
-        );
-        assert_eq!(
-            get_mean_departure_time_shift(&agent_results, &prev_agent_results, Time(100.)),
-            Time(1.)
-        );
-        assert!(c.stop(0, &agent_results, Some(&prev_agent_results)));
+        assert_eq!(get_mean_departure_time_shift(&agent_results), Time(1.));
+        assert!(c.stop(0, &agent_results));
 
         // Now the second agent switched to another mode (index 1).
-        let mode_results = ModeResults::Trip(TripResults {
-            legs: vec![],
-            departure_time: Time(0.),
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
-            expected_utility: Utility::nan(),
-            virtual_only: false,
-        });
-        let r = AgentResult::new(2, 2, mode_index(1), Utility::nan(), mode_results);
-        agent_results[agent_index(1)] = r;
+        agent_results[agent_index(1)].shifted_mode = true;
+        agent_results[agent_index(1)]
+            .mode_results
+            .as_trip_mut()
+            .unwrap()
+            .departure_time_shift = None;
 
-        assert_eq!(
-            get_mean_departure_time_shift(&prev_agent_results, &agent_results, Time(100.)),
-            Time(50.)
-        );
-        assert_eq!(
-            get_mean_departure_time_shift(&agent_results, &prev_agent_results, Time(100.)),
-            Time(50.)
-        );
-        assert!(!c.stop(0, &agent_results, Some(&prev_agent_results)));
+        assert_eq!(get_mean_departure_time_shift(&agent_results), Time(0.));
+        assert!(c.stop(0, &agent_results));
     }
 }

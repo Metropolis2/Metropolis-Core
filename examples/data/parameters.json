@@ -28,7 +28,7 @@
     },
     {
       "type": "DepartureTime",
-      "value": [0.01, 100.0]
+      "value": 0.01
     }
   ],
   "update_ratio": 1.0,
