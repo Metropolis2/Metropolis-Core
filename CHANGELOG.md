@@ -45,6 +45,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [OUTPUT] Fix a crash when running `metropolis` with an output directory that does not exist.
+- [OUTPUT] Fix number of decimals for road-network weights RMSE in the report HTML file.
 - [DEV] Fix nodes being duplicated when a graph is deserialized.
 
 ## [0.7.0] - 2023-11-16

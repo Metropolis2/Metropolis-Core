@@ -194,13 +194,13 @@
 						{% endmatch %}
 						{% match it.sim_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}
 						{% match it.exp_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}
