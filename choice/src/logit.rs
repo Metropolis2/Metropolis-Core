@@ -244,7 +244,7 @@ impl<T: TTFNum> LogitModel<T> {
                 })
                 .enumerate()
                 .find(|(_, cum_prob)| *cum_prob > threshold)
-                .unwrap();
+                .unwrap_or_else(|| (cum_probs_parts.len() - 1, T::one()));
             let x0 = func.x_at_index(k);
             let x1 = func.x_at_index(k + 1);
             let y0 = func.y_at_index(k);
