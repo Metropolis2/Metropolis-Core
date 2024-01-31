@@ -26,6 +26,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   leg-level results.
 - [OUTPUT] Add a boolean indicator indicating if an agent shifted mode compared to the previous
   iteration.
+- [USER] Add a warning when deserializing a road network with parallel edges.
 
 ### Changed
 

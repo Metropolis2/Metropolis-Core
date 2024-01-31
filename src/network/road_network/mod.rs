@@ -14,7 +14,7 @@ use std::ops::{Deref, Index};
 
 use anyhow::Result;
 use hashbrown::{HashMap, HashSet};
-use log::debug;
+use log::{debug, warn};
 use num_traits::{Float, One, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
@@ -316,6 +316,15 @@ impl<T> RoadGraph<T> {
 
     /// Creates a new RoadGraph from a Vec of edges.
     pub fn from_edges(edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>) -> Self {
+        // Check if there is any parallel edges.
+        let node_pairs: HashSet<(OriginalNodeIndex, OriginalNodeIndex)> =
+            edges.iter().map(|(s, t, _)| (*s, *t)).collect();
+        if node_pairs.len() < edges.len() {
+            warn!(
+                "Found {} parallel edges (they are not supported)",
+                edges.len() - node_pairs.len()
+            );
+        }
         // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
         // OriginalNodeIndex -> NodeIndex to re-index the nodes.
         let nodes: HashSet<OriginalNodeIndex> = edges
