@@ -106,6 +106,7 @@ fn get_simulation() -> Simulation<f64> {
                 max_pending_duration: Time(f64::INFINITY),
                 spillback: true,
                 backward_wave_speed: None,
+                constrain_inflow: true,
                 algorithm_type: Default::default(),
             }),
         },

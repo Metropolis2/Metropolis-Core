@@ -7,6 +7,7 @@
       "spillback": true,
       "backward_wave_speed": 4.0,
       "max_pending_duration": 20.0,
+      "constrain_inflow": true,
       "algorithm_type": "Best",
       "contraction": {
         "complexity_quotient_weight": 2.0,

@@ -188,6 +188,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
                 spillback: true,
                 backward_wave_speed: Some(Speed(4.0)),
                 max_pending_duration: Time(30.0),
+                constrain_inflow: true,
                 algorithm_type: Default::default(),
                 contraction: Default::default(),
             }),

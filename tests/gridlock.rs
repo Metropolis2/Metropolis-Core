@@ -134,6 +134,7 @@ fn get_simulation() -> Simulation<f64> {
                 spillback: true,
                 backward_wave_speed: None,
                 max_pending_duration: Time(10.0),
+                constrain_inflow: true,
                 algorithm_type: Default::default(),
             }),
         },

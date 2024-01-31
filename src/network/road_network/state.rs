@@ -145,16 +145,18 @@ impl<T: TTFNum> EdgeEntryState<T> {
         period: Interval<T>,
         interval: Time<T>,
         spillback_enabled: bool,
+        inflow_enabled: bool,
     ) -> Option<Self> {
-        let (effective_flow, available_length) =
-            match (edge.get_effective_flow(), spillback_enabled) {
-                (flow, true) if flow.is_finite() => (Some(flow), Some(edge.total_length())),
-                (flow, false) if flow.is_finite() => (Some(flow), None),
-                (_, true) => (None, Some(edge.total_length())),
-                (_, false) => {
-                    return None;
-                }
-            };
+        let available_length = if spillback_enabled {
+            Some(edge.total_length())
+        } else {
+            None
+        };
+        let effective_flow = if inflow_enabled && edge.get_effective_flow().is_finite() {
+            Some(edge.get_effective_flow())
+        } else {
+            None
+        };
         Some(Self {
             available_length,
             effective_flow,
@@ -526,12 +528,14 @@ impl<T: TTFNum> RoadEdgeState<T> {
         recording_period: Interval<T>,
         recording_interval: Time<T>,
         spillback_enabled: bool,
+        inflow_enabled: bool,
     ) -> Self {
         let entry = EdgeEntryState::new(
             reference,
             recording_period,
             recording_interval,
             spillback_enabled,
+            inflow_enabled,
         );
         let exit = EdgeExitState::new(reference, recording_period, recording_interval);
         RoadEdgeState {
@@ -726,6 +730,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     recording_period,
                     parameters.recording_interval,
                     parameters.spillback,
+                    parameters.constrain_inflow,
                 )
             },
         );

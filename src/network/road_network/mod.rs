@@ -718,6 +718,11 @@ pub struct RoadNetworkParameters<T> {
     pub backward_wave_speed: Option<Speed<T>>,
     /// Maximum amount of time a vehicle can be pending to enter the next edge.
     pub max_pending_duration: Time<T>,
+    /// If `true` (default), the inflow of vehicles entering an edge is limiting by the edge's flow
+    /// capacity.
+    /// If `false`, only the edge's outflow is limited by its capacity.
+    #[serde(default = "default_is_true")]
+    pub constrain_inflow: bool,
     /// Algorithm type to use when computing the origin-destination travel-time functions.
     /// Possible values are: "Best" (default), "Intersect" and "TCH".
     ///
@@ -883,6 +888,7 @@ mod tests {
             spillback: false,
             backward_wave_speed: None,
             max_pending_duration: Time::zero(),
+            constrain_inflow: true,
             algorithm_type: AlgorithmType::Intersect,
         };
         let skims = network
