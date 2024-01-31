@@ -5,6 +5,7 @@
       "recording_interval": 50.0,
       "approximation_bound": 1.0,
       "spillback": true,
+      "backward_wave_speed": 4.0,
       "max_pending_duration": 20.0,
       "algorithm_type": "Best",
       "contraction": {

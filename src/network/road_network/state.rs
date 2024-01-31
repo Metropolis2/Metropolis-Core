@@ -21,7 +21,7 @@ use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessi
 use crate::agent::AgentIndex;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
-use crate::units::{Flow, Interval, Length, NoUnit, Time, PCE};
+use crate::units::{Flow, Interval, Length, NoUnit, Speed, Time, PCE};
 
 const MAX_WARNINGS: usize = 20;
 
@@ -54,8 +54,8 @@ impl<T: TTFNum> RoadSegment<T> {
     }
 
     /// Records the exit of a vehicle from the segment.
-    fn exits(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) {
-        let new_length = self.occupied_length - vehicle.get_headway();
+    fn exits(&mut self, vehicle_headway: Length<T>, current_time: Time<T>) {
+        let new_length = self.occupied_length - vehicle_headway;
         self.set_length(new_length, current_time);
     }
 
@@ -256,13 +256,13 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// Returns the closing time of the bottleneck.
     fn vehicle_enters(&mut self, vehicle: &Vehicle<T>, is_phantom: bool) -> Time<T> {
         debug_assert_ne!(self.status, EdgeEntryStatus::Open);
-        let vehicle_length = if is_phantom {
+        let vehicle_headway = if is_phantom {
             // The vehicle has been phantomed, the available length is not reduced.
             Length::zero()
         } else {
             vehicle.get_headway()
         };
-        self.reduce_available_length(vehicle_length);
+        self.reduce_available_length(vehicle_headway);
         self.status = EdgeEntryStatus::Closed;
         self.get_closing_time(vehicle)
     }
@@ -323,9 +323,9 @@ impl<T: TTFNum> EdgeEntryState<T> {
     fn vehicle_exits(
         &mut self,
         current_time: Time<T>,
-        vehicle: &Vehicle<T>,
+        vehicle_headway: Length<T>,
     ) -> Option<VehicleEvent<T>> {
-        self.increase_available_length(vehicle.get_headway());
+        self.increase_available_length(vehicle_headway);
         if self.status == EdgeEntryStatus::Full && !self.is_full() {
             // The edge was full but it is not anymore.
             // Release the pending vehicle.
@@ -515,6 +515,8 @@ struct RoadEdgeState<T> {
     /// [EdgeExitState] representing the state of the edge exit.
     /// Or `None` if the edge has infinite flow and spillback is disabled.
     exit: Option<EdgeExitState<T>>,
+    /// Length of the RoadEdge (cached for optimization).
+    length: Length<T>,
 }
 
 impl<T: TTFNum> RoadEdgeState<T> {
@@ -536,6 +538,7 @@ impl<T: TTFNum> RoadEdgeState<T> {
             road: RoadSegment::new(recording_period, recording_interval),
             entry,
             exit: Some(exit),
+            length: reference.length(),
         }
     }
 
@@ -631,19 +634,23 @@ impl<T: TTFNum> RoadEdgeState<T> {
             .and_then(|exit| exit.open_bottleneck(current_time))
     }
 
-    /// A vehicle can successfully exit the edge.
+    /// A vehicle can successfully exit the edge's exit bottleneck.
     ///
-    /// Two values are returned:
-    ///
-    /// - The [VehicleEvent] of a vehicle pending to enter the edge, which is now released.
-    ///   Or `None` if there is no vehicle pending or if the edge is still full.
-    /// - The closing time of the exit bottleneck of the edge (if it gets closed).
-    fn vehicle_exits(
+    /// Returns the closing time of the exit bottleneck of the edge (if it gets closed).
+    fn vehicle_exits_bottleneck(&mut self, vehicle: &Vehicle<T>) -> Option<Time<T>> {
+        self.exit
+            .as_mut()
+            .and_then(|exit| exit.vehicle_exits(vehicle))
+    }
+
+    /// A vehicle has been fully released from the edge, i.e., the hole it generated when leaving
+    /// has reached the beginning of the edge.
+    fn vehicle_is_released(
         &mut self,
         current_time: Time<T>,
-        vehicle: &Vehicle<T>,
+        vehicle_headway: Length<T>,
         was_phantom: bool,
-    ) -> (Option<VehicleEvent<T>>, Option<Time<T>>) {
+    ) -> Option<VehicleEvent<T>> {
         let released_vehicle_event = if was_phantom {
             // The vehicle was a phantom so we do not increase the available length on the edge.
             None
@@ -651,16 +658,11 @@ impl<T: TTFNum> RoadEdgeState<T> {
             // Try to release a vehicle at the entry of the edge.
             self.entry
                 .as_mut()
-                .and_then(|entry| entry.vehicle_exits(current_time, vehicle))
+                .and_then(|entry| entry.vehicle_exits(current_time, vehicle_headway))
         };
         // Remove the vehicle from the road segment.
-        self.road.exits(vehicle, current_time);
-        // Close the exit bottleneck.
-        let closing_time_opt = self
-            .exit
-            .as_mut()
-            .and_then(|exit| exit.vehicle_exits(vehicle));
-        (released_vehicle_event, closing_time_opt)
+        self.road.exits(vehicle_headway, current_time);
+        released_vehicle_event
     }
 
     /// Records the entry of a new vehicle on the edge and returns the travel time of this vehicle
@@ -701,6 +703,10 @@ pub struct RoadNetworkState<T> {
     pending_edges: HashMap<AgentIndex, EdgeIndex>,
     /// Maximum amout of time a vehicle is allowed to be pending.
     max_pending_duration: Time<T>,
+    /// Speed at which the holes liberated by a vehicle leaving an edge is traveling backward.
+    ///
+    /// `None` if the holes propagate backward instantaneously.
+    backward_wave_speed: Option<Speed<T>>,
     /// Record the number of warnings sent to the user.
     warnings: usize,
 }
@@ -710,21 +716,25 @@ impl<T: TTFNum> RoadNetworkState<T> {
     pub fn from_network(
         network: &RoadNetwork<T>,
         recording_period: Interval<T>,
-        recording_interval: Time<T>,
-        spillback_enabled: bool,
-        max_pending_duration: Time<T>,
+        parameters: &RoadNetworkParameters<T>,
     ) -> Self {
         let graph = network.get_graph().map(
             |_node_id, _n| RoadNodeState {},
             |_edge_id, e| {
-                RoadEdgeState::new(e, recording_period, recording_interval, spillback_enabled)
+                RoadEdgeState::new(
+                    e,
+                    recording_period,
+                    parameters.recording_interval,
+                    parameters.spillback,
+                )
             },
         );
         RoadNetworkState {
             graph,
             pending_edges: HashMap::new(),
-            max_pending_duration,
+            max_pending_duration: parameters.max_pending_duration,
             warnings: 0,
+            backward_wave_speed: parameters.backward_wave_speed,
         }
     }
 
@@ -942,8 +952,9 @@ impl<T: TTFNum> RoadNetworkState<T> {
         event_queue: &'event mut EventQueue<T>,
     ) -> Result<()> {
         let edge = &mut self.graph[edge_index];
-        // Removes the vehicle from its previous edge and release any pending vehicle.
-        let (event_opt, closing_time_opt) = edge.vehicle_exits(current_time, vehicle, was_phantom);
+        let edge_length = edge.length;
+        // Make the vehicle cross its previous edge's exit bottleneck.
+        let closing_time_opt = edge.vehicle_exits_bottleneck(vehicle);
         if let Some(closing_time) = closing_time_opt {
             if closing_time.is_zero() {
                 // The edge's exit bottleneck can be open immediately.
@@ -965,9 +976,23 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 }));
             }
         }
-        if let Some(event) = event_opt {
-            // Execute the event of the release vehicle.
-            event.execute(event_input, self, event_alloc, event_queue)?;
+        let mut release_event = Box::new(ReleaseVehicleEvent {
+            at_time: current_time,
+            edge_index,
+            vehicle_headway: vehicle.get_headway(),
+            was_phantom,
+        });
+        if let Some(speed) = self.backward_wave_speed {
+            // Time delay after which the length liberated by the vehicle can be released from the
+            // previous edge.
+            let release_delay = edge_length / speed;
+            debug_assert!(release_delay > Time::zero());
+            release_event.at_time += release_delay;
+            // Push an event to release the vehicle later.
+            event_queue.push(release_event);
+        } else {
+            // The release event can be executed immediately.
+            release_event.execute(event_input, self, event_alloc, event_queue)?;
         }
         Ok(())
     }
@@ -1016,6 +1041,44 @@ impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
             road_network_state.warnings += 1;
         }
         event.execute(input, road_network_state, alloc, events)
+    }
+    fn get_time(&self) -> Time<T> {
+        self.at_time
+    }
+}
+
+/// Event representing a vehicle being fully released from an edge (after the backward wave
+/// propagation elapsed).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReleaseVehicleEvent<T> {
+    /// Time at which the vehicle is released.
+    at_time: Time<T>,
+    /// Id of the edge where the vehicle was located.
+    edge_index: EdgeIndex,
+    /// Length of the vehicle being released.
+    vehicle_headway: Length<T>,
+    /// `true` if the vehicle was a phantom, i.e., it did not take space on the edge for spillback
+    /// (but it did for road-segment density).
+    was_phantom: bool,
+}
+
+impl<T: TTFNum> Event<T> for ReleaseVehicleEvent<T> {
+    fn execute<'sim: 'event, 'event>(
+        self: Box<Self>,
+        input: &'event mut EventInput<'sim, T>,
+        road_network_state: &'event mut RoadNetworkState<T>,
+        alloc: &'event mut EventAlloc<T>,
+        events: &'event mut EventQueue<T>,
+    ) -> Result<bool> {
+        let edge_state = &mut road_network_state.graph[self.edge_index];
+        // Removes the vehicle from its previous edge and release any pending vehicle.
+        let event_opt =
+            edge_state.vehicle_is_released(self.at_time, self.vehicle_headway, self.was_phantom);
+        if let Some(event) = event_opt {
+            // Execute the event of the release vehicle.
+            event.execute(input, road_network_state, alloc, events)?;
+        }
+        Ok(false)
     }
     fn get_time(&self) -> Time<T> {
         self.at_time
@@ -1073,7 +1136,7 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                     edge_state.open_exit_bottleneck(self.at_time)
                 {
                     debug_assert_eq!(self.at_time, event.get_time());
-                    event.execute(input, road_network_state, alloc, events)?;
+                    let is_arrived = event.execute(input, road_network_state, alloc, events)?;
                     if let Some(closing_time) = closing_time_opt {
                         let bottleneck_event = Box::new(BottleneckEvent {
                             at_time: self.at_time + closing_time,
@@ -1082,11 +1145,17 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                         });
                         if closing_time.is_zero() {
                             // Execute immediately the bottleneck opening.
-                            bottleneck_event.execute(input, road_network_state, alloc, events)?;
+                            return Ok(bottleneck_event.execute(
+                                input,
+                                road_network_state,
+                                alloc,
+                                events,
+                            )? || is_arrived);
                         } else {
                             debug_assert!(closing_time.is_sign_positive());
                             // Push the bottleneck event to the queue.
                             events.push(bottleneck_event);
+                            return Ok(is_arrived);
                         }
                     }
                 }

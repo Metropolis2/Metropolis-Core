@@ -12,7 +12,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] Add the `ExponentialUnadjusted` learning model (exponential model with no adjustment for
   the first iteration).
-- [INPUT] Add option to force the route to be taken for road legs (parameter `route`).
+- [INPUT] Add option to force the route to be taken for road legs (parameter `route` of a road leg).
+- [INPUT] Add option to set the speed at which the holes / free space left by vehicles leaving a
+  road propagate backward (road-network parameter `backward_wave_speed`, default is infinite speed).
 - [OUTPUT] Add the root mean squared difference of departure time in the iteration results.
 - [OUTPUT] Add the root mean squared difference between simulated and expected travel time in the
   iteration results.

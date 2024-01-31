@@ -132,6 +132,7 @@ fn get_simulation() -> Simulation<f64> {
                 recording_interval: Time(1.0),
                 approximation_bound: Time(0.0),
                 spillback: true,
+                backward_wave_speed: None,
                 max_pending_duration: Time(10.0),
                 algorithm_type: Default::default(),
             }),

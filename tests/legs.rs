@@ -161,6 +161,7 @@ fn get_simulation() -> Simulation<f64> {
                 approximation_bound: Time(0.0),
                 max_pending_duration: Time(f64::INFINITY),
                 spillback: false,
+                backward_wave_speed: None,
                 algorithm_type: Default::default(),
             }),
         },

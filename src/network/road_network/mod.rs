@@ -459,13 +459,7 @@ impl<T: TTFNum> RoadNetwork<T> {
             .road_network
             .as_ref()
             .expect("Cannot create RoadNetworkState with no RoadNetworkParameters");
-        RoadNetworkState::from_network(
-            self,
-            parameters.period,
-            road_network_parameters.recording_interval,
-            road_network_parameters.spillback,
-            road_network_parameters.max_pending_duration,
-        )
+        RoadNetworkState::from_network(self, parameters.period, road_network_parameters)
     }
 
     /// Returns the [RoadNetworkPreprocessingData] for the given set of [agents](Agent), the given
@@ -709,12 +703,16 @@ pub struct RoadNetworkParameters<T> {
     /// total length of the edges.
     #[serde(default = "default_is_true")]
     pub spillback: bool,
+    /// Speed at which the holes created by a vehicle leaving an edge are propagating backward.
+    ///
+    /// By default, the holes propagate instantaneously.
+    pub backward_wave_speed: Option<Speed<T>>,
     /// Maximum amount of time a vehicle can be pending to enter the next edge.
     pub max_pending_duration: Time<T>,
     /// Algorithm type to use when computing the origin-destination travel-time functions.
     /// Possible values are: "Best" (default), "Intersect" and "TCH".
     ///
-    /// Intersect is recommanded when the number of unique origins and destinations represent a
+    /// Intersect is recommended when the number of unique origins and destinations represent a
     /// relatively small part of the total number of nodes in the graph.
     #[serde(default)]
     pub algorithm_type: AlgorithmType,
@@ -874,6 +872,7 @@ mod tests {
             recording_interval: Time(1.0),
             approximation_bound: Time(0.0),
             spillback: false,
+            backward_wave_speed: None,
             max_pending_duration: Time::zero(),
             algorithm_type: AlgorithmType::Intersect,
         };
