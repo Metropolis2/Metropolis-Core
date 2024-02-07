@@ -423,7 +423,6 @@ impl PreDayAgentResultsBuilder {
             Field::new("shifted_mode", DataType::Float64, false),
             Field::new("departure_time", DataType::Float64, true),
             Field::new("mode_expected_utility", DataType::Float64, true),
-            Field::new("departure_time_shift", DataType::Float64, true),
             Field::new("nb_road_legs", DataType::UInt64, true),
             Field::new("nb_virtual_legs", DataType::UInt64, true),
         ]);
