@@ -324,7 +324,6 @@ struct PreDayAgentResultsBuilder {
     leg_route_free_flow_travel_time: Float64Builder,
     leg_global_free_flow_travel_time: Float64Builder,
     leg_length: Float64Builder,
-    leg_length_diff: Float64Builder,
     leg_pre_exp_departure_time: Float64Builder,
     leg_pre_exp_arrival_time: Float64Builder,
     leg_nb_edges: UInt64Builder,
@@ -398,7 +397,6 @@ impl PreDayAgentResultsBuilder {
                     self.leg_route_free_flow_travel_time.append_null();
                     self.leg_global_free_flow_travel_time.append_null();
                     self.leg_length.append_null();
-                    self.leg_length_diff.append_null();
                     self.leg_pre_exp_departure_time.append_null();
                     self.leg_pre_exp_arrival_time.append_null();
                     self.leg_nb_edges.append_null();
@@ -420,7 +418,7 @@ impl PreDayAgentResultsBuilder {
             Field::new("mode_id", DataType::UInt64, false),
             Field::new("mode_index", DataType::UInt64, false),
             Field::new("expected_utility", DataType::Float64, false),
-            Field::new("shifted_mode", DataType::Float64, false),
+            Field::new("shifted_mode", DataType::Boolean, false),
             Field::new("departure_time", DataType::Float64, true),
             Field::new("mode_expected_utility", DataType::Float64, true),
             Field::new("nb_road_legs", DataType::UInt64, true),
@@ -460,7 +458,6 @@ impl PreDayAgentResultsBuilder {
                 Arc::new(self.leg_route_free_flow_travel_time.finish()),
                 Arc::new(self.leg_global_free_flow_travel_time.finish()),
                 Arc::new(self.leg_length.finish()),
-                Arc::new(self.leg_length_diff.finish()),
                 Arc::new(self.leg_pre_exp_departure_time.finish()),
                 Arc::new(self.leg_pre_exp_arrival_time.finish()),
                 Arc::new(self.leg_nb_edges.finish()),
