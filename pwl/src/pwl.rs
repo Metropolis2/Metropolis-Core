@@ -337,6 +337,7 @@ where
     /// Creates a new PwlXYF from a Vec of `y` values.
     pub fn from_values(y: Vec<Y>, start_x: X, interval_x: X) -> Self {
         assert!(!y.is_empty(), "Cannot create a `PwlXYF` from empty values");
+        debug_assert!(y.iter().all(|v| !v.is_nan()));
         let (&min, &max) = y.iter().minmax().into_option().unwrap();
         PwlXYF {
             points: y,
