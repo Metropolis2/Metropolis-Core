@@ -11,7 +11,7 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashMap;
 use log::warn;
-use num_traits::{Float, FromPrimitive, ToPrimitive, Zero};
+use num_traits::{Float, ToPrimitive, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
 use ttf::{PwlXYF, TTFNum, TTF, XYF};
 
@@ -49,22 +49,14 @@ impl<T: TTFNum> RoadSegment<T> {
 
     /// Records the entry of a new vehicle on the segment.
     fn enters(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) {
-        let new_length = self.occupied_length + vehicle.get_headway();
-        self.set_length(new_length, current_time);
+        // Record the occupied length when the vehicle entered.
+        self.length_history.push(current_time, self.occupied_length);
+        self.occupied_length += vehicle.get_headway();
     }
 
     /// Records the exit of a vehicle from the segment.
-    fn exits(&mut self, vehicle_headway: Length<T>, current_time: Time<T>) {
-        let new_length = self.occupied_length - vehicle_headway;
-        self.set_length(new_length, current_time);
-    }
-
-    /// Changes the occupied length to the new value.
-    ///
-    /// Also records the change of value.
-    fn set_length(&mut self, length: Length<T>, timing: Time<T>) {
-        self.length_history.push(timing, length);
-        self.occupied_length = length;
+    fn exits(&mut self, vehicle_headway: Length<T>) {
+        self.occupied_length -= vehicle_headway;
     }
 
     /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated Length.
@@ -675,7 +667,7 @@ impl<T: TTFNum> RoadEdgeState<T> {
                 .and_then(|entry| entry.vehicle_exits(current_time, vehicle_headway))
         };
         // Remove the vehicle from the road segment.
-        self.road.exits(vehicle_headway, current_time);
+        self.road.exits(vehicle_headway);
         released_vehicle_event
     }
 
@@ -1290,9 +1282,12 @@ struct LengthXYFBuilder<T> {
     start_x: Time<T>,
     end_x: Time<T>,
     interval_x: Time<T>,
-    current_index: usize,
-    last_point: (Time<T>, Length<T>),
-    weighted_y: NoUnit<T>,
+    /// Middle of the current interval.
+    threshold: Time<T>,
+    /// Total waiting time and weight for the previous interval.
+    prev_interval: (T, T),
+    /// Total waiting time and weight for the next interval.
+    next_interval: (T, T),
 }
 
 impl<T> LengthXYFBuilder<T>
@@ -1306,75 +1301,68 @@ where
             start_x: period.start(),
             end_x: period.end(),
             interval_x,
-            current_index: 0,
-            last_point: (period.start(), Length::zero()),
-            weighted_y: NoUnit::zero(),
+            threshold: period.start() + interval_x,
+            prev_interval: (T::zero(), T::zero()),
+            next_interval: (T::zero(), T::zero()),
         }
     }
 
-    fn push(&mut self, time: Time<T>, length: Length<T>) {
-        debug_assert!(time >= self.start_x);
-        if time > self.end_x {
+    fn push(&mut self, entry_time: Time<T>, length: Length<T>) {
+        debug_assert!(entry_time >= self.start_x);
+        if entry_time > self.end_x {
             // Skip.
             return;
         }
-        let index = ((time - self.start_x) / self.interval_x)
-            .round()
-            .to_usize()
-            .unwrap();
-        debug_assert!(index >= self.current_index);
-        if index > self.current_index {
-            self.finish_interval(index);
+        if entry_time > self.threshold {
+            self.finish_interval(entry_time);
         }
-        self.add_record(time, length);
+        self.add_record(entry_time, length);
     }
 
-    fn add_record(&mut self, t1: Time<T>, l1: Length<T>) {
-        let (t0, l0) = self.last_point;
-        let duration = t1 - t0;
-        debug_assert!(duration.is_sign_positive());
-        // From `t0` to `t1`, the length is `l0`.
-        self.weighted_y += Into::<NoUnit<T>>::into(duration) * Into::<NoUnit<T>>::into(l0);
-        self.last_point = (t1, l1);
+    fn add_record(&mut self, entry_time: Time<T>, length: Length<T>) {
+        debug_assert!(entry_time <= self.threshold);
+        // The value is distributed to the two closest intervals, proportionally to the
+        // distance to the interval midpoint.
+        let alpha = (self.threshold.0 - entry_time.0) / self.interval_x.0;
+        self.prev_interval.0 += alpha * length.0;
+        self.prev_interval.1 += alpha;
+        self.next_interval.0 += (T::one() - alpha) * length.0;
+        self.next_interval.1 += T::one() - alpha;
     }
 
-    fn finish_interval(&mut self, index: usize) {
-        // Find current interval bounds.
-        let half_interval_length = Time::average(self.interval_x, Time::zero());
-        let interval_mid =
-            self.start_x + self.interval_x * Time::from_usize(self.current_index).unwrap();
-        let interval_start = std::cmp::max(self.start_x, interval_mid - half_interval_length);
-        let interval_end = std::cmp::min(self.end_x, interval_mid + half_interval_length);
-        // The last event that occured was in the interval and we know that no other event occurs
-        // in this interval.
-        // Therefore, the length at the end of the interval was the same as the last recorded
-        // length.
-        debug_assert!(self.last_point.0 >= interval_start);
-        debug_assert!(self.last_point.0 <= interval_end);
-        self.add_record(interval_end, self.last_point.1);
-        // Compute and add `y` value for current interval.
-        let interval_length = interval_end - interval_start;
-        let y = self.weighted_y / interval_length.into();
-        self.points.push(y.into());
+    fn finish_interval(&mut self, entry_time: Time<T>) {
+        debug_assert!(self.threshold < entry_time);
+        let y = if self.prev_interval.1.is_zero() {
+            // No entry at this interval.
+            Length::zero()
+        } else {
+            Length(self.prev_interval.0 / self.prev_interval.1)
+        };
+        self.points.push(y);
+        self.prev_interval = self.next_interval;
+        self.next_interval = (T::zero(), T::zero());
         // Switch to next interval.
-        self.weighted_y = NoUnit::zero();
-        self.current_index += 1;
+        self.threshold += self.interval_x;
         // Go recursive (multiple intervals can end at the same time).
-        if index > self.current_index {
-            self.finish_interval(index)
+        if entry_time > self.threshold {
+            self.finish_interval(entry_time)
         }
-    }
-
-    fn nb_intervals(&self) -> usize {
-        ((self.end_x - self.start_x) / self.interval_x)
-            .trunc()
-            .to_usize()
-            .unwrap()
-            + 1
     }
 
     fn finish(mut self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
-        self.finish_interval(self.nb_intervals());
+        // Finish the last intervals.
+        // We force the threshold to go to end_x + 2 * interval_x so that the last interval is
+        // added (the prev interval is at this point end_x + interval_x and the next one is end_x +
+        // 2 * interval_x).
+        self.finish_interval(self.end_x + self.interval_x + self.interval_x);
+        debug_assert_eq!(
+            ((self.end_x - self.start_x) / self.interval_x)
+                .trunc()
+                .to_usize()
+                .unwrap()
+                + 1,
+            self.points.len()
+        );
         if self.points.iter().all(|&y| y == self.points[0]) {
             // All `y` values are identical.
             XYF::Constant(self.points[0])
