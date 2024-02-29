@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [0.8.0] - 2024-02-29
+
 ### Added
 
 - [INPUT] Add the `ExponentialUnadjusted` learning model (exponential model with no adjustment for
@@ -53,6 +55,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [OUTPUT] Fix number of decimals for road-network weights RMSE in the report HTML file.
 - [DEV] Fix nodes being duplicated when a graph is deserialized.
 - [DEV] Fix crash when using a uniform random value equal to 1.0.
+
+### Removed
+
+- [USER] The book and API documentation are not longer part of the released zipfile.
 
 ## [0.7.0] - 2023-11-16
 
@@ -420,7 +426,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.7.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0
 [0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
 [0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
 [0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
