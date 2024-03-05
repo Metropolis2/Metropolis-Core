@@ -158,6 +158,8 @@ fn get_simulation() -> Simulation<f64> {
     }
 
     let parameters = Parameters {
+        input_files: Default::default(),
+        output_directory: Default::default(),
         period: Interval([Time(0.0), Time(50.0)]),
         learning_model: LearningModel::Exponential(0.0),
         stopping_criteria: vec![StopCriterion::MaxIteration(1)],
@@ -187,9 +189,11 @@ fn get_simulation() -> Simulation<f64> {
 fn restricted_road_test() {
     let simulation = get_simulation();
     let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation
-        .get_network()
-        .get_free_flow_weights(&preprocess_data.network);
+    let weights = simulation.get_network().get_free_flow_weights(
+        simulation.get_parameters().period,
+        &simulation.get_parameters().network,
+        &preprocess_data.network,
+    );
     let results = simulation
         .run_iteration(weights, None, None, 1, &preprocess_data)
         .unwrap();

@@ -5,6 +5,7 @@
 
 //! Everything related to schedule utility.
 use alpha_beta_gamma::AlphaBetaGammaModel;
+use anyhow::{anyhow, bail, Context, Result};
 use num_traits::Zero;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -39,6 +40,28 @@ impl<T> Default for ScheduleUtility<T> {
 }
 
 impl<T: TTFNum> ScheduleUtility<T> {
+    pub(crate) fn from_values(
+        utility_type: Option<&str>,
+        tstar: Option<f64>,
+        beta: Option<f64>,
+        gamma: Option<f64>,
+        delta: Option<f64>,
+    ) -> Result<Self> {
+        match utility_type {
+            Some("AlphaBetaGamma") => {
+                let model = AlphaBetaGammaModel::from_values(tstar, beta, gamma, delta)
+                    .with_context(|| {
+                        anyhow!(
+                            "Failed to create schedule utility with `type`=`\"AlphaBetaGamma\"`"
+                        )
+                    })?;
+                Ok(ScheduleUtility::AlphaBetaGamma(model))
+            }
+            None => Ok(ScheduleUtility::None),
+            Some(s) => bail!("Unknown type: {s}"),
+        }
+    }
+
     /// Iterates over the breakpoints where the schedule utility is non-linear.
     ///
     /// The breakpoints are ordered by increasing departure time.

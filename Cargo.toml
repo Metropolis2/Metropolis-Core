@@ -3,7 +3,7 @@ name = "metropolis"
 version = "0.8.0"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
-description = "A dynamic multi-modal traffic-assignment simulator"
+description = "METROPOLIS2: A mesoscopic transport simulator"
 repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
 keywords = [
   "transportation",

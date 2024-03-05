@@ -14,7 +14,7 @@ use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{OriginalNodeIndex, RoadNetwork, RoadNetworkParameters};
 use crate::agent::Agent;
 use crate::mode::Mode;
-use crate::units::Time;
+use crate::units::{Interval, Time};
 
 /// Struct to store the set of unique vehicles and the equivalences between vehicles.
 #[derive(Clone, Debug)]
@@ -131,6 +131,7 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
     pub fn preprocess(
         road_network: &RoadNetwork<T>,
         agents: &[Agent<T>],
+        period: Interval<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<Self> {
         let unique_vehicles = UniqueVehicles::from_vehicles(&road_network.vehicles);
@@ -138,6 +139,7 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
         let free_flow_travel_times = compute_free_flow_travel_times(
             road_network,
             agents,
+            period,
             parameters,
             &unique_vehicles,
             &od_pairs,
@@ -235,12 +237,17 @@ type ODTravelTimes<T> = HashMap<(OriginalNodeIndex, OriginalNodeIndex), Time<T>>
 fn compute_free_flow_travel_times<T: TTFNum>(
     road_network: &RoadNetwork<T>,
     agents: &[Agent<T>],
+    period: Interval<T>,
     parameters: &RoadNetworkParameters<T>,
     unique_vehicles: &UniqueVehicles,
     od_pairs: &Vec<ODPairs>,
 ) -> Result<Vec<ODTravelTimes<T>>> {
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
-    let free_flow_weights = road_network.get_free_flow_weights_inner(unique_vehicles);
+    let free_flow_weights = road_network.get_free_flow_weights_inner(
+        period,
+        parameters.recording_interval,
+        unique_vehicles,
+    );
     let skims = road_network.compute_skims_inner(&free_flow_weights, od_pairs, parameters)?;
     for agent in agents {
         for mode in agent.iter_modes() {

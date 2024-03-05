@@ -1,0 +1,4 @@
+edge_id,source,target,speed,length,lanes,speed_density.type,speed_density.capacity,speed_density.min_density,speed_density.jam_density,speed_density.jam_speed,speed_density.beta,bottleneck_flow,constant_travel_time,overtaking
+0,0,1,13.88888888888889,100.0,2.0,,,,,,,0.3333333333333333,,true
+1,1,2,8.333333333333334,30.0,0.5,Bottleneck,2.0,,,,,,0.0,false
+2,2,3,25.0,60.0,,ThreeRegimes,,0.2,0.8,2.7777777777777777,1.0,0.5,3.0,

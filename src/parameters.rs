@@ -4,6 +4,8 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to simulation parameters.
+use std::path::PathBuf;
+
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -34,11 +36,31 @@ pub enum SavingFormat {
     CSV,
 }
 
+/// Struct to store all the input file paths.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+pub struct InputFiles {
+    pub agents: PathBuf,
+    pub alternatives: PathBuf,
+    #[serde(default)]
+    pub trips: Option<PathBuf>,
+    #[serde(default)]
+    pub edges: Option<PathBuf>,
+    #[serde(default)]
+    pub vehicle_types: Option<PathBuf>,
+    #[serde(default)]
+    pub weights: Option<PathBuf>,
+}
+
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound(deserialize = "T: TTFNum"))]
 #[schemars(example = "crate::schema::example_parameters")]
 pub struct Parameters<T> {
+    /// Paths to the input files.
+    pub input_files: InputFiles,
+    /// Path to the output directory.
+    #[serde(default)]
+    pub output_directory: PathBuf,
     /// Time interval used to restrict the travel-time functions of the edges.
     ///
     /// The departure-time intervals of the agents must be included in this interval.

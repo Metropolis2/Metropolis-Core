@@ -5,7 +5,7 @@
 
 //! The alpha-beta-gamma schedule-delay cost model.
 use anyhow::anyhow;
-use num_traits::Zero;
+use num_traits::{FromPrimitive, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -28,13 +28,13 @@ use crate::units::{Time, Utility, ValueOfTime};
 #[serde(bound(deserialize = "T: TTFNum"))]
 pub struct AlphaBetaGammaModel<T> {
     /// The earliest desired arrival (or departure) time.
-    t_star_low: Time<T>,
+    pub(crate) t_star_low: Time<T>,
     /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
-    t_star_high: Time<T>,
+    pub(crate) t_star_high: Time<T>,
     /// The penalty for early arrivals (or departures), in utility per second.
-    beta: ValueOfTime<T>,
+    pub(crate) beta: ValueOfTime<T>,
     /// The penalty for late arrivals (or departures), in utility per second.
-    gamma: ValueOfTime<T>,
+    pub(crate) gamma: ValueOfTime<T>,
 }
 
 impl<T: TTFNum> AlphaBetaGammaModel<T> {
@@ -52,6 +52,23 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
             gamma,
         };
         AlphaBetaGammaModel::try_from(model)
+    }
+
+    pub(crate) fn from_values(
+        tstar: Option<f64>,
+        beta: Option<f64>,
+        gamma: Option<f64>,
+        delta: Option<f64>,
+    ) -> anyhow::Result<Self> {
+        let delta = delta.unwrap_or(0.0);
+        let tstar = tstar
+            .ok_or_else(|| anyhow!("Value `tstar` is mandatory for the alpha-beta-gamma model"))?;
+        Ok(Self {
+            t_star_low: Time::from_f64(tstar - delta / 2.0).unwrap(),
+            t_star_high: Time::from_f64(tstar + delta / 2.0).unwrap(),
+            beta: ValueOfTime::from_f64(beta.unwrap_or(0.0)).unwrap(),
+            gamma: ValueOfTime::from_f64(gamma.unwrap_or(0.0)).unwrap(),
+        })
     }
 
     /// Returns the schedule-delay utility given the threshold time.

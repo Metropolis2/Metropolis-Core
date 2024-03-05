@@ -53,6 +53,16 @@ impl<T: TTFNum> DeterministicChoiceModel<T> {
         DeterministicChoiceModel { u, constants: None }
     }
 
+    /// Initializes a new deterministic choice model with constants.
+    ///
+    /// The value of `u` must be such that `0.0 <= u < 1.0`.
+    pub fn new_with_constants(u: T, constants: Vec<T>) -> Self {
+        DeterministicChoiceModel {
+            u,
+            constants: Some(constants),
+        }
+    }
+
     fn iter_values<'a, V: Copy + Into<T>>(
         &'a self,
         values: &'a [V],

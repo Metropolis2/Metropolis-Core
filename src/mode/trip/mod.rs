@@ -6,7 +6,7 @@
 //! Everything related to trips.
 use std::ops::Deref;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use choice::{ChoiceModel, ContinuousChoiceModel};
 use either::Either;
 use enum_as_inner::EnumAsInner;
@@ -76,6 +76,82 @@ impl<T: TTFNum> Leg<T> {
             travel_utility,
             schedule_utility,
         }
+    }
+
+    /// Creates a `Leg` from input values.
+    ///
+    /// Returns an error if some values are invalid.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_values(
+        id: usize,
+        class_type: Option<&str>,
+        class_origin: Option<u64>,
+        class_destination: Option<u64>,
+        class_vehicle: Option<u64>,
+        class_route: Option<Vec<u64>>,
+        class_travel_time: Option<f64>,
+        stopping_time: Option<f64>,
+        constant_utility: Option<f64>,
+        travel_utility_one: Option<f64>,
+        travel_utility_two: Option<f64>,
+        travel_utility_three: Option<f64>,
+        travel_utility_four: Option<f64>,
+        schedule_utility_type: Option<&str>,
+        schedule_utility_tstar: Option<f64>,
+        schedule_utility_beta: Option<f64>,
+        schedule_utility_gamma: Option<f64>,
+        schedule_utility_delta: Option<f64>,
+    ) -> Result<Self> {
+        let stopping_time = Time::from_f64(stopping_time.unwrap_or(0.0)).unwrap();
+        let class = match class_type {
+            Some("Road") => {
+                let origin = class_origin.ok_or_else(|| {
+                    anyhow!("Value `class.origin` is mandatory when `class.type` is `\"Road\"`")
+                })?;
+                let destination = class_destination.ok_or_else(|| {
+                    anyhow!(
+                        "Value `class.destination` is mandatory when `class.type` is `\"Road\"`"
+                    )
+                })?;
+                let vehicle = class_vehicle.ok_or_else(|| {
+                    anyhow!("Value `class.vehicle` is mandatory when `class.type` is `\"Road\"`")
+                })?;
+                LegType::Road(RoadLeg {
+                    origin,
+                    destination,
+                    vehicle: VehicleIndex::new(vehicle as usize),
+                    route: class_route,
+                })
+            }
+            Some("Virtual") => {
+                let tt = Time::from_f64(class_travel_time.unwrap_or(0.0)).unwrap();
+                LegType::Virtual(TTF::Constant(tt))
+            }
+            Some(s) => bail!("Unknown value for `class.type`: {s}"),
+            None => bail!("Value `class.type` is mandatory"),
+        };
+        let travel_utility = TravelUtility::from_values(
+            constant_utility,
+            travel_utility_one,
+            travel_utility_two,
+            travel_utility_three,
+            travel_utility_four,
+        );
+        let schedule_utility = ScheduleUtility::from_values(
+            schedule_utility_type,
+            schedule_utility_tstar,
+            schedule_utility_beta,
+            schedule_utility_gamma,
+            schedule_utility_delta,
+        )
+        .context("Failed to create schedule utility")?;
+        Ok(Leg {
+            id,
+            class,
+            stopping_time,
+            travel_utility,
+            schedule_utility,
+        })
     }
 
     /// Returns the travel and schedule utility of the leg, given the departure time and arrival
@@ -324,6 +400,93 @@ impl<T> TravelingMode<T> {
             } else {
                 None
             }
+        })
+    }
+}
+
+impl<T: TTFNum> TravelingMode<T> {
+    /// Creates a `TravelingMode` from input values.
+    ///
+    /// Returns an error if some values are invalid.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_values(
+        id: usize,
+        origin_delay: Option<f64>,
+        dt_choice_type: Option<&str>,
+        dt_choice_departure_time: Option<f64>,
+        dt_choice_period: Option<Vec<f64>>,
+        dt_choice_interval: Option<f64>,
+        dt_choice_offset: Option<f64>,
+        dt_choice_model_type: Option<&str>,
+        dt_choice_model_u: Option<f64>,
+        dt_choice_model_mu: Option<f64>,
+        dt_choice_model_constants: Option<Vec<f64>>,
+        constant_utility: Option<f64>,
+        total_travel_utility_one: Option<f64>,
+        total_travel_utility_two: Option<f64>,
+        total_travel_utility_three: Option<f64>,
+        total_travel_utility_four: Option<f64>,
+        origin_utility_type: Option<&str>,
+        origin_utility_tstar: Option<f64>,
+        origin_utility_beta: Option<f64>,
+        origin_utility_gamma: Option<f64>,
+        origin_utility_delta: Option<f64>,
+        destination_utility_type: Option<&str>,
+        destination_utility_tstar: Option<f64>,
+        destination_utility_beta: Option<f64>,
+        destination_utility_gamma: Option<f64>,
+        destination_utility_delta: Option<f64>,
+        pre_compute_route: Option<bool>,
+        legs: Option<Vec<Leg<T>>>,
+    ) -> Result<Self> {
+        let origin_delay = Time::from_f64(origin_delay.unwrap_or(0.0)).unwrap();
+        let departure_time_model = DepartureTimeModel::from_values(
+            dt_choice_type,
+            dt_choice_departure_time,
+            dt_choice_period,
+            dt_choice_interval,
+            dt_choice_offset,
+            dt_choice_model_type,
+            dt_choice_model_u,
+            dt_choice_model_mu,
+            dt_choice_model_constants,
+        )
+        .context("Failed to create departure-time choice model")?;
+        let total_travel_utility = TravelUtility::from_values(
+            constant_utility,
+            total_travel_utility_one,
+            total_travel_utility_two,
+            total_travel_utility_three,
+            total_travel_utility_four,
+        );
+        let origin_schedule_utility = ScheduleUtility::from_values(
+            origin_utility_type,
+            origin_utility_tstar,
+            origin_utility_beta,
+            origin_utility_gamma,
+            origin_utility_delta,
+        )
+        .context("Failed to create origin schedule utility")?;
+        let destination_schedule_utility = ScheduleUtility::from_values(
+            destination_utility_type,
+            destination_utility_tstar,
+            destination_utility_beta,
+            destination_utility_gamma,
+            destination_utility_delta,
+        )
+        .context("Failed to create destination schedule utility")?;
+        let pre_compute_route = pre_compute_route.unwrap_or(true);
+        let legs = legs.unwrap_or_default();
+        Ok(TravelingMode {
+            id,
+            origin_delay,
+            departure_time_model,
+            total_travel_utility,
+            origin_schedule_utility,
+            destination_schedule_utility,
+            pre_compute_route,
+            legs,
+            choice: OnceCell::new(),
         })
     }
 }
@@ -624,6 +787,7 @@ impl<T: TTFNum> TravelingMode<T> {
     pub fn get_pre_day_choice<'a: 'b, 'b>(
         &'a self,
         road_network: Option<&'b RoadNetwork<T>>,
+        simulation_period: Interval<T>,
         rn_weights: Option<&'b RoadNetworkWeights<T>>,
         rn_skims: Option<&'b RoadNetworkSkims<T>>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
@@ -635,6 +799,7 @@ impl<T: TTFNum> TravelingMode<T> {
         }
         self.make_pre_day_choice(
             road_network,
+            simulation_period,
             rn_weights,
             rn_skims,
             preprocess_data,
@@ -653,6 +818,7 @@ impl<T: TTFNum> TravelingMode<T> {
     fn make_pre_day_choice<'a: 'b, 'b>(
         &'a self,
         road_network: Option<&'b RoadNetwork<T>>,
+        simulation_period: Interval<T>,
         rn_weights: Option<&'b RoadNetworkWeights<T>>,
         rn_skims: Option<&'b RoadNetworkSkims<T>>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
@@ -665,26 +831,52 @@ impl<T: TTFNum> TravelingMode<T> {
                 let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
                 (expected_utility, time_callback)
             }
-            DepartureTimeModel::DiscreteChoice {
-                values,
-                choice_model,
+            DepartureTimeModel::Discrete {
+                period,
+                interval,
                 offset,
+                choice_model,
             } => {
-                let utilities: Vec<_> = values
-                    .iter()
-                    .map(|&td| self.get_total_utility(td, &leg_ttfs))
+                let period = period.unwrap_or(simulation_period);
+                let half_interval = Time::average(*interval, Time::zero());
+                let dt_values_iter =
+                    std::iter::successors(Some(period.start() + half_interval), |t| {
+                        Some(*t + *interval)
+                    })
+                    .take_while(|t| *t < period.end());
+                let utilities: Vec<_> = dt_values_iter
+                    .map(|td| self.get_total_utility(td, &leg_ttfs))
                     .collect();
-                let (chosen_id, expected_utility) = choice_model.get_choice(&utilities)?;
-                let departure_time = values[chosen_id] + *offset;
+                let (chosen_id, expected_utility) =
+                    choice_model.get_choice(&utilities).with_context(|| {
+                        format!(
+                            "Failed to select departure time for alternative {}",
+                            self.id
+                        )
+                    })?;
+                let departure_time = Float::min(
+                    period.start()
+                        + half_interval
+                        + Time(interval.0 * T::from_usize(chosen_id).unwrap())
+                        + *offset,
+                    period.end(),
+                );
                 let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
                 (expected_utility, time_callback)
             }
-            DepartureTimeModel::ContinuousChoice {
-                period,
+            DepartureTimeModel::Continuous {
+                period: period_opt,
                 choice_model,
             } => {
-                let utilities = self.get_utility_function(&leg_ttfs, *period);
-                let (time_callback, expected_utility) = choice_model.get_choice(utilities)?;
+                let period = period_opt.unwrap_or(simulation_period);
+                let utilities = self.get_utility_function(&leg_ttfs, period);
+                let (time_callback, expected_utility) =
+                    choice_model.get_choice(utilities).with_context(|| {
+                        format!(
+                            "Failed to select departure time for alternative {}",
+                            self.id
+                        )
+                    })?;
                 (expected_utility, time_callback)
             }
         };
@@ -836,23 +1028,105 @@ pub enum DepartureTimeModel<T> {
     /// The departure time is always equal to the given value.
     Constant(Time<T>),
     /// The departure time is chosen among a finite number of values.
-    DiscreteChoice {
-        /// Values among which the departure time is chosen.
-        values: Vec<Time<T>>,
-        /// Discrete choice model.
-        choice_model: ChoiceModel<NoUnit<T>>,
+    #[serde(alias = "DiscreteChoice")]
+    Discrete {
+        /// Period in which the departure time is chosen.
+        ///
+        /// If `None`, the simulation period is used.
+        period: Option<Interval<T>>,
+        /// Time between two departure-time interval.
+        interval: Time<T>,
         /// Offset time added to the chosen departure-time value (can be negative).
         #[serde(default)]
         #[schemars(default = "default_time_schema")]
         offset: Time<T>,
+        /// Discrete choice model.
+        choice_model: ChoiceModel<NoUnit<T>>,
     },
+    #[serde(alias = "ContinuousChoice")]
     /// The departure time is chosen according to a continuous choice model.
-    ContinuousChoice {
-        /// Interval in which the departure time is chosen.
-        period: Interval<T>,
+    Continuous {
+        /// Period in which the departure time is chosen.
+        ///
+        /// If `None`, the simulation period is used.
+        period: Option<Interval<T>>,
         /// Continuous choice model.
         choice_model: ContinuousChoiceModel<NoUnit<T>>,
     },
+}
+
+impl<T: TTFNum> DepartureTimeModel<T> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_values(
+        model_type: Option<&str>,
+        departure_time: Option<f64>,
+        period: Option<Vec<f64>>,
+        interval: Option<f64>,
+        offset: Option<f64>,
+        choice_model_type: Option<&str>,
+        choice_model_u: Option<f64>,
+        choice_model_mu: Option<f64>,
+        choice_model_constants: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        fn period_as_interval<T: TTFNum>(period: Vec<f64>) -> Result<Interval<T>> {
+            match period.len() {
+                2 => {
+                    let t0 = Time::from_f64(period[0]).unwrap();
+                    let t1 = Time::from_f64(period[1]).unwrap();
+                    Ok(Interval([t0, t1]))
+                }
+                _ => Err(anyhow!(
+                    "Value `period` must be a List with 2 values, got `{:?}`",
+                    period
+                )),
+            }
+        }
+        match model_type {
+            Some("Constant") => {
+                let dt = departure_time.ok_or_else(|| {
+                    anyhow!("Value `departure_time` is mandatory when `type` is `\"Constant\"`")
+                })?;
+                Ok(Self::Constant(Time::from_f64(dt).unwrap()))
+            }
+            Some("Discrete") => {
+                let period = period.map(|p| period_as_interval(p)).transpose()?;
+                let interval = interval
+                    .map(|t| Time::from_f64(t).unwrap())
+                    .ok_or_else(|| {
+                        anyhow!("Value `interval` is mandatory when `type` is `\"Discrete\"`")
+                    })?;
+                let choice_model = ChoiceModel::from_values(
+                    choice_model_type,
+                    choice_model_u,
+                    choice_model_mu,
+                    choice_model_constants,
+                )
+                .context("Failed to create a discrete choice model")?;
+                let offset = Time::from_f64(offset.unwrap_or(0.0)).unwrap();
+                Ok(Self::Discrete {
+                    period,
+                    interval,
+                    offset,
+                    choice_model,
+                })
+            }
+            Some("Continuous") => {
+                let period = period.map(|p| period_as_interval(p)).transpose()?;
+                let choice_model = ContinuousChoiceModel::from_values(
+                    choice_model_type,
+                    choice_model_u,
+                    choice_model_mu,
+                )
+                .context("Failed to create a continuous choice model")?;
+                Ok(Self::Continuous {
+                    period,
+                    choice_model,
+                })
+            }
+            Some(s) => Err(anyhow!("Unknown `type`: {s}")),
+            None => Err(anyhow!("Value `type` is mandatory")),
+        }
+    }
 }
 
 fn default_time_schema() -> String {

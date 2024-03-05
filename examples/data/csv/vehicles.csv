@@ -1,0 +1,4 @@
+vehicle_id,headway,pce,speed_function.type,speed_function.coef
+0,8.0,,,
+1,24.0,3.0,Multiplicator,0.8
+2,0.0,0.1,,

@@ -82,11 +82,7 @@ impl<T: TTFNum> Simulation<T> {
     /// Run the simulation, using the given [NetworkWeights] as initial weights of the network.
     ///
     /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
-    pub fn run_from_weights(
-        &self,
-        init_weights: Option<NetworkWeights<T>>,
-        output_dir: &Path,
-    ) -> Result<()> {
+    pub fn run_from_weights(&self, init_weights: Option<NetworkWeights<T>>) -> Result<()> {
         // Initialize the global rayon thread pool.
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.parameters.nb_threads)
@@ -94,9 +90,20 @@ impl<T: TTFNum> Simulation<T> {
             .unwrap();
         let preprocess_data = self.preprocess()?;
         let mut exp_weights = if init_weights.is_some() {
-            init_weights.map(|w| w.with_network(&self.network, &preprocess_data.network))
+            init_weights.map(|w| {
+                w.with_network(
+                    &self.network,
+                    self.parameters.period,
+                    &self.parameters.network,
+                    &preprocess_data.network,
+                )
+            })
         } else {
-            Some(self.network.get_free_flow_weights(&preprocess_data.network))
+            Some(self.network.get_free_flow_weights(
+                self.parameters.period,
+                &self.parameters.network,
+                &preprocess_data.network,
+            ))
         };
         let mut prev_agent_results = None;
         let mut prev_sim_weights = None;
@@ -113,11 +120,7 @@ impl<T: TTFNum> Simulation<T> {
                 &preprocess_data,
             )?;
             info!("Saving aggregate results");
-            results::save_aggregate_results(
-                &iteration_output.aggregate_results,
-                output_dir,
-                &self.parameters,
-            )?;
+            results::save_aggregate_results(&iteration_output.aggregate_results, &self.parameters)?;
             sim_results.push_iteration(iteration_output.aggregate_results);
             running_times.update(&iteration_output.running_times);
             if iteration_output.stop_simulation {
@@ -125,12 +128,11 @@ impl<T: TTFNum> Simulation<T> {
                 sim_results.last_iteration = Some(iteration_output.iteration_results);
                 running_times.finish(iteration_counter);
                 info!("Writing report");
-                report::write_report(&sim_results, output_dir)?;
+                report::write_report(&sim_results, &self.parameters.output_directory)?;
                 info!("Saving detailed results");
-                results::save_running_times(running_times, output_dir)?;
+                results::save_running_times(running_times, &self.parameters.output_directory)?;
                 results::save_iteration_results(
                     sim_results.last_iteration.unwrap(),
-                    output_dir,
                     &self.parameters,
                 )?;
                 info!("Done");
@@ -151,9 +153,11 @@ impl<T: TTFNum> Simulation<T> {
     pub fn preprocess(&self) -> Result<PreprocessingData<T>> {
         info!("Pre-processing simulation");
         // Run the preprocessing stuff related to the network.
-        let network = self
-            .network
-            .preprocess(&self.agents, &self.parameters.network)?;
+        let network = self.network.preprocess(
+            &self.agents,
+            self.parameters.period,
+            &self.parameters.network,
+        )?;
         Ok(PreprocessingData { network })
     }
 
@@ -263,6 +267,7 @@ impl<T: TTFNum> Simulation<T> {
                         bp.inc();
                         agent.make_pre_day_choice(
                             &self.network,
+                            self.parameters.period,
                             weights,
                             exp_skims,
                             preprocess_data,
@@ -283,6 +288,7 @@ impl<T: TTFNum> Simulation<T> {
                     bp.inc();
                     agent.make_pre_day_choice(
                         &self.network,
+                        self.parameters.period,
                         weights,
                         exp_skims,
                         preprocess_data,
@@ -347,6 +353,7 @@ impl<T: TTFNum> Simulation<T> {
         debug!("Computing network weights");
         let weights = state.into_weights(
             &self.network,
+            self.parameters.period,
             &self.parameters.network,
             &preprocess_data.network,
         );
@@ -473,7 +480,11 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
         let weights = if let Some(weights) = init_weights {
             weights
         } else {
-            self.network.get_free_flow_weights(&preprocess_data.network)
+            self.network.get_free_flow_weights(
+                self.parameters.period,
+                &self.parameters.network,
+                &preprocess_data.network,
+            )
         };
         info!("Computing skims");
         let skims = self.network.compute_skims(
@@ -491,6 +502,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
                     bp.inc();
                     agent.make_pre_day_choice(
                         &self.network,
+                        self.parameters.period,
                         &weights,
                         &skims,
                         &preprocess_data,

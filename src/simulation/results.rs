@@ -426,22 +426,29 @@ impl<T: TTFNum> PreDayAgentResults<T> {
 /// The AggregateResults are stored in the file `iteration[counter].json`.
 pub fn save_aggregate_results<T: TTFNum>(
     aggregate_results: &AggregateResults<T>,
-    output_dir: &Path,
     parameters: &Parameters<T>,
 ) -> Result<()> {
     match parameters.saving_format {
         SavingFormat::JSON => {
-            io::json::append_json(aggregate_results.clone(), output_dir, "iteration_results")?;
+            io::json::append_json(
+                aggregate_results.clone(),
+                &parameters.output_directory,
+                "iteration_results",
+            )?;
         }
         SavingFormat::Parquet => {
             io::parquet::append_parquet(
                 aggregate_results.clone(),
-                output_dir,
+                &parameters.output_directory,
                 "iteration_results",
             )?;
         }
         SavingFormat::CSV => {
-            io::csv::append_csv(aggregate_results.clone(), output_dir, "iteration_results")?;
+            io::csv::append_csv(
+                aggregate_results.clone(),
+                &parameters.output_directory,
+                "iteration_results",
+            )?;
         }
     }
     Ok(())
@@ -450,43 +457,92 @@ pub fn save_aggregate_results<T: TTFNum>(
 /// Stores [IterationResults] in the given output directory.
 pub fn save_iteration_results<T: TTFNum>(
     iteration_results: IterationResults<T>,
-    output_dir: &Path,
     parameters: &Parameters<T>,
 ) -> Result<()> {
-    // Save agent results.
+    // TODO: clean this function when Parquet output for weights will be supported.
     match parameters.saving_format {
         SavingFormat::JSON => {
             io::json::write_compressed_json(
                 &iteration_results.agent_results,
-                output_dir,
+                &parameters.output_directory,
                 "agent_results",
             )?;
+            // io::json::write_compressed_json(
+            // &iteration_results.exp_weights,
+            // &parameters.output_directory,
+            // "exp_weight_results",
+            // )?;
+            // io::json::write_compressed_json(
+            // &iteration_results.sim_weights,
+            // &parameters.output_directory,
+            // "sim_weight_results",
+            // )?;
+            // io::json::write_compressed_json(
+            // &iteration_results.new_exp_weights,
+            // &parameters.output_directory,
+            // "next_exp_weight_results",
+            // )?;
         }
         SavingFormat::Parquet => {
-            io::parquet::write_parquet(iteration_results.agent_results, output_dir)?;
+            io::parquet::write_parquet(
+                iteration_results.agent_results,
+                &parameters.output_directory,
+            )?;
+            // io::parquet::write_parquet_with_prefix(
+            // iteration_results.exp_weights,
+            // &parameters.output_directory,
+            // "exp_weight_",
+            // )?;
+            // io::parquet::write_parquet_with_prefix(
+            // iteration_results.sim_weights,
+            // &parameters.output_directory,
+            // "sim_weight_",
+            // )?;
+            // io::parquet::write_parquet_with_prefix(
+            // iteration_results.new_exp_weights,
+            // &parameters.output_directory,
+            // "next_exp_weight_",
+            // )?;
         }
         SavingFormat::CSV => {
-            io::csv::write_csv(iteration_results.agent_results, output_dir)?;
+            io::csv::write_csv(
+                iteration_results.agent_results,
+                &parameters.output_directory,
+            )?;
+            // io::csv::write_csv(iteration_results.exp_weights, &parameters.output_directory)?;
+            // io::csv::write_csv_with_prefix(
+            // iteration_results.sim_weights,
+            // &parameters.output_directory,
+            // "sim_weight_",
+            // )?;
+            // io::csv::write_csv_with_prefix(
+            // iteration_results.new_exp_weights,
+            // &parameters.output_directory,
+            // "next_exp_weight_",
+            // )?;
         }
     }
-    // Save weight results.
     io::json::write_compressed_json(
         &iteration_results.exp_weights,
-        output_dir,
+        &parameters.output_directory,
         "exp_weight_results",
     )?;
     io::json::write_compressed_json(
         &iteration_results.sim_weights,
-        output_dir,
+        &parameters.output_directory,
         "sim_weight_results",
     )?;
     io::json::write_compressed_json(
         &iteration_results.new_exp_weights,
-        output_dir,
+        &parameters.output_directory,
         "next_exp_weight_results",
     )?;
     // Save skims results.
-    io::json::write_compressed_json(&iteration_results.skims, output_dir, "skim_results")?;
+    io::json::write_compressed_json(
+        &iteration_results.skims,
+        &parameters.output_directory,
+        "skim_results",
+    )?;
     Ok(())
 }
 

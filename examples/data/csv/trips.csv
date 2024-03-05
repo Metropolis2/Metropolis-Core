@@ -1,0 +1,6 @@
+agent_id,alt_id,trip_id,class.type,class.origin,class.destination,class.vehicle,class.travel_time,stopping_time,constant_utility,travel_utility.one,travel_utility.two,travel_utility.three,travel_utility.four,schedule_utility.type,schedule_utility.tstar,schedule_utility.beta,schedule_utility.gamma,schedule_utility.delta
+1,0,0,Road,0,3,0,,,0.0,0.0,0.0,0.0,0.0,,,,,
+1,1,1,Virtual,,,,300.0,,,,,,,,,,,
+1,2,2,Virtual,,,,420.0,,1.0,-0.0033333333333333335,,,,,,,,
+2,0,3,Road,0,2,1,,300.0,-1.0,-0.02,0.01,-0.005,0.01,AlphaBetaGamma,28800.0,0.0008333333333333334,0.0008333333333333334,300.0
+2,0,4,Road,2,3,1,,,-2.0,-0.02,0.01,-0.005,0.01,AlphaBetaGamma,32400.0,,0.005555555555555556,600.0

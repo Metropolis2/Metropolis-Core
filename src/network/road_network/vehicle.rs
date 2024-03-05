@@ -4,7 +4,9 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
+use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
+use num_traits::{FromPrimitive, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -37,6 +39,60 @@ impl<T> Default for SpeedFunction<T> {
 }
 
 impl<T: TTFNum> SpeedFunction<T> {
+    fn from_values(
+        function_type: Option<&str>,
+        coef: Option<f64>,
+        x: Option<Vec<f64>>,
+        y: Option<Vec<f64>>,
+    ) -> Result<Self> {
+        match function_type {
+            Some("Base") | None => Ok(Self::Base),
+            Some("Multiplicator") => {
+                let coef = T::from_f64(coef.ok_or_else(|| {
+                    anyhow!("Value `coef` is mandatory when `type` is `\"Multiplicator\"`")
+                })?)
+                .unwrap();
+                if coef <= T::zero() {
+                    bail!("Value `coef` must be positive");
+                }
+                Ok(Self::Multiplicator(coef))
+            }
+            Some("Piecewise") => {
+                let x = x.ok_or_else(|| {
+                    anyhow!("Value `x` is mandatory when `type` is `\"Piecewise\"`")
+                })?;
+                if x.is_empty() {
+                    bail!("Value `x` is mandatory when `type` is `\"Piecewise\"`");
+                }
+                let y = y.ok_or_else(|| {
+                    anyhow!("Value `y` is mandatory when `type` is `\"Piecewise\"`")
+                })?;
+                if y.is_empty() {
+                    bail!("Value `y` is mandatory when `type` is `\"Piecewise\"`");
+                }
+                if !x.windows(2).all(|values| values[0] <= values[1]) {
+                    bail!("The values in `x` must be sorted in increasing order");
+                }
+                if x[0] <= 0.0 {
+                    bail!("The values in `x` must be all positive numbers");
+                }
+                if y[0] <= 0.0 {
+                    bail!("The values in `y` must be all positive numbers");
+                }
+                if x.len() != y.len() {
+                    bail!("`x` and `y` must have the same number of values");
+                }
+                let values = x
+                    .into_iter()
+                    .zip(y)
+                    .map(|(x, y)| [Speed::from_f64(x).unwrap(), Speed::from_f64(y).unwrap()])
+                    .collect();
+                Ok(Self::Piecewise(values))
+            }
+            Some(s) => Err(anyhow!("Unknown type: {s}")),
+        }
+    }
+
     /// Returns the effective speed given the baseline speed.
     ///
     /// If `self` is a piecewise-linear function and the baseline speed is out of bounds (the
@@ -141,6 +197,53 @@ impl<T: Copy> Vehicle<T> {
 }
 
 impl<T: TTFNum> Vehicle<T> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_values(
+        headway: Option<f64>,
+        pce: Option<f64>,
+        speed_function_type: Option<&str>,
+        speed_function_coef: Option<f64>,
+        speed_function_x: Option<Vec<f64>>,
+        speed_function_y: Option<Vec<f64>>,
+        allowed_edges: Option<Vec<u64>>,
+        restricted_edges: Option<Vec<u64>>,
+        edge_ids: &HashSet<u64>,
+    ) -> Result<Self> {
+        let headway =
+            Length::from_f64(headway.ok_or_else(|| anyhow!("Value `headway` is mandatory"))?)
+                .unwrap();
+        if headway < Length::zero() {
+            bail!("Value `headway` must be non-negative");
+        }
+        let pce = PCE::from_f64(pce.unwrap_or(1.0)).unwrap();
+        if pce < PCE::zero() {
+            bail!("Value `pce` must be non-negative");
+        }
+        let speed_function = SpeedFunction::from_values(
+            speed_function_type,
+            speed_function_coef,
+            speed_function_x,
+            speed_function_y,
+        )
+        .context("Failed to create speed function")?;
+        let allowed_edges: HashSet<u64> = allowed_edges.unwrap_or_default().into_iter().collect();
+        if allowed_edges.difference(edge_ids).next().is_some() {
+            bail!("The values in `allowed_edges` must be valid edge ids");
+        }
+        let restricted_edges: HashSet<u64> =
+            restricted_edges.unwrap_or_default().into_iter().collect();
+        if restricted_edges.difference(edge_ids).next().is_some() {
+            bail!("The values in `restricted_edges` must be valid edge ids");
+        }
+        Ok(Vehicle {
+            headway,
+            pce,
+            speed_function,
+            allowed_edges,
+            restricted_edges,
+        })
+    }
+
     /// Returns the effective speed of the vehicle given the baseline speed on the road.
     pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
         self.speed_function.get_speed(base_speed)

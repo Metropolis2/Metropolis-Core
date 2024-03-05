@@ -6,7 +6,7 @@
 //! Everything related to agents.
 use std::ops::Index;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use choice::ChoiceModel;
 use itertools;
 use schemars::JsonSchema;
@@ -19,7 +19,7 @@ use crate::network::{Network, NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
-use crate::units::NoUnit;
+use crate::units::{Interval, NoUnit};
 
 /// Representation of an independent and intelligent agent that makes one trip per day.
 ///
@@ -40,12 +40,12 @@ pub struct Agent<T> {
     pub id: usize,
     /// Modes accessible to the agent.
     #[validate(length(min = 1))]
-    modes: Vec<Mode<T>>,
+    pub(crate) modes: Vec<Mode<T>>,
     /// Choice model used for mode choice.
     ///
     /// When not specified, the first mode is always chosen.
     #[serde(default)]
-    mode_choice: Option<ChoiceModel<NoUnit<T>>>,
+    pub(crate) mode_choice: Option<ChoiceModel<NoUnit<T>>>,
 }
 
 impl<T> Agent<T> {
@@ -69,6 +69,38 @@ impl<T> Agent<T> {
 }
 
 impl<T: TTFNum> Agent<T> {
+    /// Creates an `Agent` from input values.
+    ///
+    /// Returns an error if some values are invalid.
+    pub(crate) fn from_values(
+        id: usize,
+        alt_choice_type: Option<&str>,
+        alt_choice_u: Option<f64>,
+        alt_choice_mu: Option<f64>,
+        alt_choice_constants: Option<Vec<f64>>,
+        alternatives: Option<Vec<Mode<T>>>,
+    ) -> Result<Self> {
+        let mode_choice = match alt_choice_type {
+            Some("First") | None => None,
+            Some(ty) => Some(
+                ChoiceModel::from_values(
+                    Some(ty),
+                    alt_choice_u,
+                    alt_choice_mu,
+                    alt_choice_constants,
+                )
+                .context("Failed to create choice model")?,
+            ),
+        };
+        let modes =
+            alternatives.ok_or_else(|| anyhow!("The agents must have at least one alternative"))?;
+        Ok(Agent {
+            id,
+            modes,
+            mode_choice,
+        })
+    }
+
     /// Returns an [AgentResult] initialized from the choices made in the pre-day model given
     /// an expected [NetworkSkim] and the results of the previous day (if any).
     ///
@@ -81,6 +113,7 @@ impl<T: TTFNum> Agent<T> {
     pub fn make_pre_day_choice(
         &self,
         network: &Network<T>,
+        simulation_period: Interval<T>,
         weights: &NetworkWeights<T>,
         exp_skims: &NetworkSkim<T>,
         preprocess_data: &PreprocessingData<T>,
@@ -96,6 +129,7 @@ impl<T: TTFNum> Agent<T> {
                     self.modes.iter().map(|mode| {
                         mode.get_pre_day_choice(
                             network,
+                            simulation_period,
                             weights,
                             exp_skims,
                             &preprocess_data.network,
@@ -103,10 +137,20 @@ impl<T: TTFNum> Agent<T> {
                         )
                     }),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
-                )?;
+                )
+                .with_context(|| {
+                    format!(
+                        "Failed to compute expected utility for an alternative of agent {}",
+                        self.id
+                    )
+                })?;
                 // Get the id of the chosen mode and the global expected utility, from the mode
                 // choice model.
-                let (choice_id, expected_utility) = choice_model.get_choice(&expected_utilities)?;
+                let (choice_id, expected_utility) = choice_model
+                    .get_choice(&expected_utilities)
+                    .with_context(|| {
+                        format!("Failed to select alternative for agent {}", self.id)
+                    })?;
                 // Call the callback function of the chosen mode to get the mode-specific results.
                 let callback = callbacks.swap_remove(choice_id);
                 let mode_result = callback(alloc)?;
@@ -122,6 +166,7 @@ impl<T: TTFNum> Agent<T> {
                 let chosen_mode = &self.modes[0];
                 let (expected_utility, callback) = chosen_mode.get_pre_day_choice(
                     network,
+                    simulation_period,
                     weights,
                     exp_skims,
                     &preprocess_data.network,
@@ -181,7 +226,7 @@ mod tests {
 
     use super::*;
     use crate::mode::{mode_index, ModeResults};
-    use crate::units::Utility;
+    use crate::units::{Time, Utility};
 
     fn get_agent() -> Agent<f64> {
         let modes = vec![Mode::Constant((0, Utility(10.)))];
@@ -199,6 +244,7 @@ mod tests {
         assert!(agent
             .make_pre_day_choice(
                 &network,
+                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),
@@ -212,6 +258,7 @@ mod tests {
         let result = agent
             .make_pre_day_choice(
                 &network,
+                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),
@@ -229,6 +276,7 @@ mod tests {
             agent
                 .make_pre_day_choice(
                     &network,
+                    Interval([Time(0.0), Time(100.0)]),
                     &Default::default(),
                     &Default::default(),
                     &Default::default(),
@@ -245,6 +293,7 @@ mod tests {
         let result = agent
             .make_pre_day_choice(
                 &network,
+                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),

@@ -750,10 +750,13 @@ impl<T: TTFNum> RoadNetworkState<T> {
     pub fn into_weights(
         self,
         network: &RoadNetwork<T>,
+        period: Interval<T>,
         parameters: &RoadNetworkParameters<T>,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> RoadNetworkWeights<T> {
         let mut weights = RoadNetworkWeights::with_capacity(
+            period,
+            parameters.recording_interval,
             preprocess_data.nb_unique_vehicles(),
             self.graph.edge_count(),
         );

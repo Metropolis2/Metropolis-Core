@@ -37,6 +37,22 @@ impl<T: Default> Default for TravelUtility<T> {
 }
 
 impl<T: TTFNum> TravelUtility<T> {
+    pub(crate) fn from_values(
+        a: Option<f64>,
+        b: Option<f64>,
+        c: Option<f64>,
+        d: Option<f64>,
+        e: Option<f64>,
+    ) -> Self {
+        Self::Polynomial(PolynomialFunction {
+            a: T::from_f64(a.unwrap_or(0.0)).unwrap(),
+            b: T::from_f64(b.unwrap_or(0.0)).unwrap(),
+            c: T::from_f64(c.unwrap_or(0.0)).unwrap(),
+            d: T::from_f64(d.unwrap_or(0.0)).unwrap(),
+            e: T::from_f64(e.unwrap_or(0.0)).unwrap(),
+        })
+    }
+
     /// Returns the travel utility given the travel time.
     pub fn get_travel_utility(&self, travel_time: Time<T>) -> Utility<T> {
         match self {

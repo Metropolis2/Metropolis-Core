@@ -12,10 +12,10 @@ mod weights;
 
 use std::ops::{Deref, Index};
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
-use num_traits::{Float, One, Zero};
+use num_traits::{Float, FromPrimitive, One, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
 use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
-use crate::units::{Flow, Lanes, Length, Speed, Time};
+use crate::units::{Flow, Interval, Lanes, Length, Speed, Time};
 
 /// If `true`, the travel times are truncated to the smallest integer.
 const TRUNC_TT: bool = false;
@@ -68,6 +68,55 @@ pub enum SpeedDensityFunction<T> {
 impl<T> Default for SpeedDensityFunction<T> {
     fn default() -> Self {
         Self::FreeFlow
+    }
+}
+
+impl<T: TTFNum> SpeedDensityFunction<T> {
+    fn from_values(
+        function_type: Option<&str>,
+        capacity: Option<f64>,
+        min_density: Option<f64>,
+        jam_density: Option<f64>,
+        jam_speed: Option<f64>,
+        beta: Option<f64>,
+    ) -> Result<Self> {
+        match function_type {
+            Some("FreeFlow") | None => Ok(SpeedDensityFunction::FreeFlow),
+            Some("Bottleneck") => {
+                let capacity = T::from_f64(capacity.ok_or_else(|| {
+                    anyhow!("Value `capacity` is mandatory when `type` is `\"Bottleneck\"`")
+                })?)
+                .unwrap();
+                Ok(SpeedDensityFunction::Bottleneck(capacity))
+            }
+            Some("ThreeRegimes") => {
+                let min_density = T::from_f64(min_density.ok_or_else(|| {
+                    anyhow!("Value `min_density` is mandatory when `type` is `\"ThreeRegimes\"`")
+                })?)
+                .unwrap();
+                let jam_density = T::from_f64(jam_density.ok_or_else(|| {
+                    anyhow!("Value `jam_density` is mandatory when `type` is `\"ThreeRegimes\"`")
+                })?)
+                .unwrap();
+                let jam_speed = Speed::from_f64(jam_speed.ok_or_else(|| {
+                    anyhow!("Value `jam_speed` is mandatory when `type` is `\"ThreeRegimes\"`")
+                })?)
+                .unwrap();
+                let beta = T::from_f64(beta.ok_or_else(|| {
+                    anyhow!("Value `beta` is mandatory when `type` is `\"ThreeRegimes\"`")
+                })?)
+                .unwrap();
+                Ok(SpeedDensityFunction::ThreeRegimes(
+                    ThreeRegimesSpeedDensityFunction {
+                        min_density,
+                        jam_density,
+                        jam_speed,
+                        beta,
+                    },
+                ))
+            }
+            Some(s) => Err(anyhow!("Unknown type: {s}")),
+        }
     }
 }
 
@@ -224,6 +273,54 @@ impl<T: TTFNum> RoadEdge<T> {
             constant_travel_time,
             overtaking,
         }
+    }
+
+    /// Creates a new RoadEdge from deserialied values.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_values(
+        id: OriginalEdgeIndex,
+        base_speed: Option<f64>,
+        length: Option<f64>,
+        lanes: Option<f64>,
+        speed_density_type: Option<&str>,
+        speed_density_capacity: Option<f64>,
+        speed_density_min_density: Option<f64>,
+        speed_density_jam_density: Option<f64>,
+        speed_density_jam_speed: Option<f64>,
+        speed_density_beta: Option<f64>,
+        bottleneck_flow: Option<f64>,
+        constant_travel_time: Option<f64>,
+        overtaking: Option<bool>,
+    ) -> Result<Self> {
+        let base_speed =
+            Speed::from_f64(base_speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
+                .unwrap();
+        let length =
+            Length::from_f64(length.ok_or_else(|| anyhow!("Value `length` is mandatory"))?)
+                .unwrap();
+        let lanes = Lanes::from_f64(lanes.unwrap_or(1.0)).unwrap();
+        let speed_density = SpeedDensityFunction::from_values(
+            speed_density_type,
+            speed_density_capacity,
+            speed_density_min_density,
+            speed_density_jam_density,
+            speed_density_jam_speed,
+            speed_density_beta,
+        )
+        .context("Failed to create speed-density function")?;
+        let bottleneck_flow = Flow::from_f64(bottleneck_flow.unwrap_or(f64::INFINITY)).unwrap();
+        let constant_travel_time = Time::from_f64(constant_travel_time.unwrap_or(0.0)).unwrap();
+        let overtaking = overtaking.unwrap_or(true);
+        Ok(RoadEdge {
+            id,
+            base_speed,
+            length,
+            lanes,
+            speed_density,
+            bottleneck_flow,
+            constant_travel_time,
+            overtaking,
+        })
     }
 
     /// Returns `true` if vehicles are allowed to overtake each other at the edge's  exit
@@ -476,9 +573,10 @@ impl<T: TTFNum> RoadNetwork<T> {
     pub fn preprocess(
         &self,
         agents: &[Agent<T>],
+        period: Interval<T>,
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkPreprocessingData<T>> {
-        RoadNetworkPreprocessingData::preprocess(self, agents, parameters)
+        RoadNetworkPreprocessingData::preprocess(self, agents, period, parameters)
     }
 
     /// Compute and return the [RoadNetworkSkims] for the RoadNetwork, with the given
@@ -570,17 +668,29 @@ impl<T: TTFNum> RoadNetwork<T> {
     /// Returns the free-flow travel time for each edge and each unique vehicle of the RoadNetwork.
     pub fn get_free_flow_weights(
         &self,
+        period: Interval<T>,
+        parameters: &RoadNetworkParameters<T>,
         preprocess_data: &RoadNetworkPreprocessingData<T>,
     ) -> RoadNetworkWeights<T> {
-        self.get_free_flow_weights_inner(&preprocess_data.unique_vehicles)
+        self.get_free_flow_weights_inner(
+            period,
+            parameters.recording_interval,
+            &preprocess_data.unique_vehicles,
+        )
     }
 
     fn get_free_flow_weights_inner(
         &self,
+        period: Interval<T>,
+        interval: Time<T>,
         unique_vehicles: &UniqueVehicles,
     ) -> RoadNetworkWeights<T> {
-        let mut weights_vec =
-            RoadNetworkWeights::with_capacity(unique_vehicles.len(), self.graph.edge_count());
+        let mut weights_vec = RoadNetworkWeights::with_capacity(
+            period,
+            interval,
+            unique_vehicles.len(),
+            self.graph.edge_count(),
+        );
         for (uvehicle_id, vehicle) in unique_vehicles.iter_uniques(&self.vehicles) {
             let weights = &mut weights_vec[uvehicle_id];
             for edge in self.graph.edge_references() {
@@ -877,8 +987,11 @@ mod tests {
             [0].into_iter().collect(),
         );
         let network = RoadNetwork::from_edges(edges, vec![vehicle.clone()]);
-        let weights =
-            network.get_free_flow_weights_inner(&UniqueVehicles::from_vehicles(&[vehicle]));
+        let weights = network.get_free_flow_weights_inner(
+            Interval([Time(0.), Time(100.0)]),
+            Time(1.),
+            &UniqueVehicles::from_vehicles(&[vehicle]),
+        );
         debug_assert!(weights.get(0, 0).is_none());
         let all_od_pairs = vec![ODPairs::from_vec(vec![(1, 2)])];
         let parameters = RoadNetworkParameters {

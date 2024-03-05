@@ -8,6 +8,15 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] The paths to the input files and the output directory are set in the parameters JSON file.
+
+### Changed
+
+- [USER] The command-line interface only takes the path to the parameters JSON file as argument.
+- [INPUT] The population and network input files accept the Parquet and CSV format instead of JSON.
+
 ## [0.8.0] - 2024-02-29
 
 ### Added

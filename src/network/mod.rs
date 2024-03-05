@@ -15,6 +15,7 @@ use ttf::TTFNum;
 
 use crate::agent::Agent;
 use crate::parameters::Parameters;
+use crate::units::Interval;
 
 pub mod road_network;
 
@@ -86,12 +87,17 @@ impl<T: TTFNum> Network<T> {
     /// conditions.
     pub fn get_free_flow_weights(
         &self,
+        period: Interval<T>,
+        parameters: &NetworkParameters<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> NetworkWeights<T> {
-        let rn_weights = self
-            .road_network
-            .as_ref()
-            .map(|rn| rn.get_free_flow_weights(preprocess_data.road_network.as_ref().unwrap()));
+        let rn_weights = self.road_network.as_ref().map(|rn| {
+            rn.get_free_flow_weights(
+                period,
+                parameters.road_network.as_ref().unwrap(),
+                preprocess_data.road_network.as_ref().unwrap(),
+            )
+        });
         NetworkWeights {
             road_network: rn_weights,
         }
@@ -102,12 +108,13 @@ impl<T: TTFNum> Network<T> {
     pub fn preprocess(
         &self,
         agents: &[Agent<T>],
+        period: Interval<T>,
         parameters: &NetworkParameters<T>,
     ) -> Result<NetworkPreprocessingData<T>> {
         let rn_data = self
             .road_network
             .as_ref()
-            .map(|rn| rn.preprocess(agents, parameters.road_network.as_ref().unwrap()))
+            .map(|rn| rn.preprocess(agents, period, parameters.road_network.as_ref().unwrap()))
             .transpose()?;
         Ok(NetworkPreprocessingData {
             road_network: rn_data,
@@ -167,12 +174,14 @@ impl<T: TTFNum> NetworkState<T> {
     pub fn into_weights(
         self,
         network: &Network<T>,
+        period: Interval<T>,
         parameters: &NetworkParameters<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> NetworkWeights<T> {
         let rn_weights = self.road_network.map(|rn| {
             rn.into_weights(
                 network.road_network.as_ref().unwrap(),
+                period,
                 parameters.road_network.as_ref().unwrap(),
                 preprocess_data.road_network.as_ref().unwrap(),
             )
@@ -184,7 +193,7 @@ impl<T: TTFNum> NetworkState<T> {
 }
 
 /// Simplified representation of the state of a network during a whole day.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(bound = "T: TTFNum")]
 pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,
@@ -249,6 +258,8 @@ impl<T: TTFNum> NetworkWeights<T> {
     pub fn with_network(
         self,
         network: &Network<T>,
+        period: Interval<T>,
+        parameters: &NetworkParameters<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> Self {
         let rn_weights =
@@ -261,10 +272,11 @@ impl<T: TTFNum> NetworkWeights<T> {
                         ),
                     ))
                 } else {
-                    Some(
-                        road_network
-                            .get_free_flow_weights(preprocess_data.road_network.as_ref().unwrap()),
-                    )
+                    Some(road_network.get_free_flow_weights(
+                        period,
+                        parameters.road_network.as_ref().unwrap(),
+                        preprocess_data.road_network.as_ref().unwrap(),
+                    ))
                 }
             } else {
                 None

@@ -26,7 +26,7 @@ pub mod units;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::warn;
 use parameters::SavingFormat;
 // Re-exports.
@@ -57,21 +57,24 @@ pub fn show_stats() {}
 // Dependencies only used in the bins.
 use clap as _;
 
-/// Deserializes a simulation from JSON input files, runs it and stores the results to a given
-/// output directory.
-pub fn run_simulation_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-    weights: Option<&Path>,
-    output: &Path,
-) -> Result<()> {
+/// Deserializes a simulation, runs it and stores the results to a given output directory.
+///
+/// This function takes as argument the path to the `parameters.json` file.
+pub fn run_simulation(path: &Path) -> Result<()> {
+    // Read parameters.
+    let parameters = io::json::get_parameters_from_json(path)?;
+
     // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
+    std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
+        format!(
+            "Failed to create output directory `{:?}`",
+            parameters.output_directory
+        )
+    })?;
 
-    logging::initialize_logging(output);
+    logging::initialize_logging(&parameters.output_directory);
 
-    let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
+    let simulation = io::read_simulation(parameters)?;
 
     // The previous iteration_results file need to be removed if it exists.
     let extension = match simulation.get_parameters().saving_format {
@@ -80,20 +83,31 @@ pub fn run_simulation_from_json_files(
         SavingFormat::CSV => "csv",
     };
     let filename: PathBuf = [
-        output.to_str().unwrap(),
+        simulation
+            .get_parameters()
+            .output_directory
+            .to_str()
+            .unwrap(),
         &format!("iteration_results.{extension}"),
     ]
     .iter()
     .collect();
     if filename.is_file() {
         warn!("Removing already existing file `{filename:?}`");
-        std::fs::remove_file(filename)?;
+        std::fs::remove_file(&filename)
+            .with_context(|| format!("Failed to remove file: `{filename:?}`"))?;
     }
 
-    let weights = weights.map(io::json::read_json).transpose()?;
+    let weights = simulation
+        .get_parameters()
+        .input_files
+        .weights
+        .as_deref()
+        .map(io::json::read_json)
+        .transpose()?;
 
     // Run the simulation.
-    simulation.run_from_weights(weights, output)
+    simulation.run_from_weights(weights)
 }
 
 /// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them

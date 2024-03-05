@@ -3,6 +3,8 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+use std::path::PathBuf;
+
 use choice::{ChoiceModel, ContinuousChoiceModel, LogitModel};
 use hashbrown::HashSet;
 use petgraph::graph::{EdgeIndex, NodeIndex};
@@ -17,7 +19,7 @@ use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
 use crate::network::NetworkParameters;
-use crate::parameters::{Parameters, SavingFormat};
+use crate::parameters::{InputFiles, Parameters, SavingFormat};
 use crate::schedule_utility::ScheduleUtility;
 use crate::stop::StopCriterion;
 use crate::travel_utility::{PolynomialFunction, TravelUtility};
@@ -100,8 +102,8 @@ pub(crate) fn example_trip() -> TravelingMode<f64> {
 }
 
 pub(crate) fn example_departure_time_model() -> DepartureTimeModel<f64> {
-    DepartureTimeModel::ContinuousChoice {
-        period: Interval([Time(0.0), Time(200.0)]),
+    DepartureTimeModel::Continuous {
+        period: Some(Interval([Time(0.0), Time(200.0)])),
         choice_model: ContinuousChoiceModel::Logit(LogitModel::new(NoUnit(0.5), NoUnit(1.0))),
     }
 }
@@ -177,8 +179,21 @@ pub(crate) fn example_road_edge() -> RoadEdge<f64> {
     )
 }
 
+fn example_input_files() -> InputFiles {
+    InputFiles {
+        agents: PathBuf::from("input/agents.parquet"),
+        alternatives: PathBuf::from("input/alts.parquet"),
+        trips: Some(PathBuf::from("input/trips.parquet")),
+        edges: Some(PathBuf::from("input/edges.parquet")),
+        vehicle_types: Some(PathBuf::from("input/vehicles.parquet")),
+        weights: None,
+    }
+}
+
 pub(crate) fn example_parameters() -> Parameters<f64> {
     Parameters {
+        input_files: example_input_files(),
+        output_directory: PathBuf::from("output/"),
         period: Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
         init_iteration_counter: 1,
         network: NetworkParameters {

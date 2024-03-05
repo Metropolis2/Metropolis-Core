@@ -99,10 +99,11 @@ mod tests {
 
     use super::*;
     use crate::network::road_network::RoadNetworkWeights;
-    use crate::units::Time;
+    use crate::units::{Interval, Time};
 
     fn get_weigths(v: f64) -> NetworkWeights<f64> {
-        let mut rn = RoadNetworkWeights::with_capacity(1, 1);
+        let mut rn =
+            RoadNetworkWeights::with_capacity(Interval([Time(0.0), Time(100.0)]), Time(1.0), 1, 1);
         rn[0].insert(0, TTF::Constant(Time(v)));
         NetworkWeights::new(Some(rn))
     }
@@ -113,20 +114,36 @@ mod tests {
         let update_weights = get_weigths(20.);
         let model = LearningModel::Linear;
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 0),
-            get_weigths(20.)
+            model
+                .learn(&old_weights, &update_weights, 0)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(20.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 1),
-            get_weigths(15.)
+            model
+                .learn(&old_weights, &update_weights, 1)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(15.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 4),
-            get_weigths(12.)
+            model
+                .learn(&old_weights, &update_weights, 4)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(12.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 9),
-            get_weigths(11.)
+            model
+                .learn(&old_weights, &update_weights, 9)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(11.).road_network().unwrap().weights
         );
     }
 
@@ -136,20 +153,36 @@ mod tests {
         let update_weights = get_weigths(20.);
         let model = LearningModel::Quadratic;
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 0),
-            get_weigths(20.)
+            model
+                .learn(&old_weights, &update_weights, 0)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(20.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 1),
-            get_weigths(15.)
+            model
+                .learn(&old_weights, &update_weights, 1)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(15.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 16),
-            get_weigths(12.)
+            model
+                .learn(&old_weights, &update_weights, 16)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(12.).road_network().unwrap().weights
         );
         assert_eq!(
-            model.learn(&old_weights, &update_weights, 81),
-            get_weigths(11.)
+            model
+                .learn(&old_weights, &update_weights, 81)
+                .road_network()
+                .unwrap()
+                .weights,
+            get_weigths(11.).road_network().unwrap().weights
         );
     }
 
@@ -159,7 +192,10 @@ mod tests {
         let w2 = get_weigths(20.);
         let w3 = get_weigths(30.);
         let model = LearningModel::Exponential(0.2);
-        assert_eq!(model.learn(&w1, &w2, 0), get_weigths(20.));
+        assert_eq!(
+            model.learn(&w1, &w2, 0).road_network().unwrap().weights,
+            get_weigths(20.).road_network().unwrap().weights
+        );
         let x2 = model.learn(&w1, &w2, 1);
         if let TTF::Constant(v) = x2.road_network().unwrap()[(0, 0)] {
             let expected = (20. + 0.8 * 10.) * 0.2 / (1. - 0.8f64.powi(2));

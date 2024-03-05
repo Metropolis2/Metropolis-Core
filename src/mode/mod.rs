@@ -13,7 +13,7 @@ use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 use self::trip::results::{AggregateTripResults, PreDayTripResults, TripResults};
-use self::trip::TravelingMode;
+use self::trip::{Leg, TravelingMode};
 use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::road_network::preprocess::UniqueVehicles;
@@ -21,7 +21,7 @@ use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
 use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
-use crate::units::{Distribution, Time, Utility};
+use crate::units::{Distribution, Interval, Time, Utility};
 
 pub mod trip;
 
@@ -94,11 +94,79 @@ impl<T> fmt::Display for Mode<T> {
 }
 
 impl<T: TTFNum> Mode<T> {
+    /// Creates a `Mode` from input values.
+    ///
+    /// Returns an error if some values are invalid.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_values(
+        id: usize,
+        origin_delay: Option<f64>,
+        dt_choice_type: Option<&str>,
+        dt_choice_departure_time: Option<f64>,
+        dt_choice_period: Option<Vec<f64>>,
+        dt_choice_interval: Option<f64>,
+        dt_choice_offset: Option<f64>,
+        dt_choice_model_type: Option<&str>,
+        dt_choice_model_u: Option<f64>,
+        dt_choice_model_mu: Option<f64>,
+        dt_choice_model_constants: Option<Vec<f64>>,
+        constant_utility: Option<f64>,
+        total_travel_utility_one: Option<f64>,
+        total_travel_utility_two: Option<f64>,
+        total_travel_utility_three: Option<f64>,
+        total_travel_utility_four: Option<f64>,
+        origin_utility_type: Option<&str>,
+        origin_utility_tstar: Option<f64>,
+        origin_utility_beta: Option<f64>,
+        origin_utility_gamma: Option<f64>,
+        origin_utility_delta: Option<f64>,
+        destination_utility_type: Option<&str>,
+        destination_utility_tstar: Option<f64>,
+        destination_utility_beta: Option<f64>,
+        destination_utility_gamma: Option<f64>,
+        destination_utility_delta: Option<f64>,
+        pre_compute_route: Option<bool>,
+        legs: Option<Vec<Leg<T>>>,
+    ) -> Result<Self> {
+        // TODO: Manage constant case.
+        Ok(Self::Trip(TravelingMode::from_values(
+            id,
+            origin_delay,
+            dt_choice_type,
+            dt_choice_departure_time,
+            dt_choice_period,
+            dt_choice_interval,
+            dt_choice_offset,
+            dt_choice_model_type,
+            dt_choice_model_u,
+            dt_choice_model_mu,
+            dt_choice_model_constants,
+            constant_utility,
+            total_travel_utility_one,
+            total_travel_utility_two,
+            total_travel_utility_three,
+            total_travel_utility_four,
+            origin_utility_type,
+            origin_utility_tstar,
+            origin_utility_beta,
+            origin_utility_gamma,
+            origin_utility_delta,
+            destination_utility_type,
+            destination_utility_tstar,
+            destination_utility_beta,
+            destination_utility_gamma,
+            destination_utility_delta,
+            pre_compute_route,
+            legs,
+        )?))
+    }
+
     /// This method returns the results of the pre-day model (expected utility and [ModeCallback])
     /// for a given [Mode], [NetworkSkim] and [NetworkPreprocessingData].
     pub fn get_pre_day_choice<'a>(
         &'a self,
         network: &'a Network<T>,
+        simulation_period: Interval<T>,
         weights: &'a NetworkWeights<T>,
         exp_skims: &'a NetworkSkim<T>,
         preprocess_data: &'a NetworkPreprocessingData<T>,
@@ -108,6 +176,7 @@ impl<T: TTFNum> Mode<T> {
             Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
             Self::Trip(mode) => mode.get_pre_day_choice(
                 network.get_road_network(),
+                simulation_period,
                 weights.road_network(),
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),

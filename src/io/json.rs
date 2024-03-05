@@ -14,10 +14,16 @@ use log::info;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::parameters::Parameters;
 use crate::{
     network::{road_network::RoadNetwork, Network},
     simulation::Simulation,
 };
+
+/// Deserializes parameters from JSON files.
+pub fn get_parameters_from_json(path: &Path) -> Result<Parameters<f64>> {
+    read_json(path).context("Failed to read parameters")
+}
 
 /// Deserializes a simulation from JSON files.
 pub fn get_simulation_from_json_files(
