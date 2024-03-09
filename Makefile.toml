@@ -109,7 +109,9 @@ glob_cp ./LICENSE* ${OUTPUT_NAME}/
 # cp ./docs/ ${OUTPUT_NAME}/
 # cp ./book/book/ ${OUTPUT_NAME}/
 cp ./examples/ ${OUTPUT_NAME}/
-rm ${OUTPUT_NAME}/examples/complete_example.rs
+rm ${OUTPUT_NAME}/examples/csv_example.rs
+rm ${OUTPUT_NAME}/examples/parquet_example.rs
+rm ${OUTPUT_NAME}/examples/unnested_parquet_example.rs
 cp ./schemas/ ${OUTPUT_NAME}/
 
 ls -l ${OUTPUT_NAME}/

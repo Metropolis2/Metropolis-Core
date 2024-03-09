@@ -1,19 +1,55 @@
 import os
+import json
 
 import polars as pl
 
-# Format of the output files: "CSV" or "Parquet".
-OUTPUT_FORMAT = "CSV"
 # Directory where the output files should be stored.
-OUTPUT_DIR = "data/csv/"
-# If True, the columns are nested. Not compatible with CSV format.
-NESTED = False
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/")
 
 
 def get_struct_schema(name, columns):
     """Returns a dictionary mapping simple column names to complete column names for Structs."""
     return {col: f"{name}.{col}" for col in columns}
 
+parameters = {
+  "period": [21600.0, 43200.0],
+  "network": {
+    "road_network": {
+      "recording_interval": 50.0,
+      "approximation_bound": 1.0,
+      "spillback": True,
+      "backward_wave_speed": 4.0,
+      "max_pending_duration": 20.0,
+      "constrain_inflow": True,
+      "algorithm_type": "Best",
+      "contraction": {
+        "complexity_quotient_weight": 2.0,
+        "edge_quotient_weight": 2.0,
+        "hierarchy_depth_weight": 1.0,
+        "thin_profile_interval_hop_limit": 16,
+        "unpacked_edges_quotient_weight": 1.0
+      }
+    }
+  },
+  "learning_model": {
+    "type": "Exponential",
+    "value": 0.01
+  },
+  "init_iteration_counter": 1,
+  "stopping_criteria": [
+    {
+      "type": "MaxIteration",
+      "value": 2
+    },
+    {
+      "type": "DepartureTime",
+      "value": 0.01
+    }
+  ],
+  "update_ratio": 1.0,
+  "random_seed": 19960813,
+  "nb_threads": 24,
+}
 
 agents = pl.DataFrame(
     {
@@ -24,13 +60,6 @@ agents = pl.DataFrame(
         "alt_choice.constants": [None, [0.9, 1.3, 2.1], None],
     }
 )
-
-if NESTED:
-    alt_choice_schema = get_struct_schema("alt_choice", ("type", "u", "mu", "constants"))
-    agents = agents.select(
-        "agent_id",
-        pl.struct(**alt_choice_schema).alias("alt_choice"),
-    )
 
 alts = pl.DataFrame(
     {
@@ -66,42 +95,16 @@ alts = pl.DataFrame(
 )
 
 
-if NESTED:
-    dt_choice_schema = get_struct_schema(
-        "dt_choice", ("type", "departure_time", "period", "interval", "offset")
-    )
-    dt_choice_model_schema = get_struct_schema("dt_choice.model", ("type", "u", "mu", "constants"))
-    total_travel_utility_schema = get_struct_schema(
-        "total_travel_utility", ("one", "two", "three", "four")
-    )
-    origin_utility_schema = get_struct_schema(
-        "origin_utility", ("type", "tstar", "beta", "gamma", "delta")
-    )
-    destination_utility_schema = get_struct_schema(
-        "destination_utility", ("type", "tstar", "beta", "gamma", "delta")
-    )
-    alts = alts.select(
-        "agent_id",
-        "alt_id",
-        "origin_delay",
-        pl.struct(**dt_choice_schema, model=pl.struct(**dt_choice_model_schema)).alias("dt_choice"),
-        "constant_utility",
-        pl.struct(**total_travel_utility_schema).alias("total_travel_utility"),
-        pl.struct(**origin_utility_schema).alias("origin_utility"),
-        pl.struct(**destination_utility_schema).alias("destination_utility"),
-        "pre_compute_route",
-    )
-
 trips = pl.DataFrame(
     {
         "agent_id": [1, 1, 1, 2, 2],
         "alt_id": [0, 1, 2, 0, 0],
         "trip_id": [0, 1, 2, 3, 4],
         "class.type": ["Road", "Virtual", "Virtual", "Road", "Road"],
-        "class.origin": [0, None, None, 0, 2],
-        "class.destination": [3, None, None, 2, 3],
-        "class.vehicle": [0, None, None, 1, 1],
-        "class.route": [[0, 1, 2], None, None, None, None],
+        "class.origin": [1, None, None, 1, 3],
+        "class.destination": [4, None, None, 3, 4],
+        "class.vehicle": [1, None, None, 2, 2],
+        "class.route": [[1, 2, 3], None, None, None, None],
         "class.travel_time": [None, 5.0 * 60.0, 7.0 * 60.0, None, None],
         "stopping_time": [None, None, None, 5.0 * 60.0, None],
         "constant_utility": [0.0, None, 1.0, -1.0, -2.0],
@@ -117,30 +120,11 @@ trips = pl.DataFrame(
     }
 )
 
-if NESTED:
-    class_schema = get_struct_schema(
-        "class", ("type", "origin", "destination", "vehicle", "route", "travel_time")
-    )
-    travel_utility_schema = get_struct_schema("travel_utility", ("one", "two", "three", "four"))
-    schedule_utility_schema = get_struct_schema(
-        "schedule_utility", ("type", "tstar", "beta", "gamma", "delta")
-    )
-    trips = trips.select(
-        "agent_id",
-        "alt_id",
-        "trip_id",
-        pl.struct(**class_schema).alias("class"),
-        "stopping_time",
-        "constant_utility",
-        pl.struct(**travel_utility_schema).alias("travel_utility"),
-        pl.struct(**schedule_utility_schema).alias("schedule_utility"),
-    )
-
 edges = pl.DataFrame(
     {
-        "edge_id": [0, 1, 2],
-        "source": [0, 1, 2],
-        "target": [1, 2, 3],
+        "edge_id": [1, 2, 3],
+        "source": [1, 2, 3],
+        "target": [2, 3, 4],
         "speed": [50.0 / 3.6, 30.0 / 3.6, 90.0 / 3.6],
         "length": [100.0, 30.0, 60.0],
         "lanes": [2.0, 0.5, None],
@@ -156,72 +140,167 @@ edges = pl.DataFrame(
     }
 )
 
-if NESTED:
-    speed_density_schema = get_struct_schema(
-        "speed_density", ("type", "capacity", "min_density", "jam_density", "jam_speed", "beta")
-    )
-    edges = edges.select(
-        "edge_id",
-        "source",
-        "target",
-        "speed",
-        "length",
-        "lanes",
-        pl.struct(**speed_density_schema).alias("speed_density"),
-        "bottleneck_flow",
-        "constant_travel_time",
-        "overtaking",
-    )
-
 vehicles = pl.DataFrame(
     {
-        "vehicle_id": [0, 1, 2],
+        "vehicle_id": [1, 2, 3],
         "headway": [8.0, 24.0, 0.0],
         "pce": [None, 3.0, 0.1],
         "speed_function.type": [None, "Multiplicator", "Piecewise"],
         "speed_function.coef": [None, 0.8, None],
         "speed_function.x": [None, None, [50.0 / 3.6, 90.0 / 3.6, 110.0 / 3.6, 130.0 / 3.6]],
         "speed_function.y": [None, None, [50.0 / 3.6, 80.0 / 3.6, 90.0 / 3.6, 90.0 / 3.6]],
-        "allowed_edges": [[0, 1, 2], None, None],
-        "restricted_edges": [None, None, [1, 2]],
+        "allowed_edges": [[1, 2, 3], None, None],
+        "restricted_edges": [None, None, [2, 3]],
     }
 )
 
-if NESTED:
-    speed_function_schema = get_struct_schema("speed_function", ("type", "coef", "x", "y"))
-    vehicles = vehicles.select(
-        "vehicle_id",
-        "headway",
-        "pce",
-        pl.struct(**speed_function_schema).alias("speed_function"),
-        "allowed_edges",
-        "restricted_edges",
-    )
+# === Unnested Parquet format ===
+directory = os.path.join(OUTPUT_DIR, "unnested_parquet")
+if not os.path.isdir(directory):
+    os.makedirs(directory)
+agents.write_parquet(os.path.join(directory, "agents.parquet"))
+alts.write_parquet(os.path.join(directory, "alts.parquet"))
+trips.write_parquet(os.path.join(directory, "trips.parquet"))
+edges.write_parquet(os.path.join(directory, "edges.parquet"))
+vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
+parameters["input_files"] = {
+    "agents": os.path.join(directory, "agents.parquet"),
+    "alternatives": os.path.join(directory, "alts.parquet"),
+    "trips": os.path.join(directory, "trips.parquet"),
+    "edges": os.path.join(directory, "edges.parquet"),
+    "vehicle_types": os.path.join(directory, "vehicles.parquet"),
+    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+  }
+parameters["output_directory"] = os.path.join(directory, "output")
+parameters["saving_format"] = "Parquet"
+with open(os.path.join(directory, "parameters.json"), "w") as f:
+    json.dump(parameters, f, indent=2)
 
-if not os.path.isdir(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
+# === Nested Parquet format ===
+alt_choice_schema = get_struct_schema("alt_choice", ("type", "u", "mu", "constants"))
+nested_agents = agents.select(
+    "agent_id",
+    pl.struct(**alt_choice_schema).alias("alt_choice"),
+)
 
-if OUTPUT_FORMAT == "CSV":
-    # Some columns are not supported for CSV format.
-    agents = agents.drop("alt_choice.constants")
-    alts = alts.drop("dt_choice.period", "dt_choice.model.constants")
-    trips = trips.drop("class.route")
-    vehicles = vehicles.drop(
-        "speed_function.x", "speed_function.y", "allowed_edges", "restricted_edges"
-    )
-    vehicles = vehicles.with_columns(
-        pl.Series([None, "Multiplicator", None]).alias("speed_function.type")
-    )
-    agents.write_csv(os.path.join(OUTPUT_DIR, "agents.csv"))
-    alts.write_csv(os.path.join(OUTPUT_DIR, "alts.csv"))
-    trips.write_csv(os.path.join(OUTPUT_DIR, "trips.csv"))
-    edges.write_csv(os.path.join(OUTPUT_DIR, "edges.csv"))
-    vehicles.write_csv(os.path.join(OUTPUT_DIR, "vehicles.csv"))
-elif OUTPUT_FORMAT == "Parquet":
-    agents.write_parquet(os.path.join(OUTPUT_DIR, "agents.parquet"))
-    alts.write_parquet(os.path.join(OUTPUT_DIR, "alts.parquet"))
-    trips.write_parquet(os.path.join(OUTPUT_DIR, "trips.parquet"))
-    edges.write_parquet(os.path.join(OUTPUT_DIR, "edges.parquet"))
-    vehicles.write_parquet(os.path.join(OUTPUT_DIR, "vehicles.parquet"))
-else:
-    print(f"Unknown output format: {OUTPUT_FORMAT}")
+dt_choice_schema = get_struct_schema(
+    "dt_choice", ("type", "departure_time", "period", "interval", "offset")
+)
+dt_choice_model_schema = get_struct_schema("dt_choice.model", ("type", "u", "mu", "constants"))
+total_travel_utility_schema = get_struct_schema(
+    "total_travel_utility", ("one", "two", "three", "four")
+)
+origin_utility_schema = get_struct_schema(
+    "origin_utility", ("type", "tstar", "beta", "gamma", "delta")
+)
+destination_utility_schema = get_struct_schema(
+    "destination_utility", ("type", "tstar", "beta", "gamma", "delta")
+)
+nested_alts = alts.select(
+    "agent_id",
+    "alt_id",
+    "origin_delay",
+    pl.struct(**dt_choice_schema, model=pl.struct(**dt_choice_model_schema)).alias("dt_choice"),
+    "constant_utility",
+    pl.struct(**total_travel_utility_schema).alias("total_travel_utility"),
+    pl.struct(**origin_utility_schema).alias("origin_utility"),
+    pl.struct(**destination_utility_schema).alias("destination_utility"),
+    "pre_compute_route",
+)
+
+class_schema = get_struct_schema(
+    "class", ("type", "origin", "destination", "vehicle", "route", "travel_time")
+)
+travel_utility_schema = get_struct_schema("travel_utility", ("one", "two", "three", "four"))
+schedule_utility_schema = get_struct_schema(
+    "schedule_utility", ("type", "tstar", "beta", "gamma", "delta")
+)
+nested_trips = trips.select(
+    "agent_id",
+    "alt_id",
+    "trip_id",
+    pl.struct(**class_schema).alias("class"),
+    "stopping_time",
+    "constant_utility",
+    pl.struct(**travel_utility_schema).alias("travel_utility"),
+    pl.struct(**schedule_utility_schema).alias("schedule_utility"),
+)
+
+speed_density_schema = get_struct_schema(
+    "speed_density", ("type", "capacity", "min_density", "jam_density", "jam_speed", "beta")
+)
+nested_edges = edges.select(
+    "edge_id",
+    "source",
+    "target",
+    "speed",
+    "length",
+    "lanes",
+    pl.struct(**speed_density_schema).alias("speed_density"),
+    "bottleneck_flow",
+    "constant_travel_time",
+    "overtaking",
+)
+
+speed_function_schema = get_struct_schema("speed_function", ("type", "coef", "x", "y"))
+nested_vehicles = vehicles.select(
+    "vehicle_id",
+    "headway",
+    "pce",
+    pl.struct(**speed_function_schema).alias("speed_function"),
+    "allowed_edges",
+    "restricted_edges",
+)
+
+directory = os.path.join(OUTPUT_DIR, "parquet")
+if not os.path.isdir(directory):
+    os.makedirs(directory)
+nested_agents.write_parquet(os.path.join(directory, "agents.parquet"))
+nested_alts.write_parquet(os.path.join(directory, "alts.parquet"))
+nested_trips.write_parquet(os.path.join(directory, "trips.parquet"))
+nested_edges.write_parquet(os.path.join(directory, "edges.parquet"))
+nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
+parameters["input_files"] = {
+    "agents": os.path.join(directory, "agents.parquet"),
+    "alternatives": os.path.join(directory, "alts.parquet"),
+    "trips": os.path.join(directory, "trips.parquet"),
+    "edges": os.path.join(directory, "edges.parquet"),
+    "vehicle_types": os.path.join(directory, "vehicles.parquet"),
+    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+  }
+parameters["output_directory"] = os.path.join(directory, "output")
+parameters["saving_format"] = "Parquet"
+with open(os.path.join(directory, "parameters.json"), "w") as f:
+    json.dump(parameters, f, indent=2)
+
+# === CSV format ===
+# Some columns are not supported for CSV format.
+agents = agents.drop("alt_choice.constants")
+alts = alts.drop("dt_choice.period", "dt_choice.model.constants")
+trips = trips.drop("class.route")
+vehicles = vehicles.drop(
+    "speed_function.x", "speed_function.y", "allowed_edges", "restricted_edges"
+)
+vehicles = vehicles.with_columns(
+    pl.Series([None, "Multiplicator", None]).alias("speed_function.type")
+)
+directory = os.path.join(OUTPUT_DIR, "csv")
+if not os.path.isdir(directory):
+    os.makedirs(directory)
+agents.write_csv(os.path.join(directory, "agents.csv"))
+alts.write_csv(os.path.join(directory, "alts.csv"))
+trips.write_csv(os.path.join(directory, "trips.csv"))
+edges.write_csv(os.path.join(directory, "edges.csv"))
+vehicles.write_csv(os.path.join(directory, "vehicles.csv"))
+parameters["input_files"] = {
+    "agents": os.path.join(directory, "agents.csv"),
+    "alternatives": os.path.join(directory, "alts.csv"),
+    "trips": os.path.join(directory, "trips.csv"),
+    "edges": os.path.join(directory, "edges.csv"),
+    "vehicle_types": os.path.join(directory, "vehicles.csv"),
+    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+  }
+parameters["output_directory"] = os.path.join(directory, "output")
+parameters["saving_format"] = "CSV"
+with open(os.path.join(directory, "parameters.json"), "w") as f:
+    json.dump(parameters, f, indent=2)

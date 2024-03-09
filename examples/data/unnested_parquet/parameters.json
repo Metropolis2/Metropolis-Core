@@ -1,0 +1,52 @@
+{
+  "period": [
+    21600.0,
+    43200.0
+  ],
+  "network": {
+    "road_network": {
+      "recording_interval": 50.0,
+      "approximation_bound": 1.0,
+      "spillback": true,
+      "backward_wave_speed": 4.0,
+      "max_pending_duration": 20.0,
+      "constrain_inflow": true,
+      "algorithm_type": "Best",
+      "contraction": {
+        "complexity_quotient_weight": 2.0,
+        "edge_quotient_weight": 2.0,
+        "hierarchy_depth_weight": 1.0,
+        "thin_profile_interval_hop_limit": 16,
+        "unpacked_edges_quotient_weight": 1.0
+      }
+    }
+  },
+  "learning_model": {
+    "type": "Exponential",
+    "value": 0.01
+  },
+  "init_iteration_counter": 1,
+  "stopping_criteria": [
+    {
+      "type": "MaxIteration",
+      "value": 2
+    },
+    {
+      "type": "DepartureTime",
+      "value": 0.01
+    }
+  ],
+  "update_ratio": 1.0,
+  "random_seed": 19960813,
+  "nb_threads": 24,
+  "input_files": {
+    "agents": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/agents.parquet",
+    "alternatives": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/alts.parquet",
+    "trips": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/trips.parquet",
+    "edges": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/edges.parquet",
+    "vehicle_types": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/vehicles.parquet",
+    "weights": "/home/ljavaudin/GitRepositories/metrolib/examples/data/weights.json"
+  },
+  "output_directory": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/output",
+  "saving_format": "Parquet"
+}

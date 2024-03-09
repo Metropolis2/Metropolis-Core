@@ -1,14 +1,8 @@
 {
-  "input_files": {
-      "agents": "examples/data/csv/agents.csv",
-      "alternatives": "examples/data/csv/alts.csv",
-      "trips": "examples/data/csv/trips.csv",
-      "edges": "examples/data/csv/edges.csv",
-      "vehicle_types": "examples/data/csv/vehicles.csv",
-      "weights": "examples/data/weights.json"
-  },
-  "output_directory": "examples/data/output",
-  "period": [21600.0, 43200.0],
+  "period": [
+    21600.0,
+    43200.0
+  ],
   "network": {
     "road_network": {
       "recording_interval": 50.0,
@@ -45,5 +39,14 @@
   "update_ratio": 1.0,
   "random_seed": 19960813,
   "nb_threads": 24,
+  "input_files": {
+    "agents": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/agents.csv",
+    "alternatives": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/alts.csv",
+    "trips": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/trips.csv",
+    "edges": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/edges.csv",
+    "vehicle_types": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/vehicles.csv",
+    "weights": "/home/ljavaudin/GitRepositories/metrolib/examples/data/weights.json"
+  },
+  "output_directory": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/output",
   "saving_format": "CSV"
 }
