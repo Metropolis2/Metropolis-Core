@@ -28,10 +28,10 @@
 }
 		</style>
 
-		<title>METROPOLIS 2 Simulation Report</title>
+		<title>METROPOLIS2 Simulation Report</title>
 	</head>
 	<body>
-		<h1>METROPOLIS 2 Simulation Report</h1>
+		<h1>METROPOLIS2 Simulation Report</h1>
 
 		<h2>Convergence</h2>
 
@@ -40,11 +40,11 @@
 				<thead class="thead-light">
 					<tr class="first">
 						<th scope="col" rowspan="2" class="text-center">Iteration</th>
-						<th scope="col" rowspan="2" class="text-center">Surplus</th>
-						<th scope="col" colspan="2" class="text-center">No Trip</th>
-						<th scope="col" colspan="8" class="text-center">Trips</th>
-						<th scope="col" colspan="22" class="text-center">Road Legs</th>
-						<th scope="col" colspan="10" class="text-center">Virtual Legs</th>
+						<th scope="col" rowspan="2" class="text-center">Agent-level expected utility</th>
+						<th scope="col" colspan="2" class="text-center">No-trip alternatives</th>
+						<th scope="col" colspan="8" class="text-center">Alternative-level</th>
+						<th scope="col" colspan="22" class="text-center">Road-trips level</th>
+						<th scope="col" colspan="10" class="text-center">Virtual-trip level</th>
 						<th scope="col" colspan="2" class="text-center">Road Network</th>
 					</tr>
 					<tr class="second">
@@ -61,10 +61,10 @@
 						<th scope="col" class="text-center">Mean departure-time shift</th>
 						<th scope="col" class="text-center">Departure time RMSE</th>
 						<!-- ROAD LEGS -->
-						<th scope="col" class="text-center"># Legs</th>
-						<th scope="col" class="text-center"># Trips (1+ road leg)</th>
-						<th scope="col" class="text-center"># Trips (only road legs)</th>
-						<th scope="col" class="text-center">Mean # road legs</th>
+						<th scope="col" class="text-center"># Trips</th>
+						<th scope="col" class="text-center"># Alternatives (1+ road trip)</th>
+						<th scope="col" class="text-center"># Alternatives (only road trips)</th>
+						<th scope="col" class="text-center">Mean # road trips</th>
 						<th scope="col" class="text-center">Mean departure time</th>
 						<th scope="col" class="text-center">Mean arrival time</th>
 						<th scope="col" class="text-center">Mean road time</th>
@@ -84,10 +84,10 @@
 						<th scope="col" class="text-center">Expected travel time difference RMSE</th>
 						<th scope="col" class="text-center">Mean length difference (m)</th>
 						<!-- VIRTUAL LEGS -->
-						<th scope="col" class="text-center"># Legs</th>
-						<th scope="col" class="text-center"># Trips (1+ virtual leg)</th>
-						<th scope="col" class="text-center"># Trips (only virtual legs)</th>
-						<th scope="col" class="text-center">Mean # virtual legs</th>
+						<th scope="col" class="text-center"># Trips</th>
+						<th scope="col" class="text-center"># Alternatives (1+ virtual trip)</th>
+						<th scope="col" class="text-center"># Alternatives (only virtual trips)</th>
+						<th scope="col" class="text-center">Mean # virtual trips</th>
 						<th scope="col" class="text-center">Mean departure time</th>
 						<th scope="col" class="text-center">Mean arrival time</th>
 						<th scope="col" class="text-center">Mean travel time</th>
@@ -95,8 +95,8 @@
 						<th scope="col" class="text-center">Mean global congestion</th>
 						<th scope="col" class="text-center">Mean utility</th>
 						<!-- ROAD NETWORK -->
-						<th scope="col" class="text-center">Simulated road-network weights RMSE</th>
-						<th scope="col" class="text-center">Expected road-network weights RMSE</th>
+						<th scope="col" class="text-center">Simulated road-network conditions RMSE</th>
+						<th scope="col" class="text-center">Expected road-network conditions RMSE</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -212,19 +212,25 @@
 
 		<ul class="nav nav-tabs">
 			<li class="nav-item">
-				<a class="nav-link active" id="surplus-tab" data-toggle="tab" href="#surplus" role="tab">Surplus</a>
+				<a class="nav-link active" id="surplus-tab" data-toggle="tab" href="#surplus" role="tab">Agent Expected Utility (Surplus)</a>
 			</li>
 			<li class="nav-item">
-				<a class="nav-link" id="road_count-tab" data-toggle="tab" href="#road_count" role="tab">Road Count</a>
+				<a class="nav-link" id="mean_departure_time-tab" data-toggle="tab" href="#mean_departure_time" role="tab">Mean Departure Time</a>
 			</li>
 			<li class="nav-item">
-				<a class="nav-link" id="road_congestion-tab" data-toggle="tab" href="#road_congestion" role="tab">Road Congestion</a>
+				<a class="nav-link" id="dt_rmse-tab" data-toggle="tab" href="#dt_rmse" role="tab">Departure Time RMSE</a>
 			</li>
 			<li class="nav-item">
-				<a class="nav-link" id="road_mean_departure_time-tab" data-toggle="tab" href="#road_mean_departure_time" role="tab">Road Mean Departure Time</a>
+				<a class="nav-link" id="travel_time-tab" data-toggle="tab" href="#travel_time" role="tab">Mean Travel Time</a>
 			</li>
 			<li class="nav-item">
-				<a class="nav-link" id="road_expect-tab" data-toggle="tab" href="#road_expect" role="tab">Road EXPECT</a>
+				<a class="nav-link" id="expect_rmse-tab" data-toggle="tab" href="#expect_rmse" role="tab">Expected Travel Time Diff RMSE</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="sim_rn_cond_rmse-tab" data-toggle="tab" href="#sim_rn_cond_rmse" role="tab">Simulated Road Network Conditions RMSE</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" id="exp_rn_cond_rmse-tab" data-toggle="tab" href="#exp_rn_cond_rmse" role="tab">Expected Road Network Conditions RMSE</a>
 			</li>
 		</ul>
 
@@ -232,17 +238,23 @@
 			<div class="tab-pane fade show active" id="surplus" role="tabpanel">
 				<div id="surplusChart" style="height: 600px; width: 1000px"></div>
 			</div>
-			<div class="tab-pane fade" id="road_count" role="tabpanel">
-				<div id="roadCountChart" style="height: 600px; width: 1000px"></div>
+			<div class="tab-pane fade" id="mean_departure_time" role="tabpanel">
+				<div id="meanDepartureTimeChart" style="height: 600px; width: 1000px"></div>
 			</div>
-			<div class="tab-pane fade" id="road_congestion" role="tabpanel">
-				<div id="roadCongestionChart" style="height: 600px; width: 1000px"></div>
+			<div class="tab-pane fade" id="dt_rmse" role="tabpanel">
+				<div id="dtRmseChart" style="height: 600px; width: 1000px"></div>
 			</div>
-			<div class="tab-pane fade" id="road_mean_departure_time" role="tabpanel">
-				<div id="roadMeanDepartureTimeChart" style="height: 600px; width: 1000px"></div>
+			<div class="tab-pane fade" id="travel_time" role="tabpanel">
+				<div id="travelTimeChart" style="height: 600px; width: 1000px"></div>
 			</div>
-			<div class="tab-pane fade" id="road_expect" role="tabpanel">
-				<div id="roadExpectChart" style="height: 600px; width: 1000px"></div>
+			<div class="tab-pane fade" id="expect_rmse" role="tabpanel">
+				<div id="expectRmseChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="sim_rn_cond_rmse" role="tabpanel">
+				<div id="simRnCondRmseChart" style="height: 600px; width: 1000px"></div>
+			</div>
+			<div class="tab-pane fade" id="exp_rn_cond_rmse" role="tabpanel">
+				<div id="expRnCondRmseChart" style="height: 600px; width: 1000px"></div>
 			</div>
 		</div>
 
@@ -270,19 +282,40 @@
 
 			var iters = [];
 			var surplus = [];
-			var road_count = [];
-			var road_congestion = [];
-			var road_mean_departure_time = [];
-			var road_expect = [];
+			var mean_departure_time = [];
+			var dt_rmse = [];
+			var travel_time = [];
+			var expect_rmse = [];
+			var sim_rn_cond_rmse = [];
+			var exp_rn_cond_rmse = [];
 			for (let i = 0; i < data.length; i++) {
 				iters.push(i + 1);
+				// Surplus
 				surplus.push(data[i].surplus.mean);
-				road_count.push(data[i].mode_results.trip_modes.count);
-				road_congestion.push(data[i].mode_results.trip_modes.road_leg.route_congestion.mean);
+				// Mean departure time
 				var t = new Date(0);
 				t.setSeconds(data[i].mode_results.trip_modes.departure_time.mean);
-				road_mean_departure_time.push(t.toISOString());
-				road_expect.push(data[i].mode_results.trip_modes.road_leg.exp_travel_time_rel_diff.mean);
+				mean_departure_time.push(t.toISOString());
+				// Departure time RMSE
+				var t = new Date(0);
+				t.setSeconds(data[i].mode_results.trip_modes.dep_time_rmse);
+				dt_rmse.push(t.toISOString());
+				// Mean travel time
+				var t = new Date(0);
+				t.setSeconds(data[i].mode_results.trip_modes.travel_time.mean);
+				travel_time.push(t.toISOString());
+				// Exp. travel time diff RMSE
+				var t = new Date(0);
+				t.setSeconds(data[i].mode_results.trip_modes.road_leg.exp_travel_time_diff_rmse);
+				expect_rmse.push(t.toISOString());
+				// Sim. road network conditions RMSE
+				var t = new Date(0);
+				t.setSeconds(data[i].sim_road_network_weights_rmse);
+				sim_rn_cond_rmse.push(t.toISOString());
+				// Exp. road network conditions RMSE
+				var t = new Date(0);
+				t.setSeconds(data[i].exp_road_network_weights_rmse);
+				exp_rn_cond_rmse.push(t.toISOString());
 			}
 
 			var surplus_trace = {
@@ -292,34 +325,9 @@
 						};
 			Plotly.newPlot('surplusChart', [surplus_trace]);
 
-			var road_count_trace = {
+			var mean_departure_time_trace = {
 							x: iters,
-							y: road_count,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											rangemode: "tozero"
-										}
-						};
-			Plotly.newPlot('roadCountChart', [road_count_trace], layout);
-
-			var road_congestion_trace = {
-							x: iters,
-							y: road_congestion,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											rangemode: "tozero",
-											tickformat: ".2%"
-										}
-						};
-			Plotly.newPlot('roadCongestionChart', [road_congestion_trace], layout);
-
-			var road_mean_departure_time_trace = {
-							x: iters,
-							y: road_mean_departure_time,
+							y: mean_departure_time,
 							type: 'scatter'
 						};
 			var layout = {
@@ -327,20 +335,67 @@
 											tickformat: "%H:%M:%S"
 										}
 						};
-			Plotly.newPlot('roadMeanDepartureTimeChart', [road_mean_departure_time_trace], layout);
+			Plotly.newPlot('meanDepartureTimeChart', [mean_departure_time_trace], layout);
 
-			var road_expect_trace = {
+			var dt_rmse_trace = {
 							x: iters,
-							y: road_expect,
+							y: dt_rmse,
 							type: 'scatter'
 						};
 			var layout = {
 							yaxis: {
-											rangemode: "tozero",
-											tickformat: ".2%"
+											tickformat: "%H:%M:%S"
 										}
 						};
-			Plotly.newPlot('roadExpectChart', [road_expect_trace], layout);
+			Plotly.newPlot('dtRmseChart', [dt_rmse_trace], layout);
+
+			var travel_time_trace = {
+							x: iters,
+							y: travel_time,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('travelTimeChart', [travel_time_trace], layout);
+
+			var expect_rmse_trace = {
+							x: iters,
+							y: expect_rmse,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('expectRmseChart', [expect_rmse_trace], layout);
+
+			var sim_rn_cond_rmse_trace = {
+							x: iters,
+							y: sim_rn_cond_rmse,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('simRnCondRmseChart', [sim_rn_cond_rmse_trace], layout);
+
+			var exp_rn_cond_rmse_trace = {
+							x: iters,
+							y: exp_rn_cond_rmse,
+							type: 'scatter'
+						};
+			var layout = {
+							yaxis: {
+											tickformat: "%H:%M:%S"
+										}
+						};
+			Plotly.newPlot('expRnCondRmseChart', [exp_rn_cond_rmse_trace], layout);
 
 			road_departure_times = road_departure_times.map(function(v) {
 							var t = new Date(0);
