@@ -8,7 +8,8 @@ use metropolis::agent::Agent;
 use metropolis::learning::LearningModel;
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::Mode;
-use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
+use metropolis::network::road_network::preprocess::unique_vehicle_index;
+use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
@@ -33,7 +34,7 @@ fn get_simulation() -> Simulation<f64> {
     {
         let leg = Leg::new(
             1,
-            LegType::Road(RoadLeg::new(o, 2, vehicle_index(0))),
+            LegType::Road(RoadLeg::new(o, 2, 1)),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
@@ -85,6 +86,7 @@ fn get_simulation() -> Simulation<f64> {
     ];
     // Vehicles are 6 meters long: 2 vehicles are enough to block an edge.
     let vehicle = Vehicle::new(
+        1,
         Length(6.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -194,7 +196,8 @@ fn spillback_test() {
 
     let weights = results.iteration_results.new_exp_weights.clone();
     let weights = weights.road_network().unwrap();
-    let edge_weight = &weights[(0, 0)];
+    let uid = unique_vehicle_index(0);
+    let edge_weight = &weights[(uid, 0)];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
     };

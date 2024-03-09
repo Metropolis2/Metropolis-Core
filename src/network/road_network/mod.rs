@@ -27,9 +27,10 @@ use self::preprocess::{ODPairs, UniqueVehicles};
 use self::skim::RoadNetworkSkim;
 pub use self::skim::RoadNetworkSkims;
 pub use self::state::RoadNetworkState;
-use self::vehicle::{vehicle_index, Vehicle, VehicleIndex};
+use self::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
 pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
+use crate::network::road_network::preprocess::unique_vehicle_index;
 use crate::parameters::Parameters;
 use crate::serialization::DeserRoadGraph;
 use crate::units::{Flow, Interval, Lanes, Length, Speed, Time};
@@ -37,10 +38,10 @@ use crate::units::{Flow, Interval, Lanes, Length, Speed, Time};
 /// If `true`, the travel times are truncated to the smallest integer.
 const TRUNC_TT: bool = false;
 
-/// Index of the node as given by the user.
-pub type OriginalNodeIndex = u64;
-/// Index of the edge as given by the user.
-pub type OriginalEdgeIndex = u64;
+/// Identifier of the node as given by the user.
+pub type OriginalNodeId = u64;
+/// Identifier of the edge as given by the user.
+pub type OriginalEdgeId = u64;
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
@@ -220,7 +221,7 @@ const fn default_is_true() -> bool {
 #[schemars(example = "crate::schema::example_road_edge")]
 pub struct RoadEdge<T> {
     /// Original id of the edge.
-    id: OriginalEdgeIndex,
+    id: OriginalEdgeId,
     /// The base speed of the edge.
     #[validate(range(min = 0.0))]
     base_speed: Speed<T>,
@@ -254,7 +255,7 @@ impl<T: TTFNum> RoadEdge<T> {
     /// Creates a new RoadEdge.
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
-        id: OriginalEdgeIndex,
+        id: OriginalEdgeId,
         base_speed: Speed<T>,
         length: Length<T>,
         lanes: Lanes<T>,
@@ -278,7 +279,7 @@ impl<T: TTFNum> RoadEdge<T> {
     /// Creates a new RoadEdge from deserialied values.
     #[allow(clippy::too_many_arguments)]
     pub fn from_values(
-        id: OriginalEdgeIndex,
+        id: OriginalEdgeId,
         base_speed: Option<f64>,
         length: Option<f64>,
         lanes: Option<f64>,
@@ -388,20 +389,20 @@ pub struct RoadGraph<T> {
     /// Directed graph of [RoadNode]s and [RoadEdge]s.
     graph: DiGraph<RoadNode, RoadEdge<T>>,
     /// Mapping from original node id to simulation NodeIndex.
-    node_map: HashMap<OriginalNodeIndex, NodeIndex>,
+    node_map: HashMap<OriginalNodeId, NodeIndex>,
     /// Mapping from original edge id to simulation EdgeIndex.
-    edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
+    edge_map: HashMap<OriginalEdgeId, EdgeIndex>,
     /// Mapping from simulation EdgeIndex to original edge id.
-    rev_edge_map: HashMap<EdgeIndex, OriginalEdgeIndex>,
+    rev_edge_map: HashMap<EdgeIndex, OriginalEdgeId>,
 }
 
 impl<T> RoadGraph<T> {
     /// Creates a new RoadGraph.
     pub const fn new(
         graph: DiGraph<RoadNode, RoadEdge<T>>,
-        node_map: HashMap<OriginalNodeIndex, NodeIndex>,
-        edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
-        rev_edge_map: HashMap<EdgeIndex, OriginalEdgeIndex>,
+        node_map: HashMap<OriginalNodeId, NodeIndex>,
+        edge_map: HashMap<OriginalEdgeId, EdgeIndex>,
+        rev_edge_map: HashMap<EdgeIndex, OriginalEdgeId>,
     ) -> Self {
         Self {
             graph,
@@ -412,9 +413,9 @@ impl<T> RoadGraph<T> {
     }
 
     /// Creates a new RoadGraph from a Vec of edges.
-    pub fn from_edges(edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>) -> Self {
+    pub fn from_edges(edges: Vec<(OriginalNodeId, OriginalNodeId, RoadEdge<T>)>) -> Self {
         // Check if there is any parallel edges.
-        let node_pairs: HashSet<(OriginalNodeIndex, OriginalNodeIndex)> =
+        let node_pairs: HashSet<(OriginalNodeId, OriginalNodeId)> =
             edges.iter().map(|(s, t, _)| (*s, *t)).collect();
         if node_pairs.len() < edges.len() {
             warn!(
@@ -424,13 +425,13 @@ impl<T> RoadGraph<T> {
         }
         // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
         // OriginalNodeIndex -> NodeIndex to re-index the nodes.
-        let nodes: HashSet<OriginalNodeIndex> = edges
+        let nodes: HashSet<OriginalNodeId> = edges
             .iter()
             .map(|(s, _, _)| s)
             .chain(edges.iter().map(|(_, t, _)| t))
             .copied()
             .collect();
-        let node_map: HashMap<OriginalNodeIndex, NodeIndex> = nodes
+        let node_map: HashMap<OriginalNodeId, NodeIndex> = nodes
             .into_iter()
             .enumerate()
             .map(|(i, id)| (id, node_index(i)))
@@ -485,31 +486,45 @@ pub struct RoadNetwork<T> {
     graph: RoadGraph<T>,
     #[validate(length(min = 1))]
     vehicles: Vec<Vehicle<T>>,
+    #[serde(skip)]
+    vehicle_map: HashMap<OriginalVehicleId, VehicleIndex>,
 }
 
 impl<T> RoadNetwork<T> {
     /// Creates a new RoadNetwork.
     pub fn new(
         graph: DiGraph<RoadNode, RoadEdge<T>>,
-        node_map: HashMap<OriginalNodeIndex, NodeIndex>,
-        edge_map: HashMap<OriginalEdgeIndex, EdgeIndex>,
-        rev_edge_map: HashMap<EdgeIndex, OriginalEdgeIndex>,
+        node_map: HashMap<OriginalNodeId, NodeIndex>,
+        edge_map: HashMap<OriginalEdgeId, EdgeIndex>,
+        rev_edge_map: HashMap<EdgeIndex, OriginalEdgeId>,
         vehicles: Vec<Vehicle<T>>,
     ) -> Self {
+        let vehicle_map = vehicles
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (v.id, vehicle_index(i)))
+            .collect();
         RoadNetwork {
             graph: RoadGraph::new(graph, node_map, edge_map, rev_edge_map),
             vehicles,
+            vehicle_map,
         }
     }
 
     /// Creates a new RoadNetwork from a Vec of edges and a Vec of [Vehicle].
     pub fn from_edges(
-        edges: Vec<(OriginalNodeIndex, OriginalNodeIndex, RoadEdge<T>)>,
+        edges: Vec<(OriginalNodeId, OriginalNodeId, RoadEdge<T>)>,
         vehicles: Vec<Vehicle<T>>,
     ) -> Self {
+        let vehicle_map = vehicles
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (v.id, vehicle_index(i)))
+            .collect();
         RoadNetwork {
             graph: RoadGraph::from_edges(edges),
             vehicles,
+            vehicle_map,
         }
     }
 
@@ -534,12 +549,12 @@ impl<T> RoadNetwork<T> {
             .map(|(i, v)| (vehicle_index(i), v))
     }
 
-    pub fn iter_original_edge_ids(&self) -> impl Iterator<Item = OriginalEdgeIndex> + '_ {
+    pub fn iter_original_edge_ids(&self) -> impl Iterator<Item = OriginalEdgeId> + '_ {
         self.graph.edge_map.keys().copied()
     }
 
     /// Returns the EdgeIndex of an edge given its original id.
-    pub fn edge_id_of(&self, original_id: OriginalEdgeIndex) -> EdgeIndex {
+    pub fn edge_id_of(&self, original_id: OriginalEdgeId) -> EdgeIndex {
         *self
             .graph
             .edge_map
@@ -548,12 +563,28 @@ impl<T> RoadNetwork<T> {
     }
 
     /// Returns the original id of an edge given its simulation id.
-    pub fn original_edge_id_of(&self, edge_id: EdgeIndex) -> OriginalEdgeIndex {
+    pub fn original_edge_id_of(&self, edge_id: EdgeIndex) -> OriginalEdgeId {
         *self
             .graph
             .rev_edge_map
             .get(&edge_id)
             .expect("Invalid edge id")
+    }
+
+    /// Returns the [VehicleIndex] corresponding to the given [OriginalVehicleId].
+    ///
+    /// **Panics** if there is no vehicle with the corresponding [OriginalVehicleId].
+    fn index_of_vehicle(&self, vehicle_id: OriginalVehicleId) -> VehicleIndex {
+        self.vehicle_map[&vehicle_id]
+    }
+
+    /// Returns a reference to the [Vehicle] corresponding to the given [OriginalVehicleId].
+    ///
+    /// **Panics** if there is no vehicle with the corresponding [OriginalVehicleId].
+    fn vehicle_with_id(&self, vehicle_id: OriginalVehicleId) -> &Vehicle<T> {
+        let vehicle = &self.vehicles[self.index_of_vehicle(vehicle_id).index()];
+        debug_assert_eq!(vehicle.id, vehicle_id);
+        vehicle
     }
 }
 
@@ -602,8 +633,8 @@ impl<T: TTFNum> RoadNetwork<T> {
             weights.len(),
             "The road-network weights are incompatible with the number of unique vehicles"
         );
-        for uvehicle_id in 0..all_od_pairs.len() {
-            let od_pairs = &all_od_pairs[uvehicle_id];
+        for uvehicle_id in (0..all_od_pairs.len()).map(unique_vehicle_index) {
+            let od_pairs = &all_od_pairs[uvehicle_id.index()];
             if od_pairs.is_empty() {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
@@ -707,7 +738,7 @@ impl<T: TTFNum> RoadNetwork<T> {
     /// Returns the free-flow travel time for the given edge and vehicle.
     pub fn get_free_flow_travel_time_of_edge(
         &self,
-        edge_id: OriginalEdgeIndex,
+        edge_id: OriginalEdgeId,
         vehicle: &Vehicle<T>,
     ) -> Time<T> {
         self.graph
@@ -727,9 +758,9 @@ impl<T: TTFNum> RoadNetwork<T> {
     pub fn route_free_flow_travel_time(
         &self,
         route: impl Iterator<Item = EdgeIndex>,
-        vehicle_id: VehicleIndex,
+        vehicle_id: OriginalVehicleId,
     ) -> Time<T> {
-        let vehicle = &self[vehicle_id];
+        let vehicle = self.vehicle_with_id(vehicle_id);
         route
             .map(|e| {
                 self.graph
@@ -755,8 +786,8 @@ impl<T: TTFNum> RoadNetwork<T> {
     /// Returns the length of the first route that is not part of the second route.
     pub fn route_length_diff(
         &self,
-        first: impl Iterator<Item = OriginalEdgeIndex>,
-        second: impl Iterator<Item = OriginalEdgeIndex>,
+        first: impl Iterator<Item = OriginalEdgeId>,
+        second: impl Iterator<Item = OriginalEdgeId>,
     ) -> Length<T> {
         let second_edges: HashSet<EdgeIndex> = second
             .map(|original_id| self.edge_id_of(original_id))
@@ -776,6 +807,13 @@ impl<T: TTFNum> RoadNetwork<T> {
                 }
             })
             .sum::<Length<T>>()
+    }
+}
+
+impl<T> Index<OriginalVehicleId> for RoadNetwork<T> {
+    type Output = Vehicle<T>;
+    fn index(&self, id: OriginalVehicleId) -> &Self::Output {
+        self.vehicle_with_id(id)
     }
 }
 
@@ -863,6 +901,7 @@ mod tests {
             overtaking: false,
         };
         let vehicle = Vehicle::new(
+            1,
             Length(10.),
             PCE(1.),
             SpeedFunction::Base,
@@ -980,6 +1019,7 @@ mod tests {
             ),
         ];
         let vehicle = Vehicle::new(
+            1,
             Length(1.0),
             PCE(1.0),
             SpeedFunction::Base,
@@ -992,7 +1032,7 @@ mod tests {
             Time(1.),
             &UniqueVehicles::from_vehicles(&[vehicle]),
         );
-        debug_assert!(weights.get(0, 0).is_none());
+        debug_assert!(weights.get(unique_vehicle_index(0), 0).is_none());
         let all_od_pairs = vec![ODPairs::from_vec(vec![(1, 2)])];
         let parameters = RoadNetworkParameters {
             contraction: Default::default(),
@@ -1007,7 +1047,7 @@ mod tests {
         let skims = network
             .compute_skims_inner(&weights, &all_od_pairs, &parameters)
             .unwrap();
-        let skim = skims[0].as_ref().unwrap();
+        let skim = skims[unique_vehicle_index(0)].as_ref().unwrap();
         assert_eq!(
             skim.profile_query(1, 2).unwrap(),
             Some(&TTF::Constant(Time(1.0)))

@@ -4,6 +4,7 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to stopping criteria.
+use log::debug;
 use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
@@ -31,8 +32,22 @@ impl<T: TTFNum> StopCriterion<T> {
     /// Returns `true` if the simulation must be stopped according to the current `StopCriterion`.
     pub fn stop(&self, iteration_counter: u32, results: &AgentResults<T>) -> bool {
         match *self {
-            Self::MaxIteration(max_iter) => max_iter <= iteration_counter,
-            Self::DepartureTime(threshold) => get_mean_departure_time_shift(results) <= threshold,
+            Self::MaxIteration(max_iter) => {
+                if max_iter <= iteration_counter {
+                    debug!("Maximum number of iteration reached");
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::DepartureTime(threshold) => {
+                if get_mean_departure_time_shift(results) <= threshold {
+                    debug!("Departure time shift threshold reached");
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 }

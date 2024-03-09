@@ -98,13 +98,15 @@ mod tests {
     use ttf::TTF;
 
     use super::*;
+    use crate::network::road_network::preprocess::unique_vehicle_index;
     use crate::network::road_network::RoadNetworkWeights;
     use crate::units::{Interval, Time};
 
     fn get_weigths(v: f64) -> NetworkWeights<f64> {
+        let uid = unique_vehicle_index(0);
         let mut rn =
             RoadNetworkWeights::with_capacity(Interval([Time(0.0), Time(100.0)]), Time(1.0), 1, 1);
-        rn[0].insert(0, TTF::Constant(Time(v)));
+        rn[uid].insert(0, TTF::Constant(Time(v)));
         NetworkWeights::new(Some(rn))
     }
 
@@ -188,6 +190,7 @@ mod tests {
 
     #[test]
     fn exponential_learning_test() {
+        let uid = unique_vehicle_index(0);
         let w1 = get_weigths(10.);
         let w2 = get_weigths(20.);
         let w3 = get_weigths(30.);
@@ -197,14 +200,14 @@ mod tests {
             get_weigths(20.).road_network().unwrap().weights
         );
         let x2 = model.learn(&w1, &w2, 1);
-        if let TTF::Constant(v) = x2.road_network().unwrap()[(0, 0)] {
+        if let TTF::Constant(v) = x2.road_network().unwrap()[(uid, 0)] {
             let expected = (20. + 0.8 * 10.) * 0.2 / (1. - 0.8f64.powi(2));
             assert!((v.0 - expected).abs() < 1e-4, "{:?} != {:?}", v, expected);
         } else {
             panic!("Invalid road network weight: {:?}", x2.road_network());
         }
         let x3 = model.learn(&x2, &w3, 2);
-        if let TTF::Constant(v) = x3.road_network().unwrap()[(0, 0)] {
+        if let TTF::Constant(v) = x3.road_network().unwrap()[(uid, 0)] {
             let expected = (30. + 0.8 * 20. + 0.8f64.powi(2) * 10.) * 0.2 / (1. - 0.8f64.powi(3));
             assert!((v.0 - expected).abs() < 1e-4, "{:?} != {:?}", v, expected);
         } else {

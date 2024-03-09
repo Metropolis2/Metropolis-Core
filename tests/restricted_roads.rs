@@ -8,7 +8,7 @@ use metropolis::agent::Agent;
 use metropolis::learning::LearningModel;
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::Mode;
-use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
+use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
@@ -89,6 +89,7 @@ fn get_simulation() -> Simulation<f64> {
     // Create 4 identical vehicles types with different road restrictions.
     // Only vehicle type `v0` has acces to edge 2 (and thus to route 0 -> 1 -> 3).
     let v0 = Vehicle::new(
+        1,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -96,6 +97,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
     );
     let v1 = Vehicle::new(
+        2,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -103,6 +105,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
     );
     let v2 = Vehicle::new(
+        3,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -114,6 +117,7 @@ fn get_simulation() -> Simulation<f64> {
     // As allowed edges take precedence over restricted edges, in practice, only the route 0 -> 2
     // -> 3 is feasible.
     let v3 = Vehicle::new(
+        4,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -132,11 +136,13 @@ fn get_simulation() -> Simulation<f64> {
     // Agent 5: v0.
     let mut agents = Vec::with_capacity(5);
     for i in 0..5 {
-        let v = if i == 4 {
-            vehicle_index(0)
-        } else {
-            vehicle_index(i)
-        };
+        // Agent id: vehicle id.
+        // 0: 1,
+        // 1: 2,
+        // 2: 3,
+        // 3: 4,
+        // 4: 1.
+        let v = if i == 4 { 1 } else { i + 1 };
         let leg = Leg::new(
             1,
             LegType::Road(RoadLeg::new(0, 3, v)),
@@ -153,7 +159,7 @@ fn get_simulation() -> Simulation<f64> {
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
+        let agent = Agent::new(i as usize, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 

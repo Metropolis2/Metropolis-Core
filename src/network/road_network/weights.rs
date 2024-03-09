@@ -13,7 +13,9 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::{OriginalEdgeIndex, RoadNetwork, RoadNetworkPreprocessingData};
+use super::{
+    preprocess::UniqueVehicleIndex, OriginalEdgeId, RoadNetwork, RoadNetworkPreprocessingData,
+};
 use crate::units::{Interval, Time};
 
 /// Structure to store the travel-time functions of each edge of a
@@ -29,8 +31,8 @@ use crate::units::{Interval, Time};
     (outer array)."
 )]
 pub struct RoadNetworkWeights<T> {
-    #[schemars(with = "Vec<std::collections::HashMap<OriginalEdgeIndex, TTF<Time<T>>>>")]
-    pub(crate) weights: Vec<HashMap<OriginalEdgeIndex, TTF<Time<T>>>>,
+    #[schemars(with = "Vec<std::collections::HashMap<OriginalEdgeId, TTF<Time<T>>>>")]
+    pub(crate) weights: Vec<HashMap<OriginalEdgeId, TTF<Time<T>>>>,
     #[serde(skip)]
     pub(crate) period: Interval<T>,
     #[serde(skip)]
@@ -65,25 +67,29 @@ impl<T> RoadNetworkWeights<T> {
         self.weights.len()
     }
 
-    /// Returns the [TTF] corresponding to the given vehicle id and edge.
+    /// Returns the [TTF] corresponding to the given unique vehicle id and edge.
     ///
     /// Returns `None` if the edge is not accessible for the given vehicle.
-    pub fn get(&self, vehicle_id: usize, edge_id: OriginalEdgeIndex) -> Option<&TTF<Time<T>>> {
-        self.weights[vehicle_id].get(&edge_id)
+    pub fn get(
+        &self,
+        vehicle_id: UniqueVehicleIndex,
+        edge_id: OriginalEdgeId,
+    ) -> Option<&TTF<Time<T>>> {
+        self.weights[vehicle_id.index()].get(&edge_id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &HashMap<OriginalEdgeIndex, TTF<Time<T>>>> {
+    pub fn iter(&self) -> impl Iterator<Item = &HashMap<OriginalEdgeId, TTF<Time<T>>>> {
         self.weights.iter()
     }
 
     /// Returns an iterator over vehicle ids and the corresponding weights.
     pub fn iter_vehicle_weights(
         &self,
-    ) -> impl Iterator<Item = (usize, &HashMap<OriginalEdgeIndex, TTF<Time<T>>>)> {
+    ) -> impl Iterator<Item = (usize, &HashMap<OriginalEdgeId, TTF<Time<T>>>)> {
         self.weights.iter().enumerate()
     }
 
-    pub fn iter_inners(&self) -> impl Iterator<Item = (usize, OriginalEdgeIndex, &TTF<Time<T>>)> {
+    pub fn iter_inners(&self) -> impl Iterator<Item = (usize, OriginalEdgeId, &TTF<Time<T>>)> {
         self.iter_vehicle_weights().flat_map(|(vehicle_id, map)| {
             map.iter()
                 .map(move |(edge_id, ttf)| (vehicle_id, *edge_id, ttf))
@@ -224,16 +230,16 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
             _ => (),
         }
         let mut nb_warnings = 0;
-        for (i, unique_vehicle) in preprocess_data
+        for (uid, unique_vehicle) in preprocess_data
             .unique_vehicles
             .iter_uniques(&road_network.vehicles)
         {
             // Collect all the edges that can be accessed by the unique vehicle.
-            let all_edges: HashSet<OriginalEdgeIndex> = road_network
+            let all_edges: HashSet<OriginalEdgeId> = road_network
                 .iter_original_edge_ids()
                 .filter(|&edge_id| unique_vehicle.can_access(edge_id))
                 .collect();
-            if let Some(weights) = self.weights.get_mut(i) {
+            if let Some(weights) = self.weights.get_mut(uid.index()) {
                 // Discard the weights of edges that cannot be accessed.
                 weights.retain(|edge_id, _| all_edges.contains(edge_id));
                 // Use free-flow weights for edges with no given weight.
@@ -250,7 +256,7 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                                 if nb_warnings < 5 {
                                     warn!(
                                         "Infinite weights are not allowed \
-                                        (edge {edge_id}, unique vehicle {i}), \
+                                        (edge {edge_id}, unique vehicle {uid:?}), \
                                         using free-flow weight instead."
                                     );
                                     nb_warnings += 1;
@@ -263,8 +269,8 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                         .or_insert_with(|| {
                             if nb_warnings < 5 {
                                 warn!(
-                                    "No weight given for edge {edge_id} with unique vehicle {i}, \
-                                    using free-flow weight instead."
+                                    "No weight given for edge {edge_id} with unique vehicle \
+                                    {uid:?}, using free-flow weight instead."
                                 );
                                 nb_warnings += 1;
                                 if nb_warnings == 5 {
@@ -279,7 +285,7 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                 }
             } else {
                 // No weights for the given unique vehicle: insert free-flow weights.
-                let weights: HashMap<OriginalEdgeIndex, TTF<Time<T>>> = all_edges
+                let weights: HashMap<OriginalEdgeId, TTF<Time<T>>> = all_edges
                     .into_iter()
                     .map(|edge_id| {
                         let tt =
@@ -294,23 +300,23 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
     }
 }
 
-impl<T> Index<usize> for RoadNetworkWeights<T> {
-    type Output = HashMap<OriginalEdgeIndex, TTF<Time<T>>>;
-    fn index(&self, x: usize) -> &Self::Output {
-        &self.weights[x]
+impl<T> Index<UniqueVehicleIndex> for RoadNetworkWeights<T> {
+    type Output = HashMap<OriginalEdgeId, TTF<Time<T>>>;
+    fn index(&self, x: UniqueVehicleIndex) -> &Self::Output {
+        &self.weights[x.index()]
     }
 }
 
-impl<T> IndexMut<usize> for RoadNetworkWeights<T> {
-    fn index_mut(&mut self, x: usize) -> &mut Self::Output {
-        &mut self.weights[x]
+impl<T> IndexMut<UniqueVehicleIndex> for RoadNetworkWeights<T> {
+    fn index_mut(&mut self, x: UniqueVehicleIndex) -> &mut Self::Output {
+        &mut self.weights[x.index()]
     }
 }
 
-impl<T> Index<(usize, OriginalEdgeIndex)> for RoadNetworkWeights<T> {
+impl<T> Index<(UniqueVehicleIndex, OriginalEdgeId)> for RoadNetworkWeights<T> {
     type Output = TTF<Time<T>>;
-    fn index(&self, (vehicle_id, edge_id): (usize, OriginalEdgeIndex)) -> &Self::Output {
-        &self.weights[vehicle_id][&edge_id]
+    fn index(&self, (vehicle_id, edge_id): (UniqueVehicleIndex, OriginalEdgeId)) -> &Self::Output {
+        &self.weights[vehicle_id.index()][&edge_id]
     }
 }
 

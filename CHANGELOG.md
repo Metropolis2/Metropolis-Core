@@ -11,11 +11,14 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Added
 
 - [INPUT] The paths to the input files and the output directory are set in the parameters JSON file.
+- [INPUT] Custom vehicle ids can be used (instead of vehicle indices numbered from 0 to n - 1).
 
 ### Changed
 
 - [USER] The command-line interface only takes the path to the parameters JSON file as argument.
 - [INPUT] The population and network input files accept the Parquet and CSV format instead of JSON.
+- [OUTPUT] Use more interesting variables in the report HTML file.
+- [OUTPUT] Use the new terminology in the report HTML file.
 
 ## [0.8.0] - 2024-02-29
 

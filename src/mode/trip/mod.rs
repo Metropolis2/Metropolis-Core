@@ -23,10 +23,9 @@ use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
 use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
-use crate::network::road_network::vehicle::VehicleIndex;
+use crate::network::road_network::vehicle::OriginalVehicleId;
 use crate::network::road_network::{
-    OriginalEdgeIndex, OriginalNodeIndex, RoadNetwork, RoadNetworkPreprocessingData,
-    RoadNetworkWeights,
+    OriginalEdgeId, OriginalNodeId, RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkWeights,
 };
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
@@ -119,7 +118,7 @@ impl<T: TTFNum> Leg<T> {
                 LegType::Road(RoadLeg {
                     origin,
                     destination,
-                    vehicle: VehicleIndex::new(vehicle as usize),
+                    vehicle,
                     route: class_route,
                 })
             }
@@ -235,23 +234,23 @@ pub enum LegType<T> {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RoadLeg {
     /// Origin node of the leg.
-    pub(crate) origin: OriginalNodeIndex,
+    pub(crate) origin: OriginalNodeId,
     /// Destination node of the leg.
-    pub(crate) destination: OriginalNodeIndex,
+    pub(crate) destination: OriginalNodeId,
     /// Vehicle used for the leg.
-    pub(crate) vehicle: VehicleIndex,
+    pub(crate) vehicle: OriginalVehicleId,
     /// Route to be followed by the vehicle to connect `origin` to `destination`.
     ///
     /// If `None`, the fastest route is chosen.
-    pub(crate) route: Option<Vec<OriginalEdgeIndex>>,
+    pub(crate) route: Option<Vec<OriginalEdgeId>>,
 }
 
 impl RoadLeg {
     /// Creates a new [RoadLeg].
     pub fn new(
-        origin: OriginalNodeIndex,
-        destination: OriginalNodeIndex,
-        vehicle: VehicleIndex,
+        origin: OriginalNodeId,
+        destination: OriginalNodeId,
+        vehicle: OriginalVehicleId,
     ) -> Self {
         Self {
             origin,
@@ -524,35 +523,36 @@ impl<T: TTFNum> TravelingMode<T> {
             .map(|l| {
                 match &l.class {
                     LegType::Road(road_leg) => {
+                        let uid = preprocess_data
+                            .expect("Found a road leg with no road-network preprocessing data")
+                            .get_unique_vehicle_index(road_leg.vehicle);
                         if let Some(input_route) = road_leg.route.as_ref() {
+                            // TODO: This code should be at the lower level (in weights or road
+                            // network files).
                             let weights = &rn_weights
-                                .expect("Found a road leg with no road-network weights")
-                                [preprocess_data
-                                    .expect(
-                                        "Found a road leg with no road-network preprocessing data",
-                                    )
-                                    .get_unique_vehicle_index(road_leg.vehicle)];
+                                .expect("Found a road leg with no road-network weights")[uid];
                             let mut ttf = TTF::default();
                             for edge in input_route {
                                 ttf = ttf.link(
                                     weights
                                         .get(edge)
-                                        .unwrap_or_else(|| panic!("Invalid edge id: {}", edge)),
+                                        .ok_or_else(|| anyhow!("Invalid edge id: {}", edge))
+                                        .with_context(|| {
+                                            format!(
+                                                "Invalid route given as input for alternative {}",
+                                                self.id
+                                            )
+                                        })?,
                                 );
                             }
                             Ok(LegTTF(Either::Right(ttf)))
                         } else {
                             let skims = rn_skims
-                                .expect("Found a road leg with no road-network skims")
-                                [preprocess_data
-                                    .expect(
-                                        "Found a road leg with no road-network preprocessing data",
-                                    )
-                                    .get_unique_vehicle_index(road_leg.vehicle)]
-                            .as_ref()
-                            .ok_or_else(|| {
-                                anyhow!("No skims were computed for the vehicle of this leg")
-                            })?;
+                                .expect("Found a road leg with no road-network skims")[uid]
+                                .as_ref()
+                                .ok_or_else(|| {
+                                    anyhow!("No skims were computed for the vehicle of this leg")
+                                })?;
                             skims
                                 .profile_query(road_leg.origin, road_leg.destination)?
                                 .ok_or_else(|| {
@@ -740,27 +740,27 @@ impl<T: TTFNum> TravelingMode<T> {
                 LegType::Road(road_leg) => {
                     let preprocess_data = preprocess_data
                         .expect("Got a road leg without road-network preprocessing data");
-                    let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
-                    let (arrival_time, route_opt) =
-                        if let Some(input_route) = road_leg.route.as_ref() {
-                            // A route is given as input so the route is `pre-computed` anyway.
-                            let road_network = road_network
-                                .expect("Got a road leg but there is not road network.");
-                            let vehicle_weights = &weights
-                                .expect("Got a road leg but there is no road network weights.")
-                                [uvehicle];
-                            let mut t = current_time;
-                            let mut route = Vec::with_capacity(input_route.len());
-                            for edge in input_route {
-                                t = t + vehicle_weights[edge].eval(t);
-                                route.push(road_network.edge_id_of(*edge));
-                            }
-                            (t, Some(route))
-                        } else {
-                            (arrival_time, None)
-                        };
-                    let global_free_flow_travel_time = *preprocess_data.free_flow_travel_times
-                        [uvehicle]
+                    let uid = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
+                    let (arrival_time, route_opt) = if let Some(input_route) =
+                        road_leg.route.as_ref()
+                    {
+                        // A route is given as input so the route is `pre-computed` anyway.
+                        let road_network =
+                            road_network.expect("Got a road leg but there is not road network.");
+                        let vehicle_weights = &weights
+                            .expect("Got a road leg but there is no road network weights.")[uid];
+                        let mut t = current_time;
+                        let mut route = Vec::with_capacity(input_route.len());
+                        for edge in input_route {
+                            t = t + vehicle_weights[edge].eval(t);
+                            route.push(road_network.edge_id_of(*edge));
+                        }
+                        (t, Some(route))
+                    } else {
+                        (arrival_time, None)
+                    };
+                    let global_free_flow_travel_time = *preprocess_data
+                        .free_flow_travel_times_of_unique_vehicle(uid)
                         .get(&(road_leg.origin, road_leg.destination))
                         .expect("The free flow travel time of the OD pair has not been computed.");
                     leg.init_road_leg_results(
@@ -942,13 +942,12 @@ impl<T: TTFNum> TravelingMode<T> {
                 LegType::Road(road_leg) => {
                     let road_network =
                         road_network.expect("Got a road leg but there is not road network.");
-                    let uvehicle = preprocess_data
+                    let uid = preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
-                        .unique_vehicles[road_leg.vehicle];
+                        .get_unique_vehicle_index(road_leg.vehicle);
                     let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
                         let vehicle_weights = &weights
-                            .expect("Got a road leg but there is no road network weights.")
-                            [uvehicle];
+                            .expect("Got a road leg but there is no road network weights.")[uid];
                         let mut t = current_time;
                         let mut route = Vec::with_capacity(input_route.len());
                         for edge in input_route {
@@ -958,7 +957,7 @@ impl<T: TTFNum> TravelingMode<T> {
                         (t, route)
                     } else {
                         let vehicle_skims = skims
-                            .expect("Got a road leg but there is no road network skims.")[uvehicle]
+                            .expect("Got a road leg but there is no road network skims.")[uid]
                             .as_ref()
                             .expect("Road network skims are empty.");
                         get_arrival_time_and_route(
@@ -976,7 +975,7 @@ impl<T: TTFNum> TravelingMode<T> {
                     // Retrieve the global free-flow travel time.
                     let global_free_flow_travel_time = *preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
-                        .free_flow_travel_times[uvehicle]
+                        .free_flow_travel_times_of_unique_vehicle(uid)
                         .get(&(road_leg.origin, road_leg.destination))
                         .expect("The free flow travel time of the OD pair has not been computed.");
                     let leg_result = leg.init_road_leg_results(

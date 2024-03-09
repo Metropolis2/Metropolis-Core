@@ -72,7 +72,7 @@ pub fn run_simulation(path: &Path) -> Result<()> {
         )
     })?;
 
-    logging::initialize_logging(&parameters.output_directory);
+    logging::initialize_logging(&parameters.output_directory)?;
 
     let simulation = io::read_simulation(parameters)?;
 
@@ -122,7 +122,7 @@ pub fn get_choices_from_json_files(
     // Create output directory if it does not exists yet.
     std::fs::create_dir_all(output)?;
 
-    logging::initialize_logging(output);
+    logging::initialize_logging(output)?;
 
     let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
 

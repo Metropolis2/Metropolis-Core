@@ -7,11 +7,12 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
 use log::LevelFilter;
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 
 /// Initializes logging to a file and terminal.
-pub fn initialize_logging(output: &Path) {
+pub fn initialize_logging(output: &Path) -> Result<()> {
     let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
     let log_file = File::create(log_filename).expect("Failed to create log file");
     CombinedLogger::init(vec![
@@ -23,5 +24,5 @@ pub fn initialize_logging(output: &Path) {
         ),
         WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
     ])
-    .expect("Failed to initialize logging");
+    .context("Failed to initialize logging")
 }

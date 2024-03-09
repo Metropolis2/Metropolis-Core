@@ -11,8 +11,11 @@ use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-use super::OriginalEdgeIndex;
+use super::OriginalEdgeId;
 use crate::units::{Length, Speed, PCE};
+
+/// Identifier of the vehicles as given by the user.
+pub type OriginalVehicleId = u64;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -131,6 +134,8 @@ impl<T: TTFNum> SpeedFunction<T> {
 #[schemars(example = "crate::schema::example_vehicle")]
 #[schemars(example = "crate::schema::example_vehicle2")]
 pub struct Vehicle<T> {
+    /// Identifier of the vehicle.
+    pub(crate) id: OriginalVehicleId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
     #[serde(alias = "length")]
     #[schemars(
@@ -145,25 +150,27 @@ pub struct Vehicle<T> {
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
     #[serde(default)]
-    #[schemars(with = "Vec<OriginalEdgeIndex>")]
-    allowed_edges: HashSet<OriginalEdgeIndex>,
+    #[schemars(with = "Vec<OriginalEdgeId>")]
+    allowed_edges: HashSet<OriginalEdgeId>,
     /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
     /// if `allowed_edges` is specified.
     #[serde(default)]
-    #[schemars(with = "Vec<OriginalEdgeIndex>")]
-    restricted_edges: HashSet<OriginalEdgeIndex>,
+    #[schemars(with = "Vec<OriginalEdgeId>")]
+    restricted_edges: HashSet<OriginalEdgeId>,
 }
 
 impl<T> Vehicle<T> {
     /// Creates a new vehicle with a given headway, [PCE] and [SpeedFunction].
     pub const fn new(
+        id: OriginalVehicleId,
         headway: Length<T>,
         pce: PCE<T>,
         speed_function: SpeedFunction<T>,
-        allowed_edges: HashSet<OriginalEdgeIndex>,
-        restricted_edges: HashSet<OriginalEdgeIndex>,
+        allowed_edges: HashSet<OriginalEdgeId>,
+        restricted_edges: HashSet<OriginalEdgeId>,
     ) -> Self {
         Vehicle {
+            id,
             headway,
             pce,
             speed_function,
@@ -173,7 +180,7 @@ impl<T> Vehicle<T> {
     }
 
     /// Returns `true` if the vehicle type has access to the given edge.
-    pub fn can_access(&self, edge_id: OriginalEdgeIndex) -> bool {
+    pub fn can_access(&self, edge_id: OriginalEdgeId) -> bool {
         // Edge is allowed explicitly.
         let is_allowed = self.allowed_edges.contains(&edge_id);
         // Edge is not allowed but other edges are explicitly allowed.
@@ -199,6 +206,7 @@ impl<T: Copy> Vehicle<T> {
 impl<T: TTFNum> Vehicle<T> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_values(
+        id: OriginalVehicleId,
         headway: Option<f64>,
         pce: Option<f64>,
         speed_function_type: Option<&str>,
@@ -236,6 +244,7 @@ impl<T: TTFNum> Vehicle<T> {
             bail!("The values in `restricted_edges` must be valid edge ids");
         }
         Ok(Vehicle {
+            id,
             headway,
             pce,
             speed_function,

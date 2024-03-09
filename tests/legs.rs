@@ -10,7 +10,7 @@ use metropolis::mode::trip::event::RoadEvent;
 use metropolis::mode::trip::results::{LegResults, LegTypeResults, RoadLegResults, TripResults};
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::{mode_index, Mode, ModeResults};
-use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
+use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
@@ -61,6 +61,7 @@ fn get_simulation() -> Simulation<f64> {
         ),
     ];
     let v0 = Vehicle::new(
+        1,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Base,
@@ -68,6 +69,7 @@ fn get_simulation() -> Simulation<f64> {
         HashSet::new(),
     );
     let v1 = Vehicle::new(
+        2,
         Length(1.0),
         PCE(1.0),
         SpeedFunction::Multiplicator(0.5),
@@ -81,7 +83,7 @@ fn get_simulation() -> Simulation<f64> {
     let mut agents = Vec::with_capacity(1);
     let leg0 = Leg::new(
         1,
-        LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
+        LegType::Road(RoadLeg::new(0, 1, 1)),
         Time(2.0),
         TravelUtility::Polynomial(PolynomialFunction {
             a: 1.0,
@@ -113,7 +115,7 @@ fn get_simulation() -> Simulation<f64> {
     );
     let leg2 = Leg::new(
         3,
-        LegType::Road(RoadLeg::new(2, 3, vehicle_index(1))),
+        LegType::Road(RoadLeg::new(2, 3, 2)),
         Time(1.0),
         TravelUtility::Polynomial(PolynomialFunction {
             a: 5.0,
@@ -124,7 +126,7 @@ fn get_simulation() -> Simulation<f64> {
     // 4th leg is a road leg with origin = destination (to test if this case works).
     let leg3 = Leg::new(
         4,
-        LegType::Road(RoadLeg::new(2, 2, vehicle_index(1))),
+        LegType::Road(RoadLeg::new(2, 2, 2)),
         Time(0.0),
         TravelUtility::default(),
         ScheduleUtility::None,

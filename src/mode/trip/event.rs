@@ -18,7 +18,7 @@ use crate::agent::AgentIndex;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
-use crate::network::road_network::{OriginalEdgeIndex, RoadNetwork, RoadNetworkState};
+use crate::network::road_network::{OriginalEdgeId, RoadNetwork, RoadNetworkState};
 use crate::units::Time;
 
 /// Types of [VehicleEvent].
@@ -48,7 +48,7 @@ enum VehicleEventType {
 #[serde(bound(serialize = "T: Clone + Serialize"))]
 pub struct RoadEvent<T> {
     /// Id of the edge taken.
-    pub edge: OriginalEdgeIndex,
+    pub edge: OriginalEdgeId,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
     pub entry_time: Time<T>,
 }
@@ -59,7 +59,7 @@ pub struct RoadEvent<T> {
 #[schemars(
     description = "Array `[e, t]`, where `e` is the index of the edge taken and `t` is the entry time of the vehicle on this edges"
 )]
-pub(crate) struct TransparentRoadEvent<T>(OriginalEdgeIndex, Time<T>);
+pub(crate) struct TransparentRoadEvent<T>(OriginalEdgeId, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {
     fn from(v: RoadEvent<T>) -> Self {
@@ -356,7 +356,7 @@ impl<T: TTFNum> VehicleEvent<T> {
                     .class
                     .as_road_mut()
                     .expect("Invalid leg results: Incompatible leg type.");
-                let uvehicle = preprocess_data.unique_vehicles[road_leg.vehicle];
+                let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
                 let (exp_arrival_time, route) =
                     if let Some(route) = std::mem::take(&mut road_leg_results.expected_route) {
                         let exp_travel_time = road_leg_results.pre_exp_arrival_time

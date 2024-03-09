@@ -710,6 +710,7 @@ pub(crate) fn read_vehicles<T: TTFNum>(
         let restricted_edges = get_list_values!(restricted_edges_values[i] as u64);
         let vehicle_id = vehicle_id.ok_or_else(|| anyhow!("Value `vehicle_id` is mandatory"))?;
         let vehicle = Vehicle::from_values(
+            vehicle_id,
             headway,
             pce,
             speed_function_type,

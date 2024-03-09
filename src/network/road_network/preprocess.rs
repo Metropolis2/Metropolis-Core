@@ -8,75 +8,109 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
+use schemars::JsonSchema;
+use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
-use super::{OriginalNodeIndex, RoadNetwork, RoadNetworkParameters};
+use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
+use super::{OriginalNodeId, RoadNetwork, RoadNetworkParameters};
 use crate::agent::Agent;
 use crate::mode::Mode;
 use crate::units::{Interval, Time};
 
+/// Unique vehicle index.
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    PartialOrd,
+    Eq,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    JsonSchema,
+)]
+pub struct UniqueVehicleIndex(usize);
+
+impl UniqueVehicleIndex {
+    /// Creates a new UniqueVehicleIndex.
+    pub const fn new(x: usize) -> Self {
+        UniqueVehicleIndex(x)
+    }
+
+    /// Returns the index of the UniqueVehicleIndex.
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+/// Short version of `UniqueVehicleIndex::new`.
+pub const fn unique_vehicle_index(x: usize) -> UniqueVehicleIndex {
+    UniqueVehicleIndex::new(x)
+}
+
 /// Struct to store the set of unique vehicles and the equivalences between vehicles.
 #[derive(Clone, Debug)]
 pub(crate) struct UniqueVehicles {
-    /// List all the vehicles for which [RoadNetworkWeights] and [RoadNetworkSkims] are computed.
-    vehicles: Vec<VehicleIndex>,
-    /// Map each vehicle to the corresponding id to use for [RoadNetworkWeights] and
-    /// [RoadNetworkSkims].
-    vehicle_map: HashMap<VehicleIndex, usize>,
+    /// Index in the road network's vehicle list of the reference unique vehicles.
+    list: Vec<VehicleIndex>,
+    /// Map each original vehicle id to the index of their reference unique vehicle.
+    vehicle_map: HashMap<OriginalVehicleId, UniqueVehicleIndex>,
 }
 
 impl UniqueVehicles {
     /// Creates a new [UniqueVehicles] from a Vec of [Vehicle].
     pub(crate) fn from_vehicles<T: TTFNum>(vehicles: &[Vehicle<T>]) -> Self {
-        let mut unique_vehicles: Vec<VehicleIndex> = Vec::new();
+        let mut list: Vec<VehicleIndex> = Vec::new();
         let mut vehicle_map = HashMap::with_capacity(vehicles.len());
         for (vehicle_id, vehicle) in vehicles.iter().enumerate() {
-            if let Some(id) = unique_vehicles
+            if let Some(uid) = list
                 .iter()
-                .find(|&id| vehicle.share_weights(&vehicles[id.index()]))
+                .position(|&id| vehicle.share_weights(&vehicles[id.index()]))
             {
-                vehicle_map.insert(vehicle_index(vehicle_id), id.index());
+                vehicle_map.insert(vehicle.id, unique_vehicle_index(uid));
             } else {
-                unique_vehicles.push(vehicle_index(vehicle_id));
-                vehicle_map.insert(vehicle_index(vehicle_id), unique_vehicles.len() - 1);
+                // This vehicle is unique (so far).
+                // It will be used as a reference unique vehicle.
+                vehicle_map.insert(vehicle.id, unique_vehicle_index(list.len()));
+                list.push(vehicle_index(vehicle_id));
             }
         }
-        UniqueVehicles {
-            vehicles: unique_vehicles,
-            vehicle_map,
-        }
+        UniqueVehicles { list, vehicle_map }
     }
 
     /// Returns the number of unique vehicles.
     pub(crate) fn len(&self) -> usize {
-        self.vehicles.len()
+        self.list.len()
     }
 
-    /// Iterates over the unique vehicles' ids and [Vehicle].
+    /// Iterates over the `UniqueVehicleIndex` and the reference [Vehicle] of all unique vehicles.
     pub(crate) fn iter_uniques<'a, T>(
         &'a self,
         vehicles: &'a [Vehicle<T>],
-    ) -> impl Iterator<Item = (usize, &'a Vehicle<T>)> {
-        self.vehicles
+    ) -> impl Iterator<Item = (UniqueVehicleIndex, &'a Vehicle<T>)> {
+        self.list
             .iter()
-            .map(|v_id| &vehicles[v_id.index()])
             .enumerate()
+            .map(|(i, v_id)| (unique_vehicle_index(i), &vehicles[v_id.index()]))
     }
 }
 
-impl Index<VehicleIndex> for UniqueVehicles {
-    type Output = usize;
-    fn index(&self, index: VehicleIndex) -> &Self::Output {
-        &self.vehicle_map[&index]
+impl Index<OriginalVehicleId> for UniqueVehicles {
+    type Output = UniqueVehicleIndex;
+    fn index(&self, id: OriginalVehicleId) -> &Self::Output {
+        &self.vehicle_map[&id]
     }
 }
 
 impl Default for UniqueVehicles {
     fn default() -> Self {
         Self {
-            vehicles: vec![vehicle_index(0)],
-            vehicle_map: [(vehicle_index(0), 0)].into_iter().collect(),
+            list: vec![vehicle_index(0)],
+            vehicle_map: [(0, unique_vehicle_index(0))].into_iter().collect(),
         }
     }
 }
@@ -100,28 +134,39 @@ impl<T> RoadNetworkPreprocessingData<T> {
         self.unique_vehicles.len()
     }
 
-    /// Returns the unique-vehicle index corresponding to the given [VehicleIndex].
+    /// Returns the [UniqueVehicleIndex] corresponding to the given [OriginalVehicleId].
     ///
-    /// *Panics* if the given [VehicleIndex] is out-of-bound for this
-    /// [RoadNetworkPreprocessingData].
-    pub fn get_unique_vehicle_index(&self, id: VehicleIndex) -> usize {
+    /// *Panics* if the given [OriginalVehicleId] is not in the [RoadNetworkPreprocessingData].
+    pub fn get_unique_vehicle_index(&self, id: OriginalVehicleId) -> UniqueVehicleIndex {
         self.unique_vehicles.vehicle_map[&id]
     }
 
-    /// Returns the [VehicleIndex] corresponding to the given unique-vehicle index.
+    /// Returns the [VehicleIndex] of the reference unique vehicle, for the given
+    /// [UniqueVehicleIndex].
     ///
     /// *Panics* if the given unique-vehicle index is out-of-bound for this
     /// [RoadNetworkPreprocessingData].
-    pub fn get_vehicle_index(&self, id: usize) -> VehicleIndex {
-        self.unique_vehicles.vehicles[id]
+    pub fn get_vehicle_index(&self, id: UniqueVehicleIndex) -> VehicleIndex {
+        self.unique_vehicles.list[id.index()]
     }
 
-    /// Returns the [ODPairs] corresponding to the given unique-vehicle index.
+    /// Returns the [ODPairs] corresponding to the [UniqueVehicleIndex].
     ///
     /// *Panics* if the unique-vehicle index exceeds the number of unique vehicle of this
     /// [RoadNetworkPreprocessingData].
-    pub fn od_pairs(&self, uvehicle_id: usize) -> &ODPairs {
-        &self.od_pairs[uvehicle_id]
+    pub fn od_pairs(&self, uvehicle_id: UniqueVehicleIndex) -> &ODPairs {
+        &self.od_pairs[uvehicle_id.index()]
+    }
+
+    /// Returns the [ODTravelTimes] corresponding to the [UniqueVehicleIndex].
+    ///
+    /// *Panics* if the unique-vehicle index exceeds the number of unique vehicle of this
+    /// [RoadNetworkPreprocessingData].
+    pub fn free_flow_travel_times_of_unique_vehicle(
+        &self,
+        uvehicle_id: UniqueVehicleIndex,
+    ) -> &ODTravelTimes<T> {
+        &self.free_flow_travel_times[uvehicle_id.index()]
     }
 }
 
@@ -156,15 +201,15 @@ impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
 /// trip, with a given vehicle.
 #[derive(Clone, Debug, Default)]
 pub struct ODPairs {
-    unique_origins: HashSet<OriginalNodeIndex>,
-    unique_destinations: HashSet<OriginalNodeIndex>,
-    pairs: HashMap<OriginalNodeIndex, HashSet<OriginalNodeIndex>>,
+    unique_origins: HashSet<OriginalNodeId>,
+    unique_destinations: HashSet<OriginalNodeId>,
+    pairs: HashMap<OriginalNodeId, HashSet<OriginalNodeId>>,
 }
 
 impl ODPairs {
     /// Create a new ODPairs from a Vec of tuples `(o, d)`, where `o` is the [NodeIndex] of the
     /// origin and `d` is the [NodeIndex] of the destination.
-    pub fn from_vec(raw_pairs: Vec<(OriginalNodeIndex, OriginalNodeIndex)>) -> Self {
+    pub fn from_vec(raw_pairs: Vec<(OriginalNodeId, OriginalNodeId)>) -> Self {
         let mut pairs = ODPairs::default();
         for (origin, destination) in raw_pairs {
             pairs.add_pair(origin, destination);
@@ -173,7 +218,7 @@ impl ODPairs {
     }
 
     /// Add an origin-destination pair to the ODPairs.
-    fn add_pair(&mut self, origin: OriginalNodeIndex, destination: OriginalNodeIndex) {
+    fn add_pair(&mut self, origin: OriginalNodeId, destination: OriginalNodeId) {
         self.unique_origins.insert(origin);
         self.unique_destinations.insert(destination);
         self.pairs.entry(origin).or_default().insert(destination);
@@ -185,17 +230,17 @@ impl ODPairs {
     }
 
     /// Returns the set of unique origins.
-    pub fn unique_origins(&self) -> &HashSet<OriginalNodeIndex> {
+    pub fn unique_origins(&self) -> &HashSet<OriginalNodeId> {
         &self.unique_origins
     }
 
     /// Returns the set of unique destinations.
-    pub fn unique_destinations(&self) -> &HashSet<OriginalNodeIndex> {
+    pub fn unique_destinations(&self) -> &HashSet<OriginalNodeId> {
         &self.unique_destinations
     }
 
     /// Returns the list of valid destinations for each valid origin.
-    pub fn pairs(&self) -> &HashMap<OriginalNodeIndex, HashSet<OriginalNodeIndex>> {
+    pub fn pairs(&self) -> &HashMap<OriginalNodeId, HashSet<OriginalNodeId>> {
         &self.pairs
     }
 }
@@ -215,13 +260,13 @@ fn od_pairs_from_agents<T>(
                         // Unwraping is safe because we are iterating over road legs.
                         let origin = leg.origin;
                         let destination = leg.destination;
-                        let vehicle_od_pairs = &mut od_pairs[uvehicle];
+                        let vehicle_od_pairs = &mut od_pairs[uvehicle.index()];
                         vehicle_od_pairs.add_pair(origin, destination);
                     } else {
                         return Err(anyhow!(
                             "Agent {} has an invalid vehicle type index ({})",
                             agent.id,
-                            vehicle_id.index(),
+                            vehicle_id,
                         ));
                     }
                 }
@@ -232,7 +277,7 @@ fn od_pairs_from_agents<T>(
 }
 
 /// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
-type ODTravelTimes<T> = HashMap<(OriginalNodeIndex, OriginalNodeIndex), Time<T>>;
+type ODTravelTimes<T> = HashMap<(OriginalNodeId, OriginalNodeId), Time<T>>;
 
 fn compute_free_flow_travel_times<T: TTFNum>(
     road_network: &RoadNetwork<T>,
@@ -254,13 +299,13 @@ fn compute_free_flow_travel_times<T: TTFNum>(
             if let Mode::Trip(trip_mode) = mode {
                 for leg in trip_mode.iter_road_legs() {
                     let vehicle_id = leg.vehicle;
-                    let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id).unwrap();
+                    let uvehicle = unique_vehicles.vehicle_map[&vehicle_id];
                     let origin = leg.origin;
                     let destination = leg.destination;
-                    let vehicle_ff_tts = &mut free_flow_travel_times[*uvehicle];
-                    let vehicle_skims = skims[*uvehicle]
+                    let vehicle_ff_tts = &mut free_flow_travel_times[uvehicle.index()];
+                    let vehicle_skims = skims[uvehicle]
                         .as_ref()
-                        .unwrap_or_else(|| panic!("No skims for unique vehicle {uvehicle}"));
+                        .unwrap_or_else(|| panic!("No skims for unique vehicle {uvehicle:?}"));
                     let ttf = vehicle_skims.profile_query(origin, destination)?;
                     let tt = match ttf {
                         Some(&TTF::Constant(tt)) => tt,
@@ -305,6 +350,7 @@ mod tests {
             [Speed(120.0), Speed(90.)],
         ]);
         let v0 = Vehicle::new(
+            1,
             Length(10.0),
             PCE(1.0),
             speed_function.clone(),
@@ -312,6 +358,7 @@ mod tests {
             [2].into_iter().collect(),
         );
         let v1 = Vehicle::new(
+            2,
             Length(30.0),
             PCE(3.0),
             speed_function.clone(),
@@ -319,6 +366,7 @@ mod tests {
             [2].into_iter().collect(),
         );
         let v2 = Vehicle::new(
+            3,
             Length(10.0),
             PCE(1.0),
             speed_function,
@@ -327,9 +375,9 @@ mod tests {
         );
         let vehicles = vec![v0, v1, v2];
         let results = UniqueVehicles::from_vehicles(&vehicles);
-        assert_eq!(results.vehicles, vec![vehicle_index(0), vehicle_index(2)]);
-        assert_eq!(results.vehicle_map[&vehicle_index(0)], 0);
-        assert_eq!(results.vehicle_map[&vehicle_index(1)], 0);
-        assert_eq!(results.vehicle_map[&vehicle_index(2)], 1);
+        assert_eq!(results.list, vec![vehicle_index(0), vehicle_index(2)]);
+        assert_eq!(results.vehicle_map[&1], unique_vehicle_index(0));
+        assert_eq!(results.vehicle_map[&2], unique_vehicle_index(0));
+        assert_eq!(results.vehicle_map[&3], unique_vehicle_index(1));
     }
 }

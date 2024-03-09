@@ -8,7 +8,7 @@ use metropolis::agent::Agent;
 use metropolis::learning::LearningModel;
 use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis::mode::Mode;
-use metropolis::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
+use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
@@ -33,7 +33,7 @@ fn get_simulation() -> Simulation<f64> {
     {
         let leg = Leg::new(
             1,
-            LegType::Road(RoadLeg::new(o, d, vehicle_index(0))),
+            LegType::Road(RoadLeg::new(o, d, 1)),
             Time::default(),
             TravelUtility::default(),
             ScheduleUtility::None,
@@ -113,6 +113,7 @@ fn get_simulation() -> Simulation<f64> {
     ];
     // Vehicles are 6 meters long: 1 vehicle is enough to block an edge.
     let vehicle = Vehicle::new(
+        1,
         Length(6.0),
         PCE(1.0),
         SpeedFunction::Base,

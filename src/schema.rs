@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::learning::LearningModel;
 use crate::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use crate::mode::Mode;
-use crate::network::road_network::vehicle::{vehicle_index, SpeedFunction, Vehicle};
+use crate::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
@@ -71,7 +71,7 @@ pub(crate) fn example_agent() -> Agent<f64> {
 pub(crate) fn example_trip() -> TravelingMode<f64> {
     let leg = Leg::new(
         0,
-        LegType::Road(RoadLeg::new(0, 1, vehicle_index(0))),
+        LegType::Road(RoadLeg::new(0, 1, 1)),
         Time(600.0),
         TravelUtility::Polynomial(PolynomialFunction {
             b: -0.02,
@@ -137,6 +137,7 @@ pub(crate) fn example_schedule_utility() -> ScheduleUtility<f64> {
 
 pub(crate) fn example_vehicle() -> Vehicle<f64> {
     Vehicle::new(
+        1,
         Length(8.0),
         PCE(1.0),
         SpeedFunction::Multiplicator(0.8),
@@ -153,6 +154,7 @@ pub(crate) fn example_vehicle2() -> Vehicle<f64> {
     ]);
     let restricted_edges = [0, 1].into_iter().collect();
     Vehicle::new(
+        2,
         Length(20.0),
         PCE(3.0),
         func,
