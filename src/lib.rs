@@ -20,7 +20,6 @@ pub mod schedule_utility;
 mod schema;
 mod serialization;
 pub mod simulation;
-pub mod stop;
 pub mod travel_utility;
 pub mod units;
 

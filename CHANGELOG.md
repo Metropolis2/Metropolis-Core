@@ -12,6 +12,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] The paths to the input files and the output directory are set in the parameters JSON file.
 - [INPUT] Custom vehicle ids can be used (instead of vehicle indices numbered from 0 to n - 1).
+- [INPUT] Add the `max_iterations` parameter in the simulation parameters to limit the number of
+  iterations.
 
 ### Changed
 
@@ -19,6 +21,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] The population and network input files accept the Parquet and CSV format instead of JSON.
 - [OUTPUT] Use more interesting variables in the report HTML file.
 - [OUTPUT] Use the new terminology in the report HTML file.
+
+### Removed
+
+- [INPUT] Stopping criteria can no longer be used in the parameters (use `max_iterations` parameter
+  value instead).
 
 ## [0.8.0] - 2024-02-29
 

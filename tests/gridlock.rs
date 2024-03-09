@@ -16,7 +16,6 @@ use metropolis::network::{Network, NetworkParameters};
 use metropolis::parameters::Parameters;
 use metropolis::schedule_utility::ScheduleUtility;
 use metropolis::simulation::Simulation;
-use metropolis::stop::StopCriterion;
 use metropolis::travel_utility::TravelUtility;
 use metropolis::units::{Flow, Interval, Lanes, Length, Speed, Time, PCE};
 
@@ -128,7 +127,6 @@ fn get_simulation() -> Simulation<f64> {
         output_directory: Default::default(),
         period: Interval([Time(0.0), Time(50.0)]),
         learning_model: LearningModel::Exponential(0.0),
-        stopping_criteria: vec![StopCriterion::MaxIteration(1)],
         network: NetworkParameters {
             road_network: Some(RoadNetworkParameters {
                 contraction: Default::default(),
@@ -142,6 +140,7 @@ fn get_simulation() -> Simulation<f64> {
             }),
         },
         init_iteration_counter: 1,
+        max_iterations: 1,
         update_ratio: 1.0,
         random_seed: None,
         nb_threads: 0,

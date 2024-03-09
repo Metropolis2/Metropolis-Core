@@ -13,7 +13,6 @@ use ttf::TTFNum;
 use crate::learning::LearningModel;
 use crate::network::{NetworkParameters, NetworkWeights};
 use crate::simulation::results::AgentResults;
-use crate::stop::StopCriterion;
 use crate::units::Interval;
 
 const fn default_iteration_counter() -> u32 {
@@ -78,13 +77,13 @@ pub struct Parameters<T> {
     #[serde(default = "default_iteration_counter")]
     #[validate(range(min = 1))]
     pub init_iteration_counter: u32,
+    /// Maximum number of iterations to be run (on top of the `init_iteration_counter`).
+    pub max_iterations: u32,
     /// Set of parameters for the network.
     pub network: NetworkParameters<T>,
     /// Learning model used to update the values between two iterations.
     #[serde(default)]
     pub learning_model: LearningModel<T>,
-    /// Set of stopping criteria used to decide when the iterative process should stop.
-    pub stopping_criteria: Vec<StopCriterion<T>>,
     /// Share of agents that can update their pre-day choices at each iteration.
     #[serde(default = "default_update_ratio")]
     #[validate(range(min = 0.0, max = 1.0))]
@@ -106,12 +105,10 @@ pub struct Parameters<T> {
 
 impl<T: TTFNum> Parameters<T> {
     /// Returns `true` if the Simulation must be stopped.
-    ///
-    /// The Simulation is stopped if at least one of the stopping criteria is active.
-    pub fn stop(&self, iteration_counter: u32, results: &AgentResults<T>) -> bool {
-        self.stopping_criteria
-            .iter()
-            .any(|c| c.stop(iteration_counter, results))
+    pub fn stop(&self, iteration_counter: u32, _results: &AgentResults<T>) -> bool {
+        debug_assert!(iteration_counter >= self.init_iteration_counter);
+        let nb_iterations = 1 + iteration_counter - self.init_iteration_counter;
+        nb_iterations >= self.max_iterations
     }
 
     /// Returns the new [NetworkWeights] given the old weights and the simulated weights.

@@ -21,7 +21,6 @@ use crate::network::road_network::{
 use crate::network::NetworkParameters;
 use crate::parameters::{InputFiles, Parameters, SavingFormat};
 use crate::schedule_utility::ScheduleUtility;
-use crate::stop::StopCriterion;
 use crate::travel_utility::{PolynomialFunction, TravelUtility};
 use crate::units::*;
 use crate::{agent::Agent, schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel};
@@ -198,6 +197,7 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         output_directory: PathBuf::from("output/"),
         period: Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
         init_iteration_counter: 1,
+        max_iterations: 100,
         network: NetworkParameters {
             road_network: Some(RoadNetworkParameters {
                 recording_interval: Time(300.0),
@@ -211,10 +211,6 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
             }),
         },
         learning_model: LearningModel::Exponential(0.9),
-        stopping_criteria: vec![
-            StopCriterion::MaxIteration(100),
-            StopCriterion::DepartureTime(Time(2.0)),
-        ],
         update_ratio: 1.0,
         random_seed: Some(13081996),
         nb_threads: 8,

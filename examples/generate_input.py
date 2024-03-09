@@ -36,16 +36,7 @@ parameters = {
     "value": 0.01
   },
   "init_iteration_counter": 1,
-  "stopping_criteria": [
-    {
-      "type": "MaxIteration",
-      "value": 2
-    },
-    {
-      "type": "DepartureTime",
-      "value": 0.01
-    }
-  ],
+  "max_iterations": 2,
   "update_ratio": 1.0,
   "random_seed": 19960813,
   "nb_threads": 24,
