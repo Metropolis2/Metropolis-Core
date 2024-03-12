@@ -121,6 +121,11 @@ impl<T: TTFNum> Simulation<T> {
             )?;
             info!("Saving aggregate results");
             results::save_aggregate_results(&iteration_output.aggregate_results, &self.parameters)?;
+            results::save_iteration_results(
+                &iteration_output.iteration_results,
+                &self.parameters,
+                Some(format!("iter{iteration_counter}")),
+            )?;
             sim_results.push_iteration(iteration_output.aggregate_results);
             running_times.update(&iteration_output.running_times);
             if iteration_output.stop_simulation {
@@ -132,8 +137,9 @@ impl<T: TTFNum> Simulation<T> {
                 info!("Saving detailed results");
                 results::save_running_times(running_times, &self.parameters.output_directory)?;
                 results::save_iteration_results(
-                    sim_results.last_iteration.unwrap(),
+                    sim_results.last_iteration.as_ref().unwrap(),
                     &self.parameters,
+                    None,
                 )?;
                 info!("Done");
                 break;
@@ -533,7 +539,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
             );
         }
         info!("Saving results");
-        results::save_choices(pre_day_agent_results, output_dir, &self.parameters)?;
+        results::save_choices(&pre_day_agent_results, output_dir, &self.parameters)?;
         info!("Done");
         Ok(())
     }

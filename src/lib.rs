@@ -8,6 +8,7 @@
 
 pub mod agent;
 pub mod event;
+pub mod gui;
 pub mod io;
 pub mod learning;
 pub mod logging;
@@ -23,6 +24,7 @@ pub mod simulation;
 pub mod travel_utility;
 pub mod units;
 
+use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};

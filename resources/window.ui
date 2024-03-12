@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+    <template class="MetroWindow" parent="GtkApplicationWindow">
+        <property name="width-request">900</property>
+        <property name="height-request">600</property>
+        <property name="title" translatable="yes">METROPOLIS2</property>
+        <child>
+            <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="margin-top">12</property>
+                <property name="margin-bottom">12</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <property name="spacing">6</property>
+                <child>
+                    <object class="GtkBox" id="top_row">
+                        <property name="orientation">horizontal</property>
+                        <child>
+                            <object class="GtkTextView" id="input_text">
+                                <property name="editable">0</property>
+                                <property name="monospace">1</property>
+                                <property name="cursor-visible">0</property>
+                                <property name="wrap-mode">0</property>
+                                <property name="hexpand">1</property>
+                                <property name="width-request">500</property>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkButton" id="input_button">
+                                <signal name="clicked" handler="input_button_clicked" swapped="true"/>
+                                <property name="label" translatable="yes">Browse</property>
+                            </object>
+                        </child>
+                    </object>
+                </child>
+                <child>
+                    <object class="GtkButton" id="run_button">
+                        <signal name="clicked" handler="run_button_clicked" swapped="true"/>
+                        <property name="label" translatable="yes">Run</property>
+                    </object>
+                </child>
+                <child>
+                    <object class="GtkSeparator" id="sep">
+                    </object>
+                </child>
+                <child>
+                    <object class="GtkScrolledWindow" id="scrolled_window">
+                        <property name="can_focus">0</property>
+                        <child>
+                            <object class="GtkTextView" id="log">
+                                <property name="editable">0</property>
+                                <property name="monospace">1</property>
+                                <property name="cursor-visible">0</property>
+                                <property name="wrap-mode">0</property>
+                                <property name="vexpand">1</property>
+                            </object>
+                        </child>
+                    </object>
+                </child>
+            </object>
+        </child>
+    </template>
+</interface>

@@ -34,7 +34,7 @@ use crate::simulation::results::{
 use crate::units::{Interval, Time};
 
 pub trait ToArrow<const J: usize> {
-    fn to_arrow(data: Self) -> Result<[Option<RecordBatch>; J]>;
+    fn to_arrow(data: &Self) -> Result<[Option<RecordBatch>; J]>;
     fn names<'a>() -> [&'a str; J];
 }
 
@@ -804,7 +804,7 @@ struct AgentResultsBuilder {
 }
 
 impl AgentResultsBuilder {
-    fn append<T: ToPrimitive>(&mut self, agent_result: AgentResult<T>) {
+    fn append<T: ToPrimitive>(&mut self, agent_result: &AgentResult<T>) {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
@@ -1040,9 +1040,9 @@ impl AgentResultsBuilder {
 }
 
 impl<T: ToPrimitive> ToArrow<3> for AgentResults<T> {
-    fn to_arrow(data: AgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
+    fn to_arrow(data: &AgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
         let mut builder = AgentResultsBuilder::default();
-        data.0.into_iter().for_each(|row| builder.append(row));
+        data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
     }
     fn names<'a>() -> [&'a str; 3] {
@@ -1081,7 +1081,7 @@ struct PreDayAgentResultsBuilder {
 }
 
 impl PreDayAgentResultsBuilder {
-    fn append<T: ToPrimitive>(&mut self, agent_result: PreDayAgentResult<T>) {
+    fn append<T: ToPrimitive>(&mut self, agent_result: &PreDayAgentResult<T>) {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
@@ -1242,9 +1242,9 @@ impl PreDayAgentResultsBuilder {
 }
 
 impl<T: ToPrimitive> ToArrow<3> for PreDayAgentResults<T> {
-    fn to_arrow(data: PreDayAgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
+    fn to_arrow(data: &PreDayAgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
         let mut builder = PreDayAgentResultsBuilder::default();
-        data.0.into_iter().for_each(|row| builder.append(row));
+        data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
     }
     fn names<'a>() -> [&'a str; 3] {
@@ -1313,7 +1313,7 @@ impl<T: TTFNum> RoadNetworkWeightsBuilder<T> {
 }
 
 impl<T: TTFNum> ToArrow<1> for NetworkWeights<T> {
-    fn to_arrow(data: NetworkWeights<T>) -> Result<[Option<RecordBatch>; 1]> {
+    fn to_arrow(data: &NetworkWeights<T>) -> Result<[Option<RecordBatch>; 1]> {
         if let Some(rn_weights) = data.road_network() {
             let mut builder =
                 RoadNetworkWeightsBuilder::new(rn_weights.period, rn_weights.interval);

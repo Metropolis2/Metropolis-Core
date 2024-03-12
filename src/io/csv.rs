@@ -22,7 +22,7 @@ use super::arrow::ToArrow;
 use super::polars::ToPolars;
 
 /// Write data that can be converted to arrow format as a CSV file.
-pub fn write_csv<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) -> Result<()> {
+pub fn write_csv<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
     write_csv_with_prefix(data, output_dir, "")
 }
 
@@ -30,7 +30,7 @@ pub fn write_csv<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) -> R
 ///
 /// The given prefix is prepended to the names of the saved files.
 pub fn write_csv_with_prefix<D: ToArrow<J>, const J: usize>(
-    data: D,
+    data: &D,
     output_dir: &Path,
     prefix: &str,
 ) -> Result<()> {

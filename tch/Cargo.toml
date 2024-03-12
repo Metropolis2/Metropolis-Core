@@ -28,7 +28,7 @@ hashbrown = { version = "0.14", features = ["rayon", "serde"] }
 indicatif = "0.17"
 log = "0.4"
 petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
-priority-queue = "1.2"
+priority-queue = "2.0"
 object-pool = "0.5"
 ordered-float = { version = "4.1", features = ["serde"] }
 rayon = "1.5"

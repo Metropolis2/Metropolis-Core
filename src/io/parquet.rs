@@ -21,7 +21,7 @@ use super::arrow::ToArrow;
 use super::polars::ToPolars;
 
 /// Writes data that can be converted to arrow format as a parquet file.
-pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) -> Result<()> {
+pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
     write_parquet_with_prefix(data, output_dir, "")
 }
 
@@ -29,7 +29,7 @@ pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: D, output_dir: &Path) 
 ///
 /// The given prefix is prepended to the names of the saved files.
 pub fn write_parquet_with_prefix<D: ToArrow<J>, const J: usize>(
-    data: D,
+    data: &D,
     output_dir: &Path,
     prefix: &str,
 ) -> Result<()> {
