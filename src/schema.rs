@@ -187,7 +187,7 @@ fn example_input_files() -> InputFiles {
         trips: Some(PathBuf::from("input/trips.parquet")),
         edges: Some(PathBuf::from("input/edges.parquet")),
         vehicle_types: Some(PathBuf::from("input/vehicles.parquet")),
-        weights: None,
+        road_network_conditions: None,
     }
 }
 

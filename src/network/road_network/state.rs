@@ -757,7 +757,7 @@ impl<T: TTFNum> RoadNetworkState<T> {
         let mut weights = RoadNetworkWeights::with_capacity(
             period,
             parameters.recording_interval,
-            preprocess_data.nb_unique_vehicles(),
+            &preprocess_data.unique_vehicles,
             self.graph.edge_count(),
         );
         let (_, edge_states) = self.graph.into_nodes_edges();
@@ -793,10 +793,12 @@ impl<T: TTFNum> RoadNetworkState<T> {
                     ttf.ensure_fifo();
                     ttf = ttf.link(&funcs.exit);
                     ttf.ensure_fifo();
-                    vehicle_weights.insert(edge_ref.weight().id, ttf);
+                    vehicle_weights
+                        .weights_mut()
+                        .insert(edge_ref.weight().id, ttf);
                 }
             }
-            vehicle_weights.shrink_to_fit();
+            vehicle_weights.weights_mut().shrink_to_fit();
         }
         weights
     }

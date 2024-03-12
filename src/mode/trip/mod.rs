@@ -535,6 +535,7 @@ impl<T: TTFNum> TravelingMode<T> {
                             for edge in input_route {
                                 ttf = ttf.link(
                                     weights
+                                        .weights()
                                         .get(edge)
                                         .ok_or_else(|| anyhow!("Invalid edge id: {}", edge))
                                         .with_context(|| {
@@ -752,7 +753,7 @@ impl<T: TTFNum> TravelingMode<T> {
                         let mut t = current_time;
                         let mut route = Vec::with_capacity(input_route.len());
                         for edge in input_route {
-                            t = t + vehicle_weights[edge].eval(t);
+                            t = t + vehicle_weights.weights()[edge].eval(t);
                             route.push(road_network.edge_id_of(*edge));
                         }
                         (t, Some(route))
@@ -951,7 +952,7 @@ impl<T: TTFNum> TravelingMode<T> {
                         let mut t = current_time;
                         let mut route = Vec::with_capacity(input_route.len());
                         for edge in input_route {
-                            t = t + vehicle_weights[edge].eval(t);
+                            t = t + vehicle_weights.weights()[edge].eval(t);
                             route.push(road_network.edge_id_of(*edge));
                         }
                         (t, route)

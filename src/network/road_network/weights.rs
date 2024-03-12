@@ -6,17 +6,56 @@
 #![allow(clippy::disallowed_types)]
 use std::ops::{Index, IndexMut};
 
+use anyhow::{bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::warn;
 use num_traits::{Float, Zero};
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
-use ttf::{TTFNum, TTF};
+use ttf::{PwlTTF, TTFNum, TTF};
 
 use super::{
-    preprocess::UniqueVehicleIndex, OriginalEdgeId, RoadNetwork, RoadNetworkPreprocessingData,
+    preprocess::{UniqueVehicleIndex, UniqueVehicles},
+    vehicle::OriginalVehicleId,
+    OriginalEdgeId, RoadNetwork, RoadNetworkPreprocessingData,
 };
 use crate::units::{Interval, Time};
+
+/// Structure to store the travel-time functions of each edge of a
+/// [RoadNetwork](super::RoadNetwork), for a group of unique vehicle types.
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
+#[serde(bound = "T: TTFNum")]
+pub struct VehicleWeights<T> {
+    /// Original id of the vehicle for which the weights are valid.
+    pub(crate) vehicle_ids: Vec<OriginalVehicleId>,
+    #[schemars(with = "std::collections::HashMap<OriginalEdgeId, TTF<Time<T>>>")]
+    /// Weights.
+    pub(crate) weights: HashMap<OriginalEdgeId, TTF<Time<T>>>,
+}
+
+impl<T> VehicleWeights<T> {
+    pub(crate) fn weights(&self) -> &HashMap<OriginalEdgeId, TTF<Time<T>>> {
+        &self.weights
+    }
+
+    pub(crate) fn weights_mut(&mut self) -> &mut HashMap<OriginalEdgeId, TTF<Time<T>>> {
+        &mut self.weights
+    }
+
+    pub(crate) fn vehicle_ids(&self) -> &[OriginalVehicleId] {
+        self.vehicle_ids.as_slice()
+    }
+
+    fn len(&self) -> usize {
+        self.weights.len()
+    }
+}
+
+impl<T: TTFNum> VehicleWeights<T> {
+    pub(crate) fn complexity(&self) -> usize {
+        self.weights.values().map(|w| w.complexity()).sum()
+    }
+}
 
 /// Structure to store the travel-time functions of each edge of a
 /// [RoadNetwork](super::RoadNetwork), for each unique vehicle type.
@@ -31,8 +70,7 @@ use crate::units::{Interval, Time};
     (outer array)."
 )]
 pub struct RoadNetworkWeights<T> {
-    #[schemars(with = "Vec<std::collections::HashMap<OriginalEdgeId, TTF<Time<T>>>>")]
-    pub(crate) weights: Vec<HashMap<OriginalEdgeId, TTF<Time<T>>>>,
+    pub(crate) weights: Vec<VehicleWeights<T>>,
     #[serde(skip)]
     pub(crate) period: Interval<T>,
     #[serde(skip)]
@@ -42,14 +80,19 @@ pub struct RoadNetworkWeights<T> {
 impl<T> RoadNetworkWeights<T> {
     /// Initializes a new RoadNetworkWeights instance with enough capacity for the given number of
     /// unique vehicles and edges.
-    pub fn with_capacity(
+    pub(crate) fn with_capacity(
         period: Interval<T>,
         interval: Time<T>,
-        nb_unique_vehicles: usize,
+        unique_vehicles: &UniqueVehicles,
         nb_edges: usize,
     ) -> Self {
-        let mut weights = Vec::new();
-        weights.resize_with(nb_unique_vehicles, || HashMap::with_capacity(nb_edges));
+        let weights = unique_vehicles
+            .iter_original_ids()
+            .map(|vehicle_ids| VehicleWeights {
+                vehicle_ids: vehicle_ids.to_vec(),
+                weights: HashMap::with_capacity(nb_edges),
+            })
+            .collect();
         RoadNetworkWeights {
             weights,
             period,
@@ -57,43 +100,24 @@ impl<T> RoadNetworkWeights<T> {
         }
     }
 
-    /// Returns `true` if the [RoadNetworkWeights] is empty, i.e., there is no unique vehicle.
-    pub fn is_empty(&self) -> bool {
-        self.weights.is_empty()
-    }
-
     /// Returns the number of unique vehicles in the weights.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.weights.len()
     }
 
     /// Returns the [TTF] corresponding to the given unique vehicle id and edge.
     ///
     /// Returns `None` if the edge is not accessible for the given vehicle.
-    pub fn get(
+    pub(crate) fn get(
         &self,
         vehicle_id: UniqueVehicleIndex,
         edge_id: OriginalEdgeId,
     ) -> Option<&TTF<Time<T>>> {
-        self.weights[vehicle_id.index()].get(&edge_id)
+        self.weights[vehicle_id.index()].weights.get(&edge_id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &HashMap<OriginalEdgeId, TTF<Time<T>>>> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &VehicleWeights<T>> {
         self.weights.iter()
-    }
-
-    /// Returns an iterator over vehicle ids and the corresponding weights.
-    pub fn iter_vehicle_weights(
-        &self,
-    ) -> impl Iterator<Item = (usize, &HashMap<OriginalEdgeId, TTF<Time<T>>>)> {
-        self.weights.iter().enumerate()
-    }
-
-    pub fn iter_inners(&self) -> impl Iterator<Item = (usize, OriginalEdgeId, &TTF<Time<T>>)> {
-        self.iter_vehicle_weights().flat_map(|(vehicle_id, map)| {
-            map.iter()
-                .map(move |(edge_id, ttf)| (vehicle_id, *edge_id, ttf))
-        })
     }
 }
 
@@ -102,8 +126,11 @@ impl<T: Copy> RoadNetworkWeights<T> {
     /// RoadNetworkWeights.
     pub fn with_capacity_in(instance: &Self) -> Self {
         let mut weights = Vec::with_capacity(instance.len());
-        for w in instance.weights.iter() {
-            weights.push(HashMap::with_capacity(w.len()));
+        for v_weights in instance.weights.iter() {
+            weights.push(VehicleWeights {
+                vehicle_ids: v_weights.vehicle_ids.clone(),
+                weights: HashMap::with_capacity(v_weights.len()),
+            });
         }
         RoadNetworkWeights {
             weights,
@@ -113,7 +140,109 @@ impl<T: Copy> RoadNetworkWeights<T> {
     }
 }
 
+type XYVec<T> = Vec<(Time<T>, Time<T>)>;
+
 impl<T: TTFNum> RoadNetworkWeights<T> {
+    pub(crate) fn from_values(
+        values: Vec<(OriginalVehicleId, OriginalEdgeId, Time<T>, Time<T>)>,
+        period: Interval<T>,
+        interval: Time<T>,
+        road_network: &RoadNetwork<T>,
+        unique_vehicles: &UniqueVehicles,
+    ) -> Result<Self> {
+        // Collect all the values in a map (vid, eid) -> (td, tt).
+        let mut global_map: HashMap<(OriginalVehicleId, OriginalEdgeId), XYVec<T>> = HashMap::new();
+        for (vid, eid, x, y) in values {
+            global_map
+                .entry((vid, eid))
+                .or_insert_with(Vec::new)
+                .push((x, y));
+        }
+        // Build the TTFs.
+        let mut ttf_map = HashMap::new();
+        for ((vid, eid), xy_vec) in global_map.into_iter() {
+            let ttf = build_ttf(xy_vec, period, interval).with_context(|| {
+                format!("Failed to build TTF for vehicle id `{vid}` and edge id `{eid}`")
+            })?;
+            ttf_map
+                .entry(vid)
+                .or_insert_with(HashMap::new)
+                .insert(eid, ttf);
+        }
+        // Make sure that we have the weights for all vehicles and all accessible edges of the road
+        // network.
+        for vehicle in road_network.iter_vehicles() {
+            let w = ttf_map.entry(vehicle.id).or_insert_with(HashMap::new);
+            let mut nb_warnings = 0;
+            let all_edges: HashSet<_> = road_network
+                .iter_original_edge_ids()
+                .filter(|&edge_id| vehicle.can_access(edge_id))
+                .collect();
+            // Discard the weights of edges that cannot be accessed.
+            w.retain(|edge_id, _| all_edges.contains(edge_id));
+            // Use free-flow weights for edges with no given weight.
+            for edge_id in all_edges {
+                w.entry(edge_id).or_insert_with(|| {
+                    if nb_warnings < 5 {
+                        warn!(
+                            "No TTF given for edge {edge_id} with vehicle {}, \
+                                using free-flow weight instead.",
+                            vehicle.id
+                        );
+                        nb_warnings += 1;
+                        if nb_warnings == 5 {
+                            warn!("Skipping similar warnings...");
+                        }
+                    }
+                    TTF::Constant(road_network.get_free_flow_travel_time_of_edge(edge_id, vehicle))
+                });
+            }
+        }
+        // Check if we got some weights for vehicles which are not part of the road network.
+        let all_vehicles: HashSet<_> = road_network.iter_vehicles().map(|v| v.id).collect();
+        let mut ids_to_remove = Vec::new();
+        for vid in ttf_map.keys() {
+            if !all_vehicles.contains(vid) {
+                warn!(
+                    "Vehicle id {vid} is in the road-network conditions but it is not part of \
+                    the input vehicle types"
+                );
+                ids_to_remove.push(*vid);
+            }
+        }
+        for vid in ids_to_remove {
+            ttf_map.remove(&vid).unwrap();
+        }
+        // At this point, ttf_map has an entry for all vehicle types.
+        let mut weights =
+            Self::with_capacity(period, interval, unique_vehicles, road_network.nb_edges());
+        let mut to_insert = Vec::new();
+        for vweights in weights.weights.iter_mut() {
+            // Set the weights to the input weights for the first vehicle id in the group.
+            vweights.weights = ttf_map.remove(&vweights.vehicle_ids[0]).unwrap();
+            // Check if the other vehcles in the group have the same input weight.
+            for &vid in vweights.vehicle_ids[1..].iter() {
+                let w = ttf_map.remove(&vid).unwrap();
+                if w != vweights.weights {
+                    // Different weights were given for this vehicle.
+                    warn!(
+                        "Vehicle id {vid} could share road-network conditions with \
+                            vehicle id {} but different conditions were given",
+                        vweights.vehicle_ids[0]
+                    );
+                    to_insert.push(VehicleWeights {
+                        vehicle_ids: vec![vid],
+                        weights: w,
+                    });
+                }
+            }
+        }
+        for vw in to_insert {
+            weights.weights.push(vw);
+        }
+        Ok(weights)
+    }
+
     /// Returns the average between two RoadNetworkWeights, using the given coefficient.
     ///
     /// For each vehicle `v` and edge `e`, the weight of the new RoadNetworkWeights is `w_ve = a *
@@ -130,9 +259,14 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                 other_weights.len(),
                 "Incompatible RoadNetworkWeights."
             );
-            for (self_id, self_ttf) in self_weights.iter() {
-                if let Some(other_ttf) = other_weights.get(self_id) {
-                    new_weights.weights[i].insert(
+            debug_assert_eq!(
+                self_weights.vehicle_ids, other_weights.vehicle_ids,
+                "The weights do not have the same vehicle ids"
+            );
+            debug_assert_eq!(new_weights.weights[i].vehicle_ids, self_weights.vehicle_ids);
+            for (self_id, self_ttf) in self_weights.weights.iter() {
+                if let Some(other_ttf) = other_weights.weights.get(self_id) {
+                    new_weights.weights[i].weights.insert(
                         *self_id,
                         self_ttf.apply(other_ttf, |w1, w2| {
                             Time(coefficient * w1.0 + (T::one() - coefficient) * w2.0)
@@ -162,9 +296,14 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                 other_weights.len(),
                 "Incompatible RoadNetworkWeights."
             );
-            for (self_id, self_ttf) in self_weights.iter() {
-                if let Some(other_ttf) = other_weights.get(self_id) {
-                    new_weights.weights[i].insert(
+            debug_assert_eq!(
+                self_weights.vehicle_ids, other_weights.vehicle_ids,
+                "The weights do not have the same vehicle ids"
+            );
+            debug_assert_eq!(new_weights.weights[i].vehicle_ids, self_weights.vehicle_ids);
+            for (self_id, self_ttf) in self_weights.weights.iter() {
+                if let Some(other_ttf) = other_weights.weights.get(self_id) {
+                    new_weights.weights[i].weights.insert(
                         *self_id,
                         self_ttf.apply(other_ttf, |w1, w2| {
                             Time(w1.0.powf(a / (a + b)) * w2.0.powf(b / (a + b)))
@@ -188,8 +327,12 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                 other_weights.len(),
                 "Incompatible RoadNetworkWeights."
             );
-            for (self_id, self_ttf) in self_weights.iter() {
-                if let Some(other_ttf) = other_weights.get(self_id) {
+            debug_assert_eq!(
+                self_weights.vehicle_ids, other_weights.vehicle_ids,
+                "The weights do not have the same vehicle ids"
+            );
+            for (self_id, self_ttf) in self_weights.weights.iter() {
+                if let Some(other_ttf) = other_weights.weights.get(self_id) {
                     rmse += self_ttf.squared_difference(other_ttf);
                     n += 1;
                     debug_assert!(rmse.is_finite(), "{other_weights:?}");
@@ -230,9 +373,9 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
             _ => (),
         }
         let mut nb_warnings = 0;
-        for (uid, unique_vehicle) in preprocess_data
+        for (uid, unique_vehicle, vehicle_ids) in preprocess_data
             .unique_vehicles
-            .iter_uniques(&road_network.vehicles)
+            .iter_uniques_with_original_ids(&road_network.vehicles)
         {
             // Collect all the edges that can be accessed by the unique vehicle.
             let all_edges: HashSet<OriginalEdgeId> = road_network
@@ -241,10 +384,13 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                 .collect();
             if let Some(weights) = self.weights.get_mut(uid.index()) {
                 // Discard the weights of edges that cannot be accessed.
-                weights.retain(|edge_id, _| all_edges.contains(edge_id));
+                weights
+                    .weights
+                    .retain(|edge_id, _| all_edges.contains(edge_id));
                 // Use free-flow weights for edges with no given weight.
                 for edge_id in all_edges {
                     weights
+                        .weights
                         .entry(edge_id)
                         .and_modify(|ttf| {
                             if !ttf.get_max().is_finite() {
@@ -293,15 +439,55 @@ impl<T: TTFNum> RoadNetworkWeights<T> {
                         (edge_id, TTF::Constant(tt))
                     })
                     .collect();
-                self.weights.push(weights);
+                self.weights.push(VehicleWeights {
+                    vehicle_ids: vehicle_ids.to_vec(),
+                    weights,
+                });
             }
         }
         self
     }
 }
 
+fn build_ttf<T: TTFNum>(
+    mut xy_vec: XYVec<T>,
+    period: Interval<T>,
+    interval: Time<T>,
+) -> Result<TTF<Time<T>>> {
+    xy_vec.sort_by_key(|(x, _)| *x);
+    if xy_vec[0].0 != period.start() {
+        bail!(
+            "Invalid starting departure time: {} (expected: {})",
+            xy_vec[0].0 .0,
+            period.start()
+        );
+    }
+    if !xy_vec
+        .iter()
+        .zip(std::iter::successors(Some(period.start()), |&t| {
+            Some(t + interval)
+        }))
+        .all(|(xy, xp_td)| xy.0 == xp_td)
+    {
+        bail!(
+            "The departure time values are not evenly spaced with interval {}",
+            interval.0
+        );
+    }
+    let ttf = if xy_vec.iter().all(|xy| xy.1 == xy_vec[0].1) {
+        TTF::Constant(xy_vec[0].1)
+    } else {
+        TTF::Piecewise(PwlTTF::from_values(
+            xy_vec.into_iter().map(|xy| xy.1).collect(),
+            period.start(),
+            interval,
+        ))
+    };
+    Ok(ttf)
+}
+
 impl<T> Index<UniqueVehicleIndex> for RoadNetworkWeights<T> {
-    type Output = HashMap<OriginalEdgeId, TTF<Time<T>>>;
+    type Output = VehicleWeights<T>;
     fn index(&self, x: UniqueVehicleIndex) -> &Self::Output {
         &self.weights[x.index()]
     }
@@ -316,7 +502,7 @@ impl<T> IndexMut<UniqueVehicleIndex> for RoadNetworkWeights<T> {
 impl<T> Index<(UniqueVehicleIndex, OriginalEdgeId)> for RoadNetworkWeights<T> {
     type Output = TTF<Time<T>>;
     fn index(&self, (vehicle_id, edge_id): (UniqueVehicleIndex, OriginalEdgeId)) -> &Self::Output {
-        &self.weights[vehicle_id.index()][&edge_id]
+        &self.weights[vehicle_id.index()].weights[&edge_id]
     }
 }
 
@@ -327,36 +513,54 @@ mod tests {
     #[test]
     fn average_test() {
         let w0 = RoadNetworkWeights {
-            weights: vec![[(0, TTF::Constant(Time(10.)))].into_iter().collect()],
+            weights: vec![VehicleWeights {
+                vehicle_ids: vec![0],
+                weights: [(0, TTF::Constant(Time(10.)))].into_iter().collect(),
+            }],
             period: Interval([Time(0.0), Time(100.0)]),
             interval: Time(0.0),
         };
         let w1 = RoadNetworkWeights {
-            weights: vec![[(0, TTF::Constant(Time(20.)))].into_iter().collect()],
+            weights: vec![VehicleWeights {
+                vehicle_ids: vec![0],
+                weights: [(0, TTF::Constant(Time(20.)))].into_iter().collect(),
+            }],
             period: Interval([Time(0.0), Time(100.0)]),
             interval: Time(0.0),
         };
         // Result = 0.2 * 10 + 0.8 * 20 = 2 + 16 = 18.
-        let w2 = vec![[(0, TTF::Constant(Time(18.)))].into_iter().collect()];
+        let w2 = vec![VehicleWeights {
+            vehicle_ids: vec![0],
+            weights: [(0, TTF::Constant(Time(18.)))].into_iter().collect(),
+        }];
         assert_eq!(w0.average(&w1, 0.2).weights, w2);
     }
 
     #[test]
     fn genetic_average_test() {
         let w0 = RoadNetworkWeights {
-            weights: vec![[(0, TTF::Constant(Time(2.)))].into_iter().collect()],
+            weights: vec![VehicleWeights {
+                vehicle_ids: vec![0],
+                weights: [(0, TTF::Constant(Time(2.)))].into_iter().collect(),
+            }],
             period: Interval([Time(0.0), Time(100.0)]),
             interval: Time(0.0),
         };
         let w1 = RoadNetworkWeights {
-            weights: vec![[(0, TTF::Constant(Time(3.)))].into_iter().collect()],
+            weights: vec![VehicleWeights {
+                vehicle_ids: vec![0],
+                weights: [(0, TTF::Constant(Time(3.)))].into_iter().collect(),
+            }],
             period: Interval([Time(0.0), Time(100.0)]),
             interval: Time(0.0),
         };
         // Result = (2^3 * 3^2)^(1/5) = 72^(1/5).
-        let w2 = vec![[(0, TTF::Constant(Time(72.0f64.powf(0.2))))]
-            .into_iter()
-            .collect()];
+        let w2 = vec![VehicleWeights {
+            vehicle_ids: vec![0],
+            weights: [(0, TTF::Constant(Time(72.0f64.powf(0.2))))]
+                .into_iter()
+                .collect(),
+        }];
         assert_eq!(w0.genetic_average(&w1, 3.0, 2.0).weights, w2);
     }
 }

@@ -99,14 +99,19 @@ mod tests {
 
     use super::*;
     use crate::network::road_network::preprocess::unique_vehicle_index;
+    use crate::network::road_network::weights::VehicleWeights;
     use crate::network::road_network::RoadNetworkWeights;
     use crate::units::{Interval, Time};
 
     fn get_weigths(v: f64) -> NetworkWeights<f64> {
-        let uid = unique_vehicle_index(0);
-        let mut rn =
-            RoadNetworkWeights::with_capacity(Interval([Time(0.0), Time(100.0)]), Time(1.0), 1, 1);
-        rn[uid].insert(0, TTF::Constant(Time(v)));
+        let rn = RoadNetworkWeights {
+            period: Interval([Time(0.), Time(100.)]),
+            interval: Time(1.),
+            weights: vec![VehicleWeights {
+                weights: [(0, TTF::Constant(Time(v)))].into_iter().collect(),
+                vehicle_ids: vec![0],
+            }],
+        };
         NetworkWeights::new(Some(rn))
     }
 

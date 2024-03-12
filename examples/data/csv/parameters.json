@@ -1,11 +1,11 @@
 {
   "period": [
-    21600.0,
-    43200.0
+    21600,
+    43200
   ],
   "network": {
     "road_network": {
-      "recording_interval": 50.0,
+      "recording_interval": 1800,
       "approximation_bound": 1.0,
       "spillback": true,
       "backward_wave_speed": 4.0,
@@ -36,7 +36,7 @@
     "trips": "trips.csv",
     "edges": "edges.csv",
     "vehicle_types": "vehicles.csv",
-    "weights": "weights.json"
+    "road_network_conditions": "edge_ttfs.csv"
   },
   "output_directory": "output",
   "saving_format": "CSV"

@@ -9,7 +9,7 @@ pub mod results;
 use std::ops::Deref;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use log::{debug, info};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
@@ -25,6 +25,7 @@ use self::results::{
 };
 use crate::agent::{agent_index, Agent};
 use crate::event::{EventAlloc, EventInput};
+use crate::io;
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::skim::EAAllocation;
@@ -79,32 +80,58 @@ impl<T> Simulation<T> {
 }
 
 impl<T: TTFNum> Simulation<T> {
-    /// Run the simulation, using the given [NetworkWeights] as initial weights of the network.
-    ///
-    /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
-    pub fn run_from_weights(&self, init_weights: Option<NetworkWeights<T>>) -> Result<()> {
+    /// Runs the simulation.
+    pub fn run(&self) -> Result<()> {
         // Initialize the global rayon thread pool.
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.parameters.nb_threads)
             .build_global()
             .unwrap();
+
+        if self.network.get_road_network().is_some()
+            && self.parameters.network.road_network.is_none()
+        {
+            bail!("The road-network parameters are mandatory when a road-network is used.");
+        }
+
+        // Pre-process the simulation.
         let preprocess_data = self.preprocess()?;
-        let mut exp_weights = if init_weights.is_some() {
-            init_weights.map(|w| {
-                w.with_network(
-                    &self.network,
-                    self.parameters.period,
-                    &self.parameters.network,
-                    &preprocess_data.network,
-                )
-            })
+
+        let rn_weights = if let Some(road_network) = self.network.get_road_network() {
+            // Read the input road-network conditions or create free-flow conditions if no file is
+            // given.
+            Some(
+                if let Some(path) = self.parameters.input_files.road_network_conditions.as_ref() {
+                    io::read_rn_weights(
+                        path,
+                        self.parameters.period,
+                        self.parameters
+                            .network
+                            .road_network
+                            .as_ref()
+                            .unwrap()
+                            .recording_interval,
+                        road_network,
+                        &preprocess_data
+                            .network
+                            .get_road_network()
+                            .unwrap()
+                            .unique_vehicles,
+                    )
+                    .unwrap()
+                } else {
+                    road_network.get_free_flow_weights(
+                        self.parameters.period,
+                        self.parameters.network.road_network.as_ref().unwrap(),
+                        preprocess_data.network.get_road_network().unwrap(),
+                    )
+                },
+            )
         } else {
-            Some(self.network.get_free_flow_weights(
-                self.parameters.period,
-                &self.parameters.network,
-                &preprocess_data.network,
-            ))
+            None
         };
+
+        let mut exp_weights = NetworkWeights::new(rn_weights);
         let mut prev_agent_results = None;
         let mut prev_sim_weights = None;
         let mut iteration_counter: u32 = self.parameters.init_iteration_counter;
@@ -113,7 +140,7 @@ impl<T: TTFNum> Simulation<T> {
         loop {
             info!("===== Iteration {} =====", iteration_counter);
             let iteration_output = self.run_iteration(
-                std::mem::take(&mut exp_weights).unwrap(),
+                std::mem::take(&mut exp_weights),
                 std::mem::take(&mut prev_sim_weights),
                 std::mem::take(&mut prev_agent_results),
                 iteration_counter,
@@ -121,11 +148,12 @@ impl<T: TTFNum> Simulation<T> {
             )?;
             info!("Saving aggregate results");
             results::save_aggregate_results(&iteration_output.aggregate_results, &self.parameters)?;
-            results::save_iteration_results(
-                &iteration_output.iteration_results,
-                &self.parameters,
-                Some(format!("iter{iteration_counter}")),
-            )?;
+            // TODO: add this as an option.
+            // results::save_iteration_results(
+            // &iteration_output.iteration_results,
+            // &self.parameters,
+            // Some(format!("iter{iteration_counter}")),
+            // )?;
             sim_results.push_iteration(iteration_output.aggregate_results);
             running_times.update(&iteration_output.running_times);
             if iteration_output.stop_simulation {
@@ -145,7 +173,7 @@ impl<T: TTFNum> Simulation<T> {
                 break;
             }
             (exp_weights, prev_sim_weights, prev_agent_results) = (
-                Some(iteration_output.iteration_results.new_exp_weights),
+                iteration_output.iteration_results.new_exp_weights,
                 Some(iteration_output.iteration_results.sim_weights),
                 Some(iteration_output.iteration_results.agent_results),
             );
@@ -189,7 +217,7 @@ impl<T: TTFNum> Simulation<T> {
                 &self.parameters.network,
             )
         })?;
-        info!("Running pre-day model");
+        info!("Running demand model");
         let (mut agent_results, t2) = record_time(|| {
             self.run_pre_day_model(
                 &exp_weights,
@@ -199,14 +227,13 @@ impl<T: TTFNum> Simulation<T> {
                 iteration_counter,
             )
         })?;
-        info!("Running within-day model");
+        info!("Running supply model");
         let (sim_weights, t3) =
             record_time(|| self.run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
-        info!("Running day-to-day model");
+        info!("Running learning model");
         let (new_exp_weights, t4) = record_time(|| {
             Ok(self.run_day_to_day_model(&exp_weights, &sim_weights, iteration_counter))
         })?;
-        info!("Computing aggregate results");
         let iteration_results = IterationResults::new(
             agent_results,
             exp_weights,
@@ -223,7 +250,6 @@ impl<T: TTFNum> Simulation<T> {
                 prev_sim_weights.as_ref(),
             ))
         })?;
-        info!("Checking stopping rules");
         let (stop_simulation, t6) = record_time(|| {
             Ok(self
                 .parameters

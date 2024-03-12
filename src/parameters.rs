@@ -47,7 +47,7 @@ pub struct InputFiles {
     #[serde(default)]
     pub vehicle_types: Option<PathBuf>,
     #[serde(default)]
-    pub weights: Option<PathBuf>,
+    pub road_network_conditions: Option<PathBuf>,
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.

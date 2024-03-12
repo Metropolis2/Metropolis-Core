@@ -56,7 +56,7 @@ pub const fn unique_vehicle_index(x: usize) -> UniqueVehicleIndex {
 #[derive(Clone, Debug)]
 pub(crate) struct UniqueVehicles {
     /// Index in the road network's vehicle list of the reference unique vehicles.
-    list: Vec<VehicleIndex>,
+    list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)>,
     /// Map each original vehicle id to the index of their reference unique vehicle.
     vehicle_map: HashMap<OriginalVehicleId, UniqueVehicleIndex>,
 }
@@ -64,19 +64,20 @@ pub(crate) struct UniqueVehicles {
 impl UniqueVehicles {
     /// Creates a new [UniqueVehicles] from a Vec of [Vehicle].
     pub(crate) fn from_vehicles<T: TTFNum>(vehicles: &[Vehicle<T>]) -> Self {
-        let mut list: Vec<VehicleIndex> = Vec::new();
+        let mut list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)> = Vec::new();
         let mut vehicle_map = HashMap::with_capacity(vehicles.len());
-        for (vehicle_id, vehicle) in vehicles.iter().enumerate() {
+        for (vehicle_idx, vehicle) in vehicles.iter().enumerate() {
             if let Some(uid) = list
                 .iter()
-                .position(|&id| vehicle.share_weights(&vehicles[id.index()]))
+                .position(|(id, _)| vehicle.share_weights(&vehicles[id.index()]))
             {
+                list[uid].1.push(vehicle.id);
                 vehicle_map.insert(vehicle.id, unique_vehicle_index(uid));
             } else {
                 // This vehicle is unique (so far).
                 // It will be used as a reference unique vehicle.
                 vehicle_map.insert(vehicle.id, unique_vehicle_index(list.len()));
-                list.push(vehicle_index(vehicle_id));
+                list.push((vehicle_index(vehicle_idx), vec![vehicle.id]));
             }
         }
         UniqueVehicles { list, vehicle_map }
@@ -95,7 +96,32 @@ impl UniqueVehicles {
         self.list
             .iter()
             .enumerate()
-            .map(|(i, v_id)| (unique_vehicle_index(i), &vehicles[v_id.index()]))
+            .map(|(i, (v_id, _))| (unique_vehicle_index(i), &vehicles[v_id.index()]))
+    }
+
+    /// Iterates over the [OriginalVehicleId] in each unique vehicle category.
+    pub(crate) fn iter_original_ids(&self) -> impl Iterator<Item = &[OriginalVehicleId]> {
+        self.list
+            .iter()
+            .map(|(_, vehicle_ids)| vehicle_ids.as_slice())
+    }
+
+    /// Iterates over the `UniqueVehicleIndex`, the reference [Vehicle] of all unique vehicles and
+    /// the [OriginalVehicleId] of all associated vehicles.
+    pub(crate) fn iter_uniques_with_original_ids<'a, T>(
+        &'a self,
+        vehicles: &'a [Vehicle<T>],
+    ) -> impl Iterator<Item = (UniqueVehicleIndex, &'a Vehicle<T>, &[OriginalVehicleId])> {
+        self.list
+            .iter()
+            .enumerate()
+            .map(|(i, (v_id, vehicle_ids))| {
+                (
+                    unique_vehicle_index(i),
+                    &vehicles[v_id.index()],
+                    vehicle_ids.as_slice(),
+                )
+            })
     }
 }
 
@@ -106,17 +132,8 @@ impl Index<OriginalVehicleId> for UniqueVehicles {
     }
 }
 
-impl Default for UniqueVehicles {
-    fn default() -> Self {
-        Self {
-            list: vec![vehicle_index(0)],
-            vehicle_map: [(0, unique_vehicle_index(0))].into_iter().collect(),
-        }
-    }
-}
-
 /// Set of pre-processing data used for different road-network computation.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct RoadNetworkPreprocessingData<T> {
     /// Set of unique vehicles.
     pub(crate) unique_vehicles: UniqueVehicles,
@@ -147,7 +164,7 @@ impl<T> RoadNetworkPreprocessingData<T> {
     /// *Panics* if the given unique-vehicle index is out-of-bound for this
     /// [RoadNetworkPreprocessingData].
     pub fn get_vehicle_index(&self, id: UniqueVehicleIndex) -> VehicleIndex {
-        self.unique_vehicles.list[id.index()]
+        self.unique_vehicles.list[id.index()].0
     }
 
     /// Returns the [ODPairs] corresponding to the [UniqueVehicleIndex].
@@ -375,7 +392,10 @@ mod tests {
         );
         let vehicles = vec![v0, v1, v2];
         let results = UniqueVehicles::from_vehicles(&vehicles);
-        assert_eq!(results.list, vec![vehicle_index(0), vehicle_index(2)]);
+        assert_eq!(
+            results.list,
+            vec![(vehicle_index(0), vec![1, 2]), (vehicle_index(2), vec![3])]
+        );
         assert_eq!(results.vehicle_map[&1], unique_vehicle_index(0));
         assert_eq!(results.vehicle_map[&2], unique_vehicle_index(0));
         assert_eq!(results.vehicle_map[&3], unique_vehicle_index(1));

@@ -8,7 +8,7 @@ pub mod preprocess;
 pub mod skim;
 pub mod state;
 pub mod vehicle;
-mod weights;
+pub(crate) mod weights;
 
 use std::ops::{Deref, Index};
 
@@ -528,6 +528,11 @@ impl<T> RoadNetwork<T> {
         }
     }
 
+    // Returns the number of edges in the graph.
+    pub fn nb_edges(&self) -> usize {
+        self.graph.edge_count()
+    }
+
     /// Return a reference to the [DiGraph] of the [RoadNetwork].
     pub fn get_graph(&self) -> &DiGraph<RoadNode, RoadEdge<T>> {
         &self.graph
@@ -541,12 +546,9 @@ impl<T> RoadNetwork<T> {
     }
 
     /// Return an Iterator over the [Vehicle]s of the network, together with their
-    /// [VehicleIndex].
-    pub fn iter_vehicles(&self) -> impl Iterator<Item = (VehicleIndex, &Vehicle<T>)> {
-        self.vehicles
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (vehicle_index(i), v))
+    /// [OriginalVehicleId].
+    pub fn iter_vehicles(&self) -> impl Iterator<Item = &Vehicle<T>> {
+        self.vehicles.iter()
     }
 
     pub fn iter_original_edge_ids(&self) -> impl Iterator<Item = OriginalEdgeId> + '_ {
@@ -639,7 +641,7 @@ impl<T: TTFNum> RoadNetwork<T> {
                 // No one is using this vehicle so there is no need to compute the skims.
                 skims.push(None);
             }
-            let nb_breakpoints: usize = weights[uvehicle_id].values().map(|w| w.complexity()).sum();
+            let nb_breakpoints = weights[uvehicle_id].complexity();
             debug!("Total number of breakpoints: {nb_breakpoints}");
             // TODO: In some cases, it might be faster to re-use the same order from one iteration
             // to another.
@@ -719,7 +721,7 @@ impl<T: TTFNum> RoadNetwork<T> {
         let mut weights_vec = RoadNetworkWeights::with_capacity(
             period,
             interval,
-            unique_vehicles.len(),
+            unique_vehicles,
             self.graph.edge_count(),
         );
         for (uvehicle_id, vehicle) in unique_vehicles.iter_uniques(&self.vehicles) {
@@ -727,10 +729,12 @@ impl<T: TTFNum> RoadNetwork<T> {
             for edge in self.graph.edge_references() {
                 if vehicle.can_access(edge.weight().id) {
                     let tt = edge.weight().get_free_flow_travel_time(vehicle);
-                    weights.insert(edge.weight().id, TTF::Constant(tt));
+                    weights
+                        .weights_mut()
+                        .insert(edge.weight().id, TTF::Constant(tt));
                 }
             }
-            weights.shrink_to_fit();
+            weights.weights_mut().shrink_to_fit();
         }
         weights_vec
     }

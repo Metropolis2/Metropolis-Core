@@ -106,16 +106,8 @@ pub fn run_simulation(path: &Path) -> Result<()> {
             .with_context(|| format!("Failed to remove file: `{filename:?}`"))?;
     }
 
-    let weights = simulation
-        .get_parameters()
-        .input_files
-        .weights
-        .as_deref()
-        .map(io::json::read_json)
-        .transpose()?;
-
     // Run the simulation.
-    simulation.run_from_weights(weights)
+    simulation.run()
 }
 
 /// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them

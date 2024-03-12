@@ -18,15 +18,16 @@ use arrow::datatypes::{DataType, Field, FieldRef, Schema};
 use arrow::record_batch::RecordBatch;
 use hashbrown::{HashMap, HashSet};
 use log::{info, warn};
-use num_traits::ToPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 use ttf::{TTFNum, TTF};
 
 use crate::agent::Agent;
 use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
 use crate::mode::trip::Leg;
 use crate::mode::{Mode, ModeResults, PreDayModeResults};
-use crate::network::road_network::vehicle::Vehicle;
-use crate::network::road_network::{RoadEdge, RoadNetwork};
+use crate::network::road_network::preprocess::UniqueVehicles;
+use crate::network::road_network::vehicle::{OriginalVehicleId, Vehicle};
+use crate::network::road_network::{OriginalEdgeId, RoadEdge, RoadNetwork, RoadNetworkWeights};
 use crate::network::NetworkWeights;
 use crate::simulation::results::{
     AgentResult, AgentResults, PreDayAgentResult, PreDayAgentResults,
@@ -77,6 +78,28 @@ pub fn get_agents_from_files<T: TTFNum>(
     let agent_batch = filename_to_batch_record(agents_path)?;
     let agents = read_agents(agent_batch, alternatives).context("Cannot parse agents")?;
     Ok(agents)
+}
+
+/// Reads [RoadNetworkWeights] from a filename.
+pub fn get_road_network_weights_from_file<T: TTFNum>(
+    path: &Path,
+    period: Interval<T>,
+    interval: Time<T>,
+    road_network: &RoadNetwork<T>,
+    unique_vehicles: &UniqueVehicles,
+) -> Result<RoadNetworkWeights<T>> {
+    info!("Reading road-network conditions");
+    let batch = filename_to_batch_record(path)?;
+    let rn_weights_vec = read_rn_weights(batch).context("Cannot parse road-network conditions")?;
+    let rn_weights = RoadNetworkWeights::from_values(
+        rn_weights_vec,
+        period,
+        interval,
+        road_network,
+        unique_vehicles,
+    )
+    .context("Invalid road-network conditions")?;
+    Ok(rn_weights)
 }
 
 /// Reads a CSV or Parquet file as a [RecordBatch].
@@ -730,6 +753,39 @@ pub(crate) fn read_vehicles<T: TTFNum>(
     Ok(vehicles)
 }
 
+const RN_WEIGHTS_COLUMNS: [&str; 4] = ["vehicle_id", "edge_id", "departure_time", "travel_time"];
+
+type RnWeightsVec<T> = Vec<(OriginalVehicleId, OriginalEdgeId, Time<T>, Time<T>)>;
+
+/// Reads an arrow `RecordBatch` with road-network weights data and returns a [RoadNetworkWeights].
+pub(crate) fn read_rn_weights<T: TTFNum>(batch: RecordBatch) -> Result<RnWeightsVec<T>> {
+    let struct_array = StructArray::from(batch);
+    warn_unused_columns(&struct_array, &RN_WEIGHTS_COLUMNS);
+    let vehicle_id_values = get_column!(["vehicle_id"] in struct_array as u64);
+    let edge_id_values = get_column!(["edge_id"] in struct_array as u64);
+    let departure_time_values = get_column!(["departure_time"] in struct_array as f64);
+    let travel_time_values = get_column!(["travel_time"] in struct_array as f64);
+    let n = struct_array.len();
+    let mut weights = Vec::with_capacity(n);
+    for i in 0..n {
+        let vehicle_id = get_value!(vehicle_id_values[i]);
+        let edge_id = get_value!(edge_id_values[i]);
+        let departure_time = get_value!(departure_time_values[i]);
+        let travel_time = get_value!(travel_time_values[i]);
+        let vehicle_id = vehicle_id.ok_or_else(|| anyhow!("Value `vehicle_id` is mandatory"))?;
+        let edge_id = edge_id.ok_or_else(|| anyhow!("Value `edge_id` is mandatory"))?;
+        let departure_time = Time::from_f64(
+            departure_time.ok_or_else(|| anyhow!("Value `departure_time` is mandatory"))?,
+        )
+        .unwrap();
+        let travel_time =
+            Time::from_f64(travel_time.ok_or_else(|| anyhow!("Value `travel_time` is mandatory"))?)
+                .unwrap();
+        weights.push((vehicle_id, edge_id, departure_time, travel_time));
+    }
+    Ok(weights)
+}
+
 /// Sends warnings for unused columns.
 fn warn_unused_columns(array: &StructArray, columns: &[&str]) {
     let columns_set: HashSet<&str> = columns.iter().copied().collect();
@@ -1276,12 +1332,12 @@ impl<T> RoadNetworkWeightsBuilder<T> {
 }
 
 impl<T: TTFNum> RoadNetworkWeightsBuilder<T> {
-    fn append(&mut self, vehicle_id: usize, edge_id: u64, ttf: &TTF<Time<T>>) {
+    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<Time<T>>) {
         let xs_iter =
             std::iter::successors(Some(self.period.start()), |&t| Some(t + self.interval))
                 .take_while(|&t| t < self.period.end());
         for (x, y) in xs_iter.map(|x| (x, ttf.eval(x))) {
-            self.vehicle_id.append_value(vehicle_id as u64);
+            self.vehicle_id.append_value(vehicle_id);
             self.edge_id.append_value(edge_id);
             self.departure_time.append_value(x.to_f64().unwrap());
             self.travel_time.append_value(y.to_f64().unwrap());
@@ -1317,8 +1373,12 @@ impl<T: TTFNum> ToArrow<1> for NetworkWeights<T> {
         if let Some(rn_weights) = data.road_network() {
             let mut builder =
                 RoadNetworkWeightsBuilder::new(rn_weights.period, rn_weights.interval);
-            for (vehicle_id, edge_id, ttf) in rn_weights.iter_inners() {
-                builder.append(vehicle_id, edge_id, ttf);
+            for vehicle_weights in rn_weights.iter() {
+                for vehicle_id in vehicle_weights.vehicle_ids() {
+                    for (edge_id, ttf) in vehicle_weights.weights().iter() {
+                        builder.append(*vehicle_id, *edge_id, ttf);
+                    }
+                }
             }
             builder.finish()
         } else {

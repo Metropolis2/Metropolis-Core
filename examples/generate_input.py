@@ -1,6 +1,7 @@
 import os
 import json
 
+import numpy as np
 import polars as pl
 
 # Directory where the output files should be stored.
@@ -11,35 +12,33 @@ def get_struct_schema(name, columns):
     """Returns a dictionary mapping simple column names to complete column names for Structs."""
     return {col: f"{name}.{col}" for col in columns}
 
+
 parameters = {
-  "period": [21600.0, 43200.0],
-  "network": {
-    "road_network": {
-      "recording_interval": 50.0,
-      "approximation_bound": 1.0,
-      "spillback": True,
-      "backward_wave_speed": 4.0,
-      "max_pending_duration": 20.0,
-      "constrain_inflow": True,
-      "algorithm_type": "Best",
-      "contraction": {
-        "complexity_quotient_weight": 2.0,
-        "edge_quotient_weight": 2.0,
-        "hierarchy_depth_weight": 1.0,
-        "thin_profile_interval_hop_limit": 16,
-        "unpacked_edges_quotient_weight": 1.0
-      }
-    }
-  },
-  "learning_model": {
-    "type": "Exponential",
-    "value": 0.01
-  },
-  "init_iteration_counter": 1,
-  "max_iterations": 2,
-  "update_ratio": 1.0,
-  "random_seed": 19960813,
-  "nb_threads": 24,
+    "period": [21600, 43200],
+    "network": {
+        "road_network": {
+            "recording_interval": 30 * 60,
+            "approximation_bound": 1.0,
+            "spillback": True,
+            "backward_wave_speed": 4.0,
+            "max_pending_duration": 20.0,
+            "constrain_inflow": True,
+            "algorithm_type": "Best",
+            "contraction": {
+                "complexity_quotient_weight": 2.0,
+                "edge_quotient_weight": 2.0,
+                "hierarchy_depth_weight": 1.0,
+                "thin_profile_interval_hop_limit": 16,
+                "unpacked_edges_quotient_weight": 1.0,
+            },
+        }
+    },
+    "learning_model": {"type": "Exponential", "value": 0.01},
+    "init_iteration_counter": 1,
+    "max_iterations": 2,
+    "update_ratio": 1.0,
+    "random_seed": 19960813,
+    "nb_threads": 24,
 }
 
 agents = pl.DataFrame(
@@ -145,6 +144,37 @@ vehicles = pl.DataFrame(
     }
 )
 
+# Create initial road-network conditions for vehicle id 2 and edges 1, 2, 3.
+# The road-network conditions are equal to the free-flow travel time for the first half of the
+# period and they are equal to double the free-flow travel time for the second half.
+ttf_intervals = list(
+    range(
+        parameters["period"][0],
+        parameters["period"][1],
+        parameters["network"]["road_network"]["recording_interval"],
+    )
+)
+fftt = list(edges["length"] / edges["speed"])
+n = len(ttf_intervals)
+n0 = n // 2
+n1 = n // 2 + n % 2
+tts = (
+    [fftt[0]] * n0
+    + [fftt[0] * 2] * n1
+    + [fftt[1]] * n0
+    + [fftt[1] * 2] * n1
+    + [fftt[2]] * n0
+    + [fftt[2] * 2] * n1
+)
+edge_ttfs = pl.DataFrame(
+    {
+        "vehicle_id": [2] * n * 3,
+        "edge_id": [1] * n + [2] * n + [3] * n,
+        "departure_time": ttf_intervals * 3,
+        "travel_time": tts,
+    }
+)
+
 # === Unnested Parquet format ===
 directory = os.path.join(OUTPUT_DIR, "unnested_parquet")
 if not os.path.isdir(directory):
@@ -154,14 +184,15 @@ alts.write_parquet(os.path.join(directory, "alts.parquet"))
 trips.write_parquet(os.path.join(directory, "trips.parquet"))
 edges.write_parquet(os.path.join(directory, "edges.parquet"))
 vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
+edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"))
 parameters["input_files"] = {
     "agents": "agents.parquet",
     "alternatives": "alts.parquet",
     "trips": "trips.parquet",
     "edges": "edges.parquet",
     "vehicle_types": "vehicles.parquet",
-    "weights": "weights.json",
-  }
+    "road_network_conditions": "edge_ttfs.parquet",
+}
 parameters["output_directory"] = "output"
 parameters["saving_format"] = "Parquet"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
@@ -251,14 +282,15 @@ nested_alts.write_parquet(os.path.join(directory, "alts.parquet"))
 nested_trips.write_parquet(os.path.join(directory, "trips.parquet"))
 nested_edges.write_parquet(os.path.join(directory, "edges.parquet"))
 nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
+edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"))
 parameters["input_files"] = {
     "agents": "agents.parquet",
     "alternatives": "alts.parquet",
     "trips": "trips.parquet",
     "edges": "edges.parquet",
     "vehicle_types": "vehicles.parquet",
-    "weights": "weights.json",
-  }
+    "road_network_conditions": "edge_ttfs.parquet",
+}
 parameters["output_directory"] = "output"
 parameters["saving_format"] = "Parquet"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
@@ -283,14 +315,15 @@ alts.write_csv(os.path.join(directory, "alts.csv"))
 trips.write_csv(os.path.join(directory, "trips.csv"))
 edges.write_csv(os.path.join(directory, "edges.csv"))
 vehicles.write_csv(os.path.join(directory, "vehicles.csv"))
+edge_ttfs.write_csv(os.path.join(directory, "edge_ttfs.csv"))
 parameters["input_files"] = {
     "agents": "agents.csv",
     "alternatives": "alts.csv",
     "trips": "trips.csv",
     "edges": "edges.csv",
     "vehicle_types": "vehicles.csv",
-    "weights": "weights.json",
-  }
+    "road_network_conditions": "edge_ttfs.csv",
+}
 parameters["output_directory"] = "output"
 parameters["saving_format"] = "CSV"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
