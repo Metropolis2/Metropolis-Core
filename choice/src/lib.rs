@@ -55,8 +55,7 @@ impl<T: TTFNum> ChoiceModel<T> {
                 )))
             }
             Some("Deterministic") => {
-                let u =
-                    u.ok_or_else(|| anyhow!("Value `u` is mandatory when `type` is \"Logit\""))?;
+                let u = u.unwrap_or(0.0);
                 if !((0.0..=1.0).contains(&u)) {
                     bail!("Value `u` must be between 0 and 1, got {u}");
                 }
