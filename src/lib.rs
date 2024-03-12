@@ -65,6 +65,13 @@ pub fn run_simulation(path: &Path) -> Result<()> {
     // Read parameters.
     let parameters = io::json::get_parameters_from_json(path)?;
 
+    // Set the working directory to the directory of the `parameters.json` file so that the input
+    // paths can be interpreted as being relative to this file.
+    if let Some(parent_dir) = path.parent() {
+        env::set_current_dir(parent_dir)
+            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+    }
+
     // Create output directory if it does not exists yet.
     std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
         format!(

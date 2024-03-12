@@ -10,6 +10,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
+- [USER] Prototype GUI for METROPOLIS2 with the binary `metropolis_gui`.
 - [INPUT] The paths to the input files and the output directory are set in the parameters JSON file.
 - [INPUT] Custom vehicle ids can be used (instead of vehicle indices numbered from 0 to n - 1).
 - [INPUT] Add the `max_iterations` parameter in the simulation parameters to limit the number of

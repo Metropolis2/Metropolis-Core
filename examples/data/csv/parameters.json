@@ -31,13 +31,13 @@
   "random_seed": 19960813,
   "nb_threads": 24,
   "input_files": {
-    "agents": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/agents.csv",
-    "alternatives": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/alts.csv",
-    "trips": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/trips.csv",
-    "edges": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/edges.csv",
-    "vehicle_types": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/vehicles.csv",
-    "weights": "/home/ljavaudin/GitRepositories/metrolib/examples/data/weights.json"
+    "agents": "agents.csv",
+    "alternatives": "alts.csv",
+    "trips": "trips.csv",
+    "edges": "edges.csv",
+    "vehicle_types": "vehicles.csv",
+    "weights": "weights.json"
   },
-  "output_directory": "/home/ljavaudin/GitRepositories/metrolib/examples/data/csv/output",
+  "output_directory": "output",
   "saving_format": "CSV"
 }

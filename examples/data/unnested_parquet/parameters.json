@@ -31,13 +31,13 @@
   "random_seed": 19960813,
   "nb_threads": 24,
   "input_files": {
-    "agents": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/agents.parquet",
-    "alternatives": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/alts.parquet",
-    "trips": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/trips.parquet",
-    "edges": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/edges.parquet",
-    "vehicle_types": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/vehicles.parquet",
-    "weights": "/home/ljavaudin/GitRepositories/metrolib/examples/data/weights.json"
+    "agents": "agents.parquet",
+    "alternatives": "alts.parquet",
+    "trips": "trips.parquet",
+    "edges": "edges.parquet",
+    "vehicle_types": "vehicles.parquet",
+    "weights": "weights.json"
   },
-  "output_directory": "/home/ljavaudin/GitRepositories/metrolib/examples/data/unnested_parquet/output",
+  "output_directory": "output",
   "saving_format": "Parquet"
 }

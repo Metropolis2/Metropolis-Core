@@ -155,14 +155,14 @@ trips.write_parquet(os.path.join(directory, "trips.parquet"))
 edges.write_parquet(os.path.join(directory, "edges.parquet"))
 vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
 parameters["input_files"] = {
-    "agents": os.path.join(directory, "agents.parquet"),
-    "alternatives": os.path.join(directory, "alts.parquet"),
-    "trips": os.path.join(directory, "trips.parquet"),
-    "edges": os.path.join(directory, "edges.parquet"),
-    "vehicle_types": os.path.join(directory, "vehicles.parquet"),
-    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+    "agents": "agents.parquet",
+    "alternatives": "alts.parquet",
+    "trips": "trips.parquet",
+    "edges": "edges.parquet",
+    "vehicle_types": "vehicles.parquet",
+    "weights": "weights.json",
   }
-parameters["output_directory"] = os.path.join(directory, "output")
+parameters["output_directory"] = "output"
 parameters["saving_format"] = "Parquet"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
     json.dump(parameters, f, indent=2)
@@ -252,14 +252,14 @@ nested_trips.write_parquet(os.path.join(directory, "trips.parquet"))
 nested_edges.write_parquet(os.path.join(directory, "edges.parquet"))
 nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
 parameters["input_files"] = {
-    "agents": os.path.join(directory, "agents.parquet"),
-    "alternatives": os.path.join(directory, "alts.parquet"),
-    "trips": os.path.join(directory, "trips.parquet"),
-    "edges": os.path.join(directory, "edges.parquet"),
-    "vehicle_types": os.path.join(directory, "vehicles.parquet"),
-    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+    "agents": "agents.parquet",
+    "alternatives": "alts.parquet",
+    "trips": "trips.parquet",
+    "edges": "edges.parquet",
+    "vehicle_types": "vehicles.parquet",
+    "weights": "weights.json",
   }
-parameters["output_directory"] = os.path.join(directory, "output")
+parameters["output_directory"] = "output"
 parameters["saving_format"] = "Parquet"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
     json.dump(parameters, f, indent=2)
@@ -284,14 +284,14 @@ trips.write_csv(os.path.join(directory, "trips.csv"))
 edges.write_csv(os.path.join(directory, "edges.csv"))
 vehicles.write_csv(os.path.join(directory, "vehicles.csv"))
 parameters["input_files"] = {
-    "agents": os.path.join(directory, "agents.csv"),
-    "alternatives": os.path.join(directory, "alts.csv"),
-    "trips": os.path.join(directory, "trips.csv"),
-    "edges": os.path.join(directory, "edges.csv"),
-    "vehicle_types": os.path.join(directory, "vehicles.csv"),
-    "weights": os.path.join(OUTPUT_DIR, "weights.json"),
+    "agents": "agents.csv",
+    "alternatives": "alts.csv",
+    "trips": "trips.csv",
+    "edges": "edges.csv",
+    "vehicle_types": "vehicles.csv",
+    "weights": "weights.json",
   }
-parameters["output_directory"] = os.path.join(directory, "output")
+parameters["output_directory"] = "output"
 parameters["saving_format"] = "CSV"
 with open(os.path.join(directory, "parameters.json"), "w") as f:
     json.dump(parameters, f, indent=2)
