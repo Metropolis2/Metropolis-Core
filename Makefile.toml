@@ -4,9 +4,9 @@ CARGO_MAKE_DOCS_ROOT_FOLDER = "."
 CARGO_MAKE_CI = true
 CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
 CARGO_MAKE_PROJECT_NAME = "metrolib"
-CARGO_MAKE_PROJECT_VERSION = "0.8.0"
-CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis"
-CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times compute_choices"
+CARGO_MAKE_PROJECT_VERSION = "1.0.0-rc.1"
+CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis_cli"
+CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times compute_choices metropolis_gui"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
@@ -61,12 +61,12 @@ args = ["build", "book/", "--dest-dir", "book/book"]
 [tasks.zip-release-ci-flow]
 dependencies = [
   "print-env-flow",
-  "clean",
+  # "clean",
   "setup-release-build-env",
   "build-release-for-binary-upload",
   # "docs-flow",
   # "book-flow",
-  "schemas-flow",
+  # "schemas-flow",
   "zip-release-binary-for-target",
 ]
 
@@ -202,6 +202,6 @@ dependencies = [
   "post-audit",
   "outdated-flow",
   "docs-flow",
-  "schemas-flow",
+  # "schemas-flow",
   "end-build-flow",
 ]

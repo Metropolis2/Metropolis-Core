@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2024-03-13
+
 ### Added
 
 - [USER] Prototype GUI for METROPOLIS2 with the binary `metropolis_gui`.
@@ -450,7 +452,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/0.8.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
 [0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0
 [0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
 [0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
