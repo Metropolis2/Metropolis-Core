@@ -37,7 +37,7 @@ object-pool = "0.5"
 once_cell = "1.17"
 parquet = { version = "50.0", features = ["json"] }
 petgraph = { version = "0.6", default-features = false }
-polars = { version = "0.38", features = ["lazy", "csv", "parquet"] }
+polars = { version = "0.38.1", features = ["csv", "parquet"] }
 rand = "0.8"
 rand_xorshift = "0.3"
 rayon = "1.5"

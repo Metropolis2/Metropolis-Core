@@ -8,12 +8,38 @@ A release of METROPOLIS2 consists in a zip file with the following content:
 
 - `examples/`: example input files for the simulator
 - `execs/`: directory where the executables are stored
-- `schemas/`: JSON Schemas for the various input and output files (as JSON, HTML and Markdown)
 - `CHANGELOG.md`: file which list the changes between versions
 - `LICENSE.txt`: file with METROPOLIS2' License
 - `README.md`: this file
 
-The versions of METROPOLIS2 are given a version number MAJOR.MINOR.PATCH (e.g., `0.1.7`).
-While METROPOLIS2 is still in Major version zero (0.y.z), an increment of the minor version
-indicates a backwards _incompatible_ change which means that the input files from the previous
-version might not work with the new version.
+The versions of METROPOLIS2 are given a version number MAJOR.MINOR.PATCH (e.g., `2.1.3`), following
+the SemVer specification.
+An increase of the MAJOR number indicates backward incompatibilities with previous versions.
+An increase of the MINOR number indicates new features, that are backward-compatible.
+An increase of the PATCH number indicates bug fixes.
+
+## Executables
+
+METROPOLIS2 comes with 4 executables:
+
+- `metropolis_gui`: A GUI (Graphical User Interface) to run a simulation interactively.
+- `metropolis_cli`: A CLI (Command Line Interface) to run a simulation from the terminal.
+- `compute_choices`: A CLI to compute the travel decisions of a population, without running the full
+  simulator.
+- `compute_travel_times`: A CLI to compute (time-dependent) travel times for a collection of
+  origin-destination pairs.
+
+## How to use
+
+To run `metropolis_gui`, simply double click on the executable, choose your input parameters file
+and click on the `Run` button.
+The simulation will start and display the log in the window below the `Run` button.
+
+To run `metropolis_cli`, open a terminal and execute the following command (on Linux or MacOS):
+```
+./metropolis_cli [path_to_parameters.json]
+```
+or (on Windows):
+```
+.\metropolis_cli.exe [path_to_parameters.json]
+```
