@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::env;
 
 use glib::clone;
 use glib::subclass::InitializingObject;
@@ -33,7 +34,6 @@ pub struct Window {
     pub path: Arc<Mutex<PathBuf>>,
     /// True if the simulation run is finished.
     pub is_finished: Arc<Mutex<bool>>,
-    pub error: Arc<Mutex<String>>,
 }
 
 // The central trait for subclassing a GObject
@@ -70,10 +70,17 @@ impl ObjectImpl for Window {
 impl Window {
     #[template_callback]
     fn input_button_clicked(&self, _input_button: &Button) {
+        let current_dir_res = env::current_dir();
+        if current_dir_res.is_err() {
+            self.log.buffer().set_text(&format!("Failed to read current directory"));
+            return;
+        }
+        let current_dir = File::for_path(&current_dir_res.unwrap());
         let file_dialog = FileDialog::builder()
             .accept_label("Select")
             .modal(true)
             .title("Select input file")
+            .initial_folder(&current_dir)
             .build();
         let path = Arc::clone(&self.path);
         file_dialog.open(
@@ -95,11 +102,39 @@ impl Window {
         let path: PathBuf = self.path.lock().unwrap().clone();
         let writer = Rc::new(Mutex::new(self.log.buffer()));
         let is_finished = self.is_finished.clone();
-        let parameters = crate::io::json::get_parameters_from_json(&path).expect("TODO");
-        let log_filename: PathBuf = [parameters.output_directory.to_str().unwrap(), "log.txt"]
-            .iter()
-            .collect();
+        let parameters_res = crate::io::json::get_parameters_from_json(&path);
+        let parameters = match parameters_res{
+            Ok(parameters) => parameters,
+            Err(e) => {
+                let msg = format!("Invalid input parameters file: {path:?}\n{e}");
+                self.log.buffer().set_text(&msg);
+                return;
+            }
+        };
+        // Set the working directory to the directory of the `parameters.json` file so that the
+        // log file can be read properly.
+        if let Some(parent_dir) = path.parent() {
+            env::set_current_dir(parent_dir)
+                .unwrap_or_else(|_| {
+                    self.log.buffer().set_text(
+                        &format!("Failed to set working directory to `{parent_dir:?}`")
+                        );
+                })
+        }
+        let output_dir = parameters.output_directory;
+        let log_filename: PathBuf = if output_dir.is_absolute() {
+            [output_dir.to_str().unwrap(), "log.txt"]
+                .iter()
+                    .collect()
+        } else {
+            let current_dir = env::current_dir().unwrap();
+            [current_dir.to_str().unwrap(), output_dir.to_str().unwrap(), "log.txt"]
+                .iter()
+                    .collect()
+        };
         let filename2 = log_filename.clone();
+        assert!(log_filename.is_absolute());
+        assert!(filename2.is_absolute());
         glib::timeout_add_seconds_local(1, move || {
             if *is_finished.lock().unwrap().deref() {
                 return glib::ControlFlow::Break;
@@ -117,40 +152,31 @@ impl Window {
             }
             glib::ControlFlow::Continue
         });
-        let error = self.error.clone();
         let (sender, receiver) = async_channel::bounded(1);
         gio::spawn_blocking(move || {
             let sender = sender.clone();
             let res = run_simulation(&path);
-            if let Err(e) = res {
-                let s = if filename2.is_file() {
-                    std::fs::read_to_string(&filename2).unwrap()
-                } else {
-                    String::new()
-                };
-                let mut lock = error.lock().unwrap();
-                *lock = format!("{}\n{:?}", s, e);
-                sender
-                    .send_blocking(Err(format!("{}\n{:?}", s, e)))
-                    .unwrap_or_else(|e| panic!("Sending error: {e}"));
+            let log = if filename2.is_file() {
+                std::fs::read_to_string(&filename2).unwrap()
             } else {
-                sender
-                    .send_blocking(Ok(()))
-                    .unwrap_or_else(|e| panic!("Sending error: {e}"));
-            }
+                String::new()
+            };
+            let msg = if let Err(e) = res {
+                format!("{log}\n{e:?}")
+            } else {
+                format!("{log}")
+            };
+            sender
+                .send_blocking(msg)
+                .unwrap_or_else(|e| panic!("Sending error: {e}"));
         });
         let writer = Rc::new(Mutex::new(self.log.buffer()));
         let is_finished = self.is_finished.clone();
         glib::spawn_future_local(async move {
-            while let Ok(res) = receiver.recv().await {
+            while let Ok(msg) = receiver.recv().await {
                 *is_finished.lock().unwrap() = true;
-                match res {
-                    Ok(_) => (),
-                    Err(string) => {
-                        let lock = writer.lock().unwrap();
-                        lock.set_text(&string);
-                    }
-                }
+                let lock = writer.lock().unwrap();
+                lock.set_text(&msg);
             }
         });
     }
