@@ -43,3 +43,17 @@ or (on Windows):
 ```
 .\metropolis_cli.exe [path_to_parameters.json]
 ```
+
+## Example simulation
+
+The directory `examples/` contains a very basic example simulation, with no meaningful
+interpretation.
+This example simulation makes use of all the possible input values so it is a great way to test if
+the simulator is running properly.
+
+In the `examples/data/` directory, there are three subdirectories corresponding to three different
+input formats for the same simulation (CSV, Parquet or Parquet with unnested structs).
+
+The Python script `examples/generate_input.py` is used to generate the example simulation in the
+three different formats.
+Feel free to use it as a an example to create your own input files.
