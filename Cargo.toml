@@ -27,7 +27,7 @@ askama = { version = "0.12", features = ["serde-json"] }
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.6"
-gtk = { version = "0.8.0", package = "gtk4", features = ["v4_6"] }
+# gtk = { version = "0.8.0", package = "gtk4", features = ["v4_6"] }
 hashbrown = { version = "0.14", features = ["rayon"] }
 indicatif = "0.17"
 itertools = "0.12"
@@ -51,7 +51,7 @@ time = { version = "0.3", features = ["serde-human-readable"] }
 zstd = "0.13"
 
 [build-dependencies]
-glib-build-tools = "0.19.0"
+# glib-build-tools = "0.19.0"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = { version = "0.5", optional = true }

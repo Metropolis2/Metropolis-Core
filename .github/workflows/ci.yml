@@ -7,11 +7,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Install Gtk4
-      run: sudo apt-get install libgtk-4-dev build-essential
-    - name: Set environment variable
-      run: |
-        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
     - name: Install rust
       uses: actions-rs/toolchain@v1
       with:
@@ -19,10 +14,7 @@ jobs:
         profile: minimal
         override: true
     - name: Install cargo-make
-      uses: actions-rs/cargo@v1
-      with:
-        command: install
-        args: --debug cargo-make
+      uses: davidB/rust-cargo-make@v1
     - name: Run CI
       uses: actions-rs/cargo@v1
       with:

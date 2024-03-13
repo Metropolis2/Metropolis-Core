@@ -210,4 +210,5 @@ fn input_callback(
             *my_path = path;
         }
     dialog.close();
+    dialog.set_visible(false);
 }
