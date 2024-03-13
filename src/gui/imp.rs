@@ -10,7 +10,7 @@ use gtk::gio::File;
 use gtk::glib::subclass::ObjectImplRef;
 use gtk::glib::Error;
 use gtk::subclass::prelude::*;
-use gtk::{gio, ApplicationWindow, DialogError, TextView};
+use gtk::{gio, ApplicationWindow, DialogError, TextView, ScrolledWindow};
 use gtk::{glib, Button, CompositeTemplate};
 use gtk::{prelude::*, FileDialog};
 
@@ -26,8 +26,8 @@ pub struct Window {
     pub input_text: TemplateChild<TextView>,
     #[template_child]
     pub run_button: TemplateChild<Button>,
-    // #[template_child]
-    // pub scrolled_window: TemplateChild<ScrolledWindow>,
+    #[template_child]
+    pub scrolled_window: TemplateChild<ScrolledWindow>,
     #[template_child]
     pub log: TemplateChild<TextView>,
     /// Path to the `parameters.json` file.
@@ -100,8 +100,6 @@ impl Window {
         self.input_button.set_sensitive(false);
         run_button.set_label("Running...");
         let path: PathBuf = self.path.lock().unwrap().clone();
-        let writer = Rc::new(Mutex::new(self.log.buffer()));
-        let is_finished = self.is_finished.clone();
         let parameters_res = crate::io::json::get_parameters_from_json(&path);
         let parameters = match parameters_res{
             Ok(parameters) => parameters,
@@ -135,15 +133,22 @@ impl Window {
         let filename2 = log_filename.clone();
         assert!(log_filename.is_absolute());
         assert!(filename2.is_absolute());
+        let scrolled_window = Rc::new(Mutex::new(self.scrolled_window.clone()));
+        let text_view = Rc::new(Mutex::new(self.log.clone()));
+        let is_finished = self.is_finished.clone();
         glib::timeout_add_seconds_local(1, move || {
             if *is_finished.lock().unwrap().deref() {
                 return glib::ControlFlow::Break;
             }
             if log_filename.is_file() {
                 let s = std::fs::read_to_string(&log_filename).unwrap();
-                let lock = writer.lock().unwrap();
-                if s.len() != lock.char_count() as usize {
-                    lock.set_text(&s);
+                let lock = text_view.lock().unwrap();
+                let buffer = lock.buffer();
+                let n = buffer.char_count() as usize;
+                if s.len() > n {
+                    buffer.insert(&mut buffer.end_iter(), &s[n..]);
+                    let adj = scrolled_window.lock().unwrap().vadjustment();
+                    adj.set_value(adj.upper() - adj.page_size());
                 }
                 if s.len() > 4 && &s[s.len() - 5..] == "Done\n" {
                     // Small hack to know when the run is finished.
