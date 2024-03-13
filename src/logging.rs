@@ -24,7 +24,7 @@ pub fn initialize_logging(output: &Path) -> Result<()> {
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
-        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
+        WriteLogger::new(LevelFilter::Info, Config::default(), log_file),
     ];
     CombinedLogger::init(loggers).context("Failed to initialize logging")
 }
