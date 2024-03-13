@@ -3,22 +3,20 @@
     21600,
     43200
   ],
-  "network": {
-    "road_network": {
-      "recording_interval": 1800,
-      "approximation_bound": 1.0,
-      "spillback": true,
-      "backward_wave_speed": 4.0,
-      "max_pending_duration": 20.0,
-      "constrain_inflow": true,
-      "algorithm_type": "Best",
-      "contraction": {
-        "complexity_quotient_weight": 2.0,
-        "edge_quotient_weight": 2.0,
-        "hierarchy_depth_weight": 1.0,
-        "thin_profile_interval_hop_limit": 16,
-        "unpacked_edges_quotient_weight": 1.0
-      }
+  "road_network": {
+    "recording_interval": 1800,
+    "approximation_bound": 1.0,
+    "spillback": true,
+    "backward_wave_speed": 4.0,
+    "max_pending_duration": 20.0,
+    "constrain_inflow": true,
+    "algorithm_type": "Best",
+    "contraction": {
+      "complexity_quotient_weight": 2.0,
+      "edge_quotient_weight": 2.0,
+      "hierarchy_depth_weight": 1.0,
+      "thin_profile_interval_hop_limit": 16,
+      "unpacked_edges_quotient_weight": 1.0
     }
   },
   "learning_model": {

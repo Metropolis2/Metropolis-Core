@@ -12,7 +12,7 @@ use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
-use metropolis::network::{Network, NetworkParameters};
+use metropolis::network::Network;
 use metropolis::parameters::Parameters;
 use metropolis::schedule_utility::ScheduleUtility;
 use metropolis::simulation::Simulation;
@@ -127,18 +127,16 @@ fn get_simulation() -> Simulation<f64> {
         output_directory: Default::default(),
         period: Interval([Time(0.0), Time(50.0)]),
         learning_model: LearningModel::Exponential(0.0),
-        network: NetworkParameters {
-            road_network: Some(RoadNetworkParameters {
-                contraction: Default::default(),
-                recording_interval: Time(1.0),
-                approximation_bound: Time(0.0),
-                spillback: true,
-                backward_wave_speed: None,
-                max_pending_duration: Time(10.0),
-                constrain_inflow: true,
-                algorithm_type: Default::default(),
-            }),
-        },
+        road_network: Some(RoadNetworkParameters {
+            contraction: Default::default(),
+            recording_interval: Time(1.0),
+            approximation_bound: Time(0.0),
+            spillback: true,
+            backward_wave_speed: None,
+            max_pending_duration: Time(10.0),
+            constrain_inflow: true,
+            algorithm_type: Default::default(),
+        }),
         init_iteration_counter: 1,
         max_iterations: 1,
         update_ratio: 1.0,
@@ -156,7 +154,7 @@ fn gridlock_test() {
     let preprocess_data = simulation.preprocess().unwrap();
     let weights = simulation.get_network().get_free_flow_weights(
         simulation.get_parameters().period,
-        &simulation.get_parameters().network,
+        simulation.get_parameters().road_network.as_ref(),
         &preprocess_data.network,
     );
     let results = simulation

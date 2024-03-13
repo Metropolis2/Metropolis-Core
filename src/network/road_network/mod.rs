@@ -594,7 +594,6 @@ impl<T: TTFNum> RoadNetwork<T> {
     /// Returns an empty [RoadNetworkState].
     pub fn get_blank_state(&self, parameters: &Parameters<T>) -> RoadNetworkState<T> {
         let road_network_parameters = parameters
-            .network
             .road_network
             .as_ref()
             .expect("Cannot create RoadNetworkState with no RoadNetworkParameters");

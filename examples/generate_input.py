@@ -1,7 +1,6 @@
 import os
 import json
 
-import numpy as np
 import polars as pl
 
 # Directory where the output files should be stored.
@@ -15,23 +14,21 @@ def get_struct_schema(name, columns):
 
 parameters = {
     "period": [21600, 43200],
-    "network": {
-        "road_network": {
-            "recording_interval": 30 * 60,
-            "approximation_bound": 1.0,
-            "spillback": True,
-            "backward_wave_speed": 4.0,
-            "max_pending_duration": 20.0,
-            "constrain_inflow": True,
-            "algorithm_type": "Best",
-            "contraction": {
-                "complexity_quotient_weight": 2.0,
-                "edge_quotient_weight": 2.0,
-                "hierarchy_depth_weight": 1.0,
-                "thin_profile_interval_hop_limit": 16,
-                "unpacked_edges_quotient_weight": 1.0,
-            },
-        }
+    "road_network": {
+        "recording_interval": 30 * 60,
+        "approximation_bound": 1.0,
+        "spillback": True,
+        "backward_wave_speed": 4.0,
+        "max_pending_duration": 20.0,
+        "constrain_inflow": True,
+        "algorithm_type": "Best",
+        "contraction": {
+            "complexity_quotient_weight": 2.0,
+            "edge_quotient_weight": 2.0,
+            "hierarchy_depth_weight": 1.0,
+            "thin_profile_interval_hop_limit": 16,
+            "unpacked_edges_quotient_weight": 1.0,
+        },
     },
     "learning_model": {"type": "Exponential", "value": 0.01},
     "init_iteration_counter": 1,
@@ -151,7 +148,7 @@ ttf_intervals = list(
     range(
         parameters["period"][0],
         parameters["period"][1],
-        parameters["network"]["road_network"]["recording_interval"],
+        parameters["road_network"]["recording_interval"],
     )
 )
 fftt = list(edges["length"] / edges["speed"])

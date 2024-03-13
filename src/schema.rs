@@ -18,7 +18,6 @@ use crate::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use crate::network::road_network::{
     RoadEdge, RoadNetworkParameters, SpeedDensityFunction, ThreeRegimesSpeedDensityFunction,
 };
-use crate::network::NetworkParameters;
 use crate::parameters::{InputFiles, Parameters, SavingFormat};
 use crate::schedule_utility::ScheduleUtility;
 use crate::travel_utility::{PolynomialFunction, TravelUtility};
@@ -198,18 +197,16 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         period: Interval([Time(6.0 * 3600.0), Time(12.0 * 3600.0)]),
         init_iteration_counter: 1,
         max_iterations: 100,
-        network: NetworkParameters {
-            road_network: Some(RoadNetworkParameters {
-                recording_interval: Time(300.0),
-                approximation_bound: Time(1.0),
-                spillback: true,
-                backward_wave_speed: Some(Speed(4.0)),
-                max_pending_duration: Time(30.0),
-                constrain_inflow: true,
-                algorithm_type: Default::default(),
-                contraction: Default::default(),
-            }),
-        },
+        road_network: Some(RoadNetworkParameters {
+            recording_interval: Time(300.0),
+            approximation_bound: Time(1.0),
+            spillback: true,
+            backward_wave_speed: Some(Speed(4.0)),
+            max_pending_duration: Time(30.0),
+            constrain_inflow: true,
+            algorithm_type: Default::default(),
+            contraction: Default::default(),
+        }),
         learning_model: LearningModel::Exponential(0.9),
         update_ratio: 1.0,
         random_seed: Some(13081996),

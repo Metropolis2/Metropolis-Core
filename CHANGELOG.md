@@ -21,6 +21,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] The command-line interface only takes the path to the parameters JSON file as argument.
 - [INPUT] The population and network input files accept the Parquet and CSV format instead of JSON.
 - [INPUT] The road-network conditions input file accept the Parquet and CSV format instead of JSON.
+- [INPUT] The road-network parameters are no longer nested in the network parameters.
 - [OUTPUT] Use more interesting variables in the report HTML file.
 - [OUTPUT] Use the new terminology in the report HTML file.
 - [OUTPUT] The road-network conditions output files are saved in Parquet or CSV format instead of

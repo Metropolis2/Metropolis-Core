@@ -60,12 +60,12 @@ impl<T: TTFNum> Network<T> {
     }
 
     /// Return the [NetworkSkim] of the network given the [NetworkWeights], the
-    /// [NetworkPreprocessingData] and the [NetworkParameters].
+    /// [NetworkPreprocessingData] and the [RoadNetworkParameters].
     pub fn compute_skims(
         &self,
         weights: &NetworkWeights<T>,
         preprocess_data: &NetworkPreprocessingData<T>,
-        parameters: &NetworkParameters<T>,
+        rn_parameters: Option<&RoadNetworkParameters<T>>,
     ) -> Result<NetworkSkim<T>> {
         let rn_skims = self
             .road_network
@@ -74,7 +74,7 @@ impl<T: TTFNum> Network<T> {
                 rn.compute_skims(
                     weights.road_network.as_ref().unwrap(),
                     preprocess_data.road_network.as_ref().unwrap(),
-                    parameters.road_network.as_ref().unwrap(),
+                    rn_parameters.unwrap(),
                 )
             })
             .transpose()?;
@@ -88,13 +88,13 @@ impl<T: TTFNum> Network<T> {
     pub fn get_free_flow_weights(
         &self,
         period: Interval<T>,
-        parameters: &NetworkParameters<T>,
+        rn_parameters: Option<&RoadNetworkParameters<T>>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> NetworkWeights<T> {
         let rn_weights = self.road_network.as_ref().map(|rn| {
             rn.get_free_flow_weights(
                 period,
-                parameters.road_network.as_ref().unwrap(),
+                rn_parameters.unwrap(),
                 preprocess_data.road_network.as_ref().unwrap(),
             )
         });
@@ -109,12 +109,12 @@ impl<T: TTFNum> Network<T> {
         &self,
         agents: &[Agent<T>],
         period: Interval<T>,
-        parameters: &NetworkParameters<T>,
+        rn_parameters: Option<&RoadNetworkParameters<T>>,
     ) -> Result<NetworkPreprocessingData<T>> {
         let rn_data = self
             .road_network
             .as_ref()
-            .map(|rn| rn.preprocess(agents, period, parameters.road_network.as_ref().unwrap()))
+            .map(|rn| rn.preprocess(agents, period, rn_parameters.unwrap()))
             .transpose()?;
         Ok(NetworkPreprocessingData {
             road_network: rn_data,
@@ -175,14 +175,14 @@ impl<T: TTFNum> NetworkState<T> {
         self,
         network: &Network<T>,
         period: Interval<T>,
-        parameters: &NetworkParameters<T>,
+        rn_parameters: Option<&RoadNetworkParameters<T>>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> NetworkWeights<T> {
         let rn_weights = self.road_network.map(|rn| {
             rn.into_weights(
                 network.road_network.as_ref().unwrap(),
                 period,
-                parameters.road_network.as_ref().unwrap(),
+                rn_parameters.unwrap(),
                 preprocess_data.road_network.as_ref().unwrap(),
             )
         });
@@ -259,7 +259,7 @@ impl<T: TTFNum> NetworkWeights<T> {
         self,
         network: &Network<T>,
         period: Interval<T>,
-        parameters: &NetworkParameters<T>,
+        rn_parameters: Option<&RoadNetworkParameters<T>>,
         preprocess_data: &NetworkPreprocessingData<T>,
     ) -> Self {
         let rn_weights =
@@ -274,7 +274,7 @@ impl<T: TTFNum> NetworkWeights<T> {
                 } else {
                     Some(road_network.get_free_flow_weights(
                         period,
-                        parameters.road_network.as_ref().unwrap(),
+                        rn_parameters.unwrap(),
                         preprocess_data.road_network.as_ref().unwrap(),
                     ))
                 }
@@ -299,12 +299,4 @@ impl<T> NetworkPreprocessingData<T> {
     pub const fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData<T>> {
         self.road_network.as_ref()
     }
-}
-
-/// Parameters of the simulation that are specific to the network.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[serde(bound(deserialize = "T: TTFNum"))]
-pub struct NetworkParameters<T> {
-    /// Parameters specific to the road network.
-    pub road_network: Option<RoadNetworkParameters<T>>,
 }

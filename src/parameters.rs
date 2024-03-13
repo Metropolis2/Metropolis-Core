@@ -11,7 +11,8 @@ use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 use crate::learning::LearningModel;
-use crate::network::{NetworkParameters, NetworkWeights};
+use crate::network::road_network::RoadNetworkParameters;
+use crate::network::NetworkWeights;
 use crate::simulation::results::AgentResults;
 use crate::units::Interval;
 
@@ -79,8 +80,8 @@ pub struct Parameters<T> {
     pub init_iteration_counter: u32,
     /// Maximum number of iterations to be run (on top of the `init_iteration_counter`).
     pub max_iterations: u32,
-    /// Set of parameters for the network.
-    pub network: NetworkParameters<T>,
+    /// Set of parameters for the road network.
+    pub road_network: Option<RoadNetworkParameters<T>>,
     /// Learning model used to update the values between two iterations.
     #[serde(default)]
     pub learning_model: LearningModel<T>,

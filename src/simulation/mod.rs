@@ -88,9 +88,7 @@ impl<T: TTFNum> Simulation<T> {
             .build_global()
             .unwrap();
 
-        if self.network.get_road_network().is_some()
-            && self.parameters.network.road_network.is_none()
-        {
+        if self.network.get_road_network().is_some() && self.parameters.road_network.is_none() {
             bail!("The road-network parameters are mandatory when a road-network is used.");
         }
 
@@ -106,7 +104,6 @@ impl<T: TTFNum> Simulation<T> {
                         path,
                         self.parameters.period,
                         self.parameters
-                            .network
                             .road_network
                             .as_ref()
                             .unwrap()
@@ -122,7 +119,7 @@ impl<T: TTFNum> Simulation<T> {
                 } else {
                     road_network.get_free_flow_weights(
                         self.parameters.period,
-                        self.parameters.network.road_network.as_ref().unwrap(),
+                        self.parameters.road_network.as_ref().unwrap(),
                         preprocess_data.network.get_road_network().unwrap(),
                     )
                 },
@@ -190,7 +187,7 @@ impl<T: TTFNum> Simulation<T> {
         let network = self.network.preprocess(
             &self.agents,
             self.parameters.period,
-            &self.parameters.network,
+            self.parameters.road_network.as_ref(),
         )?;
         Ok(PreprocessingData { network })
     }
@@ -214,7 +211,7 @@ impl<T: TTFNum> Simulation<T> {
             self.network.compute_skims(
                 &exp_weights,
                 &preprocess_data.network,
-                &self.parameters.network,
+                self.parameters.road_network.as_ref(),
             )
         })?;
         info!("Running demand model");
@@ -386,7 +383,7 @@ impl<T: TTFNum> Simulation<T> {
         let weights = state.into_weights(
             &self.network,
             self.parameters.period,
-            &self.parameters.network,
+            self.parameters.road_network.as_ref(),
             &preprocess_data.network,
         );
         Ok(weights)
@@ -514,7 +511,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
         } else {
             self.network.get_free_flow_weights(
                 self.parameters.period,
-                &self.parameters.network,
+                self.parameters.road_network.as_ref(),
                 &preprocess_data.network,
             )
         };
@@ -522,7 +519,7 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
         let skims = self.network.compute_skims(
             &weights,
             &preprocess_data.network,
-            &self.parameters.network,
+            self.parameters.road_network.as_ref(),
         )?;
         info!("Running pre-day model");
         let bp = MetroProgressBar::new(self.agents.len());
