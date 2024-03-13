@@ -21,5 +21,9 @@ fn main() -> glib::ExitCode {
 fn build_ui(app: &Application) {
     // Create a new custom window and present it
     let window = Window::new(app);
+    window.set_title(Some(&format!(
+        "METROPOLIS 2 - v{}",
+        env!("CARGO_PKG_VERSION")
+    )));
     window.present();
 }
