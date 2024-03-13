@@ -302,7 +302,7 @@ fn compute_free_flow_travel_times<T: TTFNum>(
     period: Interval<T>,
     parameters: &RoadNetworkParameters<T>,
     unique_vehicles: &UniqueVehicles,
-    od_pairs: &Vec<ODPairs>,
+    od_pairs: &[ODPairs],
 ) -> Result<Vec<ODTravelTimes<T>>> {
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
     let free_flow_weights = road_network.get_free_flow_weights_inner(

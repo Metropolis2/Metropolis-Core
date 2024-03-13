@@ -625,7 +625,7 @@ impl<T: TTFNum> RoadNetwork<T> {
     fn compute_skims_inner(
         &self,
         weights: &RoadNetworkWeights<T>,
-        all_od_pairs: &Vec<ODPairs>,
+        all_od_pairs: &[ODPairs],
         parameters: &RoadNetworkParameters<T>,
     ) -> Result<RoadNetworkSkims<T>> {
         let mut skims = Vec::with_capacity(all_od_pairs.len());
