@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2024-03-13
+
+### Removed
+
+- [USER] Temporarily remove the GUI executable as it fails to compile on Windows and MacOS.
+
 ## [1.0.0-rc.1] - 2024-03-13
 
 ### Added
@@ -452,7 +458,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.1...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.2...HEAD
+[1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
 [0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0
 [0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
