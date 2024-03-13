@@ -27,7 +27,7 @@ askama = { version = "0.12", features = ["serde-json"] }
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.6"
-gtk = { version = "0.8.0", package = "gtk4", features = ["v4_12"] }
+gtk = { version = "0.8.0", package = "gtk4", features = ["v4_6"] }
 hashbrown = { version = "0.14", features = ["rayon"] }
 indicatif = "0.17"
 itertools = "0.12"

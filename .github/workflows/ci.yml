@@ -11,13 +11,7 @@ jobs:
       run: sudo apt-get install libgtk-4-dev build-essential
     - name: Set environment variable
       run: |
-        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig/" >> "$GITHUB_ENV"
-    - name: TODO remove
-      run: ls -l /usr/lib/
-    - name: TODO remove
-      run: ls -l /usr/lib/x86_64-linux-gnu/
-    - name: TODO remove
-      run: ls -l /usr/lib/x86_64-linux-gnu/pkgconfig/
+        echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
     - name: Install rust
       uses: actions-rs/toolchain@v1
       with:

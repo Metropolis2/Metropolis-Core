@@ -1,18 +1,16 @@
+use std::env;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::env;
 
 use glib::clone;
 use glib::subclass::InitializingObject;
-use gtk::gio::File;
 use gtk::glib::subclass::ObjectImplRef;
-use gtk::glib::Error;
 use gtk::subclass::prelude::*;
-use gtk::{gio, ApplicationWindow, DialogError, TextView, ScrolledWindow};
+use gtk::{gio, FileChooserAction, ResponseType, ScrolledWindow, TextView};
 use gtk::{glib, Button, CompositeTemplate};
-use gtk::{prelude::*, FileDialog};
+use gtk::{prelude::*, FileChooserDialog};
 
 use crate::run_simulation;
 
@@ -72,23 +70,24 @@ impl Window {
     fn input_button_clicked(&self, _input_button: &Button) {
         let current_dir_res = env::current_dir();
         if current_dir_res.is_err() {
-            self.log.buffer().set_text(&format!("Failed to read current directory"));
+            self.log
+                .buffer()
+                .set_text(&format!("Failed to read current directory"));
             return;
         }
-        let current_dir = File::for_path(&current_dir_res.unwrap());
-        let file_dialog = FileDialog::builder()
-            .accept_label("Select")
+        // let current_dir = File::for_path(&current_dir_res.unwrap());
+        let file_dialog = FileChooserDialog::builder()
+            .action(FileChooserAction::Open)
+            // .accept_label("Select")
             .modal(true)
             .title("Select input file")
-            .initial_folder(&current_dir)
+            // .initial_folder(&current_dir)
             .build();
         let path = Arc::clone(&self.path);
-        file_dialog.open(
-            None::<&ApplicationWindow>,
-            None::<&gio::Cancellable>,
+        file_dialog.run_async(
             clone!(
-                    @weak self as this => move |r| {
-                        input_callback(r, path, this)
+                    @weak self as this => move |dialog, r| {
+                        input_callback(dialog, r, path, this)
                     }
             ),
         );
@@ -101,7 +100,7 @@ impl Window {
         run_button.set_label("Running...");
         let path: PathBuf = self.path.lock().unwrap().clone();
         let parameters_res = crate::io::json::get_parameters_from_json(&path);
-        let parameters = match parameters_res{
+        let parameters = match parameters_res {
             Ok(parameters) => parameters,
             Err(e) => {
                 let msg = format!("Invalid input parameters file: {path:?}\n{e}");
@@ -112,23 +111,24 @@ impl Window {
         // Set the working directory to the directory of the `parameters.json` file so that the
         // log file can be read properly.
         if let Some(parent_dir) = path.parent() {
-            env::set_current_dir(parent_dir)
-                .unwrap_or_else(|_| {
-                    self.log.buffer().set_text(
-                        &format!("Failed to set working directory to `{parent_dir:?}`")
-                        );
-                })
+            env::set_current_dir(parent_dir).unwrap_or_else(|_| {
+                self.log.buffer().set_text(&format!(
+                    "Failed to set working directory to `{parent_dir:?}`"
+                ));
+            })
         }
         let output_dir = parameters.output_directory;
         let log_filename: PathBuf = if output_dir.is_absolute() {
-            [output_dir.to_str().unwrap(), "log.txt"]
-                .iter()
-                    .collect()
+            [output_dir.to_str().unwrap(), "log.txt"].iter().collect()
         } else {
             let current_dir = env::current_dir().unwrap();
-            [current_dir.to_str().unwrap(), output_dir.to_str().unwrap(), "log.txt"]
-                .iter()
-                    .collect()
+            [
+                current_dir.to_str().unwrap(),
+                output_dir.to_str().unwrap(),
+                "log.txt",
+            ]
+            .iter()
+            .collect()
         };
         let filename2 = log_filename.clone();
         assert!(log_filename.is_absolute());
@@ -197,29 +197,17 @@ impl WindowImpl for Window {}
 impl ApplicationWindowImpl for Window {}
 
 fn input_callback(
-    result: Result<File, Error>,
+    dialog: &FileChooserDialog,
+    _response: ResponseType,
     path_cell: Arc<Mutex<PathBuf>>,
     this: ObjectImplRef<Window>,
 ) {
-    match result {
-        Ok(file) => {
+    if let Some(file) = dialog.file() {
             let path: PathBuf = file.path().expect("Invalid path");
             let mut my_path = path_cell.lock().unwrap();
             this.input_text.buffer().set_text(&format!("{path:?}"));
             this.run_button.set_sensitive(true);
             *my_path = path;
         }
-        Err(e) => {
-            if let Some(dialog_error) = e.kind::<DialogError>() {
-                match dialog_error {
-                    DialogError::Cancelled => println!("Cancelled"),
-                    DialogError::Dismissed => println!("Dismissed"),
-                    DialogError::Failed => println!("Failed"),
-                    _ => (),
-                }
-            } else {
-                println!("Err: {e:?}");
-            }
-        }
-    }
+    dialog.close();
 }
