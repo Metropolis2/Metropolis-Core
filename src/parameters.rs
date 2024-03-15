@@ -28,9 +28,9 @@ const fn default_update_ratio() -> f64 {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub enum SavingFormat {
     /// Zstd-compressed JSON files.
-    #[default]
     JSON,
     /// Parquet files.
+    #[default]
     Parquet,
     /// CSV files.
     CSV,

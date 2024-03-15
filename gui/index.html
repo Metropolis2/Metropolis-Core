@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="stylesheet" href="styles.css" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>METROPOLIS2 - v1.0.0-rc.3</title>
+		<script type="module" src="/main.js" defer></script>
+	</head>
+
+	<body>
+		<div class="container">
+			<div class="row" style="width: 100%;">
+				<textarea id="path-box" class="path" readonly=true placeholder="Please select your input parameters JSON file..."></textarea>
+				<button id="open-button" style="width: 100px;">Browse</button>
+			</div>
+
+			<div class="row">
+				<button id="run-button" disabled>Run simulation</button>
+			</div>
+
+			<div id="log-box" class="scroll" readonly=true placeholder="The logs of METROPOLIS2 will appear here..."></div>
+		</div>
+	</body>
+</html>

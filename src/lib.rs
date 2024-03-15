@@ -8,7 +8,6 @@
 
 pub mod agent;
 pub mod event;
-// pub mod gui;
 pub mod io;
 pub mod learning;
 pub mod logging;
@@ -62,6 +61,27 @@ use clap as _;
 ///
 /// This function takes as argument the path to the `parameters.json` file.
 pub fn run_simulation(path: &Path) -> Result<()> {
+    run_simulation_imp(path, None::<std::io::Empty>)
+}
+
+/// Deserializes a simulation, runs it and stores the results to a given output directory.
+///
+/// This function takes as argument the path to the `parameters.json` file and a writer for the
+/// logs.
+pub fn run_simulation_with_writer<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: W,
+) -> Result<()> {
+    run_simulation_imp(path, Some(writer))
+}
+
+/// Deserializes a simulation, runs it and stores the results to a given output directory.
+///
+/// This function takes as argument the path to the `parameters.json` file.
+fn run_simulation_imp<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: Option<W>,
+) -> Result<()> {
     // Read parameters.
     let parameters = io::json::get_parameters_from_json(path)?;
 
@@ -80,7 +100,7 @@ pub fn run_simulation(path: &Path) -> Result<()> {
         )
     })?;
 
-    logging::initialize_logging(&parameters.output_directory)?;
+    logging::initialize_logging(&parameters.output_directory, writer)?;
 
     let simulation = io::read_simulation(parameters)?;
 
@@ -122,7 +142,7 @@ pub fn get_choices_from_json_files(
     // Create output directory if it does not exists yet.
     std::fs::create_dir_all(output)?;
 
-    logging::initialize_logging(output)?;
+    logging::initialize_logging(output, None::<std::io::Empty>)?;
 
     let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
 

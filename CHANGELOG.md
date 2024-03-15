@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-rc.3] - 2024-03-13
+
+### Added
+
+- [USER] Add back the GUI executable.
+
 ## [1.0.0-rc.2] - 2024-03-13
 
 ### Removed

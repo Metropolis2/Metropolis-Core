@@ -14,10 +14,13 @@ use simplelog::{
 };
 
 /// Initializes logging to a file and terminal.
-pub fn initialize_logging(output: &Path) -> Result<()> {
+pub fn initialize_logging<W: std::io::Write + Send + 'static>(
+    output: &Path,
+    maybe_writer: Option<W>,
+) -> Result<()> {
     let log_filename: PathBuf = [output.to_str().unwrap(), "log.txt"].iter().collect();
     let log_file = File::create(log_filename).expect("Failed to create log file");
-    let loggers: Vec<Box<dyn SharedLogger>> = vec![
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![
         TermLogger::new(
             LevelFilter::Info,
             Config::default(),
@@ -26,5 +29,12 @@ pub fn initialize_logging(output: &Path) -> Result<()> {
         ),
         WriteLogger::new(LevelFilter::Info, Config::default(), log_file),
     ];
+    if let Some(writer) = maybe_writer {
+        loggers.push(WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            writer,
+        ));
+    }
     CombinedLogger::init(loggers).context("Failed to initialize logging")
 }
