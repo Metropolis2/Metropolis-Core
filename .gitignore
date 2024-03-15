@@ -6,3 +6,4 @@ releases/
 schemas/
 .gdb_history
 flamegraph.svg
+Cargo.lock
