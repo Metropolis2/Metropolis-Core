@@ -464,7 +464,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.2...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.3...HEAD
+[1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
 [0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0

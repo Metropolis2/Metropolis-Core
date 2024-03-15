@@ -3,10 +3,9 @@ CARGO_MAKE_DOCS_README_FILE = "README.md"
 CARGO_MAKE_DOCS_ROOT_FOLDER = "."
 CARGO_MAKE_CI = true
 CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
-CARGO_MAKE_PROJECT_NAME = "metrolib"
-CARGO_MAKE_PROJECT_VERSION = "1.0.0-rc.2"
-CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis_cli"
-CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times compute_travel_decisions metropolis_gui metropolis_cli"
+CARGO_MAKE_PROJECT_NAME = "metropolis"
+CARGO_MAKE_PROJECT_VERSION = "1.0.0-rc.3"
+CARGO_MAKE_BINARY_EXECUTABLE_NAMES = "metropolis_cli compute_travel_times compute_travel_decisions"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
@@ -61,7 +60,7 @@ args = ["build", "book/", "--dest-dir", "book/book"]
 [tasks.zip-release-ci-flow]
 dependencies = [
   "print-env-flow",
-  # "clean",
+  "clean",
   "setup-release-build-env",
   "build-release-for-binary-upload",
   # "docs-flow",
@@ -76,7 +75,7 @@ condition = { env_set = [
   "CARGO_MAKE_RELEASE_FLOW_TARGET",
   "CARGO_MAKE_PROJECT_NAME",
   "CARGO_MAKE_PROJECT_VERSION",
-  "CARGO_MAKE_BINARY_EXECUTABLE_NAME",
+  "CARGO_MAKE_BINARY_EXECUTABLE_NAMES",
 ], env_true = [
   "CARGO_MAKE_CI",
 ] }
@@ -84,23 +83,18 @@ env.OUTPUT_NAME = "${CARGO_MAKE_PROJECT_NAME}-v${CARGO_MAKE_PROJECT_VERSION}-${C
 env.TARGET_RELEASE_DIRECTORY = "target/${CARGO_MAKE_RELEASE_FLOW_TARGET}/release"
 script = '''
 #!@duckscript
-executable_file = set ${CARGO_MAKE_BINARY_EXECUTABLE_NAME}
-additional_executable_files = array %{CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME}
+executable_files = array %{CARGO_MAKE_BINARY_EXECUTABLE_NAMES}
 
 rm -r ${OUTPUT_NAME}
 mkdir ${OUTPUT_NAME}
 mkdir ${OUTPUT_NAME}/execs
 
-if is_windows
-    executable_file = set "${executable_file}.exe"
-end
-cp ${TARGET_RELEASE_DIRECTORY}/${executable_file} ${OUTPUT_NAME}/execs/${executable_file}
-for additional_executable_file in ${additional_executable_files}
+for executable_file in ${executable_files}
     if is_windows
-        additional_executable_file = set "${additional_executable_file}.exe"
+        executable_file = set "${executable_file}.exe"
     end
-    if is_path_exists ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file}
-        cp ${TARGET_RELEASE_DIRECTORY}/${additional_executable_file} ${OUTPUT_NAME}/execs/${additional_executable_file}
+    if is_path_exists ${TARGET_RELEASE_DIRECTORY}/${executable_file}
+        cp ${TARGET_RELEASE_DIRECTORY}/${executable_file} ${OUTPUT_NAME}/execs/${executable_file}
     end
 end
 cp ./README.md ${OUTPUT_NAME}/README.md
@@ -108,7 +102,7 @@ cp ./CHANGELOG.md ${OUTPUT_NAME}/CHANGELOG.md
 glob_cp ./LICENSE* ${OUTPUT_NAME}/
 # cp ./docs/ ${OUTPUT_NAME}/
 # cp ./book/book/ ${OUTPUT_NAME}/
-cp ./examples/ ${OUTPUT_NAME}/
+cp ./core/examples/ ${OUTPUT_NAME}/
 rm ${OUTPUT_NAME}/examples/csv_example.rs
 rm ${OUTPUT_NAME}/examples/parquet_example.rs
 rm ${OUTPUT_NAME}/examples/unnested_parquet_example.rs
