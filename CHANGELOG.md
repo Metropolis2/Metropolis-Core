@@ -8,7 +8,18 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
-## [1.0.0-rc.3] - 2024-03-13
+## [1.0.0-4] - 2024-03-15
+
+### Changed
+
+- [USER] The `compute_choices` executable is replaced by a `only_compute_decisions` parameter in the
+  main executable.
+
+### Fixed
+
+- [DEV] Various fixes to make the GUI compile through Github Actions.
+
+## [1.0.0-rc.3] - 2024-03-15
 
 ### Added
 
@@ -464,7 +475,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-rc.3...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-4...HEAD
+[1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4
 [1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
