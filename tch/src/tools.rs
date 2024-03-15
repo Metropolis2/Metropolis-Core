@@ -6,17 +6,21 @@
 //! Structs and functions for the command-line tool.
 
 use std::{
+    fs::File,
+    io::{Read, Write},
     ops::{Deref, DerefMut},
+    path::{Path, PathBuf},
     time::Duration,
 };
 
+use anyhow::{Context, Result};
 use hashbrown::HashMap;
 use petgraph::{
     graph::{node_index, EdgeIndex, NodeIndex},
     prelude::DiGraph,
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
 use ttf::TTF;
 
@@ -30,6 +34,20 @@ use crate::{
 #[schemars(title = "Parameters")]
 #[schemars(description = "Set of parameters.")]
 pub struct Parameters {
+    /// Paths to the input files.
+    pub input_files: InputFiles,
+    /// Path to the file where the query results should be stored.
+    /// Default is "output.csv" or "output.parquet".
+    #[serde(default)]
+    pub output_file: Option<PathBuf>,
+    /// Path to the file where the node ordering should be stored (only for intersect and tch).
+    /// If not specified, the node ordering is not saved.
+    #[serde(default)]
+    pub output_order: Option<PathBuf>,
+    /// Path to the file where the hierarchy overlay should be stored (only for intersect and tch).
+    /// If not specified, the hierarchy overlay is not saved.
+    #[serde(default)]
+    pub output_overlay: Option<PathBuf>,
     /// Algorithm type to use for the queries.
     #[serde(default)]
     pub algorithm: AlgorithmType,
@@ -41,12 +59,42 @@ pub struct Parameters {
     /// Default (0) is to use all the threads of the CPU.
     #[serde(default)]
     pub nb_threads: usize,
+    /// Format to use for saving the output files.
+    #[serde(default)]
+    pub saving_format: SavingFormat,
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
     #[schemars(
         description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
     )]
     pub contraction: ContractionParameters,
+}
+
+/// Struct to store all the input file paths.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+pub struct InputFiles {
+    /// Path to the file where the queries to compute are stored.
+    pub queries: PathBuf,
+    /// Path to the file where the graph is stored.
+    pub graph: PathBuf,
+    /// Path to the file where the graph weights are stored.
+    /// If not specified, the weights are read from the graph file (with key "weight").
+    #[serde(default)]
+    pub weights: Option<PathBuf>,
+    /// Path to the file where the node ordering is stored (only for intersect and tch).
+    /// If not specified, the node ordering is computing automatically.
+    #[serde(default)]
+    pub input_order: Option<PathBuf>,
+}
+
+/// Format to be used when saving files.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
+pub enum SavingFormat {
+    /// Parquet files.
+    #[default]
+    Parquet,
+    /// CSV files.
+    CSV,
 }
 
 /// Algorithm type to use for the queries.
@@ -252,4 +300,28 @@ impl TCHAllocation {
     ) {
         (&mut self.profile_alloc, &mut self.profile_candidate_map)
     }
+}
+
+// TODO: the functions below are shared with metropolis-core so they would be best in a dedicated
+// crate.
+/// Read some deserializable data from an uncompressed or a zstd-compressed JSON file.
+pub fn read_json<D: DeserializeOwned>(filename: &Path) -> Result<D> {
+    let mut bytes = Vec::new();
+    File::open(filename)
+        .with_context(|| format!("Unable to open file `{filename:?}`"))?
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("Unable to read file `{filename:?}`"))?;
+    let data = serde_json::from_slice(&bytes)
+        .with_context(|| format!("Unable to parse file `{filename:?}`"))?;
+    Ok(data)
+}
+
+/// Write some serializable data as an uncompressed JSON file.
+///
+/// The file is stored in the given directory, with filename "{name}.json".
+pub fn write_json<D: Serialize>(data: D, filename: &Path) -> Result<()> {
+    let mut writer = File::create(filename)?;
+    let buffer = serde_json::to_vec(&data)?;
+    writer.write_all(&buffer)?;
+    Ok(())
 }

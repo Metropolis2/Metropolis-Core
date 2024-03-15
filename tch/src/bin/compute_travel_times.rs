@@ -4,12 +4,10 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Binary to compute earliest-arrival or profile queries from input files.
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -29,43 +27,22 @@ use tch::tools::*;
 use tch::HierarchyOverlay;
 use ttf::TTF;
 
-/// Compute efficiently earliest-arrival or profile queries
+/// Compute earliest-arrival or profile queries using time-dependent Contraction Hierarchies
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about)]
 struct Args {
-    /// Path to the file where the queries to compute are stored.
-    #[arg(long)]
-    queries: PathBuf,
-    /// Path to the file where the graph is stored.
-    #[arg(long)]
-    graph: PathBuf,
-    /// Path to the file where the graph weights are stored.
-    /// If not specified, the weights are read from the graph file (with key "weight").
-    #[arg(long)]
-    weights: Option<PathBuf>,
-    /// Path to the file where the parameters are stored.
-    #[arg(long)]
-    parameters: Option<PathBuf>,
-    /// Path to the file where the output should be stored.
-    #[arg(long)]
-    output: PathBuf,
-    /// Path to the file where the node ordering is stored (only for intersect and tch).
-    /// If not specified, the node ordering is computing automatically.
-    #[arg(long)]
-    input_order: Option<PathBuf>,
-    /// Path to the file where the node ordering should be stored (only for intersect and tch).
-    /// If not specified, the node ordering is not saved.
-    #[arg(long)]
-    output_order: Option<PathBuf>,
-    /// Path to the file where the hierarchy overlay should be stored (only for intersect and tch).
-    /// If not specified, the hierarchy overlay is not saved.
-    #[arg(long)]
-    output_overlay: Option<PathBuf>,
+    /// Path to the JSON file with the parameters
+    #[arg(required = true)]
+    parameters: PathBuf,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    compute_travel_times(&args.parameters)
+}
 
+fn compute_travel_times(path: &Path) -> Result<()> {
+    // TODO: Allow logging to file / GUI.
     TermLogger::init(
         LevelFilter::Info,
         Config::default(),
@@ -76,57 +53,35 @@ fn main() -> Result<()> {
 
     let t0 = Instant::now();
 
-    info!("Reading graph");
-    let mut bytes = Vec::new();
-    File::open(args.graph)
-        .expect("Unable to open graph file")
-        .read_to_end(&mut bytes)?;
-    let mut graph: Graph = serde_json::from_slice(&bytes).expect("Unable to parse graph");
+    info!("Reading parameters");
+    let mut parameters: Parameters = read_json(path).context("Failed to read parameters")?;
 
-    let weights: Option<Weights> = if let Some(filename) = args.weights {
+    info!("Reading graph");
+    let mut graph: Graph =
+        read_json(&parameters.input_files.graph).context("Failed to read graph")?;
+
+    let weights: Option<Weights> = if let Some(filename) = parameters.input_files.weights {
         info!("Reading graph weights");
-        let mut bytes = Vec::new();
-        File::open(filename)
-            .expect("Unable to open graph weights file")
-            .read_to_end(&mut bytes)?;
-        Some(serde_json::from_slice(&bytes).expect("Unable to parse graph weights"))
+        Some(read_json(&filename).context("Failed to read weights")?)
     } else {
         None
     };
 
-    let order: Option<Vec<usize>> = if let Some(filename) = args.input_order {
+    let order: Option<Vec<usize>> = if let Some(filename) = parameters.input_files.input_order {
         info!("Reading node ordering");
-        let mut bytes = Vec::new();
-        File::open(filename)
-            .expect("Unable to open node ordering file")
-            .read_to_end(&mut bytes)?;
-        Some(serde_json::from_slice(&bytes).expect("Unable to parse node ordering"))
+        Some(read_json(&filename).context("Failed to read node ordering")?)
     } else {
         None
     };
 
     info!("Reading queries");
-    let mut bytes = Vec::new();
-    File::open(args.queries)
-        .expect("Unable to open queries file")
-        .read_to_end(&mut bytes)?;
-    let queries: Vec<Query> = serde_json::from_slice(&bytes).expect("Unable to parse queries");
+    let queries: Vec<Query> =
+        read_json(&parameters.input_files.queries).context("Failed to read queries")?;
 
     if queries.is_empty() {
         warn!("No query to execute");
         return Ok(());
     }
-
-    let mut parameters: Parameters = if let Some(filename) = args.parameters {
-        info!("Reading parameters");
-        let mut bytes = Vec::new();
-        File::open(filename)
-            .expect("Unable to open parameters file")
-            .read_to_end(&mut bytes)?;
-        serde_json::from_slice(&bytes).expect("Unable to parse parameters")
-    } else {
-        Default::default()
-    };
 
     // Initialize the global rayon thread pool.
     rayon::ThreadPoolBuilder::new()
@@ -268,18 +223,12 @@ fn main() -> Result<()> {
             HierarchyOverlay::order(&graph, |e| ttf_func_id(e).clone(), parameters.contraction)
         };
 
-        if let Some(filename) = args.output_order {
-            let mut writer = File::create(filename).unwrap();
-            writer
-                .write_all(&serde_json::to_vec(&overlay.get_order()).unwrap())
-                .unwrap();
+        if let Some(filename) = parameters.output_order {
+            write_json(&overlay.get_order(), &filename)?;
         }
 
-        if let Some(filename) = args.output_overlay {
-            let mut writer = File::create(filename).unwrap();
-            writer
-                .write_all(&serde_json::to_vec(&overlay).unwrap())
-                .unwrap();
+        if let Some(filename) = parameters.output_overlay {
+            write_json(&overlay, &filename)?;
         }
 
         if parameters.algorithm == AlgorithmType::Intersect {
@@ -425,9 +374,9 @@ fn main() -> Result<()> {
     let output = Output { details, results };
 
     info!("Saving results");
-    let mut writer = File::create(args.output).unwrap();
-    writer
-        .write_all(&serde_json::to_vec(&output).unwrap())
-        .unwrap();
+    let filename = parameters
+        .output_file
+        .unwrap_or_else(|| PathBuf::from("output.json"));
+    write_json(&output, &filename)?;
     Ok(())
 }
