@@ -10,7 +10,7 @@ jobs:
     name: Create a GitHub Release
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ step.create-release.outputs.id }}
+      release_id: ${{ steps.create-release.outputs.id }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
