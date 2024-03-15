@@ -7,7 +7,6 @@
 pub mod results;
 
 use std::ops::Deref;
-use std::path::Path;
 
 use anyhow::{bail, Result};
 use log::{debug, info};
@@ -82,53 +81,7 @@ impl<T> Simulation<T> {
 impl<T: TTFNum> Simulation<T> {
     /// Runs the simulation.
     pub fn run(&self) -> Result<()> {
-        // Initialize the global rayon thread pool.
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(self.parameters.nb_threads)
-            .build_global()
-            .unwrap();
-
-        if self.network.get_road_network().is_some() && self.parameters.road_network.is_none() {
-            bail!("The road-network parameters are mandatory when a road-network is used.");
-        }
-
-        // Pre-process the simulation.
-        let preprocess_data = self.preprocess()?;
-
-        let rn_weights = if let Some(road_network) = self.network.get_road_network() {
-            // Read the input road-network conditions or create free-flow conditions if no file is
-            // given.
-            Some(
-                if let Some(path) = self.parameters.input_files.road_network_conditions.as_ref() {
-                    io::read_rn_weights(
-                        path,
-                        self.parameters.period,
-                        self.parameters
-                            .road_network
-                            .as_ref()
-                            .unwrap()
-                            .recording_interval,
-                        road_network,
-                        &preprocess_data
-                            .network
-                            .get_road_network()
-                            .unwrap()
-                            .unique_vehicles,
-                    )
-                    .unwrap()
-                } else {
-                    road_network.get_free_flow_weights(
-                        self.parameters.period,
-                        self.parameters.road_network.as_ref().unwrap(),
-                        preprocess_data.network.get_road_network().unwrap(),
-                    )
-                },
-            )
-        } else {
-            None
-        };
-
-        let mut exp_weights = NetworkWeights::new(rn_weights);
+        let (preprocess_data, mut exp_weights) = self.initialize()?;
         let mut prev_agent_results = None;
         let mut prev_sim_weights = None;
         let mut iteration_counter: u32 = self.parameters.init_iteration_counter;
@@ -488,33 +441,58 @@ impl<T: TTFNum> Simulation<T> {
         }
         updates
     }
-}
 
-impl<T: TTFNum + Into<f64>> Simulation<T> {
-    /// Computes the pre-day choices, using the given [NetworkWeights] as initial weights of the
-    /// network, and stores the results in the output directory.
-    ///
-    /// If `init_weights` is `None`, free-flow weights are used to initialize the simulation.
-    pub fn compute_and_store_choices(
-        &self,
-        init_weights: Option<NetworkWeights<T>>,
-        output_dir: &Path,
-    ) -> Result<()> {
+    /// Initializes he simulation before running it.
+    fn initialize(&self) -> Result<(PreprocessingData<T>, NetworkWeights<T>)> {
         // Initialize the global rayon thread pool.
         rayon::ThreadPoolBuilder::new()
             .num_threads(self.parameters.nb_threads)
             .build_global()
             .unwrap();
+        if self.network.get_road_network().is_some() && self.parameters.road_network.is_none() {
+            bail!("The road-network parameters are mandatory when a road-network is used.");
+        }
+        // Pre-process the simulation.
         let preprocess_data = self.preprocess()?;
-        let weights = if let Some(weights) = init_weights {
-            weights
-        } else {
-            self.network.get_free_flow_weights(
-                self.parameters.period,
-                self.parameters.road_network.as_ref(),
-                &preprocess_data.network,
+        let rn_weights = if let Some(road_network) = self.network.get_road_network() {
+            // Read the input road-network conditions or create free-flow conditions if no file is
+            // given.
+            Some(
+                if let Some(path) = self.parameters.input_files.road_network_conditions.as_ref() {
+                    io::read_rn_weights(
+                        path,
+                        self.parameters.period,
+                        self.parameters
+                            .road_network
+                            .as_ref()
+                            .unwrap()
+                            .recording_interval,
+                        road_network,
+                        &preprocess_data
+                            .network
+                            .get_road_network()
+                            .unwrap()
+                            .unique_vehicles,
+                    )
+                    .unwrap()
+                } else {
+                    road_network.get_free_flow_weights(
+                        self.parameters.period,
+                        self.parameters.road_network.as_ref().unwrap(),
+                        preprocess_data.network.get_road_network().unwrap(),
+                    )
+                },
             )
+        } else {
+            None
         };
+        let weights = NetworkWeights::new(rn_weights);
+        Ok((preprocess_data, weights))
+    }
+
+    /// Computes the pre-day choices of the simulation.
+    pub fn compute_and_store_choices(&self) -> Result<()> {
+        let (preprocess_data, weights) = self.initialize()?;
         info!("Computing skims");
         let skims = self.network.compute_skims(
             &weights,
@@ -562,7 +540,11 @@ impl<T: TTFNum + Into<f64>> Simulation<T> {
             );
         }
         info!("Saving results");
-        results::save_choices(&pre_day_agent_results, output_dir, &self.parameters)?;
+        results::save_choices(
+            &pre_day_agent_results,
+            &self.parameters.output_directory,
+            &self.parameters,
+        )?;
         info!("Done");
         Ok(())
     }

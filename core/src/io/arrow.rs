@@ -40,7 +40,7 @@ pub trait ToArrow<const J: usize> {
 }
 
 /// Reads a road network from the filename of edges and vehicle types.
-pub fn get_road_network_from_files<T: TTFNum>(
+pub(crate) fn get_road_network_from_files<T: TTFNum>(
     edges_path: &Path,
     vehicle_path: &Path,
 ) -> Result<RoadNetwork<T>> {
@@ -56,7 +56,7 @@ pub fn get_road_network_from_files<T: TTFNum>(
 }
 
 /// Reads agents from the filename of agents, alternatives and trips.
-pub fn get_agents_from_files<T: TTFNum>(
+pub(crate) fn get_agents_from_files<T: TTFNum>(
     agents_path: &Path,
     alts_path: &Path,
     trips_path: Option<&Path>,
@@ -81,7 +81,7 @@ pub fn get_agents_from_files<T: TTFNum>(
 }
 
 /// Reads [RoadNetworkWeights] from a filename.
-pub fn get_road_network_weights_from_file<T: TTFNum>(
+pub(crate) fn get_road_network_weights_from_file<T: TTFNum>(
     path: &Path,
     period: Interval<T>,
     interval: Time<T>,

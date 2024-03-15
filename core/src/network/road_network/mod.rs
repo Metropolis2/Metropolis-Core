@@ -528,29 +528,30 @@ impl<T> RoadNetwork<T> {
         }
     }
 
-    // Returns the number of edges in the graph.
+    /// Returns the number of edges in the graph.
     pub fn nb_edges(&self) -> usize {
         self.graph.edge_count()
     }
 
-    /// Return a reference to the [DiGraph] of the [RoadNetwork].
+    /// Returns a reference to the [DiGraph] of the [RoadNetwork].
     pub fn get_graph(&self) -> &DiGraph<RoadNode, RoadEdge<T>> {
         &self.graph
     }
 
-    /// Return the source and target of a given edge.
+    /// Returns the source and target of a given edge.
     ///
     /// Return `None` if there is no edge with the given [EdgeIndex].
     pub fn get_endpoints(&self, edge: EdgeIndex) -> Option<(NodeIndex, NodeIndex)> {
         self.graph.edge_endpoints(edge)
     }
 
-    /// Return an Iterator over the [Vehicle]s of the network, together with their
+    /// Returns an Iterator over the [Vehicle]s of the network, together with their
     /// [OriginalVehicleId].
     pub fn iter_vehicles(&self) -> impl Iterator<Item = &Vehicle<T>> {
         self.vehicles.iter()
     }
 
+    /// Returns an Iterator over the [OriginalEdgeId] of the graph.
     pub fn iter_original_edge_ids(&self) -> impl Iterator<Item = OriginalEdgeId> + '_ {
         self.graph.edge_map.keys().copied()
     }

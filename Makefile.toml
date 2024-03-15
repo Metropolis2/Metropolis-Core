@@ -6,7 +6,7 @@ CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
 CARGO_MAKE_PROJECT_NAME = "metrolib"
 CARGO_MAKE_PROJECT_VERSION = "1.0.0-rc.2"
 CARGO_MAKE_BINARY_EXECUTABLE_NAME = "metropolis_cli"
-CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times compute_choices metropolis_gui"
+CARGO_MAKE_ADDITIONAL_BINARY_EXECUTABLE_NAME = "compute_travel_times compute_travel_decisions metropolis_gui metropolis_cli"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
@@ -174,7 +174,7 @@ category = "Test"
 install_crate = false
 toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
 command = "cargo"
-args = ["test", "--examples"]
+args = ["test", "--workspace", "--examples"]
 
 [tasks.build-flow]
 dependencies = [

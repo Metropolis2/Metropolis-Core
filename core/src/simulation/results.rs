@@ -261,7 +261,7 @@ impl<T: TTFNum> AgentResult<T> {
         self.mode_results.is_finished()
     }
 
-    pub fn with_previous_results(&mut self, previous_result: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_result: &Self, network: &Network<T>) {
         if self.mode_index == previous_result.mode_index {
             self.shifted_mode = false;
             self.mode_results

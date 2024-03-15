@@ -39,16 +39,16 @@ pub enum SavingFormat {
 /// Struct to store all the input file paths.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct InputFiles {
-    pub agents: PathBuf,
-    pub alternatives: PathBuf,
+    pub(crate) agents: PathBuf,
+    pub(crate) alternatives: PathBuf,
     #[serde(default)]
-    pub trips: Option<PathBuf>,
+    pub(crate) trips: Option<PathBuf>,
     #[serde(default)]
-    pub edges: Option<PathBuf>,
+    pub(crate) edges: Option<PathBuf>,
     #[serde(default)]
-    pub vehicle_types: Option<PathBuf>,
+    pub(crate) vehicle_types: Option<PathBuf>,
     #[serde(default)]
-    pub road_network_conditions: Option<PathBuf>,
+    pub(crate) road_network_conditions: Option<PathBuf>,
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.

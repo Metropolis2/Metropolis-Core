@@ -75,9 +75,6 @@ pub fn run_simulation_with_writer<W: std::io::Write + Send + 'static>(
     run_simulation_imp(path, Some(writer))
 }
 
-/// Deserializes a simulation, runs it and stores the results to a given output directory.
-///
-/// This function takes as argument the path to the `parameters.json` file.
 fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     path: &Path,
     writer: Option<W>,
@@ -130,24 +127,50 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     simulation.run()
 }
 
-/// Deserializes a simulation from JSON input files, computes the pre-day choices and stores them
-/// in the given output directory.
-pub fn get_choices_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-    weights: Option<&Path>,
-    output: &Path,
+/// Deserializes a simulation, computes the travel decisions and stores the results.
+///
+/// This function takes as argument the path to the `parameters.json` file.
+pub fn get_travel_decisions(path: &Path) -> Result<()> {
+    get_travel_decisions_imp(path, None::<std::io::Empty>)
+}
+
+/// Deserializes a simulation, computes the travel decisions and stores the results.
+///
+/// This function takes as argument the path to the `parameters.json` file and a writer for the
+/// logs.
+pub fn get_travel_decisions_with_writer<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: W,
 ) -> Result<()> {
+    get_travel_decisions_imp(path, Some(writer))
+}
+
+fn get_travel_decisions_imp<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: Option<W>,
+) -> Result<()> {
+    // Read parameters.
+    let parameters = io::json::get_parameters_from_json(path)?;
+
+    // Set the working directory to the directory of the `parameters.json` file so that the input
+    // paths can be interpreted as being relative to this file.
+    if let Some(parent_dir) = path.parent() {
+        env::set_current_dir(parent_dir)
+            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+    }
+
     // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(output)?;
+    std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
+        format!(
+            "Failed to create output directory `{:?}`",
+            parameters.output_directory
+        )
+    })?;
 
-    logging::initialize_logging(output, None::<std::io::Empty>)?;
+    logging::initialize_logging(&parameters.output_directory, writer)?;
 
-    let simulation = io::json::get_simulation_from_json_files(agents, parameters, road_network)?;
+    let simulation = io::read_simulation(parameters)?;
 
-    let weights = weights.map(io::json::read_json).transpose()?;
-
-    // Run the simulation.
-    simulation.compute_and_store_choices(weights, output)
+    // Compute the travel decisions.
+    simulation.compute_and_store_choices()
 }

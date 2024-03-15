@@ -4,11 +4,9 @@
 use std::fmt::Write;
 use std::{io, path::PathBuf};
 
-use serde::Serialize;
-
-use tauri::Window;
-
 use metropolis::run_simulation_with_writer;
+use serde::Serialize;
+use tauri::Window;
 
 #[derive(Debug, Default, Clone, Serialize)]
 struct Payload {

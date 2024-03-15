@@ -160,7 +160,7 @@ pub enum LegTypeResults<T> {
 }
 
 impl<T: TTFNum> LegTypeResults<T> {
-    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
         match self {
             Self::Road(road_leg_results) => road_leg_results.with_previous_results(
                 previous_results.as_road().unwrap(),
@@ -232,7 +232,7 @@ impl<T: TTFNum> LegResults<T> {
         self.schedule_utility = schedule_utility;
     }
 
-    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
         debug_assert_eq!(self.id, previous_results.id);
         self.departure_time_shift = Some(self.departure_time - previous_results.departure_time);
         self.class
@@ -445,7 +445,7 @@ impl<T: TTFNum> TripResults<T> {
         }
     }
 
-    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
         self.departure_time_shift = Some(self.departure_time - previous_results.departure_time);
         for (leg_res, prev_leg_res) in self.legs.iter_mut().zip(previous_results.legs.iter()) {
             leg_res.with_previous_results(prev_leg_res, network);

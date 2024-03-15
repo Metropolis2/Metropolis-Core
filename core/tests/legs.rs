@@ -4,24 +4,28 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use hashbrown::HashSet;
-use metropolis::agent::{agent_index, Agent};
-use metropolis::learning::LearningModel;
-use metropolis::mode::trip::event::RoadEvent;
-use metropolis::mode::trip::results::{LegResults, LegTypeResults, RoadLegResults, TripResults};
-use metropolis::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
-use metropolis::mode::{mode_index, Mode, ModeResults};
-use metropolis::network::road_network::vehicle::{SpeedFunction, Vehicle};
-use metropolis::network::road_network::{
+use metropolis_core::agent::{agent_index, Agent};
+use metropolis_core::learning::LearningModel;
+use metropolis_core::mode::trip::event::RoadEvent;
+use metropolis_core::mode::trip::results::{
+    LegResults, LegTypeResults, RoadLegResults, TripResults,
+};
+use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
+use metropolis_core::mode::{mode_index, Mode, ModeResults};
+use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
+use metropolis_core::network::road_network::{
     RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
 };
-use metropolis::network::Network;
-use metropolis::parameters::Parameters;
-use metropolis::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
-use metropolis::schedule_utility::ScheduleUtility;
-use metropolis::simulation::results::AgentResult;
-use metropolis::simulation::Simulation;
-use metropolis::travel_utility::{PolynomialFunction, TravelUtility};
-use metropolis::units::{Flow, Interval, Lanes, Length, Speed, Time, Utility, ValueOfTime, PCE};
+use metropolis_core::network::Network;
+use metropolis_core::parameters::Parameters;
+use metropolis_core::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
+use metropolis_core::schedule_utility::ScheduleUtility;
+use metropolis_core::simulation::results::AgentResult;
+use metropolis_core::simulation::Simulation;
+use metropolis_core::travel_utility::{PolynomialFunction, TravelUtility};
+use metropolis_core::units::{
+    Flow, Interval, Lanes, Length, Speed, Time, Utility, ValueOfTime, PCE,
+};
 use num_traits::Float;
 use ttf::{PwlTTF, TTF};
 

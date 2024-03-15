@@ -3,13 +3,13 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-//! Binary to run Metropolis simulation from a set of input files.
+//! Binary to run the pre-day model of Metropolis from a set of input files.
 use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
 
-/// METROPOLIS2 simulator.
+/// Compute travel decisions from the Demand model of METROPOLIS2
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -20,5 +20,5 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    metropolis::run_simulation(&args.parameters)
+    metropolis_core::get_travel_decisions(&args.parameters)
 }

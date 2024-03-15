@@ -241,7 +241,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         )
     }
 
-    pub fn profile_query_cache_complexity(&self) -> usize {
+    pub(crate) fn profile_query_cache_complexity(&self) -> usize {
         self.profile_query_cache
             .values()
             .map(|map| {

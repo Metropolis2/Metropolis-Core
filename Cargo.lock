@@ -2524,6 +2524,17 @@ dependencies = [
 name = "metropolis"
 version = "1.0.0-rc.2"
 dependencies = [
+ "metropolis-core",
+ "serde",
+ "serde_derive",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
+name = "metropolis-core"
+version = "1.0.0-rc.2"
+dependencies = [
  "anyhow",
  "arrow",
  "askama",
@@ -2553,8 +2564,6 @@ dependencies = [
  "serde_json",
  "simplelog",
  "smartstring",
- "tauri",
- "tauri-build",
  "tch",
  "time",
  "ttf",

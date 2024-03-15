@@ -245,7 +245,7 @@ impl<T: TTFNum> ModeResults<T> {
         }
     }
 
-    pub fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
         match self {
             Self::Trip(trip_results) => {
                 trip_results.with_previous_results(previous_results.as_trip().unwrap(), network)

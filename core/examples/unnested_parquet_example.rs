@@ -1,7 +1,8 @@
+//! Example running a simulation from Parquet files with unnested structs.
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use metropolis::run_simulation;
+use metropolis_core::run_simulation;
 
 fn main() -> Result<()> {
     let wd = env!("CARGO_MANIFEST_DIR");

@@ -11,11 +11,11 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use log::{info, LevelFilter};
-use metropolis::agent::Agent;
-use metropolis::network::road_network::RoadNetwork;
-use metropolis::network::{NetworkSkim, NetworkWeights};
-use metropolis::parameters::Parameters;
-use metropolis::simulation::results::{AgentResults, AggregateResults};
+use metropolis_core::agent::Agent;
+use metropolis_core::network::road_network::RoadNetwork;
+use metropolis_core::network::{NetworkSkim, NetworkWeights};
+use metropolis_core::parameters::Parameters;
+use metropolis_core::simulation::results::{AgentResults, AggregateResults};
 use schemars::gen::SchemaSettings;
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 
