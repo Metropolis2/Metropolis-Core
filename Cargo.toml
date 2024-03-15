@@ -19,7 +19,6 @@ publish = false
 [dependencies]
 metropolis-core = { path = "core/" }
 serde = "1.0"
-serde_derive = "1.0"
 tauri = { version = "1.5", features = ["dialog-open"], optional = true }
 
 [build-dependencies]

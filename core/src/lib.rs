@@ -30,28 +30,6 @@ use anyhow::{Context, Result};
 // Re-exports.
 pub use report::write_report;
 
-#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
-#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
-/// Displays statistics on allocated and resident memory.
-pub fn show_stats() {
-    jemalloc_ctl::epoch::advance().unwrap();
-
-    let allocated = jemalloc_ctl::stats::allocated::read().unwrap();
-    let resident = jemalloc_ctl::stats::resident::read().unwrap();
-    log::debug!(
-        "{} bytes allocated/{} bytes resident",
-        indicatif::HumanBytes(allocated as u64).to_string(),
-        indicatif::HumanBytes(resident as u64).to_string()
-    );
-}
-
-#[cfg(any(not(feature = "jemalloc"), target_env = "msvc"))]
-/// Displays statistics on allocated and resident memory.
-pub fn show_stats() {}
-
 // Dependencies only used in the bins.
 use clap as _;
 

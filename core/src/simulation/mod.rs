@@ -233,7 +233,6 @@ impl<T: TTFNum> Simulation<T> {
                 .parameters
                 .stop(iteration_counter, iteration_results.agent_results()))
         })?;
-        crate::show_stats();
         let running_times = IterationRunningTimes {
             skims_computation: t1,
             pre_day_model: t2,
