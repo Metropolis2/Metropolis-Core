@@ -24,11 +24,9 @@ pub mod travel_utility;
 pub mod units;
 
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
-use log::warn;
-use parameters::SavingFormat;
 // Re-exports.
 pub use report::write_report;
 
@@ -101,76 +99,6 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
 
     let simulation = io::read_simulation(parameters)?;
 
-    // The previous iteration_results file need to be removed if it exists.
-    let extension = match simulation.get_parameters().saving_format {
-        SavingFormat::JSON => "json",
-        SavingFormat::Parquet => "parquet",
-        SavingFormat::CSV => "csv",
-    };
-    let filename: PathBuf = [
-        simulation
-            .get_parameters()
-            .output_directory
-            .to_str()
-            .unwrap(),
-        &format!("iteration_results.{extension}"),
-    ]
-    .iter()
-    .collect();
-    if filename.is_file() {
-        warn!("Removing already existing file `{filename:?}`");
-        std::fs::remove_file(&filename)
-            .with_context(|| format!("Failed to remove file: `{filename:?}`"))?;
-    }
-
     // Run the simulation.
     simulation.run()
-}
-
-/// Deserializes a simulation, computes the travel decisions and stores the results.
-///
-/// This function takes as argument the path to the `parameters.json` file.
-pub fn get_travel_decisions(path: &Path) -> Result<()> {
-    get_travel_decisions_imp(path, None::<std::io::Empty>)
-}
-
-/// Deserializes a simulation, computes the travel decisions and stores the results.
-///
-/// This function takes as argument the path to the `parameters.json` file and a writer for the
-/// logs.
-pub fn get_travel_decisions_with_writer<W: std::io::Write + Send + 'static>(
-    path: &Path,
-    writer: W,
-) -> Result<()> {
-    get_travel_decisions_imp(path, Some(writer))
-}
-
-fn get_travel_decisions_imp<W: std::io::Write + Send + 'static>(
-    path: &Path,
-    writer: Option<W>,
-) -> Result<()> {
-    // Read parameters.
-    let parameters = io::json::get_parameters_from_json(path)?;
-
-    // Set the working directory to the directory of the `parameters.json` file so that the input
-    // paths can be interpreted as being relative to this file.
-    if let Some(parent_dir) = path.parent() {
-        env::set_current_dir(parent_dir)
-            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
-    }
-
-    // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
-        format!(
-            "Failed to create output directory `{:?}`",
-            parameters.output_directory
-        )
-    })?;
-
-    logging::initialize_logging(&parameters.output_directory, writer)?;
-
-    let simulation = io::read_simulation(parameters)?;
-
-    // Compute the travel decisions.
-    simulation.compute_and_store_choices()
 }

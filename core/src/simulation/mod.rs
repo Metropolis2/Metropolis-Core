@@ -7,9 +7,10 @@
 pub mod results;
 
 use std::ops::Deref;
+use std::path::PathBuf;
 
-use anyhow::{bail, Result};
-use log::{debug, info};
+use anyhow::{bail, Context, Result};
+use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
@@ -76,11 +77,38 @@ impl<T> Simulation<T> {
     pub const fn get_parameters(&self) -> &Parameters<T> {
         &self.parameters
     }
+
+    /// Returns the path of the iteration results file for this simulation.
+    fn iteration_results_filename(&self) -> PathBuf {
+        let extension = self.parameters.saving_extension();
+        [
+            self.parameters.output_directory.to_str().unwrap(),
+            &format!("iteration_results.{extension}"),
+        ]
+        .iter()
+        .collect()
+    }
 }
 
 impl<T: TTFNum> Simulation<T> {
     /// Runs the simulation.
     pub fn run(&self) -> Result<()> {
+        if self.parameters.only_compute_decisions {
+            self.compute_and_store_choices()
+        } else {
+            self.run_impl()
+        }
+    }
+
+    fn run_impl(&self) -> Result<()> {
+        // The previous iteration_results file need to be removed if it exists.
+        let filename = self.iteration_results_filename();
+        if filename.is_file() {
+            warn!("Removing already existing file `{filename:?}`");
+            std::fs::remove_file(&filename)
+                .with_context(|| format!("Failed to remove file: `{filename:?}`"))?;
+        }
+
         let (preprocess_data, mut exp_weights) = self.initialize()?;
         let mut prev_agent_results = None;
         let mut prev_sim_weights = None;

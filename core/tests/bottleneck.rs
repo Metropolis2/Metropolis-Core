@@ -111,6 +111,7 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
         random_seed: None,
         nb_threads: 0,
         saving_format: Default::default(),
+        only_compute_decisions: false,
     };
 
     Simulation::new(agents, network, parameters)

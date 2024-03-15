@@ -212,5 +212,6 @@ pub(crate) fn example_parameters() -> Parameters<f64> {
         random_seed: Some(13081996),
         nb_threads: 8,
         saving_format: SavingFormat::JSON,
+        only_compute_decisions: false,
     }
 }

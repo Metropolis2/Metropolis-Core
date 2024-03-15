@@ -2,7 +2,8 @@
   "build": {
     "devPath": "./gui",
     "distDir": "./gui",
-    "withGlobalTauri": true
+    "withGlobalTauri": true,
+    "features": ["gui"]
   },
   "package": {
     "productName": "Metropolis2GUI",

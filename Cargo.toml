@@ -17,16 +17,17 @@ publish = false
 [workspace]
 
 [dependencies]
-metropolis = { package = "metropolis-core", path = "core/" }
+metropolis-core = { path = "core/" }
 serde = "1.0"
 serde_derive = "1.0"
-tauri = { version = "1.5", features = ["dialog-open"] }
+tauri = { version = "1.5", features = ["dialog-open"], optional=true }
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
 
 [features]
-custom-protocol = ["tauri/custom-protocol"]
+gui = ["tauri"]
+custom-protocol = ["gui", "tauri/custom-protocol"]
 
 [profile.dev.package."*"]
 debug = false

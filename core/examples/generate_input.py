@@ -36,6 +36,7 @@ parameters = {
     "update_ratio": 1.0,
     "random_seed": 19960813,
     "nb_threads": 24,
+    "only_compute_decisions": False,
 }
 
 agents = pl.DataFrame(

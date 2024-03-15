@@ -20,6 +20,7 @@ jobs:
       id: create-release
       uses: ncipollo/release-action@v1
   build:
+    needs: release
     name: Publish for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:

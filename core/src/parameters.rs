@@ -102,6 +102,20 @@ pub struct Parameters<T> {
     /// Format to use for saving the output files.
     #[serde(default)]
     pub saving_format: SavingFormat,
+    /// If `true`, the simulation will compute the travel decisions for the first iteration, save
+    /// them and stop immediately.
+    #[serde(default)]
+    pub only_compute_decisions: bool,
+}
+
+impl<T> Parameters<T> {
+    pub(crate) fn saving_extension(&self) -> String {
+        match self.saving_format {
+            SavingFormat::JSON => "json".into(),
+            SavingFormat::Parquet => "parquet".into(),
+            SavingFormat::CSV => "csv".into(),
+        }
+    }
 }
 
 impl<T: TTFNum> Parameters<T> {
