@@ -19,7 +19,6 @@ use petgraph::{
     graph::{node_index, EdgeIndex, NodeIndex},
     prelude::DiGraph,
 };
-use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
 use ttf::TTF;
@@ -30,9 +29,7 @@ use crate::{
 };
 
 /// Set of parameters.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Parameters")]
-#[schemars(description = "Set of parameters.")]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Parameters {
     /// Paths to the input files.
     pub input_files: InputFiles,
@@ -64,14 +61,11 @@ pub struct Parameters {
     pub saving_format: SavingFormat,
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
-    #[schemars(
-        description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
-    )]
     pub contraction: ContractionParameters,
 }
 
 /// Struct to store all the input file paths.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct InputFiles {
     /// Path to the file where the queries to compute are stored.
     pub queries: PathBuf,
@@ -88,7 +82,7 @@ pub struct InputFiles {
 }
 
 /// Format to be used when saving files.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub enum SavingFormat {
     /// Parquet files.
     #[default]
@@ -98,7 +92,7 @@ pub enum SavingFormat {
 }
 
 /// Algorithm type to use for the queries.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlgorithmType {
     /// Try to guess which algorithm will be the fastest.
     #[default]
@@ -178,17 +172,16 @@ impl<'de> Deserialize<'de> for Graph {
 }
 
 /// Variant of [Graph] used for deserialization.
-#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename = "Graph")]
 #[serde(transparent)]
 pub struct DeserGraph {
     /// Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source
     /// node, `t` is the id of the target node and `e` is the description of the edge.
-    #[validate(length(min = 1))]
     edges: Vec<Edge>,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize)]
 struct Edge {
     source: u64,
     target: u64,
@@ -197,7 +190,7 @@ struct Edge {
 }
 
 /// Point-to-point query (earliest-arrival or profile).
-#[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Query {
     /// Index of the query.
     pub id: u64,
@@ -211,13 +204,12 @@ pub struct Query {
 }
 
 /// Result of a query.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum QueryResult {
     /// Id and rrival time (for earliest-arrival queries).
     ArrivalTime((u64, f64)),
     /// Id, arrival time and route (for earliest-arrival queries).
-    #[schemars(with = "(f64, Vec<usize>)")]
     ArrivalTimeAndRoute((u64, f64, Vec<EdgeIndex>)),
     /// Id and travel-time function (for profile queries).
     TravelTimeFunction((u64, TTF<f64>)),
@@ -227,34 +219,29 @@ pub enum QueryResult {
 
 /// Secondary output on a set of queries.
 #[serde_as]
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DetailedOutput {
     /// Number of queries run.
     pub nb_queries: usize,
     /// Total time spent for the pre-processing of the graph.
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
-    #[schemars(with = "f64")]
     pub preprocessing_time: Duration,
     /// Total time spent on computing the queries.
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
-    #[schemars(with = "f64")]
     pub query_time: Duration,
     /// Average time spent per query.
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
-    #[schemars(with = "f64")]
     pub query_time_per_query: Duration,
     /// Total time spent on pre-processing and computing queries.
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
-    #[schemars(with = "f64")]
     pub total_time: Duration,
     /// Average time spent per query (including pre-processing time).
     #[serde_as(as = "DurationSecondsWithFrac<f64>")]
-    #[schemars(with = "f64")]
     pub total_time_per_query: Duration,
 }
 
 /// Global output for a set of queries.
-#[derive(Clone, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Output {
     /// Secondary results.
     pub details: DetailedOutput,

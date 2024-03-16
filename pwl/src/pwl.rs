@@ -9,7 +9,6 @@ use std::fmt;
 use anyhow::anyhow;
 use either::Either;
 use itertools::Itertools;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::ttf_num::TTFNum;
@@ -98,7 +97,7 @@ impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
 ///
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
-#[derive(PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "X: TTFNum, Y: TTFNum")]
 #[serde(try_from = "DeserPwlXYF<X, Y>")]
 pub struct PwlXYF<X, Y, T> {
@@ -115,7 +114,6 @@ pub struct PwlXYF<X, Y, T> {
     /// Interval between two `x` values.
     interval_x: X,
     #[serde(skip)]
-    #[schemars(skip)]
     convert_type: std::marker::PhantomData<T>,
 }
 

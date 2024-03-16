@@ -9,7 +9,6 @@ use road_network::{
     RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData, RoadNetworkSkims,
     RoadNetworkState, RoadNetworkWeights,
 };
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -27,12 +26,8 @@ pub mod road_network;
 ///
 /// If some part (for example, the road network) is absent, trips might be unreachable with
 /// some modes of transportation.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(title = "Network")]
-#[schemars(
-    description = "Abstract representation of the physical transportation network where agents can make trips."
-)]
 pub struct Network<T> {
     road_network: Option<RoadNetwork<T>>,
 }
@@ -127,12 +122,8 @@ impl<T: TTFNum> Network<T> {
 /// A skim can be composed of the following parts (all of them are optional):
 ///
 /// - a [RoadNetworkSkims].
-#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Default, Debug, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(title = "NetworkSkim")]
-#[schemars(
-    description = "Simplified representation of the state of a network, as perceived by the agents."
-)]
 pub struct NetworkSkim<T> {
     road_network: Option<RoadNetworkSkims<T>>,
 }
@@ -193,7 +184,7 @@ impl<T: TTFNum> NetworkState<T> {
 }
 
 /// Simplified representation of the state of a network during a whole day.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
 pub struct NetworkWeights<T> {
     road_network: Option<RoadNetworkWeights<T>>,

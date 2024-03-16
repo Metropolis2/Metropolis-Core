@@ -6,7 +6,6 @@
 use std::cmp::Ordering;
 
 use anyhow::{anyhow, Result};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -24,12 +23,9 @@ use ttf::TTFNum;
 /// assert_eq!(model.get_choice(&[0., 1.]).unwrap(), (1, 1.));
 /// assert_eq!(model.get_choice(&[0., 0., -1.]).unwrap(), (0, 0.));
 /// ```
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Deterministic choice model")]
-#[schemars(description = "Choose the alternative with the largest value.")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DeterministicChoiceModel<T> {
     /// Uniform random number between 0.0 and 1.0 to choose the alternative in case of tie.
-    #[validate(range(min = 0.0, max = 1.0))]
     u: T,
     /// Constants added to the value of each alternative.
     ///

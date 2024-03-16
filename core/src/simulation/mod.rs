@@ -14,7 +14,6 @@ use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::{Duration, Instant};
 use ttf::TTFNum;
@@ -46,11 +45,8 @@ const UPDATE: usize = 500;
 /// - A set of [agents](Agent) performing trips.
 /// - A representation of the [Network], where trips can take place.
 /// - A [Parameters] instance.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(title = "Simulation")]
-#[schemars(description = "")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct Simulation<T> {
     #[serde(default)]
     agents: Vec<Agent<T>>,

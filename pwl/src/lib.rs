@@ -13,7 +13,6 @@ use std::cmp::Ordering;
 
 use either::Either;
 use num_traits::Zero;
-use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub use self::pwl::{PwlTTF, PwlXYF};
@@ -42,11 +41,9 @@ impl UndercutDescriptor {
 /// A function that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(bound = "X: TTFNum, Y: TTFNum")]
 #[serde(untagged)]
-#[schemars(title = "XYF")]
-#[schemars(description = "Constant or piecewise-linear function.")]
 pub enum XYF<X, Y, T> {
     /// A piecewise-linear function.
     Piecewise(PwlXYF<X, Y, T>),

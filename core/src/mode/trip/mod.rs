@@ -15,7 +15,6 @@ use log::warn;
 use num_traits::{Float, FromPrimitive, Zero};
 use once_cell::sync::OnceCell;
 use petgraph::prelude::EdgeIndex;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum, TTF};
 
@@ -38,9 +37,8 @@ pub mod results;
 const NB_INTERVALS: usize = 1500;
 
 /// A leg of a trip.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct Leg<T> {
     /// Id used when writing the results of the leg.
     #[serde(default)]
@@ -219,10 +217,9 @@ impl<T: TTFNum> Leg<T> {
 }
 
 /// Enum for the different classes of legs.
-#[derive(Clone, Debug, EnumAsInner, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, EnumAsInner, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(bound = "T: TTFNum")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub enum LegType<T> {
     /// A leg with travel on the road.
     Road(RoadLeg),
@@ -231,7 +228,7 @@ pub enum LegType<T> {
 }
 
 /// A leg of a trip on the road network.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RoadLeg {
     /// Origin node of the leg.
     pub(crate) origin: OriginalNodeId,
@@ -299,9 +296,8 @@ fn default_is_true() -> bool {
 ///
 /// In practice, one of `total_travel_utility` or legs' `travel_utility` is usually null but this
 /// is not enforced by the model.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct TravelingMode<T> {
     /// Id of the mode, used in the output.
     #[serde(default)]
@@ -309,7 +305,6 @@ pub struct TravelingMode<T> {
     /// The legs of the trips.
     ///
     /// The full trip consists realizing this legs one after the other.
-    #[validate(length(min = 1))]
     pub(crate) legs: Vec<Leg<T>>,
     /// Delay between the departure time of the trip and the start of the first leg.
     #[serde(default)]
@@ -1022,7 +1017,7 @@ impl<T: TTFNum> VirtualOnlyPreDayResults<T> {
 }
 
 /// Model used to compute the chosen departure time.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum DepartureTimeModel<T> {
     /// The departure time is always equal to the given value.
@@ -1038,7 +1033,6 @@ pub enum DepartureTimeModel<T> {
         interval: Time<T>,
         /// Offset time added to the chosen departure-time value (can be negative).
         #[serde(default)]
-        #[schemars(default = "default_time_schema")]
         offset: Time<T>,
         /// Discrete choice model.
         choice_model: ChoiceModel<NoUnit<T>>,
@@ -1127,10 +1121,6 @@ impl<T: TTFNum> DepartureTimeModel<T> {
             None => Err(anyhow!("Value `type` is mandatory")),
         }
     }
-}
-
-fn default_time_schema() -> String {
-    "0".to_owned()
 }
 
 /// Run an earliest arrival query on the [RoadNetworkSkim] to get the arrival time and route, for a

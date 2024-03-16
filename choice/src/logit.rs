@@ -4,7 +4,6 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use anyhow::{anyhow, Context, Result};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum};
 
@@ -48,15 +47,11 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// // piecewise-linear function is constant between 0.0 and 1.0.
 /// assert_eq!(callback(), 0.8);
 /// ```
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Logit Model")]
-#[schemars(description = "A discrete or continuous Logit model")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LogitModel<T> {
     /// Uniform random number between 0.0 and 1.0 for inversion sampling.
-    #[validate(range(min = 0.0, max = 1.0))]
     u: T,
     /// Variance of the error terms, must be positive.
-    #[validate(range(min = 0.0001))]
     mu: T,
 }
 

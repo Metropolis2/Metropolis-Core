@@ -9,7 +9,6 @@ use std::ops::Index;
 use anyhow::{anyhow, Context, Result};
 use choice::ChoiceModel;
 use itertools;
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -28,18 +27,13 @@ use crate::units::{Interval, NoUnit};
 /// - A set of [modes](Mode) that he/she can take to perform his/her trip.
 /// - A [ChoiceModel] describing how his/her mode is chosen, given the expected utilities for each
 /// mode.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(title = "Agent")]
-#[schemars(description = "Abstract representation of an individual that makes one trip per day.")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
-#[schemars(example = "crate::schema::example_agent")]
 pub struct Agent<T> {
     /// Id used when writing the results of the agents.
     #[serde(default)]
     pub id: usize,
     /// Modes accessible to the agent.
-    #[validate(length(min = 1))]
     pub(crate) modes: Vec<Mode<T>>,
     /// Choice model used for mode choice.
     ///
@@ -270,7 +264,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.mode_index, mode_index(0));
         assert_eq!(result.expected_utility, Utility(10.));
-        assert_eq!(result.mode_results, ModeResults::None);
+        assert_eq!(result.mode_results, ModeResults::Constant(Utility(10.)));
 
         assert_eq!(
             agent
@@ -305,6 +299,6 @@ mod tests {
             .unwrap();
         assert_eq!(result.mode_index, mode_index(1));
         assert_eq!(result.expected_utility, Utility(15.));
-        assert_eq!(result.mode_results, ModeResults::None);
+        assert_eq!(result.mode_results, ModeResults::Constant(Utility(15.)));
     }
 }

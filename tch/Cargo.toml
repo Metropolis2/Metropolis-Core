@@ -37,7 +37,6 @@ serde_json = "1.0"
 serde_with = { version = "3.0", default-features = false, features = [
   "macros",
 ] }
-schemars = "0.8"
 simplelog = "0.12"
 
 [lints]

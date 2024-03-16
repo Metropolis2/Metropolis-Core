@@ -8,7 +8,6 @@
 use anyhow::Result;
 use num_traits::Float;
 use petgraph::graph::EdgeIndex;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -53,12 +52,8 @@ pub struct RoadEvent<T> {
     pub entry_time: Time<T>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(bound(serialize = "T: Clone + Serialize"))]
-#[schemars(title = "RoadEvent")]
-#[schemars(
-    description = "Array `[e, t]`, where `e` is the index of the edge taken and `t` is the entry time of the vehicle on this edges"
-)]
 pub(crate) struct TransparentRoadEvent<T>(OriginalEdgeId, Time<T>);
 
 impl<T> From<RoadEvent<T>> for TransparentRoadEvent<T> {

@@ -5,7 +5,6 @@
 
 //! Everything related to travel utility models.
 use log::warn;
-use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -15,13 +14,10 @@ use crate::units::{Time, Utility, ValueOfTime};
 ///
 /// **Warning**: This is used to compute the travel *utility* (not the travel *cost*), which is
 /// usually negative.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(from = "DeserTravelUtility<T>")]
 #[serde(bound = "T: TTFNum")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
-#[schemars(example = "crate::schema::example_travel_utility")]
-#[schemars(example = "crate::schema::example_travel_utility2")]
 pub enum TravelUtility<T> {
     /// Travel utility is a polynomial function of travel time (with degree 4):
     /// `u = a + b * tt + c * tt^2 + d * tt^3 + e * tt^4`.
@@ -64,9 +60,8 @@ impl<T: TTFNum> TravelUtility<T> {
 /// A polynomial function of degree 4.
 ///
 /// Constant, linear, quadratic and cubic functions are special cases.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub struct PolynomialFunction<T> {
     /// Coefficient of degree 0.
     #[serde(default)]

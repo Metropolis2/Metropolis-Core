@@ -8,7 +8,6 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -20,18 +19,7 @@ use crate::units::{Interval, Time};
 
 /// Unique vehicle index.
 #[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    PartialOrd,
-    Eq,
-    Ord,
-    Hash,
-    Deserialize,
-    Serialize,
-    JsonSchema,
+    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
 )]
 pub struct UniqueVehicleIndex(usize);
 

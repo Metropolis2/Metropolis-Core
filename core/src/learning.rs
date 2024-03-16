@@ -4,7 +4,6 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Day-to-day learning models.
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -13,7 +12,7 @@ use crate::network::NetworkWeights;
 /// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
 /// `x_t` and an update value `y`.
 /// value.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum LearningModel<T> {
     /// Exponential learning model with adjustment for the initial weights.
@@ -24,11 +23,9 @@ pub enum LearningModel<T> {
     ///
     /// When `T` is large, the exponential learning model is such that
     /// `x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}`
-    #[validate(range(min = 0.0, max = 1.0))]
     Exponential(T),
     /// Exponential learning model with no adjustment for the initial weights:
     /// `x_{t+1} = alpha * x_t + (1 - alpha) * y`.
-    #[validate(range(min = 0.0, max = 1.0))]
     ExponentialUnadjusted(T),
     /// Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
     Linear,

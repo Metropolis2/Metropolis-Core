@@ -17,7 +17,6 @@ use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
 use num_traits::{Float, FromPrimitive, One, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use tch::{ContractionParameters, HierarchyOverlay};
 use ttf::{TTFNum, TTF};
@@ -32,7 +31,6 @@ pub use self::weights::RoadNetworkWeights;
 use crate::agent::Agent;
 use crate::network::road_network::preprocess::unique_vehicle_index;
 use crate::parameters::Parameters;
-use crate::serialization::DeserRoadGraph;
 use crate::units::{Flow, Interval, Lanes, Length, Speed, Time};
 
 /// If `true`, the travel times are truncated to the smallest integer.
@@ -44,14 +42,14 @@ pub type OriginalNodeId = u64;
 pub type OriginalEdgeId = u64;
 
 /// A node of a road network.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct RoadNode {}
 
 /// Speed-density function that can be used for the running part of edges.
 ///
 /// A speed-density function gives the speed on an edge, as a function of the density of vehicle on
 /// this edge.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum SpeedDensityFunction<T> {
     /// Vehicles always travel at free-flow speed.
@@ -134,7 +132,7 @@ impl<T: TTFNum> SpeedDensityFunction<T> {
 ///
 /// 3. **Traffic jam.** If density on the edge is larger than `jam_density`, travel time is equal
 ///    to `tt = distance / jam_speed`.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ThreeRegimesSpeedDensityFunction<T> {
     /// Density on the edge (between `0.0` and `1.0`) below which the speed is equal to free-flow
     /// speed.
@@ -183,20 +181,8 @@ fn default_flow<T: TTFNum>() -> Flow<T> {
     Flow::infinity()
 }
 
-fn default_flow_schema() -> String {
-    "Infinity".to_owned()
-}
-
-fn default_time_schema() -> String {
-    "0".to_owned()
-}
-
 fn default_lanes<T: TTFNum>() -> Lanes<T> {
     Lanes::one()
-}
-
-fn default_lanes_schema() -> String {
-    "1.0".to_owned()
 }
 
 const fn default_is_true() -> bool {
@@ -214,36 +200,28 @@ const fn default_is_true() -> bool {
 /// - A bottleneck part, where the exit flow of vehicle is limited by a given capacity.
 ///
 /// - A pending part, where vehicles waiting for downstream edges to get free are pending.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(title = "Road Edge")]
-#[schemars(description = "An edge of a road network that connects two nodes.")]
-#[schemars(example = "crate::schema::example_road_edge")]
 pub struct RoadEdge<T> {
     /// Original id of the edge.
     id: OriginalEdgeId,
     /// The base speed of the edge.
-    #[validate(range(min = 0.0))]
     base_speed: Speed<T>,
     /// The length of the edge, from source node to target node.
-    #[validate(range(min = 0.0))]
     length: Length<T>,
     /// The number of lanes on the edge.
     #[serde(default = "default_lanes")]
-    #[schemars(default = "default_lanes_schema")]
     lanes: Lanes<T>,
     /// Speed-density function for the running part of the edge.
     #[serde(default)]
     speed_density: SpeedDensityFunction<T>,
     /// Maximum flow of vehicle entering the edge (in PCE per second).
     #[serde(default = "default_flow")]
-    #[schemars(default = "default_flow_schema")]
     #[serde(alias = "bottleneck_inflow")]
     #[serde(alias = "bottleneck_outflow")]
     bottleneck_flow: Flow<T>,
     /// Constant travel time penalty for the runnning part of the edge.
     #[serde(default = "Time::zero")]
-    #[schemars(default = "default_time_schema")]
     constant_travel_time: Time<T>,
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
@@ -477,14 +455,10 @@ impl<T> Deref for RoadGraph<T> {
 ///
 /// - a [RoadGraph],
 /// - a Vec of [Vehicle]s that can travel on the network.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(title = "Road Network")]
-#[schemars(description = "Description of the vehicles and the road-network graph.")]
 pub struct RoadNetwork<T> {
-    #[schemars(with = "DeserRoadGraph<T>")]
     graph: RoadGraph<T>,
-    #[validate(length(min = 1))]
     vehicles: Vec<Vehicle<T>>,
     #[serde(skip)]
     vehicle_map: HashMap<OriginalVehicleId, VehicleIndex>,
@@ -829,7 +803,7 @@ impl<T> Index<VehicleIndex> for RoadNetwork<T> {
 }
 
 /// Algorithm type to use for the profile queries.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlgorithmType {
     /// Try to guess which algorithm will be the fastest.
     #[default]
@@ -842,21 +816,15 @@ pub enum AlgorithmType {
 }
 
 /// Set of parameters related to a [RoadNetwork].
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(title = "Road Network Parameters")]
-#[schemars(description = "Set of parameters related to a road network.")]
 pub struct RoadNetworkParameters<T> {
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
-    #[schemars(
-        description = "Parameters controlling how a hierarchy overlay is built from a road network graph."
-    )]
     pub contraction: ContractionParameters,
     /// Time interval for which travel times are recorded at the edge level during the simulation.
     pub recording_interval: Time<T>,
     #[serde(default)]
-    #[schemars(default = "default_time_schema")]
     /// Approximation bound in seconds, used to simplify the travel-time functions when the
     /// difference between the maximum and the minimum travel time is smaller than this bound.
     pub approximation_bound: Time<T>,

@@ -18,7 +18,6 @@ use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
 use petgraph::Direction;
 use rayon::prelude::*;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -34,11 +33,7 @@ use crate::query::PointToPointQuery;
 use crate::search::DijkstraSearch;
 
 /// Structure that represents a set of parameters used when contracting a graph.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Contraction Parameters")]
-#[schemars(
-    description = "Set of parameters used when contracting a graph. See Batz, Geisberger, Sanders and Vetter (2013) for a description of the parameters."
-)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ContractionParameters {
     edge_quotient_weight: f64,
     hierarchy_depth_weight: f64,

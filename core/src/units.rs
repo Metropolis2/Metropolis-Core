@@ -24,7 +24,6 @@ use std::num::FpCategory;
 use std::ops::*;
 
 use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -393,11 +392,7 @@ macro_rules! impl_from_into_no_unit(
 /// because it is not possible to implement the conversion directly between a type `Unit<T>` and
 /// `T`.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
-#[schemars(title = "No Unit")]
-#[schemars(description = "Value with no particular unit")]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct NoUnit<T>(pub T);
 
@@ -409,9 +404,7 @@ impl<T: TTFNum> fmt::Display for NoUnit<T> {
 
 /// Representation of time duration or timestamp, expressed in seconds.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Time<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Time<T> {
@@ -426,9 +419,7 @@ impl<T: TTFNum> fmt::Display for Time<T> {
 
 /// Representation of a utility (or monetary) amount.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Utility<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Utility<T> {
@@ -440,9 +431,7 @@ impl<T: TTFNum> fmt::Display for Utility<T> {
 /// Representation of a value of time, i.e., a utility amount per time unit, expressed in utility
 /// unit per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ValueOfTime<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
@@ -453,9 +442,7 @@ impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
 
 /// Representation of a length, expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Length<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Length<T> {
@@ -466,9 +453,7 @@ impl<T: TTFNum> fmt::Display for Length<T> {
 
 /// Representation of a number of lanes.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Lanes<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Lanes<T> {
@@ -479,9 +464,7 @@ impl<T: TTFNum> fmt::Display for Lanes<T> {
 
 /// Representation of a speed, expressed in meters per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Speed<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Speed<T> {
@@ -492,9 +475,7 @@ impl<T: TTFNum> fmt::Display for Speed<T> {
 
 /// Unit type for passenger car equivalent.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct PCE<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for PCE<T> {
@@ -505,9 +486,7 @@ impl<T: TTFNum> fmt::Display for PCE<T> {
 
 /// Representation of a flow of vehicle, in PCE (passenger car equivalent) per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(
-    Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize, JsonSchema,
-)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct Flow<T>(pub T);
 
 impl<T: TTFNum> fmt::Display for Flow<T> {
@@ -566,9 +545,7 @@ impl_ops!(Length * Lanes = Length);
 impl_ops!(Flow * Lanes = Flow);
 
 /// An interval between two [Time] units.
-#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Interval")]
-#[schemars(description = "Interval of time.")]
+#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Interval<T>(pub [Time<T>; 2]);
 
 impl<T: Copy> Interval<T> {
@@ -604,7 +581,7 @@ impl<T: TTFNum> Interval<T> {
 }
 
 /// Struct to describe statistics on a distribution.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Distribution<T> {
     mean: T,
     std: T,

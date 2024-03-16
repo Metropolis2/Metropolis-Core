@@ -6,7 +6,6 @@
 //! The alpha-beta-gamma schedule-delay cost model.
 use anyhow::anyhow;
 use num_traits::{FromPrimitive, Zero};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -19,11 +18,7 @@ use crate::units::{Time, Utility, ValueOfTime};
 /// - Zero if the threshold time `t` is between the lower and higher t*.
 /// - Equal to `-beta * (t_star_low - t)` if `t` is smaller than the lower t*.
 /// - Equal to `-gamma * (t - t_star_high)` if `t` is larger than the higher t*.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Alpha-Beta-Gamma Model")]
-#[schemars(
-    description = "Compute the schedule-delay utility using Vickrey's alpha-beta-gamma model"
-)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(try_from = "UncheckedAlphaBetaGammaModel<T>")]
 #[serde(bound(deserialize = "T: TTFNum"))]
 pub struct AlphaBetaGammaModel<T> {

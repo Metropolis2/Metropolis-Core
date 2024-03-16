@@ -8,10 +8,8 @@
 
 mod deterministic_choice;
 mod logit;
-mod schema;
 
 use anyhow::{anyhow, bail, Result};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{PwlXYF, TTFNum};
 
@@ -19,9 +17,8 @@ pub use self::deterministic_choice::DeterministicChoiceModel;
 pub use self::logit::LogitModel;
 
 /// A choice model between a finite number of alternatives.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
-#[schemars(example = "crate::schema::example_choice_model")]
 pub enum ChoiceModel<T> {
     /// Choose the alternative with the largest utility.
     Deterministic(DeterministicChoiceModel<T>),
@@ -90,7 +87,7 @@ impl<T: TTFNum> ChoiceModel<T> {
 pub type ContinuousChoiceCallback<'a, T> = Box<dyn FnOnce() -> T + 'a>;
 
 /// A choice model between a continuous number of ordered alternatives.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum ContinuousChoiceModel<T> {
     /// Choose the alternative using Continuous Logit probabilities.

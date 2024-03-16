@@ -10,7 +10,6 @@ use anyhow::{bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::warn;
 use num_traits::{Float, Zero};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::{PwlTTF, TTFNum, TTF};
 
@@ -23,12 +22,11 @@ use crate::units::{Interval, Time};
 
 /// Structure to store the travel-time functions of each edge of a
 /// [RoadNetwork](super::RoadNetwork), for a group of unique vehicle types.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(bound = "T: TTFNum")]
 pub struct VehicleWeights<T> {
     /// Original id of the vehicle for which the weights are valid.
     pub(crate) vehicle_ids: Vec<OriginalVehicleId>,
-    #[schemars(with = "std::collections::HashMap<OriginalEdgeId, TTF<Time<T>>>")]
     /// Weights.
     pub(crate) weights: HashMap<OriginalEdgeId, TTF<Time<T>>>,
 }
@@ -62,13 +60,8 @@ impl<T: TTFNum> VehicleWeights<T> {
 ///
 /// The outer vector has the same length as the number of unique vehicles of the associated
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "T: TTFNum")]
-#[schemars(title = "Road Network Weights")]
-#[schemars(
-    description = "Travel-time functions of each edge of road network, for each unique vehicle \
-    (outer array)."
-)]
 pub struct RoadNetworkWeights<T> {
     pub(crate) weights: Vec<VehicleWeights<T>>,
     #[serde(skip)]

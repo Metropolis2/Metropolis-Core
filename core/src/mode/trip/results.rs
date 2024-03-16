@@ -7,11 +7,10 @@
 use enum_as_inner::EnumAsInner;
 use num_traits::{Float, FromPrimitive, Zero};
 use petgraph::prelude::EdgeIndex;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
-use super::event::{RoadEvent, TransparentRoadEvent, VehicleEvent};
+use super::event::{RoadEvent, VehicleEvent};
 use super::{Leg, LegType, TravelingMode};
 use crate::agent::AgentIndex;
 use crate::event::Event;
@@ -22,14 +21,13 @@ use crate::network::Network;
 use crate::units::{Distribution, Length, Time, Utility};
 
 /// The results for a [LegType::Road].
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct RoadLegResults<T> {
     /// The expected route to be taken by the vehicle.
     #[serde(skip)]
     pub expected_route: Option<Vec<EdgeIndex>>,
     /// The route taken by the vehicle, together with the timings of the events.
-    #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
     pub route: Vec<RoadEvent<T>>,
     /// Total time spent traveling on an edge.
     pub road_time: Time<T>,
@@ -113,14 +111,13 @@ impl<T: TTFNum> RoadLegResults<T> {
 }
 
 /// The pre-day results for a [LegType::Road].
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct PreDayRoadLegResults<T> {
     /// The sequence of edges expected to be taken by the agent, if it has been computed.
     #[serde(skip)]
     pub(crate) expected_route: Option<Vec<EdgeIndex>>,
     /// The expected route to be taken by the agent, together with the timings.
-    #[schemars(with = "Vec<TransparentRoadEvent<T>>")]
     pub route: Vec<RoadEvent<T>>,
     /// Travel time of taking the same route, assuming no congestion.
     pub route_free_flow_travel_time: Time<T>,
@@ -149,7 +146,7 @@ impl<T> From<RoadLegResults<T>> for PreDayRoadLegResults<T> {
 }
 
 /// Results that depend on the leg type (see [LegType]).
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 #[serde(tag = "type", content = "value")]
 pub enum LegTypeResults<T> {
@@ -172,7 +169,7 @@ impl<T: TTFNum> LegTypeResults<T> {
 }
 
 /// Pre-day results that depend on the leg type (see [LegType]).
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 #[serde(tag = "type", content = "value")]
 pub enum PreDayLegTypeResults<T> {
@@ -192,7 +189,7 @@ impl<T> From<LegTypeResults<T>> for PreDayLegTypeResults<T> {
 }
 
 /// Results specific to a leg of the trip (see [Leg]).
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct LegResults<T> {
     /// Id of the leg.
@@ -241,7 +238,7 @@ impl<T: TTFNum> LegResults<T> {
 }
 
 /// Pre-day results specific to a leg of the trip (see [Leg]).
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct PreDayLegResults<T> {
     /// Id of the leg.
@@ -293,9 +290,7 @@ impl<T: TTFNum> PreDayLegResults<T> {
 }
 
 /// Struct used to store the results from a [TravelingMode] in the within-day model.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, JsonSchema)]
-#[schemars(title = "Trip Results")]
-#[schemars(description = "Results from the within-day model, for a traveling mode.")]
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct TripResults<T> {
     /// The results specific to each leg of the trip.
@@ -454,9 +449,7 @@ impl<T: TTFNum> TripResults<T> {
 }
 
 /// Struct used to store the pre-day results for a [TravelingMode].
-#[derive(Debug, Default, Clone, PartialEq, Serialize, JsonSchema)]
-#[schemars(title = "Pre-day trip results")]
-#[schemars(description = "Results from the pre-day model, for a traveling mode.")]
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct PreDayTripResults<T> {
     /// The results specific to each leg of the trip.
@@ -492,7 +485,7 @@ impl<T: TTFNum> PreDayTripResults<T> {
 }
 
 /// Struct to store aggregate results specific to traveling modes of transportation.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateTripResults<T> {
     /// Number of trips taken with a traveling mode of transportation.
     pub count: usize,
@@ -521,7 +514,7 @@ pub struct AggregateTripResults<T> {
 }
 
 /// Struct to store aggregate results specific to the road legs.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateRoadLegResults<T> {
     /// Number of road legs taken.
     pub count: usize,
@@ -704,7 +697,7 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
 }
 
 /// Struct to store aggregate results specific to the virtual legs.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateVirtualLegResults<T> {
     /// Number of virtual legs taken.
     pub count: usize,

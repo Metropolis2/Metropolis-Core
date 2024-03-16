@@ -7,7 +7,6 @@
 use alpha_beta_gamma::AlphaBetaGammaModel;
 use anyhow::{anyhow, bail, Context, Result};
 use num_traits::Zero;
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -19,10 +18,9 @@ pub mod alpha_beta_gamma;
 ///
 /// The schedule utility is the utility that an agent gets given his / her departure time from an
 /// origin or arrival time at a destination.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(example = "crate::schema::example_schedule_utility")]
 pub enum ScheduleUtility<T> {
     /// The schedule utility is always null.
     None,

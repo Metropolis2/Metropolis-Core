@@ -13,7 +13,6 @@ use log::{log_enabled, Level};
 use object_pool::Pool;
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
-use schemars::JsonSchema;
 use serde::Serialize;
 use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
@@ -25,15 +24,10 @@ use crate::units::Time;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Default, Debug, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 #[serde(into = "SerializedRoadNetworkSkims<T>")]
-#[schemars(
-    description = "Travel-time function for each OD pair (inner array), for each unique vehicle type (outer array)"
-)]
-pub struct RoadNetworkSkims<T>(
-    #[schemars(with = "SerializedRoadNetworkSkims<T>")] pub Vec<Option<RoadNetworkSkim<T>>>,
-);
+pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
 
 impl<T> Index<UniqueVehicleIndex> for RoadNetworkSkims<T> {
     type Output = Option<RoadNetworkSkim<T>>;
@@ -253,11 +247,11 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     }
 }
 
-#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Default, Debug, Serialize)]
 #[serde(bound = "T: TTFNum")]
 struct SerializedRoadNetworkSkims<T>(Vec<Vec<ODPairTTF<T>>>);
 
-#[derive(Clone, Default, Debug, Serialize, JsonSchema)]
+#[derive(Clone, Default, Debug, Serialize)]
 #[serde(bound = "T: TTFNum")]
 struct ODPairTTF<T> {
     /// Original id of the origin node.

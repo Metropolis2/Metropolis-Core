@@ -6,7 +6,6 @@
 //! Everything related to simulation parameters.
 use std::path::PathBuf;
 
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -25,7 +24,7 @@ const fn default_update_ratio() -> f64 {
 }
 
 /// Format to be used when saving files.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub enum SavingFormat {
     /// Zstd-compressed JSON files.
     JSON,
@@ -37,7 +36,7 @@ pub enum SavingFormat {
 }
 
 /// Struct to store all the input file paths.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct InputFiles {
     pub(crate) agents: PathBuf,
     pub(crate) alternatives: PathBuf,
@@ -52,9 +51,8 @@ pub struct InputFiles {
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound(deserialize = "T: TTFNum"))]
-#[schemars(example = "crate::schema::example_parameters")]
 pub struct Parameters<T> {
     /// Paths to the input files.
     pub input_files: InputFiles,
@@ -76,7 +74,6 @@ pub struct Parameters<T> {
     /// partially from one iteration to another) so that, for example, the coefficients for the
     /// learning model are correctly computed.
     #[serde(default = "default_iteration_counter")]
-    #[validate(range(min = 1))]
     pub init_iteration_counter: u32,
     /// Maximum number of iterations to be run (on top of the `init_iteration_counter`).
     pub max_iterations: u32,
@@ -87,7 +84,6 @@ pub struct Parameters<T> {
     pub learning_model: LearningModel<T>,
     /// Share of agents that can update their pre-day choices at each iteration.
     #[serde(default = "default_update_ratio")]
-    #[validate(range(min = 0.0, max = 1.0))]
     pub update_ratio: f64,
     /// Random seed used for all the draws.
     ///

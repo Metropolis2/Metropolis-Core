@@ -9,7 +9,6 @@ use std::fmt;
 use anyhow::Result;
 use enum_as_inner::EnumAsInner;
 use num_traits::FromPrimitive;
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -30,18 +29,7 @@ pub mod trip;
 ///
 /// The `n` modes of an [Agent](crate::agent::Agent) are indexed from `0` to `n-1`.
 #[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    PartialOrd,
-    Eq,
-    Ord,
-    Hash,
-    Deserialize,
-    Serialize,
-    JsonSchema,
+    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
 )]
 pub struct ModeIndex(usize);
 
@@ -63,11 +51,9 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 }
 
 /// Mode of transportation available to an agent.
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, EnumAsInner)]
+#[derive(Clone, Debug, Deserialize, Serialize, EnumAsInner)]
 #[serde(bound = "T: TTFNum")]
 #[serde(tag = "type", content = "value")]
-#[schemars(title = "Mode")]
-#[schemars(bound = "T: TTFNum + JsonSchema")]
 pub enum Mode<T> {
     /// An activity (e.g., staying home, traveling) that always provide the same utility level.
     Constant((usize, Utility<T>)),
@@ -203,7 +189,7 @@ pub type ModeCallback<'a, T> =
     Box<dyn FnOnce(&'a mut EAAllocation<T>) -> Result<ModeResults<T>> + 'a>;
 
 /// Additional mode-specific results for an agent.
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub enum ModeResults<T> {
@@ -268,7 +254,7 @@ impl<T: TTFNum> ModeResults<T> {
 }
 
 /// Additional mode-specific pre-day results for an agent.
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub enum PreDayModeResults<T> {
@@ -308,7 +294,7 @@ impl<T: TTFNum> PreDayModeResults<T> {
 }
 
 /// Aggregate results of an iteration that are mode-specific.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateModeResults<T> {
     /// Results specific to traveling modes.
     pub trip_modes: Option<AggregateTripResults<T>>,
@@ -317,7 +303,7 @@ pub struct AggregateModeResults<T> {
 }
 
 /// Aggregate results of an iteration specific to constant modes.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateConstantResults<T> {
     /// Number of agents who chose a constant mode.
     pub count: usize,

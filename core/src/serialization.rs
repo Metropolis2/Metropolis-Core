@@ -3,7 +3,6 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use ttf::TTFNum;
 
@@ -22,12 +21,11 @@ where
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize)]
 #[serde(rename = "RoadGraph")]
 #[serde(bound = "T: TTFNum")]
 pub(crate) struct DeserRoadGraph<T> {
     /// Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source
     /// node, `t` is the id of the target node and `e` is the description of the edge.
-    #[validate(length(min = 1))]
     edges: Vec<(OriginalNodeId, OriginalNodeId, RoadEdge<T>)>,
 }

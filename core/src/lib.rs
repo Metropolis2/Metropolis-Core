@@ -17,7 +17,6 @@ pub mod parameters;
 pub mod progress_bar;
 pub mod report;
 pub mod schedule_utility;
-mod schema;
 mod serialization;
 pub mod simulation;
 pub mod travel_utility;

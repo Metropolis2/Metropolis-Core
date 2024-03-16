@@ -8,7 +8,6 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use ttf::TTFNum;
@@ -45,7 +44,7 @@ impl<T: TTFNum> SimulationResults<T> {
 }
 
 /// Aggregate results summarizing the results of an iteration.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AggregateResults<T> {
     /// Current value of the iteration counter.
     pub iteration_counter: u32,
@@ -200,7 +199,7 @@ impl RunningTimes {
 }
 
 /// Results of an agent, during a single iteration.
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResult<T> {
     /// Id of the agent.
@@ -278,9 +277,7 @@ impl<T: TTFNum> AgentResult<T> {
 }
 
 /// Struct to store the [AgentResult] of each agent in the Simulation.
-#[derive(Debug, Default, Clone, Serialize, JsonSchema)]
-#[schemars(title = "Agent Results")]
-#[schemars(description = "Results for each agent in the simulation.")]
+#[derive(Debug, Default, Clone, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct AgentResults<T>(pub(crate) Vec<AgentResult<T>>);
 
@@ -348,7 +345,7 @@ impl<T> DerefMut for AgentResults<T> {
 }
 
 /// Pre-day results of an agent.
-#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct PreDayAgentResult<T> {
     /// Id of the agent.
@@ -391,9 +388,7 @@ impl<T: TTFNum> PreDayAgentResult<T> {
 }
 
 /// Struct to store the [PreDayAgentResult] of each agent in the Simulation.
-#[derive(Debug, Default, Clone, Serialize, JsonSchema)]
-#[schemars(title = "Pre-day Agent Results")]
-#[schemars(description = "Pre-day results for each agent in the simulation.")]
+#[derive(Debug, Default, Clone, Serialize)]
 #[serde(bound(serialize = "T: TTFNum"))]
 pub struct PreDayAgentResults<T>(pub(crate) Vec<PreDayAgentResult<T>>);
 

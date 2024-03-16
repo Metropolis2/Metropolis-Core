@@ -7,7 +7,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
 use num_traits::{FromPrimitive, Zero};
-use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -18,7 +17,7 @@ use crate::units::{Length, Speed, PCE};
 pub type OriginalVehicleId = u64;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum SpeedFunction<T> {
     /// The identity function.
@@ -126,21 +125,12 @@ impl<T: TTFNum> SpeedFunction<T> {
 }
 
 /// A road vehicle with a given headway, [PCE] and [SpeedFunction].
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
-#[schemars(title = "Vehicle")]
-#[schemars(
-    description = "A road vehicle with a given (headway) length, passenger car equivalent and speed function."
-)]
-#[schemars(example = "crate::schema::example_vehicle")]
-#[schemars(example = "crate::schema::example_vehicle2")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Vehicle<T> {
     /// Identifier of the vehicle.
     pub(crate) id: OriginalVehicleId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
     #[serde(alias = "length")]
-    #[schemars(
-        description = "Headway length of the vehicle, used to compute vehicle density on the edges.\nAlias: `length`"
-    )]
     headway: Length<T>,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
     pce: PCE<T>,
@@ -150,12 +140,10 @@ pub struct Vehicle<T> {
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
     #[serde(default)]
-    #[schemars(with = "Vec<OriginalEdgeId>")]
     allowed_edges: HashSet<OriginalEdgeId>,
     /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
     /// if `allowed_edges` is specified.
     #[serde(default)]
-    #[schemars(with = "Vec<OriginalEdgeId>")]
     restricted_edges: HashSet<OriginalEdgeId>,
 }
 
@@ -274,18 +262,7 @@ impl<T: TTFNum> Vehicle<T> {
 
 /// Vehicle identifier.
 #[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    PartialOrd,
-    Eq,
-    Ord,
-    Hash,
-    Deserialize,
-    Serialize,
-    JsonSchema,
+    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
 )]
 pub struct VehicleIndex(usize);
 

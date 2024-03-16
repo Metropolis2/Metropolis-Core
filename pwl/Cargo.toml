@@ -15,7 +15,6 @@ either = "1.6"
 itertools = "0.12"
 num-traits = "0.2"
 serde = "1.0"
-schemars = "0.8"
 
 [lints]
 workspace = true
