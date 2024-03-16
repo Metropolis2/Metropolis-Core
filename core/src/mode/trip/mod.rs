@@ -436,8 +436,16 @@ impl<T: TTFNum> TravelingMode<T> {
         destination_utility_gamma: Option<f64>,
         destination_utility_delta: Option<f64>,
         pre_compute_route: Option<bool>,
-        legs: Option<Vec<Leg<T>>>,
+        legs: Vec<Leg<T>>,
     ) -> Result<Self> {
+        debug_assert!(!legs.is_empty());
+        let total_travel_utility = TravelUtility::from_values(
+            constant_utility,
+            total_travel_utility_one,
+            total_travel_utility_two,
+            total_travel_utility_three,
+            total_travel_utility_four,
+        );
         let origin_delay = Time::from_f64(origin_delay.unwrap_or(0.0)).unwrap();
         let departure_time_model = DepartureTimeModel::from_values(
             dt_choice_type,
@@ -451,13 +459,6 @@ impl<T: TTFNum> TravelingMode<T> {
             dt_choice_model_constants,
         )
         .context("Failed to create departure-time choice model")?;
-        let total_travel_utility = TravelUtility::from_values(
-            constant_utility,
-            total_travel_utility_one,
-            total_travel_utility_two,
-            total_travel_utility_three,
-            total_travel_utility_four,
-        );
         let origin_schedule_utility = ScheduleUtility::from_values(
             origin_utility_type,
             origin_utility_tstar,
@@ -475,7 +476,6 @@ impl<T: TTFNum> TravelingMode<T> {
         )
         .context("Failed to create destination schedule utility")?;
         let pre_compute_route = pre_compute_route.unwrap_or(true);
-        let legs = legs.unwrap_or_default();
         Ok(TravelingMode {
             id,
             origin_delay,

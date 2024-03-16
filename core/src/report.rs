@@ -26,7 +26,8 @@ pub fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path
         .iter()
         .collect();
     let mut file = File::create(filename)?;
-    file.write_all(report_results.render().unwrap().as_bytes())?;
+    let render = report_results.render()?;
+    file.write_all(render.as_bytes())?;
     Ok(())
 }
 
@@ -60,6 +61,7 @@ fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResul
 }
 
 /// Statistics computed from the [SimulationResults].
+#[derive(Debug)]
 struct IterationStatistics<T> {
     /// Vec with the departure time of each agent.
     road_departure_times: Vec<Time<T>>,
@@ -68,7 +70,7 @@ struct IterationStatistics<T> {
 }
 
 /// Results used to build the HTML report of a simulation.
-#[derive(Template)]
+#[derive(Debug, Template)]
 #[template(path = "report.html")]
 struct ReportResults<T: TTFNum> {
     pub(crate) iterations: Vec<AggregateResults<T>>,

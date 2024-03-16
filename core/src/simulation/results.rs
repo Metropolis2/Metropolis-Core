@@ -361,8 +361,6 @@ pub struct PreDayAgentResult<T> {
     pub(crate) expected_utility: Utility<T>,
     /// Mode-specific pre-day results.
     pub(crate) mode_results: PreDayModeResults<T>,
-    /// Did the agent shifted to another mode from previous to current iteration?
-    pub(crate) shifted_mode: bool,
 }
 
 impl<T> From<AgentResult<T>> for PreDayAgentResult<T> {
@@ -373,7 +371,6 @@ impl<T> From<AgentResult<T>> for PreDayAgentResult<T> {
             mode_index: value.mode_index,
             expected_utility: value.expected_utility,
             mode_results: value.mode_results.into(),
-            shifted_mode: value.shifted_mode,
         }
     }
 }
@@ -547,18 +544,21 @@ pub fn save_running_times(running_times: RunningTimes, output_dir: &Path) -> Res
 /// Stores [AgentResults] in the given output directory.
 pub fn save_choices<T: TTFNum>(
     agent_results: &PreDayAgentResults<T>,
-    output_dir: &Path,
     parameters: &Parameters<T>,
 ) -> Result<()> {
     match parameters.saving_format {
         SavingFormat::JSON => {
-            io::json::write_compressed_json(agent_results, output_dir, "agent_results")?;
+            io::json::write_compressed_json(
+                agent_results,
+                &parameters.output_directory,
+                "agent_results",
+            )?;
         }
         SavingFormat::Parquet => {
-            io::parquet::write_parquet(agent_results, output_dir)?;
+            io::parquet::write_parquet(agent_results, &parameters.output_directory)?;
         }
         SavingFormat::CSV => {
-            io::csv::write_csv(agent_results, output_dir)?;
+            io::csv::write_csv(agent_results, &parameters.output_directory)?;
         }
     }
     Ok(())

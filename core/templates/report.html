@@ -102,12 +102,12 @@
 				<tbody>
 					{% for it in iterations %}
 					<tr>
-						<td scope="row" class="text-center">{{ loop.index }}</td>
+						<td scope="row" class="text-center">{{ it.iteration_counter }}</td>
 						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean().0) }}</td>
 						{% match it.mode_results.constant %}
 							{% when Some with (constant) %}
 								<td class="text-center">{{ constant.count }}</td>
-								<td class="text-center">{{ constant.utility.mean() }}</td>
+								<td class="text-center">{{ "{:.4}"|format(constant.utility.mean().0) }}</td>
 							{% when None %}
 								<td class="text-center">0</td>
 								<td class="text-center">N/A</td>
@@ -164,7 +164,7 @@
 										<td class="text-center">N/A</td>
 									{% endmatch %}
 									{% when None %}
-									{% for _ in 0..20 %}
+									{% for _ in 0..22 %}
 									<td class="text-center">N/A</td>
 									{% endfor %}
 								{% endmatch %}
@@ -188,7 +188,7 @@
 								{% endmatch %}
 							{% when None %}
 								<td class="text-center">0</td>
-								{% for _ in 0..35 %}
+								{% for _ in 0..39 %}
 								<td class="text-center">N/A</td>
 								{% endfor %}
 						{% endmatch %}
@@ -289,7 +289,7 @@
 			var sim_rn_cond_rmse = [];
 			var exp_rn_cond_rmse = [];
 			for (let i = 0; i < data.length; i++) {
-				iters.push(i + 1);
+				iters.push(data[i].iteration_counter);
 				// Surplus
 				surplus.push(data[i].surplus.mean);
 				// Mean departure time

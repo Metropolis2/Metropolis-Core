@@ -623,6 +623,9 @@ impl<T: TTFNum> Distribution<T> {
         let mut max = T::min_value();
         let mut count = 0;
         for value in iter {
+            if value.is_nan() {
+                continue;
+            }
             sum += value;
             sum_squared += value.powi(2);
             if value < min {

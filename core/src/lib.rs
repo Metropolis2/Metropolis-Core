@@ -27,11 +27,10 @@ use std::env;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-// Re-exports.
-pub use report::write_report;
-
 // Dependencies only used in the bins.
 use clap as _;
+// Re-exports.
+pub use report::write_report;
 
 /// Deserializes a simulation, runs it and stores the results to a given output directory.
 ///

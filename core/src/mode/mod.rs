@@ -8,6 +8,7 @@ use std::fmt;
 
 use anyhow::Result;
 use enum_as_inner::EnumAsInner;
+use num_traits::FromPrimitive;
 use schemars::JsonSchema;
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
@@ -128,37 +129,42 @@ impl<T: TTFNum> Mode<T> {
         pre_compute_route: Option<bool>,
         legs: Option<Vec<Leg<T>>>,
     ) -> Result<Self> {
-        // TODO: Manage constant case.
-        Ok(Self::Trip(TravelingMode::from_values(
-            id,
-            origin_delay,
-            dt_choice_type,
-            dt_choice_departure_time,
-            dt_choice_period,
-            dt_choice_interval,
-            dt_choice_offset,
-            dt_choice_model_type,
-            dt_choice_model_u,
-            dt_choice_model_mu,
-            dt_choice_model_constants,
-            constant_utility,
-            total_travel_utility_one,
-            total_travel_utility_two,
-            total_travel_utility_three,
-            total_travel_utility_four,
-            origin_utility_type,
-            origin_utility_tstar,
-            origin_utility_beta,
-            origin_utility_gamma,
-            origin_utility_delta,
-            destination_utility_type,
-            destination_utility_tstar,
-            destination_utility_beta,
-            destination_utility_gamma,
-            destination_utility_delta,
-            pre_compute_route,
-            legs,
-        )?))
+        let legs = legs.unwrap_or_default();
+        if legs.is_empty() {
+            let constant_utility = Utility::from_f64(constant_utility.unwrap_or(0.0)).unwrap();
+            Ok(Self::Constant((id, constant_utility)))
+        } else {
+            Ok(Self::Trip(TravelingMode::from_values(
+                id,
+                origin_delay,
+                dt_choice_type,
+                dt_choice_departure_time,
+                dt_choice_period,
+                dt_choice_interval,
+                dt_choice_offset,
+                dt_choice_model_type,
+                dt_choice_model_u,
+                dt_choice_model_mu,
+                dt_choice_model_constants,
+                constant_utility,
+                total_travel_utility_one,
+                total_travel_utility_two,
+                total_travel_utility_three,
+                total_travel_utility_four,
+                origin_utility_type,
+                origin_utility_tstar,
+                origin_utility_beta,
+                origin_utility_gamma,
+                origin_utility_delta,
+                destination_utility_type,
+                destination_utility_tstar,
+                destination_utility_beta,
+                destination_utility_gamma,
+                destination_utility_delta,
+                pre_compute_route,
+                legs,
+            )?))
+        }
     }
 
     /// This method returns the results of the pre-day model (expected utility and [ModeCallback])
@@ -173,7 +179,7 @@ impl<T: TTFNum> Mode<T> {
         progress_bar: MetroProgressBar,
     ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
         match self {
-            Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::None)))),
+            Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::Constant(*u))))),
             Self::Trip(mode) => mode.get_pre_day_choice(
                 network.get_road_network(),
                 simulation_period,
@@ -203,8 +209,8 @@ pub type ModeCallback<'a, T> =
 pub enum ModeResults<T> {
     /// Results for a traveling mode.
     Trip(TripResults<T>),
-    /// Alternative for modes or activities that do not recquire additional results.
-    None,
+    /// Results for a constant-utility alternative.
+    Constant(Utility<T>),
 }
 
 impl<T: Copy> ModeResults<T> {
@@ -212,7 +218,7 @@ impl<T: Copy> ModeResults<T> {
     pub fn departure_time(&self) -> Option<Time<T>> {
         match self {
             Self::Trip(trip_results) => Some(trip_results.departure_time),
-            Self::None => None,
+            Self::Constant(_) => None,
         }
     }
 }
@@ -222,7 +228,7 @@ impl<T: TTFNum> ModeResults<T> {
     pub fn reset(&self) -> Self {
         match self {
             Self::Trip(trip_results) => Self::Trip(trip_results.reset()),
-            Self::None => Self::None,
+            Self::Constant(u) => Self::Constant(*u),
         }
     }
 
@@ -231,7 +237,7 @@ impl<T: TTFNum> ModeResults<T> {
     pub fn is_finished(&self) -> bool {
         match self {
             Self::Trip(trip_results) => trip_results.is_finished(),
-            Self::None => true,
+            Self::Constant(_) => true,
         }
     }
 }
@@ -241,16 +247,22 @@ impl<T: TTFNum> ModeResults<T> {
     pub fn get_event(&self, agent_id: AgentIndex, mode_id: ModeIndex) -> Option<Box<dyn Event<T>>> {
         match self {
             Self::Trip(trip_results) => trip_results.get_event(agent_id, mode_id),
-            Self::None => None,
+            Self::Constant(_) => None,
         }
     }
 
+    /// Adds some informations to the [ModeResults], using the [ModeResults] of the previous
+    /// iteration.
+    ///
+    /// This function is executed only when the same mode has been chosen for the previous
+    /// iteration.
     pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
         match self {
             Self::Trip(trip_results) => {
+                // The unwrap is safe as the same mode has been chosen for the two iterations.
                 trip_results.with_previous_results(previous_results.as_trip().unwrap(), network)
             }
-            Self::None => (),
+            Self::Constant(_) => (),
         }
     }
 }
@@ -263,14 +275,14 @@ pub enum PreDayModeResults<T> {
     /// Results for a traveling mode.
     Trip(PreDayTripResults<T>),
     /// Alternative for modes or activities that do not recquire additional results.
-    None,
+    Constant(Utility<T>),
 }
 
 impl<T> From<ModeResults<T>> for PreDayModeResults<T> {
     fn from(value: ModeResults<T>) -> Self {
         match value {
             ModeResults::Trip(trip_results) => Self::Trip(trip_results.into()),
-            ModeResults::None => Self::None,
+            ModeResults::Constant(u) => Self::Constant(u),
         }
     }
 }
@@ -290,7 +302,7 @@ impl<T: TTFNum> PreDayModeResults<T> {
                 weights,
                 unique_vehicles,
             ),
-            Self::None => (),
+            Self::Constant(_) => (),
         }
     }
 }

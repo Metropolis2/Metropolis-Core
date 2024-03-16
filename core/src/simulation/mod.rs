@@ -405,7 +405,7 @@ impl<T: TTFNum> Simulation<T> {
                 (Mode::Trip(trip_mode), ModeResults::Trip(trip_result)) => {
                     trip_entries.push((trip_mode, trip_result));
                 }
-                (&Mode::Constant((_, utility)), ModeResults::None) => cst_utilities.push(utility),
+                (Mode::Constant(_), &ModeResults::Constant(utility)) => cst_utilities.push(utility),
                 _ => panic!("Unsupported mode and mode results combination"),
             }
         }
@@ -567,11 +567,7 @@ impl<T: TTFNum> Simulation<T> {
             );
         }
         info!("Saving results");
-        results::save_choices(
-            &pre_day_agent_results,
-            &self.parameters.output_directory,
-            &self.parameters,
-        )?;
+        results::save_choices(&pre_day_agent_results, &self.parameters)?;
         info!("Done");
         Ok(())
     }
