@@ -73,6 +73,8 @@ jobs:
         overwrite: true
         file_glob: true
     - uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         releaseId: ${{ needs.release.outputs.release_id }}
         args: --target ${{ matrix.binary_target }}
