@@ -9,6 +9,7 @@ use std::{
     fs::File,
     io::Seek,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::{anyhow, Context, Result};

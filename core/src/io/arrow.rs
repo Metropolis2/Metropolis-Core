@@ -36,7 +36,7 @@ use crate::units::{Interval, Time};
 
 pub trait ToArrow<const J: usize> {
     fn to_arrow(data: &Self) -> Result<[Option<RecordBatch>; J]>;
-    fn names<'a>() -> [&'a str; J];
+    fn names() -> [&'static str; J];
 }
 
 /// Reads a road network from the filename of edges and vehicle types.
@@ -1105,7 +1105,7 @@ impl<T: ToPrimitive> ToArrow<3> for AgentResults<T> {
         data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
     }
-    fn names<'a>() -> [&'a str; 3] {
+    fn names() -> [&'static str; 3] {
         ["agent_results", "leg_results", "route_results"]
     }
 }
@@ -1307,7 +1307,7 @@ impl<T: ToPrimitive> ToArrow<3> for PreDayAgentResults<T> {
         data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
     }
-    fn names<'a>() -> [&'a str; 3] {
+    fn names() -> [&'static str; 3] {
         ["agent_results", "trip_results", "route_results"]
     }
 }
@@ -1389,7 +1389,7 @@ impl<T: TTFNum> ToArrow<1> for NetworkWeights<T> {
             Ok([None])
         }
     }
-    fn names<'a>() -> [&'a str; 1] {
+    fn names() -> [&'static str; 1] {
         ["edge_ttfs"]
     }
 }
