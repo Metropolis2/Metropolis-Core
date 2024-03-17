@@ -5,24 +5,35 @@
 
 //! Structs and functions for the command-line tool.
 
-use std::{
-    fs::File,
-    io::{Read, Write},
-    ops::{Deref, DerefMut},
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::env;
+use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{info, log_enabled, warn, Level, LevelFilter};
+use object_pool::Pool;
+use petgraph::graph::EdgeReference;
+use petgraph::prelude::EdgeRef;
 use petgraph::{
-    graph::{node_index, EdgeIndex, NodeIndex},
+    graph::{edge_index, node_index, EdgeIndex, NodeIndex},
     prelude::DiGraph,
 };
-use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
+use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use ttf::TTF;
 
+use crate::algo::{
+    earliest_arrival_query, intersect_earliest_arrival_query, intersect_profile_query,
+    profile_query,
+};
+use crate::bidirectional_ops::{BidirectionalProfileDijkstra, BidirectionalTCHEA};
+use crate::query::BidirectionalPointToPointQuery;
+use crate::HierarchyOverlay;
 use crate::{
     ContractionParameters, DefaultBidirectionalProfileSearch, DefaultEarliestArrivalAllocation,
     DefaultTCHProfileAllocation,
@@ -33,21 +44,22 @@ use crate::{
 pub struct Parameters {
     /// Paths to the input files.
     pub input_files: InputFiles,
-    /// Path to the file where the query results should be stored.
-    /// Default is "output.csv" or "output.parquet".
+    /// Path to the output directory.
     #[serde(default)]
-    pub output_file: Option<PathBuf>,
-    /// Path to the file where the node ordering should be stored (only for intersect and tch).
-    /// If not specified, the node ordering is not saved.
-    #[serde(default)]
-    pub output_order: Option<PathBuf>,
-    /// Path to the file where the hierarchy overlay should be stored (only for intersect and tch).
-    /// If not specified, the hierarchy overlay is not saved.
-    #[serde(default)]
-    pub output_overlay: Option<PathBuf>,
+    pub output_directory: PathBuf,
     /// Algorithm type to use for the queries.
     #[serde(default)]
     pub algorithm: AlgorithmType,
+    /// Format to use for saving the output files.
+    #[serde(default)]
+    pub saving_format: SavingFormat,
+    /// If `true`, the node ordering is saved in the output directory (only for intersect and tch).
+    #[serde(default)]
+    pub output_order: bool,
+    /// If `true`, the hierarchy overlay is saved in the output directory (only for intersect and
+    /// tch).
+    #[serde(default)]
+    pub output_overlay: bool,
     /// If `true`, the routes corresponding to the earliest-arrival queries are exported.
     #[serde(default)]
     pub output_route: bool,
@@ -56,9 +68,6 @@ pub struct Parameters {
     /// Default (0) is to use all the threads of the CPU.
     #[serde(default)]
     pub nb_threads: usize,
-    /// Format to use for saving the output files.
-    #[serde(default)]
-    pub saving_format: SavingFormat,
     /// [ContractionParameters] controlling how a [HierarchyOverlay] is built from a [RoadNetwork].
     #[serde(default)]
     pub contraction: ContractionParameters,
@@ -70,25 +79,15 @@ pub struct InputFiles {
     /// Path to the file where the queries to compute are stored.
     pub queries: PathBuf,
     /// Path to the file where the graph is stored.
-    pub graph: PathBuf,
+    pub edges: PathBuf,
     /// Path to the file where the graph weights are stored.
     /// If not specified, the weights are read from the graph file (with key "weight").
     #[serde(default)]
-    pub weights: Option<PathBuf>,
+    pub edge_ttfs: Option<PathBuf>,
     /// Path to the file where the node ordering is stored (only for intersect and tch).
     /// If not specified, the node ordering is computing automatically.
     #[serde(default)]
     pub input_order: Option<PathBuf>,
-}
-
-/// Format to be used when saving files.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
-pub enum SavingFormat {
-    /// Parquet files.
-    #[default]
-    Parquet,
-    /// CSV files.
-    CSV,
 }
 
 /// Algorithm type to use for the queries.
@@ -106,11 +105,16 @@ pub enum AlgorithmType {
     Intersect,
 }
 
-/// Map that yields the travel-time function for any edge.
-pub type Weights = HashMap<EdgeIndex, TTF<f64>>;
-
-const fn one() -> TTF<f64> {
-    TTF::Constant(1.0)
+/// Format to be used when saving files.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+pub enum SavingFormat {
+    /// Zstd-compressed JSON files.
+    JSON,
+    /// Parquet files.
+    #[default]
+    Parquet,
+    /// CSV files.
+    CSV,
 }
 
 /// A set of nodes connected through directed edges.
@@ -120,15 +124,62 @@ pub struct Graph {
     pub graph: DiGraph<(), TTF<f64>>,
     /// Mapping from original node id to simulation NodeIndex.
     pub node_map: HashMap<u64, NodeIndex>,
+    /// Mapping from simulation NodeIndex to original node id.
+    pub reverse_node_map: HashMap<NodeIndex, u64>,
+    /// Mapping from simulation EdgeIndex to original edge id.
+    pub reverse_edge_map: HashMap<EdgeIndex, u64>,
 }
 
 impl Graph {
+    /// Creates a new [Graph] from a Vec of [Edge].
+    pub(crate) fn from_edges(raw_edges: Vec<Edge>) -> Self {
+        let reverse_edge_map = raw_edges
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (edge_index(i), e.edge_id))
+            .collect();
+        let node_set: HashSet<_> = raw_edges
+            .iter()
+            .map(|e| e.source)
+            .chain(raw_edges.iter().map(|e| e.target))
+            .collect();
+        let node_map: HashMap<u64, NodeIndex> = node_set
+            .iter()
+            .enumerate()
+            .map(|(i, &original_id)| (original_id, node_index(i)))
+            .collect();
+        let reverse_node_map: HashMap<NodeIndex, u64> = node_set
+            .into_iter()
+            .enumerate()
+            .map(|(i, original_id)| (node_index(i), original_id))
+            .collect();
+        let edges: Vec<_> = raw_edges
+            .into_iter()
+            .map(|e| (node_map[&e.source], node_map[&e.target], e.travel_time))
+            .collect();
+        let graph = DiGraph::from_edges(edges);
+        Self {
+            graph,
+            node_map,
+            reverse_node_map,
+            reverse_edge_map,
+        }
+    }
+
     /// Returns the NodeIndex of the node in the graph with the given original id.
     pub fn get_node_id(&self, original_id: u64) -> NodeIndex {
         *self
             .node_map
             .get(&original_id)
             .unwrap_or_else(|| panic!("No node with id {original_id} in the graph"))
+    }
+
+    /// Returns the original id of the node in the graph with the given NodeIndex.
+    pub fn get_id_of_node(&self, id: NodeIndex) -> u64 {
+        *self
+            .reverse_node_map
+            .get(&id)
+            .unwrap_or_else(|| panic!("No node with id {id:?} in the graph"))
     }
 }
 
@@ -145,48 +196,12 @@ impl DerefMut for Graph {
     }
 }
 
-impl<'de> Deserialize<'de> for Graph {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let deser_graph = DeserGraph::deserialize(deserializer)?;
-        // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map u32 ->
-        // NodeIndex to re-index the nodes.
-        let node_map: HashMap<u64, NodeIndex> = deser_graph
-            .edges
-            .iter()
-            .map(|e| e.source)
-            .chain(deser_graph.edges.iter().map(|e| e.target))
-            .enumerate()
-            .map(|(idx, id)| (id, node_index(idx)))
-            .collect();
-        let edges: Vec<_> = deser_graph
-            .edges
-            .into_iter()
-            .map(|e| (node_map[&e.source], node_map[&e.target], e.weight))
-            .collect();
-        let graph = DiGraph::from_edges(edges);
-        Ok(Graph { graph, node_map })
-    }
-}
-
-/// Variant of [Graph] used for deserialization.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename = "Graph")]
-#[serde(transparent)]
-pub struct DeserGraph {
-    /// Edges of the graph, represented as a tuple `(s, t, e)`, where `s` is the id of the source
-    /// node, `t` is the id of the target node and `e` is the description of the edge.
-    edges: Vec<Edge>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct Edge {
-    source: u64,
-    target: u64,
-    #[serde(default = "one")]
-    weight: TTF<f64>,
+#[derive(Clone, Debug)]
+pub(crate) struct Edge {
+    pub(crate) edge_id: u64,
+    pub(crate) source: u64,
+    pub(crate) target: u64,
+    pub(crate) travel_time: TTF<f64>,
 }
 
 /// Point-to-point query (earliest-arrival or profile).
@@ -207,14 +222,10 @@ pub struct Query {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum QueryResult {
-    /// Id and rrival time (for earliest-arrival queries).
-    ArrivalTime((u64, f64)),
     /// Id, arrival time and route (for earliest-arrival queries).
-    ArrivalTimeAndRoute((u64, f64, Vec<EdgeIndex>)),
+    EarliestArrival((u64, Option<f64>, Option<Vec<u64>>)),
     /// Id and travel-time function (for profile queries).
-    TravelTimeFunction((u64, TTF<f64>)),
-    /// The source and target are not connected.
-    NotConnected,
+    Profile((u64, Option<TTF<f64>>)),
 }
 
 /// Secondary output on a set of queries.
@@ -289,26 +300,397 @@ impl TCHAllocation {
     }
 }
 
-// TODO: the functions below are shared with metropolis-core so they would be best in a dedicated
-// crate.
-/// Read some deserializable data from an uncompressed or a zstd-compressed JSON file.
-pub fn read_json<D: DeserializeOwned>(filename: &Path) -> Result<D> {
-    let mut bytes = Vec::new();
-    File::open(filename)
-        .with_context(|| format!("Unable to open file `{filename:?}`"))?
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("Unable to read file `{filename:?}`"))?;
-    let data = serde_json::from_slice(&bytes)
-        .with_context(|| format!("Unable to parse file `{filename:?}`"))?;
-    Ok(data)
-}
+/// Reads [Parameters] from a filename and runs the corresponding queries.
+pub fn run_queries(path: &Path) -> Result<()> {
+    info!("Reading parameters");
+    let mut parameters: Parameters =
+        crate::io::get_parameters_from_json(path).context("Failed to read parameters")?;
 
-/// Write some serializable data as an uncompressed JSON file.
-///
-/// The file is stored in the given directory, with filename "{name}.json".
-pub fn write_json<D: Serialize>(data: D, filename: &Path) -> Result<()> {
-    let mut writer = File::create(filename)?;
-    let buffer = serde_json::to_vec(&data)?;
-    writer.write_all(&buffer)?;
+    // TODO: Allow logging to file / GUI.
+    TermLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .expect("Failed to initialize logging");
+
+    let t0 = Instant::now();
+
+    // Set the working directory to the directory of the `parameters.json` file so that the input
+    // paths can be interpreted as being relative to this file.
+    if let Some(parent_dir) = path.parent() {
+        env::set_current_dir(parent_dir)
+            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+    }
+
+    info!("Reading graph");
+    let graph: Graph = crate::io::get_graph_from_files(
+        &parameters.input_files.edges,
+        parameters.input_files.edge_ttfs.as_deref(),
+    )
+    .context("Failed to read graph")?;
+
+    let order: Option<HashMap<u64, usize>> =
+        if let Some(filename) = parameters.input_files.input_order {
+            info!("Reading node ordering");
+            let order = crate::io::get_node_order_from_file(&filename)
+                .context("Failed to read node ordering")?;
+            Some(order)
+        } else {
+            None
+        };
+
+    info!("Reading queries");
+    let queries: Vec<Query> = crate::io::get_queries_from_file(&parameters.input_files.queries)
+        .context("Failed to read queries")?;
+
+    if queries.is_empty() {
+        warn!("No query to execute");
+        return Ok(());
+    }
+
+    // Initialize the global rayon thread pool.
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(parameters.nb_threads)
+        .build_global()
+        .unwrap();
+
+    if parameters.algorithm == AlgorithmType::Best {
+        // Guess the best algorithm to use.
+        let nb_unique_sources = queries
+            .iter()
+            .map(|q| q.source)
+            .collect::<HashSet<_>>()
+            .len();
+        let nb_unique_targets = queries
+            .iter()
+            .map(|q| q.target)
+            .collect::<HashSet<_>>()
+            .len();
+        let nb_queries = queries.len();
+        // TODO: Improve the values using simulation results.
+        parameters.algorithm = if nb_queries <= 100 {
+            AlgorithmType::Dijkstra
+        } else if std::cmp::max(nb_unique_sources, nb_unique_targets) * 50 <= graph.node_count() {
+            // Less than 2 % of the nodes are unique source or unique targets.
+            AlgorithmType::Intersect
+        } else {
+            AlgorithmType::Tch
+        };
+    }
+
+    // Create output directory if it does not exists yet.
+    std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
+        format!(
+            "Failed to create output directory `{:?}`",
+            parameters.output_directory
+        )
+    })?;
+
+    let ttf_func_id = |edge_id: EdgeIndex| -> &TTF<f64> { &graph[edge_id] };
+    let ttf_func_edge = |edge: EdgeReference<'_, TTF<f64>>| -> &TTF<f64> { ttf_func_id(edge.id()) };
+
+    let mut results = Vec::with_capacity(queries.len());
+    let mut preprocessing_time = Duration::default();
+    let query_time;
+    if parameters.algorithm == AlgorithmType::Dijkstra {
+        info!("Running Dijkstra queries");
+        let t1 = Instant::now();
+        let pool: Pool<DijkstraAllocation> =
+            Pool::new(rayon::current_num_threads(), Default::default);
+        let bp = if log_enabled!(Level::Info) {
+            ProgressBar::new(queries.len() as u64)
+        } else {
+            ProgressBar::hidden()
+        };
+        bp.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:60} ETA: {eta}")
+                .unwrap(),
+        );
+        queries
+            .par_iter()
+            .map_init(
+                || pool.pull(Default::default),
+                |alloc, query| {
+                    if let Some(td) = query.departure_time {
+                        let bidir_query = BidirectionalPointToPointQuery::new(
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
+                            td,
+                            Default::default(),
+                        );
+                        let mut ops =
+                            BidirectionalTCHEA::new(&graph.graph, ttf_func_edge, HashMap::new());
+                        let result = earliest_arrival_query(
+                            &mut alloc.ea_alloc,
+                            &bidir_query,
+                            &mut ops,
+                            &graph.graph,
+                            ttf_func_edge,
+                        )
+                        .unwrap();
+                        bp.inc(1);
+                        if let Some((ta, route)) = result {
+                            if parameters.output_route {
+                                // Convert the route from Vec<NodeIndex> to Vec<EdgeIndex>.
+                                let mut edge_route = Vec::with_capacity(route.len() - 1);
+                                for (&i, &j) in
+                                    route[..(route.len() - 1)].iter().zip(route[1..].iter())
+                                {
+                                    let edge_index = graph
+                                        .find_edge(i, j)
+                                        .expect("Invalid Dijkstra route output");
+                                    edge_route.push(graph.reverse_edge_map[&edge_index]);
+                                }
+                                QueryResult::EarliestArrival((query.id, Some(ta), Some(edge_route)))
+                            } else {
+                                QueryResult::EarliestArrival((query.id, Some(ta), None))
+                            }
+                        } else {
+                            QueryResult::EarliestArrival((query.id, None, None))
+                        }
+                    } else {
+                        let mut ops = BidirectionalProfileDijkstra::new(
+                            &graph.graph,
+                            ttf_func_edge,
+                            HashMap::new(),
+                        );
+                        let bidir_query = BidirectionalPointToPointQuery::from_default(
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
+                        );
+                        let ttf_opt =
+                            profile_query(&mut alloc.profile_search, &bidir_query, &mut ops);
+                        bp.inc(1);
+                        if let Some(ttf) = ttf_opt {
+                            QueryResult::Profile((query.id, Some(ttf)))
+                        } else {
+                            QueryResult::Profile((query.id, None))
+                        }
+                    }
+                },
+            )
+            .collect_into_vec(&mut results);
+        bp.finish_and_clear();
+        query_time = t1.elapsed();
+    } else {
+        let t1 = Instant::now();
+        let overlay = if let Some(order) = order {
+            info!("Contracting nodes");
+            let node_order_func = |n| {
+                *order.get(&graph.get_id_of_node(n)).unwrap_or_else(|| {
+                    panic!(
+                        "No order was given for node with id {}",
+                        graph.get_id_of_node(n)
+                    )
+                })
+            };
+            HierarchyOverlay::construct(
+                &graph,
+                |e| ttf_func_id(e).clone(),
+                node_order_func,
+                parameters.contraction,
+            )
+        } else {
+            info!("Ordering nodes");
+            HierarchyOverlay::order(&graph, |e| ttf_func_id(e).clone(), parameters.contraction)
+        };
+
+        if parameters.output_order {
+            let order_map: HashMap<u64, usize> = overlay
+                .get_order()
+                .iter()
+                .enumerate()
+                .map(|(i, order)| (graph.get_id_of_node(node_index(i)), *order))
+                .collect();
+            match parameters.saving_format {
+                SavingFormat::Parquet => {
+                    crate::io::parquet::write_parquet(&order_map, &parameters.output_directory)
+                        .context("Failed to write node order")?;
+                }
+                SavingFormat::CSV => {
+                    crate::io::csv::write_csv(&order_map, &parameters.output_directory)
+                        .context("Failed to write node order")?;
+                }
+                SavingFormat::JSON => {
+                    crate::io::json::write_json(
+                        &order_map,
+                        &parameters.output_directory,
+                        "node_order",
+                    )
+                    .context("Failed to write node order")?;
+                }
+            }
+        }
+
+        if parameters.output_overlay {
+            crate::io::json::write_json(&overlay, &parameters.output_directory, "overlay")
+                .context("Cannot write overlay")?;
+        }
+
+        if parameters.algorithm == AlgorithmType::Intersect {
+            info!("Computing search spaces");
+            let (sources, targets): (HashSet<NodeIndex>, HashSet<NodeIndex>) = queries
+                .iter()
+                .map(|q| (graph.get_node_id(q.source), graph.get_node_id(q.target)))
+                .unzip();
+            let search_spaces = overlay.get_search_spaces(&sources, &targets);
+
+            preprocessing_time = t1.elapsed();
+            let t2 = Instant::now();
+
+            info!("Running intersect queries");
+            let bp = if log_enabled!(Level::Info) {
+                ProgressBar::new(queries.len() as u64)
+            } else {
+                ProgressBar::hidden()
+            };
+            bp.set_style(
+                ProgressStyle::default_bar()
+                    .template("{bar:60} ETA: {eta}")
+                    .unwrap(),
+            );
+            queries
+                .par_iter()
+                .map(|query| {
+                    // Unwraping here is safe because we know that the source and target are both in
+                    // the search spaces.
+                    if let Some(td) = query.departure_time {
+                        let ta_opt = intersect_earliest_arrival_query(
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
+                            td,
+                            &search_spaces,
+                        )
+                        .unwrap();
+                        bp.inc(1);
+                        if let Some(ta) = ta_opt {
+                            QueryResult::EarliestArrival((query.id, Some(ta), None))
+                        } else {
+                            QueryResult::EarliestArrival((query.id, None, None))
+                        }
+                    } else {
+                        let ttf_opt = intersect_profile_query(
+                            graph.get_node_id(query.source),
+                            graph.get_node_id(query.target),
+                            &search_spaces,
+                        )
+                        .unwrap();
+                        bp.inc(1);
+                        if let Some(ttf) = ttf_opt {
+                            QueryResult::Profile((query.id, Some(ttf)))
+                        } else {
+                            QueryResult::Profile((query.id, None))
+                        }
+                    }
+                })
+                .collect_into_vec(&mut results);
+            bp.finish_and_clear();
+            query_time = t2.elapsed();
+        } else {
+            preprocessing_time = t1.elapsed();
+            let t2 = Instant::now();
+            assert_eq!(
+                parameters.algorithm,
+                AlgorithmType::Tch,
+                "Invalid algorithm mode"
+            );
+            info!("Running TCH queries");
+            let pool: Pool<TCHAllocation> =
+                Pool::new(rayon::current_num_threads(), Default::default);
+            let bp = if log_enabled!(Level::Info) {
+                ProgressBar::new(queries.len() as u64)
+            } else {
+                ProgressBar::hidden()
+            };
+            bp.set_style(
+                ProgressStyle::default_bar()
+                    .template("{bar:60} ETA: {eta}")
+                    .unwrap(),
+            );
+            queries
+                .par_iter()
+                .map_init(
+                    || pool.pull(Default::default),
+                    |alloc, query| {
+                        if let Some(td) = query.departure_time {
+                            let (ea_alloc, ea_candidate_map) = alloc.get_ea_variables();
+                            let result = overlay
+                                .earliest_arrival_query(
+                                    graph.get_node_id(query.source),
+                                    graph.get_node_id(query.target),
+                                    td,
+                                    ea_alloc,
+                                    ea_candidate_map,
+                                )
+                                .unwrap();
+                            bp.inc(1);
+                            if let Some((ta, route)) = result {
+                                if parameters.output_route {
+                                    let route = route
+                                        .into_iter()
+                                        .map(|node_idx| graph.reverse_edge_map[&node_idx])
+                                        .collect();
+                                    QueryResult::EarliestArrival((query.id, Some(ta), Some(route)))
+                                } else {
+                                    QueryResult::EarliestArrival((query.id, Some(ta), None))
+                                }
+                            } else {
+                                QueryResult::EarliestArrival((query.id, None, None))
+                            }
+                        } else {
+                            let (profile_alloc, profile_candidate_map) =
+                                alloc.get_profile_variables();
+                            let ttf_opt = overlay.profile_query(
+                                graph.get_node_id(query.source),
+                                graph.get_node_id(query.target),
+                                &mut profile_alloc.interval_search,
+                                &mut profile_alloc.profile_search,
+                                profile_candidate_map,
+                            );
+                            bp.inc(1);
+                            if let Some(ttf) = ttf_opt {
+                                QueryResult::Profile((query.id, Some(ttf)))
+                            } else {
+                                QueryResult::Profile((query.id, None))
+                            }
+                        }
+                    },
+                )
+                .collect_into_vec(&mut results);
+            bp.finish_and_clear();
+            query_time = t2.elapsed();
+        }
+    };
+
+    let total_time = t0.elapsed();
+    let details = DetailedOutput {
+        nb_queries: queries.len(),
+        preprocessing_time,
+        query_time,
+        query_time_per_query: query_time / queries.len() as u32,
+        total_time,
+        total_time_per_query: total_time / queries.len() as u32,
+    };
+
+    info!("Saving results");
+    match parameters.saving_format {
+        SavingFormat::Parquet => {
+            crate::io::parquet::write_parquet(&results, &parameters.output_directory)
+                .context("Failed to write results")?;
+        }
+        SavingFormat::CSV => {
+            crate::io::csv::write_csv(&results, &parameters.output_directory)
+                .context("Failed to write results")?;
+        }
+        SavingFormat::JSON => {
+            crate::io::json::write_json(&results, &parameters.output_directory, "results")
+                .context("Failed to write results")?;
+        }
+    }
+    crate::io::json::write_json(details, &parameters.output_directory, "details")
+        .context("Failed to write details")?;
     Ok(())
 }

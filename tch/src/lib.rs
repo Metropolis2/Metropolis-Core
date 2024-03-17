@@ -11,6 +11,8 @@ pub mod bidirectional_ops;
 mod bidirectional_search;
 mod bound;
 mod contraction_hierarchies;
+// TODO: the io module share many functions with the one in core, they should be merged
+pub mod io;
 mod min_queue;
 mod node_data;
 mod node_map;
@@ -28,6 +30,7 @@ pub use node_map::VecMap;
 use petgraph::graph::NodeIndex;
 pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
+pub use tools::run_queries;
 
 /// Baseline allocation for the [EarliestArrivalAllocation](algo::EarliestArrivalAllocation).
 pub type DefaultEarliestArrivalAllocation<T> = algo::EarliestArrivalAllocation<

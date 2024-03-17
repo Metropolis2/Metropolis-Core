@@ -1,0 +1,20 @@
+{
+  "algorithm": "TCH",
+  "output_route": true,
+  "output_order": false,
+  "nb_threads": 24,
+  "contraction": {
+    "complexity_quotient_weight": 2.0,
+    "edge_quotient_weight": 2.0,
+    "hierarchy_depth_weight": 1.0,
+    "thin_profile_interval_hop_limit": 16,
+    "unpacked_edges_quotient_weight": 1.0
+  },
+  "input_files": {
+    "queries": "queries.csv",
+    "edges": "edges.csv",
+    "edge_ttfs": "edge_ttfs.csv"
+  },
+  "output_directory": "output",
+  "saving_format": "CSV"
+}

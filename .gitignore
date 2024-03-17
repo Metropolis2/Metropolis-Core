@@ -1,5 +1,6 @@
 target/
 core/examples/**/output/
+tch/examples/**/output/
 docs/
 tch/data/
 releases/

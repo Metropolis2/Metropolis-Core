@@ -14,6 +14,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] The `compute_choices` executable is replaced by a `only_compute_decisions` parameter in the
   main executable.
+- [USER] The `compute_travel_times` is renamed `routing_cli` and it is now able to road / write CSV
+  and Parquet files.
 
 ### Fixed
 

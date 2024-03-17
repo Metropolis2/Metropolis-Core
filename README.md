@@ -24,9 +24,7 @@ METROPOLIS2 comes with 4 executables:
 
 - `metropolis_gui`: A GUI (Graphical User Interface) to run a simulation interactively.
 - `metropolis_cli`: A CLI (Command Line Interface) to run a simulation from the terminal.
-- `compute_travel_decisions`: A CLI to compute the travel decisions of a population, without running
-  the full simulator.
-- `compute_travel_times`: A CLI to compute (time-dependent) travel times for a collection of
+- `routing_cli`: A CLI to compute (time-dependent) travel times for a collection of
   origin-destination pairs.
 
 ## How to use

@@ -5,7 +5,7 @@ CARGO_MAKE_CI = true
 CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
 CARGO_MAKE_PROJECT_NAME = "metropolis"
 CARGO_MAKE_PROJECT_VERSION = "1.0.0-4"
-CARGO_MAKE_BINARY_EXECUTABLE_NAMES = "metropolis_cli compute_travel_times"
+CARGO_MAKE_BINARY_EXECUTABLE_NAMES = "metropolis_cli routing_cli"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
 CARKO_MAKE_BUILD_EXAMPLES = true
@@ -102,9 +102,12 @@ glob_cp ./LICENSE* ${OUTPUT_NAME}/
 # cp ./docs/ ${OUTPUT_NAME}/
 # cp ./book/book/ ${OUTPUT_NAME}/
 cp ./core/examples/ ${OUTPUT_NAME}/
+cp ./tch/examples/ ${OUTPUT_NAME}/routing_examples/
 rm ${OUTPUT_NAME}/examples/csv_example.rs
 rm ${OUTPUT_NAME}/examples/parquet_example.rs
 rm ${OUTPUT_NAME}/examples/unnested_parquet_example.rs
+rm ${OUTPUT_NAME}/routing_examples/tch_csv_example.rs
+rm ${OUTPUT_NAME}/routing_examples/tch_parquet_example.rs
 
 ls -l ${OUTPUT_NAME}/
 
