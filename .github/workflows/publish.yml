@@ -73,6 +73,7 @@ jobs:
         overwrite: true
         file_glob: true
     - uses: tauri-apps/tauri-action@v0
+      if: matrix.os != 'ubuntu-latest'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
