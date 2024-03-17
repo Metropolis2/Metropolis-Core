@@ -13,10 +13,16 @@ async fn run_simulation(path: String, window: Window) {
 }
 
 #[cfg(feature = "tauri")]
+#[tauri::command]
+async fn run_routing(path: String, window: Window) {
+    metropolis::run_routing_impl(path, window).await
+}
+
+#[cfg(feature = "tauri")]
 #[allow(clippy::disallowed_types)]
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![run_simulation])
+        .invoke_handler(tauri::generate_handler![run_simulation, run_routing])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

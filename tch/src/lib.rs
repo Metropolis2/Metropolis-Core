@@ -30,7 +30,7 @@ pub use node_map::VecMap;
 use petgraph::graph::NodeIndex;
 pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
-pub use tools::run_queries;
+pub use tools::{run_queries, run_queries_with_writer};
 
 /// Baseline allocation for the [EarliestArrivalAllocation](algo::EarliestArrivalAllocation).
 pub type DefaultEarliestArrivalAllocation<T> = algo::EarliestArrivalAllocation<

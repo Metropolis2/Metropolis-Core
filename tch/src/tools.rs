@@ -24,7 +24,9 @@ use petgraph::{
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
-use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
+use simplelog::{
+    ColorChoice, CombinedLogger, Config, SharedLogger, TermLogger, TerminalMode, WriteLogger,
+};
 use ttf::TTF;
 
 use crate::algo::{
@@ -300,20 +302,47 @@ impl TCHAllocation {
     }
 }
 
-/// Reads [Parameters] from a filename and runs the corresponding queries.
-pub fn run_queries(path: &Path) -> Result<()> {
-    info!("Reading parameters");
-    let mut parameters: Parameters =
-        crate::io::get_parameters_from_json(path).context("Failed to read parameters")?;
-
-    // TODO: Allow logging to file / GUI.
-    TermLogger::init(
+/// Initializes logging to terminal and an optional Writer.
+pub fn initialize_logging<W: std::io::Write + Send + 'static>(
+    maybe_writer: Option<W>,
+) -> Result<()> {
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![TermLogger::new(
         LevelFilter::Info,
         Config::default(),
         TerminalMode::Mixed,
         ColorChoice::Auto,
-    )
-    .expect("Failed to initialize logging");
+    )];
+    if let Some(writer) = maybe_writer {
+        loggers.push(WriteLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            writer,
+        ));
+    }
+    CombinedLogger::init(loggers).context("Failed to initialize logging")
+}
+
+/// Reads [Parameters] from a filename and runs the corresponding queries.
+pub fn run_queries(path: &Path) -> Result<()> {
+    run_queries_imp(path, None::<std::io::Empty>)
+}
+
+/// Reads [Parameters] from a filename and runs the corresponding queries.
+pub fn run_queries_with_writer<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: W,
+) -> Result<()> {
+    run_queries_imp(path, Some(writer))
+}
+
+fn run_queries_imp<W: std::io::Write + Send + 'static>(
+    path: &Path,
+    writer: Option<W>,
+) -> Result<()> {
+    info!("Reading parameters");
+    let mut parameters: Parameters = crate::io::get_parameters_from_json(path)?;
+
+    initialize_logging(writer).expect("Failed to initialize logging");
 
     let t0 = Instant::now();
 

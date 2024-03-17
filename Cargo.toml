@@ -17,6 +17,7 @@ publish = false
 [workspace]
 
 [dependencies]
+tch = { path = "tch/" }
 metropolis-core = { path = "core/" }
 serde = "1.0"
 tauri = { version = "1.5", features = ["dialog-open"], optional = true }

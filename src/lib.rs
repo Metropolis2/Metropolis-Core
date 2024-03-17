@@ -8,6 +8,7 @@ use std::{io, path::PathBuf};
 use metropolis_core::run_simulation_with_writer;
 use serde::Serialize;
 use tauri::Window;
+use tch::run_queries_with_writer;
 
 #[derive(Debug, Default, Clone, Serialize)]
 struct Payload {
@@ -41,6 +42,28 @@ pub async fn run_simulation_impl(path: String, window: Window) {
         window: window.clone(),
     };
     let res = run_simulation_with_writer(&PathBuf::from(path), writer);
+    if let Err(e) = res {
+        let error_msg: String = e
+            .chain()
+            .enumerate()
+            .fold(String::new(), |mut msg, (i, cause)| {
+                let _ = write!(msg, "<br>&emsp;{i}: {cause}");
+                msg
+            });
+        let message =
+            format!("<span style=\"color:red;\">ERROR: {error_msg}</span>").replace('\n', "<br>");
+        window.emit("log-event", Payload { message }).unwrap();
+        window.emit("run-failed", ()).unwrap();
+    } else {
+        window.emit("run-done", ()).unwrap();
+    }
+}
+
+pub async fn run_routing_impl(path: String, window: Window) {
+    let writer = GUILogWriter {
+        window: window.clone(),
+    };
+    let res = run_queries_with_writer(&PathBuf::from(path), writer);
     if let Err(e) = res {
         let error_msg: String = e
             .chain()

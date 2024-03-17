@@ -2,7 +2,6 @@ target/
 core/examples/**/output/
 tch/examples/**/output/
 docs/
-tch/data/
 releases/
 schemas/
 .gdb_history
