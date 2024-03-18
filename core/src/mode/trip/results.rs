@@ -617,11 +617,13 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             // No road leg taken.
             return None;
         }
-        let count_distribution = Distribution::from_iterator(
-            results
-                .iter()
-                .map(|(m, _)| T::from_usize(m.nb_legs()).unwrap()),
-        )
+        let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
+            if m.nb_virtual_legs() > 0 {
+                Some(T::from_usize(m.nb_road_legs())).unwrap()
+            } else {
+                None
+            }
+        }))
         .unwrap();
         let departure_time = get_distribution(results, |lr, _| lr.departure_time);
         let arrival_time = get_distribution(results, |lr, _| lr.arrival_time);
@@ -757,11 +759,13 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
             // No virtual leg taken.
             return None;
         }
-        let count_distribution = Distribution::from_iterator(
-            results
-                .iter()
-                .map(|(m, _)| T::from_usize(m.nb_legs()).unwrap()),
-        )
+        let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
+            if m.nb_virtual_legs() > 0 {
+                Some(T::from_usize(m.nb_virtual_legs())).unwrap()
+            } else {
+                None
+            }
+        }))
         .unwrap();
         let departure_time = get_distribution(results, |_, _, lr| lr.departure_time);
         let arrival_time = get_distribution(results, |_, _, lr| lr.arrival_time);
