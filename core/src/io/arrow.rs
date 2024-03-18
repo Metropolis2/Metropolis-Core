@@ -1106,7 +1106,7 @@ impl<T: ToPrimitive> ToArrow<3> for AgentResults<T> {
         builder.finish()
     }
     fn names() -> [&'static str; 3] {
-        ["agent_results", "leg_results", "route_results"]
+        ["agent_results", "trip_results", "route_results"]
     }
 }
 
@@ -1219,7 +1219,7 @@ impl PreDayAgentResultsBuilder {
     fn finish(&mut self) -> Result<[Option<RecordBatch>; 3]> {
         let agent_schema = Schema::new(vec![
             Field::new("id", DataType::UInt64, false),
-            Field::new("alt_id", DataType::UInt64, false),
+            Field::new("selected_alt_id", DataType::UInt64, false),
             Field::new("expected_utility", DataType::Float64, false),
             Field::new("departure_time", DataType::Float64, true),
             Field::new("alt_expected_utility", DataType::Float64, true),
