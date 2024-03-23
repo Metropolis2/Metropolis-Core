@@ -618,8 +618,8 @@ impl<T: TTFNum> AggregateRoadLegResults<T> {
             return None;
         }
         let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
-            if m.nb_virtual_legs() > 0 {
-                Some(T::from_usize(m.nb_road_legs())).unwrap()
+            if m.nb_road_legs() > 0 {
+                Some(T::from_usize(m.nb_road_legs()).unwrap())
             } else {
                 None
             }
@@ -761,7 +761,7 @@ impl<T: TTFNum> AggregateVirtualLegResults<T> {
         }
         let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
             if m.nb_virtual_legs() > 0 {
-                Some(T::from_usize(m.nb_virtual_legs())).unwrap()
+                Some(T::from_usize(m.nb_virtual_legs()).unwrap())
             } else {
                 None
             }
