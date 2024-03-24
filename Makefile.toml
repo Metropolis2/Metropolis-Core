@@ -103,12 +103,13 @@ glob_cp ./LICENSE* ${OUTPUT_NAME}/
 # cp ./docs/ ${OUTPUT_NAME}/
 # cp ./book/book/ ${OUTPUT_NAME}/
 cp ./core/examples/ ${OUTPUT_NAME}/
-cp ./tch/examples/ ${OUTPUT_NAME}/routing_examples/
+mkdir ${OUTPUT_NAME}/routing_examples/
+
+mv ./tch/examples/generate_input.py ${OUTPUT_NAME}/routing_examples/
+mv ./tch/examples/data/ ${OUTPUT_NAME}/routing_examples/
 rm ${OUTPUT_NAME}/examples/csv_example.rs
 rm ${OUTPUT_NAME}/examples/parquet_example.rs
 rm ${OUTPUT_NAME}/examples/unnested_parquet_example.rs
-rm ${OUTPUT_NAME}/routing_examples/tch_csv_example.rs
-rm ${OUTPUT_NAME}/routing_examples/tch_parquet_example.rs
 
 ls -l ${OUTPUT_NAME}/
 
