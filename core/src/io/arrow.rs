@@ -579,6 +579,10 @@ pub(crate) fn read_agents<T: TTFNum>(
         let agent_id = agent_id
             .map(|id| id as usize)
             .ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
+        if !unique_agent_ids.insert(agent_id) {
+            // agent_id value was already inserted.
+            bail!("Found duplicate `agent_id`: {agent_id}",);
+        }
         let alts = alternatives.remove(&agent_id);
         let agent = Agent::from_values(
             agent_id,
@@ -590,10 +594,6 @@ pub(crate) fn read_agents<T: TTFNum>(
         )
         .with_context(|| format!("Failed to parse agent {agent_id}"))?;
         agents.push(agent);
-        if !unique_agent_ids.insert(agent_id) {
-            // agent_id value was already inserted.
-            bail!("Found duplicate `agent_id`: {agent_id}",);
-        }
     }
     Ok(agents)
 }
@@ -1240,8 +1240,8 @@ impl PreDayAgentResultsBuilder {
         )?;
         let leg_schema = Schema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
-            Field::new("leg_id", DataType::UInt64, false),
-            Field::new("leg_index", DataType::UInt64, false),
+            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("trip_index", DataType::UInt64, false),
             Field::new("route_free_flow_travel_time", DataType::Float64, true),
             Field::new("global_free_flow_travel_time", DataType::Float64, true),
             Field::new("length", DataType::Float64, true),
@@ -1265,8 +1265,8 @@ impl PreDayAgentResultsBuilder {
         )?;
         let route_schema = Schema::new(vec![
             Field::new("agent_id", DataType::UInt64, false),
-            Field::new("leg_id", DataType::UInt64, false),
-            Field::new("leg_index", DataType::UInt64, false),
+            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("trip_index", DataType::UInt64, false),
             Field::new("edge_id", DataType::UInt64, false),
             Field::new("entry_time", DataType::Float64, false),
             Field::new("exit_time", DataType::Float64, false),
