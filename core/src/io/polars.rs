@@ -95,7 +95,13 @@ macro_rules! add_null_road_leg_columns {
         add_null_distr!($df, "road_trip_edge_count");
         add_null_distr!($df, "road_trip_utility");
         add_null_distr!($df, "road_trip_exp_travel_time");
-        add_null_distr!($df, "road_trip_exp_travel_time_diff");
+        add_null_distr!($df, "road_trip_exp_travel_time_rel_diff");
+        add_null_distr!($df, "road_trip_exp_travel_time_abs_diff");
+        add_null_const!(
+            $df,
+            "road_trip_exp_travel_time_diff_rmse",
+            DataType::Float64
+        );
         add_null_distr!($df, "road_trip_length_diff");
     };
 }
