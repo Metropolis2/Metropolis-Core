@@ -1218,7 +1218,7 @@ impl PreDayAgentResultsBuilder {
 
     fn finish(&mut self) -> Result<[Option<RecordBatch>; 3]> {
         let agent_schema = Schema::new(vec![
-            Field::new("id", DataType::UInt64, false),
+            Field::new("agent_id", DataType::UInt64, false),
             Field::new("selected_alt_id", DataType::UInt64, false),
             Field::new("expected_utility", DataType::Float64, false),
             Field::new("departure_time", DataType::Float64, true),
