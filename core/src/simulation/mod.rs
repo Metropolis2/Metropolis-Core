@@ -522,7 +522,7 @@ impl<T: TTFNum> Simulation<T> {
             &preprocess_data.network,
             self.parameters.road_network.as_ref(),
         )?;
-        info!("Running pre-day model");
+        info!("Running demand model");
         let bp = MetroProgressBar::new(self.agents.len());
         let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(
             self.agents
