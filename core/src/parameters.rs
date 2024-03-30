@@ -76,6 +76,7 @@ pub struct Parameters<T> {
     #[serde(default = "default_iteration_counter")]
     pub init_iteration_counter: u32,
     /// Maximum number of iterations to be run (on top of the `init_iteration_counter`).
+    #[serde(default = "default_iteration_counter")]
     pub max_iterations: u32,
     /// Set of parameters for the road network.
     pub road_network: Option<RoadNetworkParameters<T>>,
