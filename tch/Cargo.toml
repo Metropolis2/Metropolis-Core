@@ -19,12 +19,10 @@ publish = false
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
 arrow = { version = "50.0", default-features = false, features = ["csv"] }
-bincode = "1.3"
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
 fixedbitset = "0.4"
-geojson = "0.24"
 hashbrown = { version = "0.14", features = ["rayon", "serde"] }
 indicatif = "0.17"
 log = "0.4"

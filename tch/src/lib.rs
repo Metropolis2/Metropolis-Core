@@ -68,10 +68,7 @@ pub struct DefaultTCHProfileAllocation<T: ttf::TTFNum> {
 }
 
 // Dependencies only used in the bins.
-// TODO: Remove them when the bin will no longer be useful.
-use bincode as _;
 use clap as _;
 use csv as _;
-use geojson as _;
 use serde_json as _;
 use simplelog as _;
