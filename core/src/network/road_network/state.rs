@@ -48,10 +48,10 @@ impl RoadSegment {
     }
 
     /// Records the entry of a new vehicle on the segment.
-    fn enters(&mut self, vehicle: &Vehicle, current_time: Time) {
+    fn enters(&mut self, vehicle_headway: Length, current_time: Time) {
         // Record the occupied length when the vehicle entered.
         self.length_history.push(current_time, self.occupied_length);
-        self.occupied_length += vehicle.get_headway();
+        self.occupied_length += vehicle_headway;
     }
 
     /// Records the exit of a vehicle from the segment.
@@ -184,9 +184,9 @@ impl EdgeEntryState {
     /// Returns the closing time of the bottleneck when the given vehicle crosses it.
     ///
     /// Returns zero if there is no bottleneck.
-    fn get_closing_time(&self, vehicle: &Vehicle) -> Time {
+    fn get_closing_time(&self, vehicle_pce: PCE) -> Time {
         self.effective_flow
-            .map(|f| vehicle.get_pce() / f)
+            .map(|f| vehicle_pce / f)
             .unwrap_or(Time::zero())
     }
 
@@ -204,7 +204,7 @@ impl EdgeEntryState {
     fn vehicle_reaches_entry(
         &mut self,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle_pce: PCE,
         next_event: VehicleEvent,
     ) -> Option<Either<VehicleEvent, AgentIndex>> {
         match (self.is_open(), self.is_full()) {
@@ -225,7 +225,7 @@ impl EdgeEntryState {
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
-                    vehicle_pce: vehicle.get_pce(),
+                    vehicle_pce,
                     entry_time: current_time,
                 });
                 Some(Either::Right(agent_id))
@@ -234,7 +234,7 @@ impl EdgeEntryState {
                 // Edge is closed.
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
-                    vehicle_pce: vehicle.get_pce(),
+                    vehicle_pce,
                     entry_time: current_time,
                 });
                 None
@@ -245,17 +245,22 @@ impl EdgeEntryState {
     /// A vehicle has successfully entered the edge.
     ///
     /// Returns the closing time of the bottleneck.
-    fn vehicle_enters(&mut self, vehicle: &Vehicle, is_phantom: bool) -> Time {
+    fn vehicle_enters(
+        &mut self,
+        vehicle_pce: PCE,
+        vehicle_headway: Length,
+        is_phantom: bool,
+    ) -> Time {
         debug_assert_ne!(self.status, EdgeEntryStatus::Open);
         let vehicle_headway = if is_phantom {
             // The vehicle has been phantomed, the available length is not reduced.
             Length::zero()
         } else {
-            vehicle.get_headway()
+            vehicle_headway
         };
         self.reduce_available_length(vehicle_headway);
         self.status = EdgeEntryStatus::Closed;
-        self.get_closing_time(vehicle)
+        self.get_closing_time(vehicle_pce)
     }
 
     /// The edge entry re-opens.
@@ -399,7 +404,7 @@ impl EdgeExitState {
     fn vehicle_reaches_exit(
         &mut self,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle_pce: PCE,
         next_event: VehicleEvent,
     ) -> Option<(VehicleEvent, Option<Time>)> {
         if self.is_open() {
@@ -409,14 +414,14 @@ impl EdgeExitState {
             // Close the edge exit.
             self.status = EdgeExitStatus::Closed;
             let closing_time = if self.overtaking_allowed {
-                if self.get_closing_time(vehicle.get_pce()).is_zero() {
+                if self.get_closing_time(vehicle_pce).is_zero() {
                     // The bottleneck does not close.
                     self.status = EdgeExitStatus::Open;
                     None
                 } else {
                     // Return the closing time of the bottleneck so that an event is created to
                     // re-open it.
-                    Some(self.get_closing_time(vehicle.get_pce()))
+                    Some(self.get_closing_time(vehicle_pce))
                 }
             } else {
                 // The edge exit will re-open again when the vehicle will have successfully exited
@@ -428,7 +433,7 @@ impl EdgeExitState {
             // Bottleneck is closed.
             self.queue.push_back(QueuedVehicle {
                 event: next_event,
-                vehicle_pce: vehicle.get_pce(),
+                vehicle_pce,
                 entry_time: current_time,
             });
             None
@@ -438,14 +443,14 @@ impl EdgeExitState {
     /// A vehicle has successfully exited the edge.
     ///
     /// Returns the closing time of the bottleneck.
-    fn vehicle_exits(&mut self, vehicle: &Vehicle) -> Option<Time> {
+    fn vehicle_exits(&mut self, vehicle_pce: PCE) -> Option<Time> {
         if self.overtaking_allowed {
             // The bottleneck was already closed for this vehicle when it crossed the bottleneck.
             None
         } else {
             debug_assert_eq!(self.status, EdgeExitStatus::Closed);
             self.status = EdgeExitStatus::Closed;
-            Some(self.get_closing_time(vehicle.get_pce()))
+            Some(self.get_closing_time(vehicle_pce))
         }
     }
 
@@ -504,8 +509,8 @@ struct RoadEdgeState {
     /// [EdgeExitState] representing the state of the edge exit.
     /// Or `None` if the edge has infinite flow and spillback is disabled.
     exit: Option<EdgeExitState>,
-    /// Length of the RoadEdge (cached for optimization).
-    length: Length,
+    /// Reference to the corresponding [RoadEdge].
+    reference: RoadEdge,
 }
 
 impl RoadEdgeState {
@@ -517,7 +522,7 @@ impl RoadEdgeState {
             road: RoadSegment::new(),
             entry,
             exit: Some(exit),
-            length: reference.length(),
+            reference: reference.clone(),
         }
     }
 
@@ -525,11 +530,11 @@ impl RoadEdgeState {
     fn vehicle_reaches_entry(
         &mut self,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle_pce: PCE,
         next_event: VehicleEvent,
     ) -> Option<Either<VehicleEvent, AgentIndex>> {
         if let Some(entry) = self.entry.as_mut() {
-            entry.vehicle_reaches_entry(current_time, vehicle, next_event)
+            entry.vehicle_reaches_entry(current_time, vehicle_pce, next_event)
         } else {
             // Infinite flow + spillback is disabled: the vehicles can freely cross.
             Some(Either::Left(next_event))
@@ -547,11 +552,11 @@ impl RoadEdgeState {
     fn vehicle_reaches_exit(
         &mut self,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle_pce: PCE,
         next_event: VehicleEvent,
     ) -> Option<(VehicleEvent, Option<Time>)> {
         if let Some(exit) = self.exit.as_mut() {
-            exit.vehicle_reaches_exit(current_time, vehicle, next_event)
+            exit.vehicle_reaches_exit(current_time, vehicle_pce, next_event)
         } else {
             // Infinite flow + spillback is disabled: the vehicles can freely cross.
             // The bottleneck does not close.
@@ -565,9 +570,8 @@ impl RoadEdgeState {
     /// the edge entry.
     fn enters(
         &mut self,
-        vehicle: &Vehicle,
+        vehicle: &'static Vehicle,
         current_time: Time,
-        edge: &RoadEdge,
         is_phantom: bool,
     ) -> (Time, Time) {
         // Notify the EdgeEntryState that a vehicle is entering and gets the closing time of the
@@ -575,9 +579,9 @@ impl RoadEdgeState {
         let closing_time = self
             .entry
             .as_mut()
-            .map(|entry| entry.vehicle_enters(vehicle, is_phantom))
+            .map(|entry| entry.vehicle_enters(vehicle.pce, vehicle.headway, is_phantom))
             .unwrap_or(Time::zero());
-        let travel_time = self.enters_road_segment(vehicle, current_time, edge);
+        let travel_time = self.enters_road_segment(vehicle, current_time);
         (travel_time, closing_time)
     }
 
@@ -613,10 +617,10 @@ impl RoadEdgeState {
     /// A vehicle can successfully exit the edge's exit bottleneck.
     ///
     /// Returns the closing time of the exit bottleneck of the edge (if it gets closed).
-    fn vehicle_exits_bottleneck(&mut self, vehicle: &Vehicle) -> Option<Time> {
+    fn vehicle_exits_bottleneck(&mut self, vehicle_pce: PCE) -> Option<Time> {
         self.exit
             .as_mut()
-            .and_then(|exit| exit.vehicle_exits(vehicle))
+            .and_then(|exit| exit.vehicle_exits(vehicle_pce))
     }
 
     /// A vehicle has been fully released from the edge, i.e., the hole it generated when leaving
@@ -643,17 +647,24 @@ impl RoadEdgeState {
 
     /// Records the entry of a new vehicle on the edge and returns the travel time of this vehicle
     /// up to the Bottleneck.
-    fn enters_road_segment(
-        &mut self,
-        vehicle: &Vehicle,
-        current_time: Time,
-        edge: &RoadEdge,
-    ) -> Time {
+    fn enters_road_segment(&mut self, vehicle: &'static Vehicle, current_time: Time) -> Time {
         // The travel time needs to be computed before the vehicle enters so that it does not
         // generate its own congestion.
-        let tt = edge.get_travel_time(self.road.occupied_length, vehicle);
-        self.road.enters(vehicle, current_time);
+        // TODO
+        let tt = self.get_travel_time(vehicle);
+        self.road.enters(vehicle.headway, current_time);
         tt
+    }
+
+    fn get_travel_time(&self, vehicle: &'static Vehicle) -> Time {
+        let vehicle_base_speed = vehicle.get_speed(self.reference.base_speed);
+        let actual_speed = self.reference.speed_density.get_speed(
+            vehicle_base_speed,
+            self.road.occupied_length,
+            self.reference.total_length(),
+        );
+        let variable_tt = self.reference.length() / actual_speed;
+        variable_tt + self.reference.constant_travel_time
     }
 
     fn into_simulated_functions(self) -> SimulatedFunctions {
@@ -766,12 +777,12 @@ impl RoadNetworkState {
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle: &'static Vehicle,
         next_event: VehicleEvent,
         event_queue: &mut EventQueue,
     ) -> Option<VehicleEvent> {
         let edge = &mut self.graph[edge_index];
-        match edge.vehicle_reaches_entry(current_time, vehicle, next_event) {
+        match edge.vehicle_reaches_entry(current_time, vehicle.pce, next_event) {
             Some(Either::Left(event)) => {
                 // Next event can be executed immediately.
                 Some(event)
@@ -803,13 +814,13 @@ impl RoadNetworkState {
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time,
-        vehicle: &Vehicle,
+        vehicle: &'static Vehicle,
         next_event: VehicleEvent,
         event_queue: &mut EventQueue,
     ) -> Option<VehicleEvent> {
         let edge = &mut self.graph[edge_index];
         if let Some((next_event, closing_time_opt)) =
-            edge.vehicle_reaches_exit(current_time, vehicle, next_event)
+            edge.vehicle_reaches_exit(current_time, vehicle.pce, next_event)
         {
             if let Some(closing_time) = closing_time_opt {
                 debug_assert!(closing_time.is_sign_positive());
@@ -840,7 +851,7 @@ impl RoadNetworkState {
         edge_index: EdgeIndex,
         from: Option<EdgeIndex>,
         current_time: Time,
-        vehicle: &'sim Vehicle,
+        vehicle: &'static Vehicle,
         agent_id: AgentIndex,
         is_phantom: bool,
         was_phantom: bool,
@@ -848,12 +859,10 @@ impl RoadNetworkState {
         event_alloc: &'event mut EventAlloc,
         event_queue: &'event mut EventQueue,
     ) -> Result<Time> {
-        let edge = super::edge_by_index(edge_index);
         let edge_state = &mut self.graph[edge_index];
         // The agent is no longer pending.
         self.pending_edges.remove(&agent_id);
-        let (travel_time, closing_time) =
-            edge_state.enters(vehicle, current_time, edge, is_phantom);
+        let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, is_phantom);
         if closing_time.is_zero() {
             // The edge's entry bottleneck can be open immediately.
             match edge_state.open_entry_bottleneck(current_time) {
@@ -912,16 +921,16 @@ impl RoadNetworkState {
         &mut self,
         edge_index: EdgeIndex,
         current_time: Time,
-        vehicle: &'sim Vehicle,
+        vehicle: &'static Vehicle,
         was_phantom: bool,
         event_input: &'event mut EventInput<'sim>,
         event_alloc: &'event mut EventAlloc,
         event_queue: &'event mut EventQueue,
     ) -> Result<()> {
         let edge = &mut self.graph[edge_index];
-        let edge_length = edge.length;
+        let edge_length = edge.reference.length;
         // Make the vehicle cross its previous edge's exit bottleneck.
-        let closing_time_opt = edge.vehicle_exits_bottleneck(vehicle);
+        let closing_time_opt = edge.vehicle_exits_bottleneck(vehicle.pce);
         if let Some(closing_time) = closing_time_opt {
             if closing_time.is_zero() {
                 // The edge's exit bottleneck can be open immediately.
@@ -946,7 +955,7 @@ impl RoadNetworkState {
         let mut release_event = Box::new(ReleaseVehicleEvent {
             at_time: current_time,
             edge_index,
-            vehicle_headway: vehicle.get_headway(),
+            vehicle_headway: vehicle.headway,
             was_phantom,
         });
         if let Some(speed) = self.backward_wave_speed {

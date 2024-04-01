@@ -6,14 +6,17 @@
 //! Everything related to road events.
 
 use anyhow::Result;
+use enum_as_inner::EnumAsInner;
 use num_traits::Float;
 use petgraph::graph::EdgeIndex;
+use ttf::TTF;
 
 use super::results::LegResults;
 use super::TravelingMode;
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::LegType;
 use crate::mode::ModeIndex;
+use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::{OriginalEdgeId, RoadNetworkState};
 use crate::population::AgentIndex;
 use crate::units::Time;
@@ -69,6 +72,8 @@ pub(crate) struct VehicleEvent {
     route: Vec<EdgeIndex>,
     /// Type of event.
     event_type: VehicleEventType,
+    /// [Vehicle] used for the current leg.
+    vehicle: Option<&'static Vehicle>,
     /// If `true`, the vehicle is a phatom, i.e., it does not take any room on the edge.
     is_phantom: bool,
     /// If `true`, the vehicle was a phatom for the last edge it took.
@@ -122,6 +127,7 @@ impl VehicleEvent {
             edge_position: 0,
             route: Vec::new(),
             event_type: VehicleEventType::TripStarts,
+            vehicle: None,
             is_phantom: false,
             was_phantom: false,
         }
@@ -268,6 +274,12 @@ impl VehicleEvent {
         self
     }
 
+    /// Consumes the event and returns another event with the [Vehicle].
+    fn with_vehicle(mut self, vehicle: &'static Vehicle) -> Self {
+        self.vehicle = Some(vehicle);
+        self
+    }
+
     /// Executes the [VehicleEvent].
     pub(crate) fn execute<'sim: 'event, 'event>(
         self,
@@ -303,6 +315,7 @@ impl VehicleEvent {
         }
 
         // Load the leg input and the leg results.
+        debug_assert!(self.leg_position < trip.legs.len());
         let leg = trip
             .legs
             .get(self.leg_position)
@@ -311,7 +324,6 @@ impl VehicleEvent {
             .legs
             .get_mut(self.leg_position)
             .expect("Invalid leg results: Incompatible number of legs.");
-        debug_assert!(self.leg_position < trip.legs.len());
 
         let current_time = self.at_time;
 
@@ -333,7 +345,6 @@ impl VehicleEvent {
                     .class
                     .as_road_mut()
                     .expect("Invalid leg results: Incompatible leg type.");
-                let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
                 let (exp_arrival_time, route) =
                     if let Some(route) = std::mem::take(&mut road_leg_results.expected_route) {
                         let exp_travel_time = road_leg_results.pre_exp_arrival_time
@@ -342,6 +353,7 @@ impl VehicleEvent {
                         (exp_arrival_time, route.clone())
                     } else {
                         // Compute the route between origin and destination of the current leg.
+                        let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
                         let vehicle_skims = skims[uvehicle]
                             .as_ref()
                             .expect("Road network skims are empty.");
@@ -368,31 +380,32 @@ impl VehicleEvent {
                     road_leg_results.length =
                         crate::network::road_network::route_length(route.iter().copied());
                 }
-                Some(self.with_route(route).into_next_step(None, trip))
+                let vehicle = crate::network::road_network::vehicle_with_id(road_leg.vehicle);
+                Some(
+                    self.with_route(route)
+                        .with_vehicle(vehicle)
+                        .into_next_step(None, trip),
+                )
             }
 
             VehicleEventType::ReachesEdgeEntry => {
-                let road_leg = leg.class.as_road().expect("Not a road leg");
-                let vehicle = crate::network::road_network::vehicle_with_id(road_leg.vehicle);
                 // Try to enter the edge.
                 road_network_state.try_enter_edge(
                     self.current_edge(),
                     self.at_time,
-                    vehicle,
+                    self.vehicle.expect("Vehicle should be set at this point"),
                     self.into_next_step(None, trip),
                     events,
                 )
             }
 
             VehicleEventType::EntersEdge => {
-                let road_leg = leg.class.as_road().expect("Not a road leg");
-                let vehicle = crate::network::road_network::vehicle_with_id(road_leg.vehicle);
                 // Get the road travel time.
                 let travel_time = road_network_state.enters_edge(
                     self.current_edge(),
                     self.previous_edge(),
                     self.at_time,
-                    vehicle,
+                    self.vehicle.expect("Vehicle should be set at this point"),
                     self.agent,
                     self.is_phantom,
                     self.was_phantom,
@@ -404,21 +417,17 @@ impl VehicleEvent {
             }
 
             VehicleEventType::ReachesEdgeExit => {
-                let road_leg = leg.class.as_road().expect("Not a road leg");
-                let vehicle = crate::network::road_network::vehicle_with_id(road_leg.vehicle);
                 // Try to cross the bottleneck.
                 road_network_state.try_exit_edge(
                     self.current_edge(),
                     self.at_time,
-                    vehicle,
+                    self.vehicle.expect("Vehicle should be set at this point"),
                     self.into_next_step(None, trip),
                     events,
                 )
             }
 
             VehicleEventType::EndsRoadLeg => {
-                let road_leg = leg.class.as_road().expect("Not a road leg");
-                let vehicle = crate::network::road_network::vehicle_with_id(road_leg.vehicle);
                 let road_leg_results = leg_results
                     .class
                     .as_road()
@@ -433,7 +442,7 @@ impl VehicleEvent {
                     road_network_state.release_from_edge(
                         previous_edge,
                         self.at_time,
-                        vehicle,
+                        self.vehicle.expect("Vehicle should be set at this point"),
                         self.is_phantom,
                         input,
                         alloc,

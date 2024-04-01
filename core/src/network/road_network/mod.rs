@@ -270,6 +270,26 @@ impl SpeedDensityFunction {
             Some(s) => Err(anyhow!("Unknown type: {s}")),
         }
     }
+
+    fn get_speed(&self, base_speed: Speed, occupied_length: Length, total_length: Length) -> Speed {
+        match self {
+            SpeedDensityFunction::FreeFlow => base_speed,
+            &SpeedDensityFunction::Bottleneck(capacity) => {
+                // `capacity` is expressed in Length / Time.
+                // WARNING: The formula below is incorrect when there are vehicles with different
+                // speeds.
+                if occupied_length.0 <= capacity.0 * (total_length / base_speed).0 {
+                    base_speed
+                } else {
+                    Speed(total_length.0 * capacity.0 / occupied_length.0)
+                }
+            }
+            SpeedDensityFunction::ThreeRegimes(func) => {
+                let density = NoUnit((occupied_length / total_length).0);
+                func.get_speed(base_speed, density)
+            }
+        }
+    }
 }
 
 /// A speed-density function with three regimes.
@@ -452,24 +472,10 @@ impl RoadEdge {
     /// total length of the vehicles currently on the edge.
     pub(crate) fn get_travel_time(&self, occupied_length: Length, vehicle: &Vehicle) -> Time {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
-        let variable_tt = match &self.speed_density {
-            SpeedDensityFunction::FreeFlow => self.length / vehicle_speed,
-            &SpeedDensityFunction::Bottleneck(capacity) => {
-                // `capacity` is expressed in Length / Time.
-                // WARNING: The formula below is incorrect when there are vehicles with different
-                // speeds.
-                if occupied_length.0 <= capacity.0 * (self.total_length() / self.base_speed).0 {
-                    self.length / vehicle_speed
-                } else {
-                    Time(occupied_length.0 / (capacity.0 * self.lanes.0))
-                }
-            }
-            SpeedDensityFunction::ThreeRegimes(func) => {
-                let density = NoUnit((occupied_length / self.total_length()).0);
-                let speed = func.get_speed(vehicle_speed, density);
-                self.length / speed
-            }
-        };
+        let variable_tt = self.length()
+            / self
+                .speed_density
+                .get_speed(vehicle_speed, occupied_length, self.total_length());
         variable_tt + self.constant_travel_time
     }
 

@@ -129,20 +129,20 @@ pub struct Vehicle {
     pub(crate) id: OriginalVehicleId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
     #[serde(alias = "length")]
-    headway: Length,
+    pub(crate) headway: Length,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
-    pce: PCE,
+    pub(crate) pce: PCE,
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
     #[serde(default)]
-    speed_function: SpeedFunction,
+    pub(crate) speed_function: SpeedFunction,
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
     #[serde(default)]
-    allowed_edges: HashSet<OriginalEdgeId>,
+    pub(crate) allowed_edges: HashSet<OriginalEdgeId>,
     /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
     /// if `allowed_edges` is specified.
     #[serde(default)]
-    restricted_edges: HashSet<OriginalEdgeId>,
+    pub(crate) restricted_edges: HashSet<OriginalEdgeId>,
 }
 
 impl Vehicle {
@@ -174,18 +174,6 @@ impl Vehicle {
         // Edge is restricted explicitly.
         let is_restricted = self.restricted_edges.contains(&edge_id);
         is_allowed || (!is_restricted && !is_not_allowed)
-    }
-}
-
-impl Vehicle {
-    /// Returns the headway of the vehicle.
-    pub(crate) const fn get_headway(&self) -> Length {
-        self.headway
-    }
-
-    /// Returns the PCE of the vehicle.
-    pub(crate) const fn get_pce(&self) -> PCE {
-        self.pce
     }
 }
 
