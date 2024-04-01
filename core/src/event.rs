@@ -9,12 +9,10 @@ use std::collections::BinaryHeap;
 use std::fmt::Debug;
 
 use anyhow::Result;
-use ttf::TTFNum;
 
-use crate::agent::Agent;
 use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::RoadNetworkState;
-use crate::network::{Network, NetworkSkim};
+use crate::network::NetworkSkim;
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
@@ -22,42 +20,38 @@ use crate::units::Time;
 
 /// Variables required to execute an event.
 #[derive(Debug)]
-pub struct EventInput<'a, T> {
-    /// Reference to the [Agent] of the simulation.
-    pub(crate) agents: &'a [Agent<T>],
-    /// Reference to the [Network] of the simulation.
-    pub(crate) network: &'a Network<T>,
+pub(crate) struct EventInput<'a> {
     /// Reference to the [PreprocessingData] of the simulation.
-    pub(crate) preprocess_data: &'a PreprocessingData<T>,
+    pub(crate) preprocess_data: &'a PreprocessingData,
     /// Reference to the current [NetworkSkim] of the simulation.
-    pub(crate) skims: &'a NetworkSkim<T>,
+    pub(crate) skims: &'a NetworkSkim,
     /// Mutable reference to the [AgentResults] for the current iteration.
-    pub(crate) agent_results: &'a mut AgentResults<T>,
+    pub(crate) agent_results: &'a mut AgentResults,
     /// ProgressBar of the within-day model.
     pub(crate) progress_bar: MetroProgressBar,
 }
 
 /// Memory allocations that can be re-used when executing events.
 #[derive(Clone, Debug, Default)]
-pub struct EventAlloc<T: TTFNum> {
-    pub(crate) ea_alloc: EAAllocation<T>,
+pub(crate) struct EventAlloc {
+    pub(crate) ea_alloc: EAAllocation,
 }
 
 /// Trait to represent an event (e.g., from an agent, a vehicle, a network infrastructure) that can
 /// be executed.
-pub trait Event<T: TTFNum>: Debug {
+pub(crate) trait Event: Debug {
     /// Executes the event.
     ///
     /// Returns `true` if an agent reached his / her destination during the event execution.
     fn execute<'sim: 'event, 'event>(
         self: Box<Self>,
-        input: &'event mut EventInput<'sim, T>,
-        road_network_state: &'event mut RoadNetworkState<T>,
-        alloc: &'event mut EventAlloc<T>,
-        events: &'event mut EventQueue<T>,
+        input: &'event mut EventInput<'sim>,
+        road_network_state: &'event mut RoadNetworkState,
+        alloc: &'event mut EventAlloc,
+        events: &'event mut EventQueue,
     ) -> Result<bool>;
     /// Returns the time at which the event occurs.
-    fn get_time(&self) -> Time<T>;
+    fn get_time(&self) -> Time;
 }
 
 /// An entry for the [EventQueue].
@@ -65,59 +59,54 @@ pub trait Event<T: TTFNum>: Debug {
 // The timing of the events could be retrieved with [Event::get_time].
 // Instead, they are cached to speed-up the queue.
 #[derive(Debug)]
-pub struct EventEntry<T> {
-    time: Time<T>,
-    event: Box<dyn Event<T>>,
+pub(crate) struct EventEntry {
+    time: Time,
+    event: Box<dyn Event>,
 }
 
-impl<T> PartialEq for EventEntry<T> {
+impl PartialEq for EventEntry {
     fn eq(&self, _other: &Self) -> bool {
         // There is never the same entry twice in the queue.
         false
     }
 }
 
-impl<T: TTFNum> Ord for EventEntry<T> {
+impl Ord for EventEntry {
     fn cmp(&self, other: &Self) -> Ordering {
         // We reverse the ordering so that events are pop in chronological order.
         self.time.cmp(&other.time).reverse()
     }
 }
 
-impl<T: TTFNum> PartialOrd for EventEntry<T> {
+impl PartialOrd for EventEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T> Eq for EventEntry<T> {}
+impl Eq for EventEntry {}
 
 /// A priority queue represented as a [BinaryHeap].
 ///
 /// The `EventQueue` is used to store events that are executed in chronological order.
-#[derive(Debug)]
-pub struct EventQueue<T>(BinaryHeap<EventEntry<T>>);
+#[derive(Debug, Default)]
+pub(crate) struct EventQueue(BinaryHeap<EventEntry>);
 
-impl<T> EventQueue<T> {
-    /// Returns `true` if the queue is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
+impl EventQueue {
     /// Returns the number of events in the queue.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.0.len()
     }
 }
 
-impl<T: TTFNum> EventQueue<T> {
+impl EventQueue {
     /// Pops the next event in the queue, i.e., the event with the earliest execution time.
-    pub fn pop(&mut self) -> Option<Box<dyn Event<T>>> {
+    pub(crate) fn pop(&mut self) -> Option<Box<dyn Event>> {
         self.0.pop().map(|entry| entry.event)
     }
 
     /// Pushes a new event in the queue.
-    pub fn push(&mut self, event: Box<dyn Event<T>>) {
+    pub(crate) fn push(&mut self, event: Box<dyn Event>) {
         self.0.push(EventEntry {
             time: event.get_time(),
             event,
@@ -125,16 +114,10 @@ impl<T: TTFNum> EventQueue<T> {
     }
 }
 
-impl<T: TTFNum> Default for EventQueue<T> {
-    fn default() -> Self {
-        EventQueue(BinaryHeap::new())
-    }
-}
-
-impl<T: TTFNum> FromIterator<Box<dyn Event<T>>> for EventQueue<T> {
+impl FromIterator<Box<dyn Event>> for EventQueue {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = Box<dyn Event<T>>>,
+        I: IntoIterator<Item = Box<dyn Event>>,
     {
         EventQueue(
             iter.into_iter()
@@ -153,20 +136,20 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     struct DummyEvent {
-        time: Time<f64>,
+        time: Time,
     }
 
-    impl Event<f64> for DummyEvent {
+    impl Event for DummyEvent {
         fn execute<'sim: 'event, 'event>(
             self: Box<Self>,
-            _input: &'event mut EventInput<'sim, f64>,
-            _road_network_state: &'event mut RoadNetworkState<f64>,
-            _alloc: &'event mut EventAlloc<f64>,
-            _events: &'event mut EventQueue<f64>,
+            _input: &'event mut EventInput<'sim>,
+            _road_network_state: &'event mut RoadNetworkState,
+            _alloc: &'event mut EventAlloc,
+            _events: &'event mut EventQueue,
         ) -> Result<bool> {
             Ok(false)
         }
-        fn get_time(&self) -> Time<f64> {
+        fn get_time(&self) -> Time {
             self.time
         }
     }
@@ -174,7 +157,7 @@ mod tests {
     #[test]
     fn event_queue_test() {
         let mut q = EventQueue(BinaryHeap::new());
-        assert!(q.is_empty());
+        assert_eq!(q.len(), 0);
         q.push(Box::new(DummyEvent { time: Time(2.) }));
         q.push(Box::new(DummyEvent { time: Time(1.) }));
         q.push(Box::new(DummyEvent { time: Time(4.) }));
@@ -184,6 +167,6 @@ mod tests {
         q.push(Box::new(DummyEvent { time: Time(3.) }));
         assert_eq!(q.pop().unwrap().get_time(), Time(3.));
         assert_eq!(q.pop().unwrap().get_time(), Time(4.));
-        assert!(q.is_empty());
+        assert_eq!(q.len(), 0);
     }
 }

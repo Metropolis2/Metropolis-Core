@@ -4,7 +4,6 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use hashbrown::HashSet;
-use metropolis_core::agent::{agent_index, Agent};
 use metropolis_core::learning::LearningModel;
 use metropolis_core::mode::trip::event::RoadEvent;
 use metropolis_core::mode::trip::results::{
@@ -12,24 +11,23 @@ use metropolis_core::mode::trip::results::{
 };
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::{mode_index, Mode, ModeResults};
+use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
 use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
-use metropolis_core::network::road_network::{
-    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
-};
-use metropolis_core::network::Network;
+use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
+use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
+use metropolis_core::population::{agent_index, Agent};
 use metropolis_core::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
 use metropolis_core::schedule_utility::ScheduleUtility;
 use metropolis_core::simulation::results::AgentResult;
-use metropolis_core::simulation::Simulation;
 use metropolis_core::travel_utility::{PolynomialFunction, TravelUtility};
 use metropolis_core::units::{
-    Flow, Interval, Lanes, Length, Speed, Time, Utility, ValueOfTime, PCE,
+    Flow, Interval, Lanes, Length, NoUnit, Speed, Time, Utility, ValueOfTime, PCE,
 };
 use num_traits::Float;
 use ttf::{PwlTTF, TTF};
 
-fn get_simulation() -> Simulation<f64> {
+fn init_simulation() {
     // Create a network with 4 nodes and 2 edges.
     // Edge 0: 0 -> 1 (free-flow tt: 1).
     // Edge 1: 2 -> 3 (free-flow tt: 2).
@@ -75,7 +73,7 @@ fn get_simulation() -> Simulation<f64> {
         2,
         Length(1.0),
         PCE(1.0),
-        SpeedFunction::Multiplicator(0.5),
+        SpeedFunction::Multiplicator(NoUnit(0.5)),
         HashSet::new(),
         HashSet::new(),
     );
@@ -89,9 +87,9 @@ fn get_simulation() -> Simulation<f64> {
         LegType::Road(RoadLeg::new(0, 1, 1)),
         Time(2.0),
         TravelUtility::Polynomial(PolynomialFunction {
-            a: 1.0,
-            b: -1.0,
-            c: 1.0,
+            a: Utility(1.0),
+            b: ValueOfTime(-1.0),
+            c: ValueOfTime(1.0),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
@@ -108,7 +106,7 @@ fn get_simulation() -> Simulation<f64> {
         ))),
         Time(1.0),
         TravelUtility::Polynomial(PolynomialFunction {
-            b: -1.0,
+            b: ValueOfTime(-1.0),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
@@ -121,7 +119,7 @@ fn get_simulation() -> Simulation<f64> {
         LegType::Road(RoadLeg::new(2, 3, 2)),
         Time(1.0),
         TravelUtility::Polynomial(PolynomialFunction {
-            a: 5.0,
+            a: Utility(5.0),
             ..Default::default()
         }),
         ScheduleUtility::None,
@@ -140,7 +138,7 @@ fn get_simulation() -> Simulation<f64> {
         Time(3.0),
         DepartureTimeModel::Constant(Time(0.)),
         TravelUtility::Polynomial(PolynomialFunction {
-            c: -2.0,
+            c: ValueOfTime(-2.0),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
@@ -156,44 +154,33 @@ fn get_simulation() -> Simulation<f64> {
     agents.push(agent);
 
     let parameters = Parameters {
-        input_files: Default::default(),
-        output_directory: Default::default(),
         period: Interval([Time(0.0), Time(50.0)]),
-        learning_model: LearningModel::Exponential(0.0),
+        learning_model: LearningModel::Exponential(NoUnit(0.0)),
         road_network: Some(RoadNetworkParameters {
-            contraction: Default::default(),
-            recording_interval: Time(1.0),
-            approximation_bound: Time(0.0),
-            max_pending_duration: Time(f64::INFINITY),
             spillback: false,
-            backward_wave_speed: None,
-            constrain_inflow: true,
-            algorithm_type: Default::default(),
+            max_pending_duration: Time(f64::INFINITY),
+            ..Default::default()
         }),
-        init_iteration_counter: 1,
         max_iterations: 1,
-        update_ratio: 1.0,
-        random_seed: None,
-        nb_threads: 0,
-        saving_format: Default::default(),
-        only_compute_decisions: false,
+        ..Default::default()
     };
 
-    Simulation::new(agents, network, parameters)
+    metropolis_core::parameters::init(parameters).unwrap();
+    metropolis_core::population::init(agents).unwrap();
+    metropolis_core::network::init(network).unwrap();
 }
 
 #[test]
 fn legs_test() {
-    let simulation = get_simulation();
-    let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation.get_network().get_free_flow_weights(
-        simulation.get_parameters().period,
-        simulation.get_parameters().road_network.as_ref(),
-        &preprocess_data.network,
+    init_simulation();
+    let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
+    let rn_weights = metropolis_core::network::road_network::free_flow_weights(
+        &preprocess_data.network.get_road_network().unwrap(),
     );
-    let results = simulation
-        .run_iteration(weights, None, None, 1, &preprocess_data)
-        .unwrap();
+    let weights = NetworkWeights::new(Some(rn_weights));
+    let results =
+        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
+            .unwrap();
     let agent_results = &results.iteration_results.agent_results()[agent_index(0)];
 
     // Departure time from origin: 0.

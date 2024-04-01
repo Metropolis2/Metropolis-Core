@@ -10,18 +10,17 @@ use anyhow::Result;
 use enum_as_inner::EnumAsInner;
 use num_traits::FromPrimitive;
 use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
 
 use self::trip::results::{AggregateTripResults, PreDayTripResults, TripResults};
 use self::trip::{Leg, TravelingMode};
-use crate::agent::AgentIndex;
 use crate::event::Event;
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
-use crate::network::{Network, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
+use crate::network::road_network::RoadNetworkWeights;
+use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
+use crate::population::AgentIndex;
 use crate::progress_bar::MetroProgressBar;
-use crate::units::{Distribution, Interval, Time, Utility};
+use crate::units::{Distribution, Time, Utility};
 
 pub mod trip;
 
@@ -51,17 +50,15 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 }
 
 /// Mode of transportation available to an agent.
-#[derive(Clone, Debug, Deserialize, Serialize, EnumAsInner)]
-#[serde(bound = "T: TTFNum")]
-#[serde(tag = "type", content = "value")]
-pub enum Mode<T> {
+#[derive(Clone, Debug, EnumAsInner)]
+pub enum Mode {
     /// An activity (e.g., staying home, traveling) that always provide the same utility level.
-    Constant((usize, Utility<T>)),
+    Constant((usize, Utility)),
     /// A trip consisting in a sequence of legs (either on the road or virtual).
-    Trip(TravelingMode<T>),
+    Trip(TravelingMode),
 }
 
-impl<T> Mode<T> {
+impl Mode {
     /// Returns the id of the mode.
     pub fn id(&self) -> usize {
         match self {
@@ -71,7 +68,7 @@ impl<T> Mode<T> {
     }
 }
 
-impl<T> fmt::Display for Mode<T> {
+impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Constant((id, _)) => write!(f, "Constant {id}"),
@@ -80,7 +77,7 @@ impl<T> fmt::Display for Mode<T> {
     }
 }
 
-impl<T: TTFNum> Mode<T> {
+impl Mode {
     /// Creates a `Mode` from input values.
     ///
     /// Returns an error if some values are invalid.
@@ -113,7 +110,7 @@ impl<T: TTFNum> Mode<T> {
         destination_utility_gamma: Option<f64>,
         destination_utility_delta: Option<f64>,
         pre_compute_route: Option<bool>,
-        legs: Option<Vec<Leg<T>>>,
+        legs: Option<Vec<Leg>>,
     ) -> Result<Self> {
         let legs = legs.unwrap_or_default();
         if legs.is_empty() {
@@ -157,18 +154,14 @@ impl<T: TTFNum> Mode<T> {
     /// for a given [Mode], [NetworkSkim] and [NetworkPreprocessingData].
     pub fn get_pre_day_choice<'a>(
         &'a self,
-        network: &'a Network<T>,
-        simulation_period: Interval<T>,
-        weights: &'a NetworkWeights<T>,
-        exp_skims: &'a NetworkSkim<T>,
-        preprocess_data: &'a NetworkPreprocessingData<T>,
+        weights: &'a NetworkWeights,
+        exp_skims: &'a NetworkSkim,
+        preprocess_data: &'a NetworkPreprocessingData,
         progress_bar: MetroProgressBar,
-    ) -> Result<(Utility<T>, ModeCallback<'a, T>)> {
+    ) -> Result<(Utility, ModeCallback<'a>)> {
         match self {
             Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::Constant(*u))))),
             Self::Trip(mode) => mode.get_pre_day_choice(
-                network.get_road_network(),
-                simulation_period,
                 weights.road_network(),
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),
@@ -185,23 +178,20 @@ impl<T: TTFNum> Mode<T> {
 ///
 /// For an agent with multiple modes, only the callback function of the mode chosen in the pre-day
 /// model is called.
-pub type ModeCallback<'a, T> =
-    Box<dyn FnOnce(&'a mut EAAllocation<T>) -> Result<ModeResults<T>> + 'a>;
+pub type ModeCallback<'a> = Box<dyn FnOnce(&'a mut EAAllocation) -> Result<ModeResults> + 'a>;
 
 /// Additional mode-specific results for an agent.
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
-#[serde(tag = "type", content = "value")]
-#[serde(bound(serialize = "T: TTFNum"))]
-pub enum ModeResults<T> {
+#[derive(Debug, Clone, PartialEq, EnumAsInner)]
+pub enum ModeResults {
     /// Results for a traveling mode.
-    Trip(TripResults<T>),
+    Trip(TripResults),
     /// Results for a constant-utility alternative.
-    Constant(Utility<T>),
+    Constant(Utility),
 }
 
-impl<T: Copy> ModeResults<T> {
+impl ModeResults {
     /// Returns the departure time of the trip (if any).
-    pub fn departure_time(&self) -> Option<Time<T>> {
+    pub fn departure_time(&self) -> Option<Time> {
         match self {
             Self::Trip(trip_results) => Some(trip_results.departure_time),
             Self::Constant(_) => None,
@@ -209,7 +199,7 @@ impl<T: Copy> ModeResults<T> {
     }
 }
 
-impl<T: TTFNum> ModeResults<T> {
+impl ModeResults {
     /// Clones and resets the mode results in prevision for a new day.
     pub fn reset(&self) -> Self {
         match self {
@@ -228,9 +218,13 @@ impl<T: TTFNum> ModeResults<T> {
     }
 }
 
-impl<T: TTFNum> ModeResults<T> {
+impl ModeResults {
     /// Returns the initial event associated with the mode (if any).
-    pub fn get_event(&self, agent_id: AgentIndex, mode_id: ModeIndex) -> Option<Box<dyn Event<T>>> {
+    pub(crate) fn get_event(
+        &self,
+        agent_id: AgentIndex,
+        mode_id: ModeIndex,
+    ) -> Option<Box<dyn Event>> {
         match self {
             Self::Trip(trip_results) => trip_results.get_event(agent_id, mode_id),
             Self::Constant(_) => None,
@@ -242,11 +236,11 @@ impl<T: TTFNum> ModeResults<T> {
     ///
     /// This function is executed only when the same mode has been chosen for the previous
     /// iteration.
-    pub(crate) fn with_previous_results(&mut self, previous_results: &Self, network: &Network<T>) {
+    pub(crate) fn with_previous_results(&mut self, previous_results: &Self) {
         match self {
             Self::Trip(trip_results) => {
                 // The unwrap is safe as the same mode has been chosen for the two iterations.
-                trip_results.with_previous_results(previous_results.as_trip().unwrap(), network)
+                trip_results.with_previous_results(previous_results.as_trip().unwrap())
             }
             Self::Constant(_) => (),
         }
@@ -254,18 +248,16 @@ impl<T: TTFNum> ModeResults<T> {
 }
 
 /// Additional mode-specific pre-day results for an agent.
-#[derive(Debug, Clone, PartialEq, EnumAsInner, Serialize)]
-#[serde(tag = "type", content = "value")]
-#[serde(bound(serialize = "T: TTFNum"))]
-pub enum PreDayModeResults<T> {
+#[derive(Debug, Clone, PartialEq, EnumAsInner)]
+pub enum PreDayModeResults {
     /// Results for a traveling mode.
-    Trip(PreDayTripResults<T>),
+    Trip(PreDayTripResults),
     /// Alternative for modes or activities that do not recquire additional results.
-    Constant(Utility<T>),
+    Constant(Utility),
 }
 
-impl<T> From<ModeResults<T>> for PreDayModeResults<T> {
-    fn from(value: ModeResults<T>) -> Self {
+impl From<ModeResults> for PreDayModeResults {
+    fn from(value: ModeResults) -> Self {
         match value {
             ModeResults::Trip(trip_results) => Self::Trip(trip_results.into()),
             ModeResults::Constant(u) => Self::Constant(u),
@@ -273,21 +265,17 @@ impl<T> From<ModeResults<T>> for PreDayModeResults<T> {
     }
 }
 
-impl<T: TTFNum> PreDayModeResults<T> {
+impl PreDayModeResults {
     pub(crate) fn add_expected_route(
         &mut self,
-        mode: &Mode<T>,
-        road_network: &RoadNetwork<T>,
-        weights: &RoadNetworkWeights<T>,
+        mode: &Mode,
+        weights: &RoadNetworkWeights,
         unique_vehicles: &UniqueVehicles,
     ) {
         match self {
-            Self::Trip(trip_results) => trip_results.add_expected_route(
-                mode.as_trip().unwrap(),
-                road_network,
-                weights,
-                unique_vehicles,
-            ),
+            Self::Trip(trip_results) => {
+                trip_results.add_expected_route(mode.as_trip().unwrap(), weights, unique_vehicles)
+            }
             Self::Constant(_) => (),
         }
     }
@@ -295,25 +283,25 @@ impl<T: TTFNum> PreDayModeResults<T> {
 
 /// Aggregate results of an iteration that are mode-specific.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateModeResults<T> {
+pub struct AggregateModeResults {
     /// Results specific to traveling modes.
-    pub trip_modes: Option<AggregateTripResults<T>>,
+    pub trip_modes: Option<AggregateTripResults>,
     /// Results specific to constant modes.
-    pub constant: Option<AggregateConstantResults<T>>,
+    pub constant: Option<AggregateConstantResults>,
 }
 
 /// Aggregate results of an iteration specific to constant modes.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateConstantResults<T> {
+pub struct AggregateConstantResults {
     /// Number of agents who chose a constant mode.
     pub count: usize,
     /// Distribution of the utility of the agents who chose a constant mode.
-    pub utility: Distribution<Utility<T>>,
+    pub utility: Distribution<Utility>,
 }
 
-impl<T: TTFNum> AggregateConstantResults<T> {
+impl AggregateConstantResults {
     /// Creates a new [AggregateConstantResults] from a vector of [Utility].
-    pub fn from_utilities(utilities: Vec<Utility<T>>) -> Self {
+    pub fn from_utilities(utilities: Vec<Utility>) -> Self {
         Self {
             count: utilities.len(),
             utility: Distribution::from_iterator(utilities.into_iter()).unwrap(),

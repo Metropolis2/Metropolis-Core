@@ -8,22 +8,21 @@ use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
 use num_traits::{FromPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
 
 use super::OriginalEdgeId;
-use crate::units::{Length, Speed, PCE};
+use crate::units::{Length, NoUnit, Speed, PCE};
 
 /// Identifier of the vehicles as given by the user.
-pub type OriginalVehicleId = u64;
+pub(crate) type OriginalVehicleId = u64;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", content = "value")]
-pub enum SpeedFunction<T> {
+pub enum SpeedFunction {
     /// The identity function.
     Base,
     /// A linear function: `f(s) = a * s`.
-    Multiplicator(T),
+    Multiplicator(NoUnit),
     /// A piecewise-linear function, represented by a vector of breakpoints `(x, y)`, where `x` is
     /// the base speed on the edge and `y` is the effective speed.
     ///
@@ -31,16 +30,16 @@ pub enum SpeedFunction<T> {
     ///
     /// If the edge's base speed is out of bound (i.e., smaller than the smaller `x` value or
     /// larger than the largest `x` value), the base speed is used as the effective speed.
-    Piecewise(Vec<[Speed<T>; 2]>),
+    Piecewise(Vec<[Speed; 2]>),
 }
 
-impl<T> Default for SpeedFunction<T> {
+impl Default for SpeedFunction {
     fn default() -> Self {
         Self::Base
     }
 }
 
-impl<T: TTFNum> SpeedFunction<T> {
+impl SpeedFunction {
     fn from_values(
         function_type: Option<&str>,
         coef: Option<f64>,
@@ -50,14 +49,13 @@ impl<T: TTFNum> SpeedFunction<T> {
         match function_type {
             Some("Base") | None => Ok(Self::Base),
             Some("Multiplicator") => {
-                let coef = T::from_f64(coef.ok_or_else(|| {
+                let coef = coef.ok_or_else(|| {
                     anyhow!("Value `coef` is mandatory when `type` is `\"Multiplicator\"`")
-                })?)
-                .unwrap();
-                if coef <= T::zero() {
+                })?;
+                if coef <= 0.0 {
                     bail!("Value `coef` must be positive");
                 }
-                Ok(Self::Multiplicator(coef))
+                Ok(Self::Multiplicator(NoUnit(coef)))
             }
             Some("Piecewise") => {
                 let x = x.ok_or_else(|| {
@@ -100,10 +98,10 @@ impl<T: TTFNum> SpeedFunction<T> {
     /// If `self` is a piecewise-linear function and the baseline speed is out of bounds (the
     /// baseline speed is smaller than the smallest `x` or larger than the largest `x`), then the
     /// identity function is used.
-    pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
+    pub(crate) fn get_speed(&self, base_speed: Speed) -> Speed {
         match self {
             SpeedFunction::Base => base_speed,
-            SpeedFunction::Multiplicator(mul) => Speed(*mul * base_speed.0),
+            SpeedFunction::Multiplicator(mul) => Speed(mul.0 * base_speed.0),
             SpeedFunction::Piecewise(values) => {
                 match values.binary_search_by_key(&base_speed, |&[x, _]| x) {
                     // The effective speed at the base speed is known.
@@ -116,7 +114,7 @@ impl<T: TTFNum> SpeedFunction<T> {
                         }
                         let alpha = (base_speed.0 - values[i - 1][0].0)
                             / (values[i][0].0 - values[i - 1][0].0);
-                        Speed(alpha * values[i][1].0 + (T::one() - alpha) * values[i - 1][1].0)
+                        Speed(alpha * values[i][1].0 + (1.0 - alpha) * values[i - 1][1].0)
                     }
                 }
             }
@@ -126,17 +124,17 @@ impl<T: TTFNum> SpeedFunction<T> {
 
 /// A road vehicle with a given headway, [PCE] and [SpeedFunction].
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Vehicle<T> {
+pub struct Vehicle {
     /// Identifier of the vehicle.
     pub(crate) id: OriginalVehicleId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
     #[serde(alias = "length")]
-    headway: Length<T>,
+    headway: Length,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
-    pce: PCE<T>,
+    pce: PCE,
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
     #[serde(default)]
-    speed_function: SpeedFunction<T>,
+    speed_function: SpeedFunction,
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
     #[serde(default)]
@@ -147,13 +145,13 @@ pub struct Vehicle<T> {
     restricted_edges: HashSet<OriginalEdgeId>,
 }
 
-impl<T> Vehicle<T> {
+impl Vehicle {
     /// Creates a new vehicle with a given headway, [PCE] and [SpeedFunction].
     pub const fn new(
         id: OriginalVehicleId,
-        headway: Length<T>,
-        pce: PCE<T>,
-        speed_function: SpeedFunction<T>,
+        headway: Length,
+        pce: PCE,
+        speed_function: SpeedFunction,
         allowed_edges: HashSet<OriginalEdgeId>,
         restricted_edges: HashSet<OriginalEdgeId>,
     ) -> Self {
@@ -168,7 +166,7 @@ impl<T> Vehicle<T> {
     }
 
     /// Returns `true` if the vehicle type has access to the given edge.
-    pub fn can_access(&self, edge_id: OriginalEdgeId) -> bool {
+    pub(crate) fn can_access(&self, edge_id: OriginalEdgeId) -> bool {
         // Edge is allowed explicitly.
         let is_allowed = self.allowed_edges.contains(&edge_id);
         // Edge is not allowed but other edges are explicitly allowed.
@@ -179,19 +177,19 @@ impl<T> Vehicle<T> {
     }
 }
 
-impl<T: Copy> Vehicle<T> {
+impl Vehicle {
     /// Returns the headway of the vehicle.
-    pub const fn get_headway(&self) -> Length<T> {
+    pub(crate) const fn get_headway(&self) -> Length {
         self.headway
     }
 
     /// Returns the PCE of the vehicle.
-    pub const fn get_pce(&self) -> PCE<T> {
+    pub(crate) const fn get_pce(&self) -> PCE {
         self.pce
     }
 }
 
-impl<T: TTFNum> Vehicle<T> {
+impl Vehicle {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: OriginalVehicleId,
@@ -242,7 +240,7 @@ impl<T: TTFNum> Vehicle<T> {
     }
 
     /// Returns the effective speed of the vehicle given the baseline speed on the road.
-    pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
+    pub(crate) fn get_speed(&self, base_speed: Speed) -> Speed {
         self.speed_function.get_speed(base_speed)
     }
 
@@ -253,7 +251,7 @@ impl<T: TTFNum> Vehicle<T> {
     /// 1. They have the same speed function.
     /// 2. They have acces to the same edges (i.e., the sets of allowed edges and restricted edges
     ///    are equal).
-    pub fn share_weights(&self, other: &Vehicle<T>) -> bool {
+    pub(crate) fn share_weights(&self, other: &Vehicle) -> bool {
         self.speed_function == other.speed_function
             && self.allowed_edges == other.allowed_edges
             && self.restricted_edges == other.restricted_edges
@@ -279,7 +277,7 @@ impl VehicleIndex {
 }
 
 /// Short version of `VehicleIndex::new`.
-pub const fn vehicle_index(x: usize) -> VehicleIndex {
+pub(crate) const fn vehicle_index(x: usize) -> VehicleIndex {
     VehicleIndex::new(x)
 }
 
@@ -295,7 +293,7 @@ mod tests {
         assert_eq!(base.get_speed(Speed(50.0)), Speed(50.0));
         assert_eq!(base.get_speed(Speed(70.0)), Speed(70.0));
 
-        let mult = SpeedFunction::Multiplicator(0.9);
+        let mult = SpeedFunction::Multiplicator(NoUnit(0.9));
         assert_eq!(mult.get_speed(Speed(0.0)), Speed(0.0));
         assert_eq!(mult.get_speed(Speed(130.0)), Speed(130.0 * 0.9));
         assert_eq!(mult.get_speed(Speed(50.0)), Speed(50.0 * 0.9));

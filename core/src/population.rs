@@ -5,20 +5,54 @@
 
 //! Everything related to agents.
 use std::ops::Index;
+use std::sync::OnceLock;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use choice::ChoiceModel;
 use itertools;
-use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
 
 use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::{Network, NetworkSkim, NetworkWeights};
+use crate::network::{NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
-use crate::units::{Interval, NoUnit};
+use crate::units::NoUnit;
+
+static AGENTS: OnceLock<Vec<Agent>> = OnceLock::new();
+
+/// Initialize the global value of the agents.
+pub fn init(value: Vec<Agent>) -> Result<()> {
+    if AGENTS.set(value).is_err() {
+        bail!("Global population can be set only once");
+    }
+    Ok(())
+}
+
+/// Returns `true` if the global population is defined.
+pub fn is_init() -> bool {
+    AGENTS.get().is_some()
+}
+
+fn read_global() -> &'static [Agent] {
+    AGENTS.get().expect("Global population is not set")
+}
+
+pub(crate) fn agents() -> &'static [Agent] {
+    read_global()
+}
+
+pub(crate) fn nb_agents() -> usize {
+    read_global().len()
+}
+
+pub(crate) fn agent(index: usize) -> &'static Agent {
+    &read_global()[index]
+}
+
+pub(crate) fn agent_alternative(index: usize, alt_index: ModeIndex) -> &'static Mode {
+    &agent(index)[alt_index]
+}
 
 /// Representation of an independent and intelligent agent that makes one trip per day.
 ///
@@ -27,28 +61,21 @@ use crate::units::{Interval, NoUnit};
 /// - A set of [modes](Mode) that he/she can take to perform his/her trip.
 /// - A [ChoiceModel] describing how his/her mode is chosen, given the expected utilities for each
 /// mode.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
-pub struct Agent<T> {
+#[derive(Clone, Debug)]
+pub struct Agent {
     /// Id used when writing the results of the agents.
-    #[serde(default)]
     pub id: usize,
     /// Modes accessible to the agent.
-    pub(crate) modes: Vec<Mode<T>>,
+    pub(crate) modes: Vec<Mode>,
     /// Choice model used for mode choice.
     ///
     /// When not specified, the first mode is always chosen.
-    #[serde(default)]
-    pub(crate) mode_choice: Option<ChoiceModel<NoUnit<T>>>,
+    pub(crate) mode_choice: Option<ChoiceModel<NoUnit>>,
 }
 
-impl<T> Agent<T> {
+impl Agent {
     /// Creates a new agent with the specified modes, mode-choice model and schedule utility.
-    pub fn new(
-        id: usize,
-        modes: Vec<Mode<T>>,
-        mode_choice: Option<ChoiceModel<NoUnit<T>>>,
-    ) -> Self {
+    pub fn new(id: usize, modes: Vec<Mode>, mode_choice: Option<ChoiceModel<NoUnit>>) -> Self {
         Agent {
             id,
             modes,
@@ -57,12 +84,12 @@ impl<T> Agent<T> {
     }
 
     /// Returns an iterator over the modes of the agent.
-    pub fn iter_modes(&self) -> impl Iterator<Item = &Mode<T>> {
+    pub fn iter_modes(&self) -> impl Iterator<Item = &Mode> {
         self.modes.iter()
     }
 }
 
-impl<T: TTFNum> Agent<T> {
+impl Agent {
     /// Creates an `Agent` from input values.
     ///
     /// Returns an error if some values are invalid.
@@ -72,7 +99,7 @@ impl<T: TTFNum> Agent<T> {
         alt_choice_u: Option<f64>,
         alt_choice_mu: Option<f64>,
         alt_choice_constants: Option<Vec<f64>>,
-        alternatives: Option<Vec<Mode<T>>>,
+        alternatives: Option<Vec<Mode>>,
     ) -> Result<Self> {
         let mode_choice = match alt_choice_type {
             Some("First") | None => None,
@@ -106,24 +133,20 @@ impl<T: TTFNum> Agent<T> {
     #[allow(clippy::too_many_arguments)]
     pub fn make_pre_day_choice(
         &self,
-        network: &Network<T>,
-        simulation_period: Interval<T>,
-        weights: &NetworkWeights<T>,
-        exp_skims: &NetworkSkim<T>,
-        preprocess_data: &PreprocessingData<T>,
-        previous_day_result: Option<&AgentResult<T>>,
+        weights: &NetworkWeights,
+        exp_skims: &NetworkSkim,
+        preprocess_data: &PreprocessingData,
+        previous_day_result: Option<&AgentResult>,
         update: bool,
         progress_bar: MetroProgressBar,
-        alloc: &mut EAAllocation<T>,
-    ) -> Result<AgentResult<T>> {
+        alloc: &mut EAAllocation,
+    ) -> Result<AgentResult> {
         if update {
             if let Some(choice_model) = &self.mode_choice {
                 // Compute the mode-specific expected utilities and get the callback functions.
                 let (expected_utilities, mut callbacks) = itertools::process_results(
                     self.modes.iter().map(|mode| {
                         mode.get_pre_day_choice(
-                            network,
-                            simulation_period,
                             weights,
                             exp_skims,
                             &preprocess_data.network,
@@ -159,8 +182,6 @@ impl<T: TTFNum> Agent<T> {
                 // Choose the first mode.
                 let chosen_mode = &self.modes[0];
                 let (expected_utility, callback) = chosen_mode.get_pre_day_choice(
-                    network,
-                    simulation_period,
                     weights,
                     exp_skims,
                     &preprocess_data.network,
@@ -186,8 +207,8 @@ impl<T: TTFNum> Agent<T> {
     }
 }
 
-impl<T> Index<ModeIndex> for Agent<T> {
-    type Output = Mode<T>;
+impl Index<ModeIndex> for Agent {
+    type Output = Mode;
     fn index(&self, index: ModeIndex) -> &Self::Output {
         &self.modes[index.index()]
     }
@@ -220,9 +241,9 @@ mod tests {
 
     use super::*;
     use crate::mode::{mode_index, ModeResults};
-    use crate::units::{Time, Utility};
+    use crate::units::Utility;
 
-    fn get_agent() -> Agent<f64> {
+    fn get_agent() -> Agent {
         let modes = vec![Mode::Constant((0, Utility(10.)))];
         let choice_model =
             ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)));
@@ -232,13 +253,10 @@ mod tests {
     #[test]
     fn make_pre_day_choice_test() {
         let mut agent = get_agent();
-        let network = Network::new(None);
         let mut alloc = EAAllocation::default();
         let bp = MetroProgressBar::new(1);
         assert!(agent
             .make_pre_day_choice(
-                &network,
-                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),
@@ -251,8 +269,6 @@ mod tests {
 
         let result = agent
             .make_pre_day_choice(
-                &network,
-                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),
@@ -269,8 +285,6 @@ mod tests {
         assert_eq!(
             agent
                 .make_pre_day_choice(
-                    &network,
-                    Interval([Time(0.0), Time(100.0)]),
                     &Default::default(),
                     &Default::default(),
                     &Default::default(),
@@ -286,8 +300,6 @@ mod tests {
         agent.modes.push(Mode::Constant((1, Utility(15.))));
         let result = agent
             .make_pre_day_choice(
-                &network,
-                Interval([Time(0.0), Time(100.0)]),
                 &Default::default(),
                 &Default::default(),
                 &Default::default(),

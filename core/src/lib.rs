@@ -6,7 +6,6 @@
 //! Library for Metropolis: a dynamic multi-modal traffic-assignment simulator.
 #![doc(html_no_source)]
 
-pub mod agent;
 pub mod event;
 pub mod io;
 pub mod learning;
@@ -14,10 +13,10 @@ pub mod logging;
 pub mod mode;
 pub mod network;
 pub mod parameters;
+pub mod population;
 pub mod progress_bar;
 pub mod report;
 pub mod schedule_utility;
-mod serialization;
 pub mod simulation;
 pub mod travel_utility;
 pub mod units;
@@ -54,7 +53,8 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     writer: Option<W>,
 ) -> Result<()> {
     // Read parameters.
-    let parameters = io::json::get_parameters_from_json(path)?;
+    let params = io::json::get_parameters_from_json(path)?;
+    parameters::init(params)?;
 
     // Set the working directory to the directory of the `parameters.json` file so that the input
     // paths can be interpreted as being relative to this file.
@@ -67,17 +67,21 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     }
 
     // Create output directory if it does not exists yet.
-    std::fs::create_dir_all(&parameters.output_directory).with_context(|| {
+    std::fs::create_dir_all(parameters::output_directory()).with_context(|| {
         format!(
             "Failed to create output directory `{:?}`",
-            parameters.output_directory
+            parameters::output_directory()
         )
     })?;
 
-    logging::initialize_logging(&parameters.output_directory, writer)?;
+    logging::initialize_logging(parameters::output_directory(), writer)?;
 
-    let simulation = io::read_simulation(parameters)?;
+    let agents = io::read_population(parameters::input_files())?;
+    population::init(agents)?;
+
+    let network = io::read_network(parameters::input_files())?;
+    network::init(network)?;
 
     // Run the simulation.
-    simulation.run()
+    simulation::run()
 }

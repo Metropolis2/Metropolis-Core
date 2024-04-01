@@ -4,16 +4,89 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to simulation parameters.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+use anyhow::{bail, Result};
 use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
 
 use crate::learning::LearningModel;
-use crate::network::road_network::RoadNetworkParameters;
-use crate::network::NetworkWeights;
-use crate::simulation::results::AgentResults;
-use crate::units::Interval;
+use crate::network::road_network::parameters::RoadNetworkParameters;
+use crate::units::{Interval, Time};
+
+static PARAMETERS: OnceLock<Parameters> = OnceLock::new();
+
+/// Initialize the global value of the parameters.
+pub fn init(value: Parameters) -> Result<()> {
+    if PARAMETERS.set(value).is_err() {
+        bail!("Global parameters can be set only once");
+    }
+    Ok(())
+}
+
+/// Returns `true` if the global parameters are defined.
+pub fn is_init() -> bool {
+    PARAMETERS.get().is_some()
+}
+
+fn read_global() -> &'static Parameters {
+    PARAMETERS.get().expect("Global parameters are not set")
+}
+
+pub(crate) fn input_files() -> &'static InputFiles {
+    &read_global().input_files
+}
+
+pub(crate) fn output_directory() -> &'static Path {
+    &read_global().output_directory
+}
+
+pub(crate) fn period() -> Interval {
+    read_global().period
+}
+
+pub(crate) fn init_iteration_counter() -> u32 {
+    read_global().init_iteration_counter
+}
+
+pub(crate) fn max_iterations() -> u32 {
+    read_global().max_iterations
+}
+
+pub(crate) fn has_road_network_parameters() -> bool {
+    read_global().road_network.is_some()
+}
+
+pub(crate) fn road_network() -> &'static RoadNetworkParameters {
+    read_global()
+        .road_network
+        .as_ref()
+        .expect("Road-network parameters are not set")
+}
+
+pub(crate) fn learning_model() -> &'static LearningModel {
+    &read_global().learning_model
+}
+
+pub(crate) fn update_ratio() -> f64 {
+    read_global().update_ratio
+}
+
+pub(crate) fn random_seed() -> Option<u64> {
+    read_global().random_seed
+}
+
+pub(crate) fn nb_threads() -> usize {
+    read_global().nb_threads
+}
+
+pub(crate) fn saving_format() -> SavingFormat {
+    read_global().saving_format
+}
+
+pub(crate) fn only_compute_decisions() -> bool {
+    read_global().only_compute_decisions
+}
 
 const fn default_iteration_counter() -> u32 {
     1
@@ -26,13 +99,20 @@ const fn default_update_ratio() -> f64 {
 /// Format to be used when saving files.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub enum SavingFormat {
-    /// Zstd-compressed JSON files.
-    JSON,
     /// Parquet files.
     #[default]
     Parquet,
     /// CSV files.
     CSV,
+}
+
+impl SavingFormat {
+    pub(crate) fn extension(&self) -> String {
+        match self {
+            Self::Parquet => "parquet".into(),
+            Self::CSV => "csv".into(),
+        }
+    }
 }
 
 /// Struct to store all the input file paths.
@@ -52,8 +132,7 @@ pub struct InputFiles {
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(deserialize = "T: TTFNum"))]
-pub struct Parameters<T> {
+pub struct Parameters {
     /// Paths to the input files.
     pub input_files: InputFiles,
     /// Path to the output directory.
@@ -67,7 +146,7 @@ pub struct Parameters<T> {
     /// times are no longer recorded.
     /// The departure time chosen by any agent must be such that the expected arrival time is
     /// earlier than the end of the period.
-    pub period: Interval<T>,
+    pub period: Interval,
     /// Initial iteration counter to use for the simulation.
     ///
     /// This is useful when running a simulation "step-by-step" (i.e., the input is modified
@@ -79,10 +158,10 @@ pub struct Parameters<T> {
     #[serde(default = "default_iteration_counter")]
     pub max_iterations: u32,
     /// Set of parameters for the road network.
-    pub road_network: Option<RoadNetworkParameters<T>>,
+    pub road_network: Option<RoadNetworkParameters>,
     /// Learning model used to update the values between two iterations.
     #[serde(default)]
-    pub learning_model: LearningModel<T>,
+    pub learning_model: LearningModel,
     /// Share of agents that can update their pre-day choices at each iteration.
     #[serde(default = "default_update_ratio")]
     pub update_ratio: f64,
@@ -105,33 +184,21 @@ pub struct Parameters<T> {
     pub only_compute_decisions: bool,
 }
 
-impl<T> Parameters<T> {
-    pub(crate) fn saving_extension(&self) -> String {
-        match self.saving_format {
-            SavingFormat::JSON => "json".into(),
-            SavingFormat::Parquet => "parquet".into(),
-            SavingFormat::CSV => "csv".into(),
+impl Default for Parameters {
+    fn default() -> Self {
+        Self {
+            input_files: Default::default(),
+            output_directory: Default::default(),
+            period: Interval([Time(0.0), Time(3600.0 * 24.0)]),
+            init_iteration_counter: 1,
+            max_iterations: 1,
+            road_network: Some(Default::default()),
+            learning_model: Default::default(),
+            update_ratio: 1.0,
+            random_seed: None,
+            nb_threads: 0,
+            saving_format: Default::default(),
+            only_compute_decisions: false,
         }
-    }
-}
-
-impl<T: TTFNum> Parameters<T> {
-    /// Returns `true` if the Simulation must be stopped.
-    pub fn stop(&self, iteration_counter: u32, _results: &AgentResults<T>) -> bool {
-        debug_assert!(iteration_counter >= self.init_iteration_counter);
-        let nb_iterations = 1 + iteration_counter - self.init_iteration_counter;
-        nb_iterations >= self.max_iterations
-    }
-
-    /// Returns the new [NetworkWeights] given the old weights and the simulated weights.
-    pub fn learn(
-        &self,
-        old_weights: &NetworkWeights<T>,
-        weights: &NetworkWeights<T>,
-        iteration_counter: u32,
-    ) -> NetworkWeights<T> {
-        // At this point, the iteration counter has not been increment yet.
-        self.learning_model
-            .learn(old_weights, weights, iteration_counter + 1)
     }
 }

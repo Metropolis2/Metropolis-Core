@@ -9,13 +9,12 @@ use std::ops::Index;
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
 use serde_derive::{Deserialize, Serialize};
-use ttf::{TTFNum, TTF};
+use ttf::TTF;
 
 use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
-use super::{OriginalNodeId, RoadNetwork, RoadNetworkParameters};
-use crate::agent::Agent;
+use super::OriginalNodeId;
 use crate::mode::Mode;
-use crate::units::{Interval, Time};
+use crate::units::Time;
 
 /// Unique vehicle index.
 #[derive(
@@ -51,7 +50,12 @@ pub(crate) struct UniqueVehicles {
 
 impl UniqueVehicles {
     /// Creates a new [UniqueVehicles] from a Vec of [Vehicle].
-    pub(crate) fn from_vehicles<T: TTFNum>(vehicles: &[Vehicle<T>]) -> Self {
+    pub(crate) fn init() -> Self {
+        let vehicles = super::vehicles();
+        Self::init_inner(vehicles)
+    }
+
+    fn init_inner(vehicles: &[Vehicle]) -> Self {
         let mut list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)> = Vec::new();
         let mut vehicle_map = HashMap::with_capacity(vehicles.len());
         for (vehicle_idx, vehicle) in vehicles.iter().enumerate() {
@@ -77,10 +81,10 @@ impl UniqueVehicles {
     }
 
     /// Iterates over the `UniqueVehicleIndex` and the reference [Vehicle] of all unique vehicles.
-    pub(crate) fn iter_uniques<'a, T>(
+    pub(crate) fn iter_uniques<'a>(
         &'a self,
-        vehicles: &'a [Vehicle<T>],
-    ) -> impl Iterator<Item = (UniqueVehicleIndex, &'a Vehicle<T>)> {
+        vehicles: &'a [Vehicle],
+    ) -> impl Iterator<Item = (UniqueVehicleIndex, &'a Vehicle)> {
         self.list
             .iter()
             .enumerate()
@@ -93,24 +97,6 @@ impl UniqueVehicles {
             .iter()
             .map(|(_, vehicle_ids)| vehicle_ids.as_slice())
     }
-
-    /// Iterates over the `UniqueVehicleIndex`, the reference [Vehicle] of all unique vehicles and
-    /// the [OriginalVehicleId] of all associated vehicles.
-    pub(crate) fn iter_uniques_with_original_ids<'a, T>(
-        &'a self,
-        vehicles: &'a [Vehicle<T>],
-    ) -> impl Iterator<Item = (UniqueVehicleIndex, &'a Vehicle<T>, &[OriginalVehicleId])> {
-        self.list
-            .iter()
-            .enumerate()
-            .map(|(i, (v_id, vehicle_ids))| {
-                (
-                    unique_vehicle_index(i),
-                    &vehicles[v_id.index()],
-                    vehicle_ids.as_slice(),
-                )
-            })
-    }
 }
 
 impl Index<OriginalVehicleId> for UniqueVehicles {
@@ -122,7 +108,7 @@ impl Index<OriginalVehicleId> for UniqueVehicles {
 
 /// Set of pre-processing data used for different road-network computation.
 #[derive(Clone, Debug)]
-pub struct RoadNetworkPreprocessingData<T> {
+pub struct RoadNetworkPreprocessingData {
     /// Set of unique vehicles.
     pub(crate) unique_vehicles: UniqueVehicles,
     /// Vector with, for each unique vehicle, an [ODPairs] instance representing the
@@ -130,10 +116,10 @@ pub struct RoadNetworkPreprocessingData<T> {
     pub(crate) od_pairs: Vec<ODPairs>,
     /// Vector with, for each unique vehicle, an [ODTravelTimes] instance representing the
     /// OD-pair level free-flow travel times.
-    pub(crate) free_flow_travel_times: Vec<ODTravelTimes<T>>,
+    pub(crate) free_flow_travel_times: Vec<ODTravelTimes>,
 }
 
-impl<T> RoadNetworkPreprocessingData<T> {
+impl RoadNetworkPreprocessingData {
     /// Returns the number of unique vehicles.
     pub fn nb_unique_vehicles(&self) -> usize {
         self.unique_vehicles.len()
@@ -170,30 +156,18 @@ impl<T> RoadNetworkPreprocessingData<T> {
     pub fn free_flow_travel_times_of_unique_vehicle(
         &self,
         uvehicle_id: UniqueVehicleIndex,
-    ) -> &ODTravelTimes<T> {
+    ) -> &ODTravelTimes {
         &self.free_flow_travel_times[uvehicle_id.index()]
     }
 }
 
-impl<T: TTFNum> RoadNetworkPreprocessingData<T> {
+impl RoadNetworkPreprocessingData {
     /// Computes pre-processed data for a [RoadNetwork], given the list of [Agent], the
     /// [RoadNetworkParameters] and the simulation interval.
-    pub fn preprocess(
-        road_network: &RoadNetwork<T>,
-        agents: &[Agent<T>],
-        period: Interval<T>,
-        parameters: &RoadNetworkParameters<T>,
-    ) -> Result<Self> {
-        let unique_vehicles = UniqueVehicles::from_vehicles(&road_network.vehicles);
-        let od_pairs = od_pairs_from_agents(agents, &unique_vehicles)?;
-        let free_flow_travel_times = compute_free_flow_travel_times(
-            road_network,
-            agents,
-            period,
-            parameters,
-            &unique_vehicles,
-            &od_pairs,
-        )?;
+    pub fn preprocess() -> Result<Self> {
+        let unique_vehicles = UniqueVehicles::init();
+        let od_pairs = init_od_pairs(&unique_vehicles)?;
+        let free_flow_travel_times = compute_free_flow_travel_times(&unique_vehicles, &od_pairs)?;
         Ok(RoadNetworkPreprocessingData {
             unique_vehicles,
             od_pairs,
@@ -250,12 +224,9 @@ impl ODPairs {
     }
 }
 
-fn od_pairs_from_agents<T>(
-    agents: &[Agent<T>],
-    unique_vehicles: &UniqueVehicles,
-) -> Result<Vec<ODPairs>> {
+fn init_od_pairs(unique_vehicles: &UniqueVehicles) -> Result<Vec<ODPairs>> {
     let mut od_pairs = vec![ODPairs::default(); unique_vehicles.len()];
-    for agent in agents {
+    for agent in crate::population::agents() {
         for mode in agent.iter_modes() {
             if let Mode::Trip(trip_mode) = mode {
                 for leg in trip_mode.iter_road_legs() {
@@ -282,24 +253,16 @@ fn od_pairs_from_agents<T>(
 }
 
 /// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
-type ODTravelTimes<T> = HashMap<(OriginalNodeId, OriginalNodeId), Time<T>>;
+type ODTravelTimes = HashMap<(OriginalNodeId, OriginalNodeId), Time>;
 
-fn compute_free_flow_travel_times<T: TTFNum>(
-    road_network: &RoadNetwork<T>,
-    agents: &[Agent<T>],
-    period: Interval<T>,
-    parameters: &RoadNetworkParameters<T>,
+fn compute_free_flow_travel_times(
     unique_vehicles: &UniqueVehicles,
     od_pairs: &[ODPairs],
-) -> Result<Vec<ODTravelTimes<T>>> {
+) -> Result<Vec<ODTravelTimes>> {
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
-    let free_flow_weights = road_network.get_free_flow_weights_inner(
-        period,
-        parameters.recording_interval,
-        unique_vehicles,
-    );
-    let skims = road_network.compute_skims_inner(&free_flow_weights, od_pairs, parameters)?;
-    for agent in agents {
+    let free_flow_weights = super::free_flow_weights_inner(unique_vehicles);
+    let skims = super::compute_skims_inner(&free_flow_weights, od_pairs)?;
+    for agent in crate::population::agents() {
         for mode in agent.iter_modes() {
             if let Mode::Trip(trip_mode) = mode {
                 for leg in trip_mode.iter_road_legs() {
@@ -379,7 +342,7 @@ mod tests {
             HashSet::new(),
         );
         let vehicles = vec![v0, v1, v2];
-        let results = UniqueVehicles::from_vehicles(&vehicles);
+        let results = UniqueVehicles::init_inner(&vehicles);
         assert_eq!(
             results.list,
             vec![(vehicle_index(0), vec![1, 2]), (vehicle_index(2), vec![3])]

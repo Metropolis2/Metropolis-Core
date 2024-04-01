@@ -8,7 +8,6 @@
 use anyhow::Result;
 use num_traits::ToPrimitive;
 use polars::prelude::*;
-use ttf::TTFNum;
 
 use crate::simulation::results::AggregateResults;
 
@@ -152,7 +151,7 @@ macro_rules! add_cst_to_fields {
     };
 }
 
-impl<T: TTFNum> ToPolars for AggregateResults<T> {
+impl ToPolars for AggregateResults {
     fn to_dataframe(self) -> Result<DataFrame> {
         let mut df = DataFrame::new(vec![Series::new(
             "iteration_counter",

@@ -19,9 +19,8 @@ use arrow::record_batch::RecordBatch;
 use hashbrown::{HashMap, HashSet};
 use log::{info, warn};
 use num_traits::{FromPrimitive, ToPrimitive};
-use ttf::{TTFNum, TTF};
+use ttf::TTF;
 
-use crate::agent::Agent;
 use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
 use crate::mode::trip::Leg;
 use crate::mode::{Mode, ModeResults, PreDayModeResults};
@@ -29,6 +28,7 @@ use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::vehicle::{OriginalVehicleId, Vehicle};
 use crate::network::road_network::{OriginalEdgeId, RoadEdge, RoadNetwork, RoadNetworkWeights};
 use crate::network::NetworkWeights;
+use crate::population::Agent;
 use crate::simulation::results::{
     AgentResult, AgentResults, PreDayAgentResult, PreDayAgentResults,
 };
@@ -40,10 +40,10 @@ pub trait ToArrow<const J: usize> {
 }
 
 /// Reads a road network from the filename of edges and vehicle types.
-pub(crate) fn get_road_network_from_files<T: TTFNum>(
+pub(crate) fn get_road_network_from_files(
     edges_path: &Path,
     vehicle_path: &Path,
-) -> Result<RoadNetwork<T>> {
+) -> Result<RoadNetwork> {
     // Read edges parquet file.
     info!("Reading edges");
     let edge_batch = filename_to_batch_record(edges_path)?;
@@ -56,11 +56,11 @@ pub(crate) fn get_road_network_from_files<T: TTFNum>(
 }
 
 /// Reads agents from the filename of agents, alternatives and trips.
-pub(crate) fn get_agents_from_files<T: TTFNum>(
+pub(crate) fn get_agents_from_files(
     agents_path: &Path,
     alts_path: &Path,
     trips_path: Option<&Path>,
-) -> Result<Vec<Agent<T>>> {
+) -> Result<Vec<Agent>> {
     let trips = if let Some(filename) = trips_path {
         // Read trip file.
         info!("Reading trips");
@@ -81,24 +81,15 @@ pub(crate) fn get_agents_from_files<T: TTFNum>(
 }
 
 /// Reads [RoadNetworkWeights] from a filename.
-pub(crate) fn get_road_network_weights_from_file<T: TTFNum>(
+pub(crate) fn get_road_network_weights_from_file(
     path: &Path,
-    period: Interval<T>,
-    interval: Time<T>,
-    road_network: &RoadNetwork<T>,
     unique_vehicles: &UniqueVehicles,
-) -> Result<RoadNetworkWeights<T>> {
+) -> Result<RoadNetworkWeights> {
     info!("Reading road-network conditions");
     let batch = filename_to_batch_record(path)?;
     let rn_weights_vec = read_rn_weights(batch).context("Cannot parse road-network conditions")?;
-    let rn_weights = RoadNetworkWeights::from_values(
-        rn_weights_vec,
-        period,
-        interval,
-        road_network,
-        unique_vehicles,
-    )
-    .context("Invalid road-network conditions")?;
+    let rn_weights = RoadNetworkWeights::from_values(rn_weights_vec, unique_vehicles)
+        .context("Invalid road-network conditions")?;
     Ok(rn_weights)
 }
 
@@ -254,8 +245,8 @@ macro_rules! get_list_values {
     };
 }
 
-type LegMap<T> = HashMap<(usize, usize), Vec<Leg<T>>>;
-type AltMap<T> = HashMap<usize, Vec<Mode<T>>>;
+type LegMap = HashMap<(usize, usize), Vec<Leg>>;
+type AltMap = HashMap<usize, Vec<Mode>>;
 
 const TRIP_COLUMNS: [&str; 20] = [
     "agent_id",
@@ -281,7 +272,7 @@ const TRIP_COLUMNS: [&str; 20] = [
 ];
 
 /// Reads an arrow `RecordBatch` and returns a `HashMap` that maps `(agent_id, alt_id)` to a `Trip`.
-pub(crate) fn read_trips<T: TTFNum>(batch: RecordBatch) -> Result<LegMap<T>> {
+pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &TRIP_COLUMNS);
     let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
@@ -311,7 +302,7 @@ pub(crate) fn read_trips<T: TTFNum>(batch: RecordBatch) -> Result<LegMap<T>> {
     let schedule_utility_delta_values =
         get_column!(["schedule_utility", "delta"] in struct_array as f64);
     let n = struct_array.len();
-    let mut trips: LegMap<T> = HashMap::with_capacity(n);
+    let mut trips: LegMap = HashMap::with_capacity(n);
     let mut unique_tuples = HashSet::with_capacity(n);
     for i in 0..n {
         let agent_id = get_value!(agent_id_values[i]);
@@ -411,10 +402,7 @@ const ALTERNATIVE_COLUMNS: [&str; 28] = [
 ];
 
 /// Reads an arrow `RecordBatch` and returns a `HashMap` that maps `agent_id` to an `Alt`.
-pub(crate) fn read_alternatives<T: TTFNum>(
-    batch: RecordBatch,
-    mut trips: LegMap<T>,
-) -> Result<AltMap<T>> {
+pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result<AltMap> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &ALTERNATIVE_COLUMNS);
     let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
@@ -463,7 +451,7 @@ pub(crate) fn read_alternatives<T: TTFNum>(
         get_column!(["destination_utility", "delta"] in struct_array as f64);
     let pre_compute_route_values = get_column!(["pre_compute_route"] in struct_array as bool);
     let n = struct_array.len();
-    let mut alternatives: AltMap<T> = HashMap::with_capacity(n);
+    let mut alternatives: AltMap = HashMap::with_capacity(n);
     let mut unique_pairs = HashSet::with_capacity(n);
     for i in 0..n {
         let agent_id = get_value!(agent_id_values[i]);
@@ -555,10 +543,7 @@ const AGENT_COLUMNS: [&str; 5] = [
 ];
 
 /// Reads an arrow `RecordBatch` and returns a `Vec` of `Agent`.
-pub(crate) fn read_agents<T: TTFNum>(
-    batch: RecordBatch,
-    mut alternatives: AltMap<T>,
-) -> Result<Vec<Agent<T>>> {
+pub(crate) fn read_agents(batch: RecordBatch, mut alternatives: AltMap) -> Result<Vec<Agent>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &AGENT_COLUMNS);
     let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
@@ -616,11 +601,11 @@ const EDGE_COLUMNS: [&str; 15] = [
     "overtaking",
 ];
 
-type EdgeVec<T> = Vec<(u64, u64, RoadEdge<T>)>;
+type EdgeVec = Vec<(u64, u64, RoadEdge)>;
 
 /// Reads an arrow `RecordBatch` with edges data and returns a `Vec` of `RoadEdge` and a `HashSet`
 /// of unique edge ids.
-pub(crate) fn read_edges<T: TTFNum>(batch: RecordBatch) -> Result<(EdgeVec<T>, HashSet<u64>)> {
+pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<u64>)> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &EDGE_COLUMNS);
     let edge_id_values = get_column!(["edge_id"] in struct_array as u64);
@@ -701,10 +686,7 @@ const VEHICLE_COLUMNS: [&str; 9] = [
 ];
 
 /// Reads an arrow `RecordBatch` with vehicles data and returns a `Vec` of `Vehicle`.
-pub(crate) fn read_vehicles<T: TTFNum>(
-    batch: RecordBatch,
-    edge_ids: HashSet<u64>,
-) -> Result<Vec<Vehicle<T>>> {
+pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Result<Vec<Vehicle>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &VEHICLE_COLUMNS);
     let vehicle_id_values = get_column!(["vehicle_id"] in struct_array as u64);
@@ -755,10 +737,10 @@ pub(crate) fn read_vehicles<T: TTFNum>(
 
 const RN_WEIGHTS_COLUMNS: [&str; 4] = ["vehicle_id", "edge_id", "departure_time", "travel_time"];
 
-type RnWeightsVec<T> = Vec<(OriginalVehicleId, OriginalEdgeId, Time<T>, Time<T>)>;
+type RnWeightsVec = Vec<(OriginalVehicleId, OriginalEdgeId, Time, Time)>;
 
 /// Reads an arrow `RecordBatch` with road-network weights data and returns a [RoadNetworkWeights].
-pub(crate) fn read_rn_weights<T: TTFNum>(batch: RecordBatch) -> Result<RnWeightsVec<T>> {
+pub(crate) fn read_rn_weights(batch: RecordBatch) -> Result<RnWeightsVec> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &RN_WEIGHTS_COLUMNS);
     let vehicle_id_values = get_column!(["vehicle_id"] in struct_array as u64);
@@ -860,7 +842,7 @@ struct AgentResultsBuilder {
 }
 
 impl AgentResultsBuilder {
-    fn append<T: ToPrimitive>(&mut self, agent_result: &AgentResult<T>) {
+    fn append(&mut self, agent_result: &AgentResult) {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
@@ -1099,8 +1081,8 @@ impl AgentResultsBuilder {
     }
 }
 
-impl<T: ToPrimitive> ToArrow<3> for AgentResults<T> {
-    fn to_arrow(data: &AgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
+impl ToArrow<3> for AgentResults {
+    fn to_arrow(data: &AgentResults) -> Result<[Option<RecordBatch>; 3]> {
         let mut builder = AgentResultsBuilder::default();
         data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
@@ -1140,7 +1122,7 @@ struct PreDayAgentResultsBuilder {
 }
 
 impl PreDayAgentResultsBuilder {
-    fn append<T: ToPrimitive>(&mut self, agent_result: &PreDayAgentResult<T>) {
+    fn append(&mut self, agent_result: &PreDayAgentResult) {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
@@ -1301,8 +1283,8 @@ impl PreDayAgentResultsBuilder {
     }
 }
 
-impl<T: ToPrimitive> ToArrow<3> for PreDayAgentResults<T> {
-    fn to_arrow(data: &PreDayAgentResults<T>) -> Result<[Option<RecordBatch>; 3]> {
+impl ToArrow<3> for PreDayAgentResults {
+    fn to_arrow(data: &PreDayAgentResults) -> Result<[Option<RecordBatch>; 3]> {
         let mut builder = PreDayAgentResultsBuilder::default();
         data.0.iter().for_each(|row| builder.append(row));
         builder.finish()
@@ -1313,17 +1295,17 @@ impl<T: ToPrimitive> ToArrow<3> for PreDayAgentResults<T> {
 }
 
 #[derive(Debug)]
-struct RoadNetworkWeightsBuilder<T> {
-    period: Interval<T>,
-    interval: Time<T>,
+struct RoadNetworkWeightsBuilder {
+    period: Interval,
+    interval: Time,
     vehicle_id: UInt64Builder,
     edge_id: UInt64Builder,
     departure_time: Float64Builder,
     travel_time: Float64Builder,
 }
 
-impl<T> RoadNetworkWeightsBuilder<T> {
-    fn new(period: Interval<T>, interval: Time<T>) -> Self {
+impl RoadNetworkWeightsBuilder {
+    fn new(period: Interval, interval: Time) -> Self {
         Self {
             period,
             interval,
@@ -1335,8 +1317,8 @@ impl<T> RoadNetworkWeightsBuilder<T> {
     }
 }
 
-impl<T: TTFNum> RoadNetworkWeightsBuilder<T> {
-    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<Time<T>>) {
+impl RoadNetworkWeightsBuilder {
+    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<Time>) {
         let xs_iter =
             std::iter::successors(Some(self.period.start()), |&t| Some(t + self.interval))
                 .take_while(|&t| t < self.period.end());
@@ -1372,11 +1354,13 @@ impl<T: TTFNum> RoadNetworkWeightsBuilder<T> {
     }
 }
 
-impl<T: TTFNum> ToArrow<1> for NetworkWeights<T> {
-    fn to_arrow(data: &NetworkWeights<T>) -> Result<[Option<RecordBatch>; 1]> {
+impl ToArrow<1> for NetworkWeights {
+    fn to_arrow(data: &NetworkWeights) -> Result<[Option<RecordBatch>; 1]> {
         if let Some(rn_weights) = data.road_network() {
-            let mut builder =
-                RoadNetworkWeightsBuilder::new(rn_weights.period, rn_weights.interval);
+            let mut builder = RoadNetworkWeightsBuilder::new(
+                crate::parameters::period(),
+                crate::network::road_network::parameters::recording_interval(),
+            );
             for vehicle_weights in rn_weights.iter() {
                 for vehicle_id in vehicle_weights.vehicle_ids() {
                     for (edge_id, ttf) in vehicle_weights.weights().iter() {

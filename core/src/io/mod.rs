@@ -14,25 +14,26 @@ mod polars;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use ttf::TTFNum;
 
 use crate::network::road_network::preprocess::UniqueVehicles;
-use crate::network::road_network::{RoadNetwork, RoadNetworkWeights};
+use crate::network::road_network::RoadNetworkWeights;
 use crate::network::Network;
-use crate::parameters::Parameters;
-use crate::simulation::Simulation;
-use crate::units::{Interval, Time};
+use crate::parameters::InputFiles;
+use crate::population::Agent;
 
-pub(crate) fn read_simulation<T: TTFNum>(parameters: Parameters<T>) -> Result<Simulation<T>> {
-    let agents = arrow::get_agents_from_files(
-        &parameters.input_files.agents,
-        &parameters.input_files.alternatives,
-        parameters.input_files.trips.as_deref(),
+pub(crate) fn read_population(input_files: &InputFiles) -> Result<Vec<Agent>> {
+    arrow::get_agents_from_files(
+        &input_files.agents,
+        &input_files.alternatives,
+        input_files.trips.as_deref(),
     )
-    .context("Failed to read population")?;
+    .context("Failed to read population")
+}
+
+pub(crate) fn read_network(input_files: &InputFiles) -> Result<Network> {
     let road_network = match (
-        parameters.input_files.edges.as_ref(),
-        parameters.input_files.vehicle_types.as_ref(),
+        input_files.edges.as_ref(),
+        input_files.vehicle_types.as_ref(),
     ) {
         (Some(edges_path), Some(vehicle_path)) => Some(
             arrow::get_road_network_from_files(edges_path, vehicle_path)
@@ -46,22 +47,12 @@ pub(crate) fn read_simulation<T: TTFNum>(parameters: Parameters<T>) -> Result<Si
         }
         (None, None) => None,
     };
-    let network = Network::new(road_network);
-    Ok(Simulation::new(agents, network, parameters))
+    Ok(Network::new(road_network))
 }
 
-pub(crate) fn read_rn_weights<T: TTFNum>(
+pub(crate) fn read_rn_weights(
     filename: &Path,
-    period: Interval<T>,
-    interval: Time<T>,
-    road_network: &RoadNetwork<T>,
     unique_vehicles: &UniqueVehicles,
-) -> Result<RoadNetworkWeights<T>> {
-    arrow::get_road_network_weights_from_file(
-        filename,
-        period,
-        interval,
-        road_network,
-        unique_vehicles,
-    )
+) -> Result<RoadNetworkWeights> {
+    arrow::get_road_network_weights_from_file(filename, unique_vehicles)
 }

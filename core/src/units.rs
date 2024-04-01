@@ -33,109 +33,109 @@ use ttf::TTFNum;
 macro_rules! impl_ttf_on_unit(
     ( $( $t:ident ),* ) => {
         $(
-            impl<T: Add<Output = T>> Add for $t<T> {
+            impl Add for $t {
                 type Output = Self;
                 fn add(self, rhs: Self) -> Self::Output {
                     Self(self.0 + rhs.0)
                 }
             }
 
-            impl<T: AddAssign> AddAssign for $t<T> {
+            impl AddAssign for $t {
                 fn add_assign(&mut self, rhs: Self) {
                     self.0 += rhs.0;
                 }
             }
 
-            impl<T: Sub<Output = T>> Sub for $t<T> {
+            impl Sub for $t {
                 type Output = Self;
                 fn sub(self, rhs: Self) -> Self::Output {
                     Self(self.0 - rhs.0)
                 }
             }
 
-            impl<T: SubAssign> SubAssign for $t<T> {
+            impl SubAssign for $t {
                 fn sub_assign(&mut self, rhs: Self) {
                     self.0 -= rhs.0;
                 }
             }
 
-            impl<T: Mul<Output = T>> Mul for $t<T> {
+            impl Mul for $t {
                 type Output = Self;
                 fn mul(self, rhs: Self) -> Self::Output {
                     Self(self.0 * rhs.0)
                 }
             }
 
-            impl<T: MulAssign> MulAssign for $t<T> {
+            impl MulAssign for $t {
                 fn mul_assign(&mut self, rhs: Self) {
                     self.0 *= rhs.0;
                 }
             }
 
-            impl<T: Div<Output = T>> Div for $t<T> {
+            impl Div for $t {
                 type Output = Self;
                 fn div(self, rhs: Self) -> Self::Output {
                     Self(self.0 / rhs.0)
                 }
             }
 
-            impl<T: DivAssign> DivAssign for $t<T> {
+            impl DivAssign for $t {
                 fn div_assign(&mut self, rhs: Self) {
                     self.0 /= rhs.0;
                 }
             }
 
-            impl<T: Rem<Output = T>> Rem for $t<T> {
+            impl Rem for $t {
                 type Output = Self;
                 fn rem(self, rhs: Self) -> Self::Output {
                     Self(self.0 % rhs.0)
                 }
             }
 
-            impl<T: RemAssign> RemAssign for $t<T> {
+            impl RemAssign for $t {
                 fn rem_assign(&mut self, rhs: Self) {
                     self.0 %= rhs.0;
                 }
             }
 
-            impl<T: Neg<Output=T>> Neg for $t<T> {
+            impl Neg for $t {
                 type Output = Self;
                 fn neg(self) -> Self::Output {
                     Self(self.0.neg())
                 }
             }
 
-            impl<T: Zero> Zero for $t<T> {
+            impl Zero for $t {
                 fn zero() -> Self {
-                    Self(T::zero())
+                    Self(0.0)
                 }
                 fn is_zero(&self) -> bool {
                     self.0.is_zero()
                 }
             }
 
-            impl<T: One> One for $t<T> {
+            impl One for $t {
                 fn one() -> Self {
-                    Self(T::one())
+                    Self(1.0)
                 }
             }
 
-            impl<T: FromPrimitive> FromPrimitive for $t<T> {
+            impl FromPrimitive for $t {
                 fn from_i64(n: i64) -> Option<Self> {
-                    T::from_i64(n).map(Self)
+                    Some(Self(n as f64))
                 }
                 fn from_u64(n: u64) -> Option<Self> {
-                    T::from_u64(n).map(Self)
+                    Some(Self(n as f64))
                 }
                 fn from_f32(n: f32) -> Option<Self> {
-                    T::from_f32(n).map(Self)
+                    Some(Self(n as f64))
                 }
                 fn from_f64(n: f64) -> Option<Self> {
-                    T::from_f64(n).map(Self)
+                    Some(Self(n))
                 }
             }
 
-            impl<T: ToPrimitive> ToPrimitive for $t<T> {
+            impl ToPrimitive for $t {
                 fn to_i64(&self) -> Option<i64> {
                     self.0.to_i64()
                 }
@@ -150,40 +150,40 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
-            impl<T: NumCast> NumCast for $t<T> {
+            impl NumCast for $t {
                 fn from<U: ToPrimitive>(n: U) -> Option<Self> {
-                    T::from(n).map(Self)
+                    n.to_f64().map(Self)
                 }
             }
 
-            impl<T: Num> Num for $t<T> {
-                type FromStrRadixErr = T::FromStrRadixErr;
+            impl Num for $t {
+                type FromStrRadixErr = <f64 as Num>::FromStrRadixErr;
                 fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
-                    T::from_str_radix(str, radix).map(Self)
+                    f64::from_str_radix(str, radix).map(Self)
                 }
             }
 
-            impl<T: Float> Float for $t<T> {
+            impl Float for $t {
                 fn nan() -> Self {
-                    Self(T::nan())
+                    Self(f64::NAN)
                 }
                 fn infinity() -> Self {
-                    Self(T::infinity())
+                    Self(f64::INFINITY)
                 }
                 fn neg_infinity() -> Self {
-                    Self(T::neg_infinity())
+                    Self(f64::NEG_INFINITY)
                 }
                 fn neg_zero() -> Self {
-                    Self(T::neg_zero())
+                    Self(f64::neg_zero())
                 }
                 fn min_value() -> Self {
-                    Self(T::min_value())
+                    Self(f64::min_value())
                 }
                 fn min_positive_value() -> Self {
-                    Self(T::min_positive_value())
+                    Self(f64::min_positive_value())
                 }
                 fn max_value() -> Self {
-                    Self(T::max_value())
+                    Self(f64::max_value())
                 }
                 fn is_nan(self) -> bool {
                     self.0.is_nan()
@@ -267,7 +267,7 @@ macro_rules! impl_ttf_on_unit(
                     Self(self.0.min(other.0))
                 }
                 fn abs_sub(self, other: Self) -> Self {
-                    Self(self.0.abs_sub(other.0))
+                    Self((self.0 - other.0).max(0.0))
                 }
                 fn cbrt(self) -> Self {
                     Self(self.0.cbrt())
@@ -329,37 +329,37 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
-            impl<T: TTFNum> TTFNum for $t<T> {
+            impl TTFNum for $t {
                 fn approx_eq(&self, other: &Self) -> bool {
                     self.0.approx_eq(&other.0)
                 }
                 fn margin() -> Self {
-                    Self(T::margin())
+                    Self(f64::margin())
                 }
                 fn average(self, other: Self) -> Self {
                     Self(self.0.average(other.0))
                 }
             }
 
-            impl<T: PartialEq> Eq for $t<T> {
+            impl Eq for $t {
             }
 
             #[allow(clippy::derive_ord_xor_partial_ord)]
-            impl<T: PartialOrd> Ord for $t<T> {
+            impl Ord for $t {
                 fn cmp(&self, other: &Self) -> Ordering {
                     self.partial_cmp(other).unwrap()
                 }
             }
 
-            impl<T> From<T> for $t<T> {
-                fn from(value: T) -> $t<T> {
+            impl From<f64> for $t {
+                fn from(value: f64) -> $t {
                     $t(value)
                 }
             }
 
-            impl<T: TTFNum> iter::Sum for $t<T> {
+            impl iter::Sum for $t {
                 fn sum<I>(iter: I) -> Self
-                    where I: Iterator<Item = $t<T>>
+                    where I: Iterator<Item = $t>
                 {
                     iter.fold($t::zero(), |a, b| a + b)
                 }
@@ -371,14 +371,14 @@ macro_rules! impl_ttf_on_unit(
 macro_rules! impl_from_into_no_unit(
     ( $( $t:ident ),* ) => {
         $(
-            impl<T: TTFNum> From<$t<T>> for NoUnit<T> {
-                fn from(value: $t<T>) -> NoUnit<T> {
+            impl From<$t> for NoUnit {
+                fn from(value: $t) -> NoUnit {
                     NoUnit(value.0)
                 }
             }
 
-            impl<T> From<NoUnit<T>> for $t<T> {
-                fn from(value: NoUnit<T>) -> $t<T> {
+            impl From<NoUnit> for $t {
+                fn from(value: NoUnit) -> $t {
                     $t(value.0)
                 }
             }
@@ -389,14 +389,14 @@ macro_rules! impl_from_into_no_unit(
 /// Representation of a value with no particular unit.
 ///
 /// This type is used to implement the conversion between any unit type and the `NoUnit` type
-/// because it is not possible to implement the conversion directly between a type `Unit<T>` and
+/// because it is not possible to implement the conversion directly between a type `Unit` and
 /// `T`.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct NoUnit<T>(pub T);
+pub struct NoUnit(pub f64);
 
-impl<T: TTFNum> fmt::Display for NoUnit<T> {
+impl fmt::Display for NoUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -405,9 +405,9 @@ impl<T: TTFNum> fmt::Display for NoUnit<T> {
 /// Representation of time duration or timestamp, expressed in seconds.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Time<T>(pub T);
+pub struct Time(pub f64);
 
-impl<T: TTFNum> fmt::Display for Time<T> {
+impl fmt::Display for Time {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let seconds = self.0.round().to_u64().ok_or(fmt::Error)?;
         let hour = seconds / 3600;
@@ -420,9 +420,9 @@ impl<T: TTFNum> fmt::Display for Time<T> {
 /// Representation of a utility (or monetary) amount.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Utility<T>(pub T);
+pub struct Utility(pub f64);
 
-impl<T: TTFNum> fmt::Display for Utility<T> {
+impl fmt::Display for Utility {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -432,9 +432,9 @@ impl<T: TTFNum> fmt::Display for Utility<T> {
 /// unit per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct ValueOfTime<T>(pub T);
+pub struct ValueOfTime(pub f64);
 
-impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
+impl fmt::Display for ValueOfTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} utility/s", self.0)
     }
@@ -443,9 +443,9 @@ impl<T: TTFNum> fmt::Display for ValueOfTime<T> {
 /// Representation of a length, expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Length<T>(pub T);
+pub struct Length(pub f64);
 
-impl<T: TTFNum> fmt::Display for Length<T> {
+impl fmt::Display for Length {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} m", self.0)
     }
@@ -454,9 +454,9 @@ impl<T: TTFNum> fmt::Display for Length<T> {
 /// Representation of a number of lanes.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Lanes<T>(pub T);
+pub struct Lanes(pub f64);
 
-impl<T: TTFNum> fmt::Display for Lanes<T> {
+impl fmt::Display for Lanes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} lanes", self.0)
     }
@@ -465,9 +465,9 @@ impl<T: TTFNum> fmt::Display for Lanes<T> {
 /// Representation of a speed, expressed in meters per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Speed<T>(pub T);
+pub struct Speed(pub f64);
 
-impl<T: TTFNum> fmt::Display for Speed<T> {
+impl fmt::Display for Speed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} m/s", self.0)
     }
@@ -476,9 +476,9 @@ impl<T: TTFNum> fmt::Display for Speed<T> {
 /// Unit type for passenger car equivalent.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct PCE<T>(pub T);
+pub struct PCE(pub f64);
 
-impl<T: TTFNum> fmt::Display for PCE<T> {
+impl fmt::Display for PCE {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} PCE", self.0)
     }
@@ -487,9 +487,9 @@ impl<T: TTFNum> fmt::Display for PCE<T> {
 /// Representation of a flow of vehicle, in PCE (passenger car equivalent) per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Flow<T>(pub T);
+pub struct Flow(pub f64);
 
-impl<T: TTFNum> fmt::Display for Flow<T> {
+impl fmt::Display for Flow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} PCE/s", self.0)
     }
@@ -511,23 +511,23 @@ impl_from_into_no_unit!(Time, Utility, ValueOfTime, Lanes, Length, Speed, PCE, F
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
-        impl<T: TTFNum> Mul<$r_type<T>> for $l_type<T> {
-            type Output = $o_type<T>;
-            fn mul(self, other: $r_type<T>) -> Self::Output {
+        impl Mul<$r_type> for $l_type {
+            type Output = $o_type;
+            fn mul(self, other: $r_type) -> Self::Output {
                 $o_type(self.0 * other.0)
             }
         }
-        impl<T: TTFNum> Mul<$l_type<T>> for $r_type<T> {
-            type Output = $o_type<T>;
-            fn mul(self, other: $l_type<T>) -> Self::Output {
+        impl Mul<$l_type> for $r_type {
+            type Output = $o_type;
+            fn mul(self, other: $l_type) -> Self::Output {
                 $o_type(self.0 * other.0)
             }
         }
     };
     ( $l_type:ident / $r_type:ident = $o_type:ident ) => {
-        impl<T: TTFNum> Div<$r_type<T>> for $l_type<T> {
-            type Output = $o_type<T>;
-            fn div(self, other: $r_type<T>) -> Self::Output {
+        impl Div<$r_type> for $l_type {
+            type Output = $o_type;
+            fn div(self, other: $r_type) -> Self::Output {
                 $o_type(self.0 / other.0)
             }
         }
@@ -546,36 +546,36 @@ impl_ops!(Flow * Lanes = Flow);
 
 /// An interval between two [Time] units.
 #[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
-pub struct Interval<T>(pub [Time<T>; 2]);
+pub struct Interval(pub [Time; 2]);
 
-impl<T: Copy> Interval<T> {
+impl Interval {
     /// Returns the start of the interval.
-    pub const fn start(&self) -> Time<T> {
+    pub const fn start(&self) -> Time {
         self.0[0]
     }
 
     /// Returns the end of the interval.
-    pub const fn end(&self) -> Time<T> {
+    pub const fn end(&self) -> Time {
         self.0[1]
     }
 
     /// Returns the interval as a vector of two [Time] values.
-    pub fn to_vec(&self) -> Vec<Time<T>> {
+    pub fn to_vec(&self) -> Vec<Time> {
         self.0.to_vec()
     }
 }
 
-impl<T: Copy + PartialOrd> Interval<T> {
+impl Interval {
     /// Returns `true` if `time` is included in the (closed) interval.
-    pub fn contains(&self, time: Time<T>) -> bool {
+    pub fn contains(&self, time: Time) -> bool {
         self.start() <= time && self.end() >= time
     }
 }
 
-impl<T: TTFNum> Interval<T> {
+impl Interval {
     /// Returns the length of the interval, i.e., the time that elapses between the start and the
     /// end of the interval.
-    pub fn length(&self) -> Time<T> {
+    pub fn length(&self) -> Time {
         self.0[1] - self.0[0]
     }
 }

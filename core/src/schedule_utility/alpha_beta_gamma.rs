@@ -7,7 +7,6 @@
 use anyhow::anyhow;
 use num_traits::{FromPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
 
 use crate::units::{Time, Utility, ValueOfTime};
 
@@ -19,27 +18,26 @@ use crate::units::{Time, Utility, ValueOfTime};
 /// - Equal to `-beta * (t_star_low - t)` if `t` is smaller than the lower t*.
 /// - Equal to `-gamma * (t - t_star_high)` if `t` is larger than the higher t*.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(try_from = "UncheckedAlphaBetaGammaModel<T>")]
-#[serde(bound(deserialize = "T: TTFNum"))]
-pub struct AlphaBetaGammaModel<T> {
+#[serde(try_from = "UncheckedAlphaBetaGammaModel")]
+pub struct AlphaBetaGammaModel {
     /// The earliest desired arrival (or departure) time.
-    pub(crate) t_star_low: Time<T>,
+    pub(crate) t_star_low: Time,
     /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
-    pub(crate) t_star_high: Time<T>,
+    pub(crate) t_star_high: Time,
     /// The penalty for early arrivals (or departures), in utility per second.
-    pub(crate) beta: ValueOfTime<T>,
+    pub(crate) beta: ValueOfTime,
     /// The penalty for late arrivals (or departures), in utility per second.
-    pub(crate) gamma: ValueOfTime<T>,
+    pub(crate) gamma: ValueOfTime,
 }
 
-impl<T: TTFNum> AlphaBetaGammaModel<T> {
+impl AlphaBetaGammaModel {
     /// Creates a new AlphaBetaGammaModel.
     pub fn new(
-        t_star_low: Time<T>,
-        t_star_high: Time<T>,
-        beta: ValueOfTime<T>,
-        gamma: ValueOfTime<T>,
-    ) -> anyhow::Result<AlphaBetaGammaModel<T>> {
+        t_star_low: Time,
+        t_star_high: Time,
+        beta: ValueOfTime,
+        gamma: ValueOfTime,
+    ) -> anyhow::Result<AlphaBetaGammaModel> {
         let model = UncheckedAlphaBetaGammaModel {
             t_star_low,
             t_star_high,
@@ -70,7 +68,7 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     ///
     /// The schedule-delay cost is `c = beta * [t_star_low - t]_+ + gamma * [t - t_star_high]_+`
     /// The schedule-delay utility is `-c`.
-    pub fn get_utility(&self, at_time: Time<T>) -> Utility<T> {
+    pub fn get_utility(&self, at_time: Time) -> Utility {
         let cost = if at_time < self.t_star_low {
             self.beta * (self.t_star_low - at_time)
         } else if at_time > self.t_star_high {
@@ -86,7 +84,7 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
     ///
     /// The kinks are the points such that arrival time is equal to desired arrival time or
     /// departure time is equal to desired departure time.
-    pub fn iter_breakpoints(&self) -> Box<dyn Iterator<Item = Time<T>>> {
+    pub fn iter_breakpoints(&self) -> Box<dyn Iterator<Item = Time>> {
         if self.t_star_low == self.t_star_high {
             Box::new([self.t_star_low].into_iter())
         } else {
@@ -97,21 +95,21 @@ impl<T: TTFNum> AlphaBetaGammaModel<T> {
 
 /// [AlphaBetaGammaModel] before validation, for deserialization.
 #[derive(Clone, Debug, Deserialize)]
-pub struct UncheckedAlphaBetaGammaModel<T> {
+pub struct UncheckedAlphaBetaGammaModel {
     /// The earliest desired arrival (or departure) time.
-    t_star_low: Time<T>,
+    t_star_low: Time,
     /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
-    t_star_high: Time<T>,
+    t_star_high: Time,
     /// The penalty for early arrivals (or departures), in utility per second.
-    beta: ValueOfTime<T>,
+    beta: ValueOfTime,
     /// The penalty for late arrivals (or departures), in utility per second.
-    gamma: ValueOfTime<T>,
+    gamma: ValueOfTime,
 }
 
-impl<T: TTFNum> TryFrom<UncheckedAlphaBetaGammaModel<T>> for AlphaBetaGammaModel<T> {
+impl TryFrom<UncheckedAlphaBetaGammaModel> for AlphaBetaGammaModel {
     type Error = anyhow::Error;
 
-    fn try_from(value: UncheckedAlphaBetaGammaModel<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: UncheckedAlphaBetaGammaModel) -> Result<Self, Self::Error> {
         if value.t_star_high < value.t_star_low {
             return Err(anyhow!(
                 "Value of t* high cannot be smaller than value of t* low"
@@ -130,7 +128,7 @@ impl<T: TTFNum> TryFrom<UncheckedAlphaBetaGammaModel<T>> for AlphaBetaGammaModel
 mod tests {
     use super::*;
 
-    fn get_model() -> AlphaBetaGammaModel<f64> {
+    fn get_model() -> AlphaBetaGammaModel {
         AlphaBetaGammaModel {
             t_star_low: Time(10.),
             t_star_high: Time(20.),
@@ -146,26 +144,6 @@ mod tests {
         assert!(model.is_ok());
         let model =
             AlphaBetaGammaModel::new(Time(20.), Time(10.), ValueOfTime(5.), ValueOfTime(5.));
-        assert!(model.is_err());
-    }
-
-    #[test]
-    fn deser_model_test() {
-        let js = "{
-            \"t_star_low\": 10.0,
-            \"t_star_high\": 20.0,
-            \"beta\": 5.0,
-            \"gamma\": 5.0
-        }";
-        let model = serde_json::from_str::<AlphaBetaGammaModel<f64>>(js);
-        assert!(model.is_ok());
-        let js = "{
-            \"t_star_low\": 20.0,
-            \"t_star_high\": 10.0,
-            \"beta\": 5.0,
-            \"gamma\": 5.0
-        }";
-        let model = serde_json::from_str::<AlphaBetaGammaModel<f64>>(js);
         assert!(model.is_err());
     }
 
