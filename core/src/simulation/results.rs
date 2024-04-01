@@ -293,11 +293,13 @@ impl AgentResults {
     /// Returns an [EventQueue] with all the events resulting from the pre-day choices of the
     /// agents.
     pub(crate) fn get_event_queue(&self) -> EventQueue {
-        self.0
-            .iter()
-            .enumerate()
-            .filter_map(|(id, agent_result)| agent_result.get_event(AgentIndex::new(id)))
-            .collect()
+        EventQueue::new(
+            self.0
+                .iter()
+                .enumerate()
+                .filter_map(|(id, agent_result)| agent_result.get_event(AgentIndex::new(id))),
+            crate::parameters::period(),
+        )
     }
 
     /// Returns the number of agents who finished their trips.

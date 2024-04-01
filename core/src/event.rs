@@ -16,7 +16,10 @@ use crate::network::NetworkSkim;
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
-use crate::units::Time;
+use crate::units::{Interval, Time};
+
+// Number of BinaryHeap in the equent queue.
+const Q: usize = 256;
 
 /// Variables required to execute an event.
 #[derive(Debug)]
@@ -89,44 +92,60 @@ impl Eq for EventEntry {}
 /// A priority queue represented as a [BinaryHeap].
 ///
 /// The `EventQueue` is used to store events that are executed in chronological order.
-#[derive(Debug, Default)]
-pub(crate) struct EventQueue(BinaryHeap<EventEntry>);
+#[derive(Debug)]
+pub(crate) struct EventQueue {
+    queues: [BinaryHeap<EventEntry>; Q],
+    index: usize,
+    period: Interval,
+}
 
 impl EventQueue {
     /// Returns the number of events in the queue.
     pub(crate) fn len(&self) -> usize {
-        self.0.len()
+        self.queues.iter().map(|q| q.len()).sum()
     }
-}
 
-impl EventQueue {
+    pub(crate) fn new<I>(iter: I, period: Interval) -> Self
+    where
+        I: IntoIterator<Item = Box<dyn Event>>,
+    {
+        let mut instance = Self {
+            queues: std::array::from_fn(|_| BinaryHeap::new()),
+            index: 0,
+            period,
+        };
+        for entry in iter {
+            instance.push(entry);
+        }
+        instance
+    }
+
     /// Pops the next event in the queue, i.e., the event with the earliest execution time.
     pub(crate) fn pop(&mut self) -> Option<Box<dyn Event>> {
-        self.0.pop().map(|entry| entry.event)
+        if let Some(entry) = self.queues[self.index].pop() {
+            Some(entry.event)
+        } else {
+            self.index += 1;
+            if self.index >= Q {
+                return None;
+            }
+            self.pop()
+        }
     }
 
     /// Pushes a new event in the queue.
     pub(crate) fn push(&mut self, event: Box<dyn Event>) {
-        self.0.push(EventEntry {
-            time: event.get_time(),
-            event,
-        });
+        let time = event.get_time();
+        let i = self.index_of(time);
+        debug_assert!(i >= self.index);
+        self.queues[i].push(EventEntry { time, event });
     }
-}
 
-impl FromIterator<Box<dyn Event>> for EventQueue {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = Box<dyn Event>>,
-    {
-        EventQueue(
-            iter.into_iter()
-                .map(|event| EventEntry {
-                    time: event.get_time(),
-                    event,
-                })
-                .collect(),
-        )
+    fn index_of(&self, time: Time) -> usize {
+        debug_assert!(time >= self.period.start());
+        let share = (time.0 - self.period.start().0) / self.period.length().0;
+        let index = (share * Q as f64) as usize;
+        index.min(Q - 1)
     }
 }
 
@@ -156,7 +175,7 @@ mod tests {
 
     #[test]
     fn event_queue_test() {
-        let mut q = EventQueue(BinaryHeap::new());
+        let mut q = EventQueue::new(vec![], Interval([Time(0.0), Time(64.0)]));
         assert_eq!(q.len(), 0);
         q.push(Box::new(DummyEvent { time: Time(2.) }));
         q.push(Box::new(DummyEvent { time: Time(1.) }));
