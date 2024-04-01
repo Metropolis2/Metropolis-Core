@@ -14,9 +14,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
 
 /// Progress bar are refreshed each UPDATE events.
-const UPDATE: u64 = 500;
+const UPDATE: u64 = 5000;
 /// Interval in milliseconds when spinners are automatically ticked.
-const UPDATE_MS: Duration = Duration::from_millis(100);
+const UPDATE_MS: Duration = Duration::from_millis(1000);
 
 /// A progress bar.
 #[derive(Debug, Clone)]

@@ -33,7 +33,7 @@ use crate::simulation::results::PreDayAgentResults;
 use crate::units::Distribution;
 
 /// Number of events before the time on the within-day progress bar is refreshed.
-const UPDATE: usize = 500;
+const UPDATE: usize = 100000;
 
 /// Returns the path of the iteration results file of the simulation.
 fn iteration_results_filename() -> PathBuf {
