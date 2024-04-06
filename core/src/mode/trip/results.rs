@@ -141,12 +141,15 @@ impl From<RoadLegResults> for PreDayRoadLegResults {
 }
 
 /// Results that depend on the leg type (see [LegType]).
-#[derive(Debug, Clone, PartialEq, EnumAsInner)]
+#[derive(Debug, Clone, Default, PartialEq, EnumAsInner)]
 pub enum LegTypeResults {
     /// The leg is a road leg.
     Road(RoadLegResults),
     /// The leg is a virtual leg.
     Virtual,
+    /// Uninitialized leg type results.
+    #[default]
+    Uninitialized,
 }
 
 impl LegTypeResults {
@@ -156,6 +159,7 @@ impl LegTypeResults {
                 road_leg_results.with_previous_results(previous_results.as_road().unwrap())
             }
             Self::Virtual => (),
+            Self::Uninitialized => unreachable!(),
         }
     }
 }
@@ -174,6 +178,7 @@ impl From<LegTypeResults> for PreDayLegTypeResults {
         match value {
             LegTypeResults::Road(road_leg) => Self::Road(road_leg.into()),
             LegTypeResults::Virtual => Self::Virtual,
+            LegTypeResults::Uninitialized => unreachable!(),
         }
     }
 }
@@ -367,6 +372,7 @@ impl TripResults {
                     class: match &l.class {
                         LegTypeResults::Road(road_leg) => LegTypeResults::Road(road_leg.reset()),
                         LegTypeResults::Virtual => LegTypeResults::Virtual,
+                        LegTypeResults::Uninitialized => unreachable!(),
                     },
                     departure_time_shift: None,
                 })
