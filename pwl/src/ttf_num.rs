@@ -4,56 +4,78 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 use std::fmt;
+use std::ops::Neg;
 
-use num_traits::{Float, FromPrimitive, NumAssignOps};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use num_traits::{ConstOne, ConstZero, FromPrimitive, NumAssignOps, NumOps, Pow};
 
 /// Trait for numbers that support a wide variety of operations.
 pub trait TTFNum:
-    Float
-    + NumAssignOps
-    + FromPrimitive
+    Copy
     + Default
     + PartialOrd
     + Send
     + Sync
     + fmt::Debug
-    + fmt::Display
-    + Serialize
-    + DeserializeOwned
-    + 'static
+    + Neg<Output = Self>
+    + FromPrimitive
+    + ConstOne
+    + ConstZero
+    + NumOps
+    + NumAssignOps
+    + Pow<i32, Output = Self>
 {
-    /// Returns true if the two number of approximately equal.
-    fn approx_eq(&self, other: &Self) -> bool;
-    /// Returns a margin number that can be used to consider that two values are close to each
-    /// other.
-    fn margin() -> Self;
-    /// Returns the average between two numbers.
-    #[must_use]
-    fn average(self, other: Self) -> Self;
+    /// A margin number that can be used to consider that two values are close to each other.
+    const MARGIN: Self;
+    /// The infinity value.
+    const INFINITY: Self;
+    /// Returns `true` if the number is not valid.
+    fn is_nan(&self) -> bool;
+    /// Returns `true` if the number is finite.
+    fn is_finite(&self) -> bool;
+    /// Converts to a `usize`, truncating towards zero if required.
+    fn trunc_to_usize(self) -> usize;
+    /// Returns the minimum of self and other.
+    fn min(self, other: Self) -> Self;
+    /// Returns the maximum of self and other.
+    fn max(self, other: Self) -> Self;
 }
 
 impl TTFNum for f32 {
-    fn approx_eq(&self, other: &Self) -> bool {
-        (self - other) < 1e-4
+    const MARGIN: f32 = 0.01;
+    const INFINITY: f32 = f32::INFINITY;
+    fn is_nan(&self) -> bool {
+        f32::is_nan(*self)
     }
-    fn margin() -> Self {
-        0.01
+    fn is_finite(&self) -> bool {
+        f32::is_finite(*self)
     }
-    fn average(self, other: Self) -> Self {
-        (self + other) / 2.0
+    fn trunc_to_usize(self) -> usize {
+        self as usize
+    }
+    fn min(self, other: Self) -> Self {
+        self.min(other)
+    }
+    fn max(self, other: Self) -> Self {
+        self.max(other)
     }
 }
 
 impl TTFNum for f64 {
-    fn approx_eq(&self, other: &Self) -> bool {
-        (self - other) < 1e-4
+    const MARGIN: f64 = 0.01;
+    const INFINITY: f64 = f64::INFINITY;
+    fn is_nan(&self) -> bool {
+        f64::is_nan(*self)
     }
-    fn margin() -> Self {
-        0.01
+    fn is_finite(&self) -> bool {
+        f64::is_finite(*self)
     }
-    fn average(self, other: Self) -> Self {
-        (self + other) / 2.0
+    fn trunc_to_usize(self) -> usize {
+        self as usize
+    }
+    fn min(self, other: Self) -> Self {
+        self.min(other)
+    }
+    fn max(self, other: Self) -> Self {
+        self.max(other)
     }
 }

@@ -6,7 +6,6 @@
 //! Utility functions to work with polars library.
 
 use anyhow::Result;
-use num_traits::ToPrimitive;
 use polars::prelude::*;
 
 use crate::simulation::results::AggregateResults;
@@ -32,19 +31,19 @@ macro_rules! add_distr {
     ($df:ident, $name:expr, $var:expr) => {
         $df.with_column(Series::new(
             concat!($name, "_mean"),
-            &[$var.mean().to_f64().unwrap()],
+            &[Into::<f64>::into($var.mean())],
         ))?;
         $df.with_column(Series::new(
             concat!($name, "_std"),
-            &[$var.std().to_f64().unwrap()],
+            &[Into::<f64>::into($var.std())],
         ))?;
         $df.with_column(Series::new(
             concat!($name, "_min"),
-            &[$var.min().to_f64().unwrap()],
+            &[Into::<f64>::into($var.min())],
         ))?;
         $df.with_column(Series::new(
             concat!($name, "_max"),
-            &[$var.max().to_f64().unwrap()],
+            &[Into::<f64>::into($var.max())],
         ))?;
     };
 }
@@ -171,7 +170,7 @@ impl ToPolars for AggregateResults {
                 add_null_distr!(df, "alt_dep_time_shift");
             }
             if let Some(dep_time_rmse) = trip_results.dep_time_rmse {
-                add_const!(df, "alt_dep_time_rmse", dep_time_rmse.to_f64().unwrap());
+                add_const!(df, "alt_dep_time_rmse", Into::<f64>::into(dep_time_rmse));
             } else {
                 add_null_const!(df, "alt_dep_time_rmse", DataType::Float64);
             }
@@ -247,7 +246,7 @@ impl ToPolars for AggregateResults {
                 add_const!(
                     df,
                     "road_trip_exp_travel_time_diff_rmse",
-                    road_results.exp_travel_time_diff_rmse.to_f64().unwrap()
+                    Into::<f64>::into(road_results.exp_travel_time_diff_rmse)
                 );
                 if let Some(length_diff) = road_results.length_diff {
                     add_distr!(df, "road_trip_length_diff", length_diff);
@@ -317,12 +316,12 @@ impl ToPolars for AggregateResults {
             add_null_distr!(df, "constant_utility");
         }
         if let Some(rmse) = self.sim_road_network_weights_rmse {
-            add_const!(df, "sim_road_network_cond_rmse", rmse.to_f64().unwrap());
+            add_const!(df, "sim_road_network_cond_rmse", Into::<f64>::into(rmse));
         } else {
             add_null_const!(df, "sim_road_network_cond_rmse", DataType::Float64);
         }
         if let Some(rmse) = self.exp_road_network_weights_rmse {
-            add_const!(df, "exp_road_network_cond_rmse", rmse.to_f64().unwrap());
+            add_const!(df, "exp_road_network_cond_rmse", Into::<f64>::into(rmse));
         } else {
             add_null_const!(df, "exp_road_network_cond_rmse", DataType::Float64);
         }

@@ -20,17 +20,63 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::iter;
-use std::num::FpCategory;
 use std::ops::*;
 
-use num_traits::{Float, FromPrimitive, Num, NumCast, One, ToPrimitive, Zero};
+use anyhow::{bail, Result};
+use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-// To implement TTFNum, we first have to implement `Float` and its requirements.
-// When the following issue is solve we could use the crate `num-derive` instead:
-// https://github.com/rust-num/num-derive/pull/37
-macro_rules! impl_ttf_on_unit(
+pub(crate) trait MetroPositiveNum:
+    Sized
+    + Copy
+    + Ord
+    + TryFrom<f64>
+    + TryFrom<usize>
+    + Into<f64>
+    + Add<Output = Self>
+    + AddAssign
+    + Mul<Output = Self>
+    + MulAssign
+    + Mul<usize, Output = Self>
+    + Div<usize, Output = Self>
+    + DivAssign<usize>
+    + One
+    + ConstOne
+{
+    const NAN: Self;
+    fn is_nan(self) -> bool;
+    /// Returns `self` divided by two.
+    fn half(self) -> Self;
+    fn powi(self, expo: i32) -> Self;
+    fn powf(self, expo: f64) -> Self;
+    fn sqrt(self) -> Self {
+        self.powf(0.5)
+    }
+    fn from_usize_unchecked(value: usize) -> Self;
+    fn to_usize_unchecked(self) -> usize;
+}
+
+pub(crate) trait MetroNonNegativeNum:
+    MetroPositiveNum + Zero + ConstZero + iter::Sum
+{
+    fn is_positive(self) -> bool;
+    /// Subtract `other` from `self` when `self` is larger than `other`.
+    fn sub_unchecked(self, other: Self) -> Self;
+    fn max_value() -> Self;
+    fn min_value() -> Self;
+}
+
+pub(crate) trait MetroAnyNum:
+    MetroNonNegativeNum + Sub<Output = Self> + SubAssign + Neg<Output = Self> + TTFNum
+{
+    fn is_negative(self) -> bool;
+    // TODO: Return the NonNegative variant of the type instead (defined as a trait type)
+    fn abs(self) -> Self;
+}
+
+/// Implements some useful traits and functions for unit types that can hold positive values.
+macro_rules! impl_traits_on_positive_unit(
     ( $( $t:ident ),* ) => {
         $(
             impl Add for $t {
@@ -46,6 +92,176 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
+            impl Mul for $t {
+                type Output = Self;
+                fn mul(self, rhs: Self) -> Self::Output {
+                    Self(self.0 * rhs.0)
+                }
+            }
+
+            impl MulAssign for $t {
+                fn mul_assign(&mut self, rhs: Self) {
+                    self.0 *= rhs.0;
+                }
+            }
+
+            impl Mul<usize> for $t {
+                type Output = Self;
+                fn mul(self, rhs: usize) -> Self::Output {
+                    Self(self.0 * rhs as f64)
+                }
+            }
+
+            impl Div<usize> for $t {
+                type Output = Self;
+                fn div(self, rhs: usize) -> Self::Output {
+                    Self(self.0 / rhs as f64)
+                }
+            }
+
+            impl DivAssign<usize> for $t {
+                fn div_assign(&mut self, rhs: usize)  {
+                    self.0 /= rhs as f64;
+                }
+            }
+
+            impl One for $t {
+                fn one() -> Self {
+                    Self(1.0)
+                }
+                fn is_one(&self) -> bool {
+                    self.0 == 1.0
+                }
+            }
+
+            impl ConstOne for $t {
+                const ONE: Self = Self(1.0);
+            }
+
+            impl Eq for $t {
+            }
+
+            #[allow(clippy::derive_ord_xor_partial_ord)]
+            impl Ord for $t {
+                fn cmp(&self, other: &Self) -> Ordering {
+                    self.partial_cmp(other).unwrap()
+                }
+            }
+
+            impl TryFrom<f64> for $t {
+                type Error = anyhow::Error;
+                fn try_from(value: f64) -> Result<Self> {
+                    if value < $t::lower_bound().0 || value > $t::upper_bound().0 {
+                        bail!("Invalid value: {value}")
+                    }
+                    Ok(Self(value))
+                }
+            }
+
+            impl TryFrom<usize> for $t {
+                type Error = anyhow::Error;
+                fn try_from(value: usize) -> Result<Self> {
+                    let value_as_float = value as f64;
+                    if value_as_float < $t::lower_bound().0 || value_as_float > $t::upper_bound().0 {
+                        bail!("Invalid value: {value}")
+                    }
+                    Ok(Self(value_as_float))
+                }
+            }
+
+            impl From<$t> for f64 {
+                fn from(value: $t) -> f64 {
+                    value.0
+                }
+            }
+
+            impl TryFrom<$t> for usize {
+                type Error = anyhow::Error;
+                fn try_from(value: $t) -> Result<Self> {
+                    if let Some(u) = value.0.to_usize() {
+                        Ok(u)
+                    } else {
+                        bail!("Cannot convert {} to usize", value.0)
+                    }
+                }
+            }
+
+            impl MetroPositiveNum for $t {
+                const NAN: $t = Self(f64::NAN);
+                fn is_nan(self) -> bool {
+                    self.0.is_nan()
+                }
+                fn half(self) -> Self {
+                    Self(self.0 / 2.0)
+                }
+                fn powi(self, expo: i32) -> Self {
+                    Self(self.0.powi(expo))
+                }
+                fn powf(self, expo: f64) -> Self {
+                    Self(self.0.powf(expo))
+                }
+                fn sqrt(self) -> Self {
+                    Self(self.0.sqrt())
+                }
+                fn from_usize_unchecked(value: usize) -> Self {
+                    Self::new_unchecked(value as f64)
+                }
+                fn to_usize_unchecked(self) -> usize {
+                    self.0 as usize
+                }
+            }
+        )*
+    };
+);
+
+/// Implements some useful traits on units that can take the value zero.
+macro_rules! impl_traits_on_non_negative_unit(
+    ( $( $t:ident ),* ) => {
+        $(
+            impl iter::Sum for $t {
+                fn sum<I>(iter: I) -> Self
+                    where I: Iterator<Item = $t>
+                {
+                    iter.fold($t::ZERO, |a, b| a + b)
+                }
+            }
+
+            impl Zero for $t {
+                fn zero() -> Self {
+                    Self(0.0)
+                }
+                fn is_zero(&self) -> bool {
+                    self.0 == 0.0
+                }
+            }
+
+            impl ConstZero for $t {
+                const ZERO: Self = Self(0.0);
+            }
+
+            impl MetroNonNegativeNum for $t {
+                fn is_positive(self) -> bool {
+                    self > Self::ZERO
+                }
+                fn sub_unchecked(self, other: Self) -> Self {
+                    debug_assert!(self.0 >= other.0);
+                    Self(self.0 - other.0)
+                }
+                fn max_value() -> Self {
+                    Self::upper_bound()
+                }
+                fn min_value() -> Self {
+                    Self::lower_bound()
+                }
+            }
+        )*
+    };
+);
+
+/// Implements some useful traits on units that can take any value.
+macro_rules! impl_traits_on_any_unit(
+    ( $( $t:ident ),* ) => {
+        $(
             impl Sub for $t {
                 type Output = Self;
                 fn sub(self, rhs: Self) -> Self::Output {
@@ -59,16 +275,19 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
-            impl Mul for $t {
+            impl Neg for $t {
                 type Output = Self;
-                fn mul(self, rhs: Self) -> Self::Output {
-                    Self(self.0 * rhs.0)
+                fn neg(self) -> Self::Output {
+                    Self(self.0.neg())
                 }
             }
 
-            impl MulAssign for $t {
-                fn mul_assign(&mut self, rhs: Self) {
-                    self.0 *= rhs.0;
+            impl MetroAnyNum for $t {
+                fn is_negative(self) -> bool {
+                    self < Self::ZERO
+                }
+                fn abs(self) -> Self {
+                    Self(self.0.abs())
                 }
             }
 
@@ -98,25 +317,10 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
-            impl Neg for $t {
+            impl Pow<i32> for $t {
                 type Output = Self;
-                fn neg(self) -> Self::Output {
-                    Self(self.0.neg())
-                }
-            }
-
-            impl Zero for $t {
-                fn zero() -> Self {
-                    Self(0.0)
-                }
-                fn is_zero(&self) -> bool {
-                    self.0.is_zero()
-                }
-            }
-
-            impl One for $t {
-                fn one() -> Self {
-                    Self(1.0)
+                fn pow(self, rhs: i32) -> Self::Output {
+                    self.powi(rhs)
                 }
             }
 
@@ -135,281 +339,381 @@ macro_rules! impl_ttf_on_unit(
                 }
             }
 
-            impl ToPrimitive for $t {
-                fn to_i64(&self) -> Option<i64> {
-                    self.0.to_i64()
-                }
-                fn to_u64(&self) -> Option<u64> {
-                    self.0.to_u64()
-                }
-                fn to_f32(&self) -> Option<f32> {
-                    self.0.to_f32()
-                }
-                fn to_f64(&self) -> Option<f64> {
-                    self.0.to_f64()
-                }
-            }
-
-            impl NumCast for $t {
-                fn from<U: ToPrimitive>(n: U) -> Option<Self> {
-                    n.to_f64().map(Self)
-                }
-            }
-
-            impl Num for $t {
-                type FromStrRadixErr = <f64 as Num>::FromStrRadixErr;
-                fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
-                    f64::from_str_radix(str, radix).map(Self)
-                }
-            }
-
-            impl Float for $t {
-                fn nan() -> Self {
-                    Self(f64::NAN)
-                }
-                fn infinity() -> Self {
-                    Self(f64::INFINITY)
-                }
-                fn neg_infinity() -> Self {
-                    Self(f64::NEG_INFINITY)
-                }
-                fn neg_zero() -> Self {
-                    Self(f64::neg_zero())
-                }
-                fn min_value() -> Self {
-                    Self(f64::min_value())
-                }
-                fn min_positive_value() -> Self {
-                    Self(f64::min_positive_value())
-                }
-                fn max_value() -> Self {
-                    Self(f64::max_value())
-                }
-                fn is_nan(self) -> bool {
+            impl TTFNum for $t {
+                const MARGIN: Self = Self(f64::MARGIN);
+                const INFINITY: Self = Self(f64::INFINITY);
+                fn is_nan(&self) -> bool {
                     self.0.is_nan()
                 }
-                fn is_infinite(self) -> bool {
-                    self.0.is_infinite()
-                }
-                fn is_finite(self) -> bool {
+                fn is_finite(&self) -> bool {
                     self.0.is_finite()
                 }
-                fn is_normal(self) -> bool {
-                    self.0.is_normal()
-                }
-                fn classify(self) -> FpCategory {
-                    self.0.classify()
-                }
-                fn floor(self) -> Self {
-                    Self(self.0.floor())
-                }
-                fn ceil(self) -> Self {
-                    Self(self.0.ceil())
-                }
-                fn round(self) -> Self {
-                    Self(self.0.round())
-                }
-                fn trunc(self) -> Self {
-                    Self(self.0.trunc())
-                }
-                fn fract(self) -> Self {
-                    Self(self.0.fract())
-                }
-                fn abs(self) -> Self {
-                    Self(self.0.abs())
-                }
-                fn signum(self) -> Self {
-                    Self(self.0.signum())
-                }
-                fn is_sign_positive(self) -> bool {
-                    self.0.is_sign_positive()
-                }
-                fn is_sign_negative(self) -> bool {
-                    self.0.is_sign_negative()
-                }
-                fn mul_add(self, a: Self, b: Self) -> Self {
-                    Self(self.0.mul_add(a.0, b.0))
-                }
-                fn recip(self) -> Self {
-                    Self(self.0.recip())
-                }
-                fn powi(self, n: i32) -> Self {
-                    Self(self.0.powi(n))
-                }
-                fn powf(self, n: Self) -> Self {
-                    Self(self.0.powf(n.0))
-                }
-                fn sqrt(self) -> Self {
-                    Self(self.0.sqrt())
-                }
-                fn exp(self) -> Self {
-                    Self(self.0.exp())
-                }
-                fn exp2(self) -> Self {
-                    Self(self.0.exp2())
-                }
-                fn ln(self) -> Self {
-                    Self(self.0.ln())
-                }
-                fn log(self, base: Self) -> Self {
-                    Self(self.0.log(base.0))
-                }
-                fn log2(self) -> Self {
-                    Self(self.0.log2())
-                }
-                fn log10(self) -> Self {
-                    Self(self.0.log10())
-                }
-                fn max(self, other: Self) -> Self {
-                    Self(self.0.max(other.0))
+                fn trunc_to_usize(self) -> usize {
+                    self.0 as usize
                 }
                 fn min(self, other: Self) -> Self {
                     Self(self.0.min(other.0))
                 }
-                fn abs_sub(self, other: Self) -> Self {
-                    Self((self.0 - other.0).max(0.0))
-                }
-                fn cbrt(self) -> Self {
-                    Self(self.0.cbrt())
-                }
-                fn hypot(self, other: Self) -> Self {
-                    Self(self.0.hypot(other.0))
-                }
-                fn sin(self) -> Self {
-                    Self(self.0.sin())
-                }
-                fn cos(self) -> Self {
-                    Self(self.0.cos())
-                }
-                fn tan(self) -> Self {
-                    Self(self.0.tan())
-                }
-                fn asin(self) -> Self {
-                    Self(self.0.asin())
-                }
-                fn acos(self) -> Self {
-                    Self(self.0.acos())
-                }
-                fn atan(self) -> Self {
-                    Self(self.0.atan())
-                }
-                fn atan2(self, other: Self) -> Self {
-                    Self(self.0.atan2(other.0))
-                }
-                fn sin_cos(self) -> (Self, Self) {
-                    let (sin, cos) = self.0.sin_cos();
-                    (Self(sin), Self(cos))
-                }
-                fn exp_m1(self) -> Self {
-                    Self(self.0.exp_m1())
-                }
-                fn ln_1p(self) -> Self {
-                    Self(self.0.ln_1p())
-                }
-                fn sinh(self) -> Self {
-                    Self(self.0.sinh())
-                }
-                fn cosh(self) -> Self {
-                    Self(self.0.cosh())
-                }
-                fn tanh(self) -> Self {
-                    Self(self.0.tanh())
-                }
-                fn asinh(self) -> Self {
-                    Self(self.0.asinh())
-                }
-                fn acosh(self) -> Self {
-                    Self(self.0.acosh())
-                }
-                fn atanh(self) -> Self {
-                    Self(self.0.atanh())
-                }
-                fn integer_decode(self) -> (u64, i16, i8) {
-                    self.0.integer_decode()
-                }
-            }
-
-            impl TTFNum for $t {
-                fn approx_eq(&self, other: &Self) -> bool {
-                    self.0.approx_eq(&other.0)
-                }
-                fn margin() -> Self {
-                    Self(f64::margin())
-                }
-                fn average(self, other: Self) -> Self {
-                    Self(self.0.average(other.0))
-                }
-            }
-
-            impl Eq for $t {
-            }
-
-            #[allow(clippy::derive_ord_xor_partial_ord)]
-            impl Ord for $t {
-                fn cmp(&self, other: &Self) -> Ordering {
-                    self.partial_cmp(other).unwrap()
-                }
-            }
-
-            impl From<f64> for $t {
-                fn from(value: f64) -> $t {
-                    $t(value)
-                }
-            }
-
-            impl iter::Sum for $t {
-                fn sum<I>(iter: I) -> Self
-                    where I: Iterator<Item = $t>
-                {
-                    iter.fold($t::zero(), |a, b| a + b)
+                fn max(self, other: Self) -> Self {
+                    Self(self.0.max(other.0))
                 }
             }
         )*
     };
 );
 
-macro_rules! impl_from_into_no_unit(
-    ( $( $t:ident ),* ) => {
-        $(
-            impl From<$t> for NoUnit {
-                fn from(value: $t) -> NoUnit {
-                    NoUnit(value.0)
-                }
-            }
-
-            impl From<NoUnit> for $t {
-                fn from(value: NoUnit) -> $t {
-                    $t(value.0)
-                }
-            }
-        )*
-    };
-);
-
-/// Representation of a value with no particular unit.
-///
-/// This type is used to implement the conversion between any unit type and the `NoUnit` type
-/// because it is not possible to implement the conversion directly between a type `Unit` and
-/// `T`.
+/// Representation of a value with no particular constraint.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct NoUnit(pub f64);
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Serialize)]
+pub struct AnyNum(f64);
 
-impl fmt::Display for NoUnit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl AnyNum {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    // pub(crate) fn assume_non_negative_unchecked(self) -> NonNegativeNum {
+    // debug_assert!(self.0 >= 0.0);
+    // NonNegativeNum(self.0)
+    // }
+
+    pub(crate) fn assume_positive_unchecked(self) -> PositiveNum {
+        debug_assert!(self.0 > 0.0);
+        PositiveNum(self.0)
+    }
+
+    pub(crate) fn assume_zero_one_unchecked(self) -> ZeroOneNum {
+        debug_assert!((0.0..=1.0).contains(&self.0));
+        ZeroOneNum(self.0)
     }
 }
 
-/// Representation of time duration or timestamp, expressed in seconds.
+impl From<NonNegativeNum> for AnyNum {
+    fn from(value: NonNegativeNum) -> Self {
+        Self(value.0)
+    }
+}
+
+impl From<PositiveNum> for AnyNum {
+    fn from(value: PositiveNum) -> Self {
+        Self(value.0)
+    }
+}
+
+/// Representation of a non-negative number.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Serialize)]
+pub struct NonNegativeNum(f64);
+
+impl NonNegativeNum {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value >= 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(0.0)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_positive_unchecked(self) -> PositiveNum {
+        debug_assert!(self.0 > 0.0);
+        PositiveNum(self.0)
+    }
+
+    // pub(crate) fn assume_zero_one_unchecked(self) -> ZeroOneNum {
+    // debug_assert!((0.0..=1.0).contains(&self.0));
+    // ZeroOneNum(self.0)
+    // }
+}
+
+impl From<ZeroOneNum> for NonNegativeNum {
+    fn from(value: ZeroOneNum) -> Self {
+        debug_assert!(value.0 >= 0.0);
+        Self(value.0)
+    }
+}
+
+impl From<PositiveNum> for NonNegativeNum {
+    fn from(value: PositiveNum) -> Self {
+        debug_assert!(value.0 >= 0.0);
+        Self(value.0)
+    }
+}
+
+impl TryFrom<AnyNum> for NonNegativeNum {
+    type Error = anyhow::Error;
+    fn try_from(value: AnyNum) -> Result<Self> {
+        if value < AnyNum::ZERO {
+            bail!("Cannot convert {value:?} to a NonNegativeNum");
+        } else {
+            Ok(Self(value.0))
+        }
+    }
+}
+
+/// Representation of a positive number.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Serialize)]
+pub struct PositiveNum(f64);
+
+impl PositiveNum {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_zero_one_unchecked(self) -> ZeroOneNum {
+        debug_assert!((0.0..=1.0).contains(&self.0));
+        ZeroOneNum(self.0)
+    }
+}
+
+impl TryFrom<NonNegativeNum> for PositiveNum {
+    type Error = anyhow::Error;
+    fn try_from(value: NonNegativeNum) -> Result<Self> {
+        if value.0 == 0.0 {
+            bail!("Cannot convert 0 to a PositiveNum");
+        } else {
+            Ok(Self::new_unchecked(value.0))
+        }
+    }
+}
+
+impl TryFrom<ZeroOneNum> for PositiveNum {
+    type Error = anyhow::Error;
+    fn try_from(value: ZeroOneNum) -> Result<Self> {
+        if value.0 == 0.0 {
+            bail!("Cannot convert 0 to a PositiveNum");
+        } else {
+            Ok(Self::new_unchecked(value.0))
+        }
+    }
+}
+
+impl TryFrom<AnyNum> for PositiveNum {
+    type Error = anyhow::Error;
+    fn try_from(value: AnyNum) -> Result<Self> {
+        if value <= AnyNum::ZERO {
+            bail!("Cannot convert {value:?} to a PositiveNum");
+        } else {
+            Ok(Self(value.0))
+        }
+    }
+}
+
+/// Representation of a number between 0.0 (inclusive) and 1.0 (inclusive).
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Time(pub f64);
+#[serde(try_from = "f64")]
+pub struct ZeroOneNum(f64);
 
-impl fmt::Display for Time {
+impl ZeroOneNum {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!((0.0..=1.0).contains(&value));
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(0.0)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(1.0)
+    }
+
+    /// Returns `1 - self`.
+    pub(crate) fn one_minus(&self) -> Self {
+        Self(1.0 - self.0)
+    }
+}
+
+impl TryFrom<AnyNum> for ZeroOneNum {
+    type Error = anyhow::Error;
+    fn try_from(value: AnyNum) -> Result<Self> {
+        value.0.try_into()
+    }
+}
+
+impl TryFrom<NonNegativeNum> for ZeroOneNum {
+    type Error = anyhow::Error;
+    fn try_from(value: NonNegativeNum) -> Result<Self> {
+        if value > NonNegativeNum::ONE {
+            bail!("Cannot convert {value:?} to a ZeroOneNum");
+        } else {
+            Ok(Self(value.0))
+        }
+    }
+}
+
+impl TryFrom<PositiveNum> for ZeroOneNum {
+    type Error = anyhow::Error;
+    fn try_from(value: PositiveNum) -> Result<Self> {
+        if value > PositiveNum::ONE {
+            bail!("Cannot convert {value:?} to a ZeroOneNum");
+        } else {
+            Ok(Self(value.0))
+        }
+    }
+}
+
+/// Representation of a non-negative time duration or timestamp, expressed in seconds.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(try_from = "f64")]
+pub struct NonNegativeSeconds(f64);
+
+impl NonNegativeSeconds {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value >= 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(0.0)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_positive_unchecked(self) -> PositiveSeconds {
+        debug_assert!(self.0 > 0.0);
+        PositiveSeconds(self.0)
+    }
+}
+
+impl fmt::Display for NonNegativeSeconds {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let seconds = self.0.round().to_u64().ok_or(fmt::Error)?;
+        let seconds = self.0.round() as u64;
+        let hour = seconds / 3600;
+        let minute = seconds % 3600 / 60;
+        let second = seconds % 60;
+        write!(f, "{hour:02}:{minute:02}:{second:02}")
+    }
+}
+
+impl From<PositiveSeconds> for NonNegativeSeconds {
+    fn from(value: PositiveSeconds) -> Self {
+        debug_assert!(value.0 >= 0.0);
+        Self(value.0)
+    }
+}
+
+impl TryFrom<AnySeconds> for NonNegativeSeconds {
+    type Error = anyhow::Error;
+    fn try_from(value: AnySeconds) -> Result<Self> {
+        if value.0 < 0.0 {
+            bail!("Cannot convert {value:?} to a NonNegativeSeconds");
+        } else {
+            Ok(Self(value.0))
+        }
+    }
+}
+
+/// Representation of a duration or timestamp, expressed in seconds.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(try_from = "f64")]
+pub struct AnySeconds(f64);
+
+impl AnySeconds {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_non_negative_unchecked(self) -> NonNegativeSeconds {
+        debug_assert!(self.0 >= 0.0);
+        NonNegativeSeconds(self.0)
+    }
+
+    pub(crate) fn assume_positive_unchecked(self) -> PositiveSeconds {
+        debug_assert!(self.0 > 0.0);
+        PositiveSeconds(self.0)
+    }
+}
+
+impl fmt::Display for AnySeconds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let seconds = self.0.round() as u64;
+        let hour = seconds / 3600;
+        let minute = seconds % 3600 / 60;
+        let second = seconds % 60;
+        write!(f, "{hour:02}:{minute:02}:{second:02}")
+    }
+}
+
+impl From<NonNegativeSeconds> for AnySeconds {
+    fn from(value: NonNegativeSeconds) -> Self {
+        debug_assert!(value.0.is_finite());
+        Self(value.0)
+    }
+}
+
+impl From<PositiveSeconds> for AnySeconds {
+    fn from(value: PositiveSeconds) -> Self {
+        debug_assert!(value.0.is_finite());
+        Self(value.0)
+    }
+}
+
+/// Representation of positive value expressed in seconds.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(try_from = "f64")]
+pub struct PositiveSeconds(f64);
+
+impl PositiveSeconds {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+}
+
+impl fmt::Display for PositiveSeconds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let seconds = self.0.round() as u64;
         let hour = seconds / 3600;
         let minute = seconds % 3600 / 60;
         let second = seconds % 60;
@@ -420,94 +724,302 @@ impl fmt::Display for Time {
 /// Representation of a utility (or monetary) amount.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Utility(pub f64);
+#[serde(try_from = "f64")]
+pub struct Utility(f64);
 
-impl fmt::Display for Utility {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Utility {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
     }
 }
 
-/// Representation of a value of time, i.e., a utility amount per time unit, expressed in utility
-/// unit per second.
+/// Representation of a value expressed in utility amount per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct ValueOfTime(pub f64);
+#[serde(try_from = "f64")]
+pub struct ValueOfTime(f64);
 
-impl fmt::Display for ValueOfTime {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} utility/s", self.0)
+impl ValueOfTime {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
     }
 }
 
-/// Representation of a length, expressed in meters.
+/// Representation of non-negative value expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Length(pub f64);
+#[serde(try_from = "f64")]
+pub struct NonNegativeMeters(f64);
 
-impl fmt::Display for Length {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} m", self.0)
+impl NonNegativeMeters {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value >= 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(0.0)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_positive_unchecked(self) -> PositiveMeters {
+        debug_assert!(self.0 > 0.0);
+        PositiveMeters(self.0)
     }
 }
 
-/// Representation of a number of lanes.
+impl From<PositiveMeters> for NonNegativeMeters {
+    fn from(value: PositiveMeters) -> Self {
+        Self(value.0)
+    }
+}
+
+impl TryFrom<AnyMeters> for NonNegativeMeters {
+    type Error = anyhow::Error;
+    fn try_from(value: AnyMeters) -> Result<Self> {
+        if value.0 < 0.0 {
+            bail!("Cannot convert {} to a non-negative number", value.0);
+        }
+        Ok(Self(value.0))
+    }
+}
+
+/// Representation of positive value expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Lanes(pub f64);
+#[serde(try_from = "f64")]
+pub struct PositiveMeters(f64);
 
-impl fmt::Display for Lanes {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} lanes", self.0)
+impl PositiveMeters {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
     }
 }
 
-/// Representation of a speed, expressed in meters per second.
+impl TryFrom<NonNegativeMeters> for PositiveMeters {
+    type Error = anyhow::Error;
+    fn try_from(value: NonNegativeMeters) -> Result<Self> {
+        if value.0 == 0.0 {
+            bail!("Cannot convert 0.0 to a positive number");
+        }
+        debug_assert!(value.0 > 0.0);
+        Ok(Self(value.0))
+    }
+}
+
+/// Representation of a value expressed in meters.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Speed(pub f64);
+#[serde(try_from = "f64")]
+pub struct AnyMeters(f64);
 
-impl fmt::Display for Speed {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} m/s", self.0)
+impl AnyMeters {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn assume_non_negative_unchecked(self) -> NonNegativeMeters {
+        debug_assert!(self.0 >= 0.0);
+        NonNegativeMeters(self.0)
     }
 }
 
-/// Unit type for passenger car equivalent.
+impl From<NonNegativeMeters> for AnyMeters {
+    fn from(value: NonNegativeMeters) -> Self {
+        Self(value.0)
+    }
+}
+
+impl From<PositiveMeters> for AnyMeters {
+    fn from(value: PositiveMeters) -> Self {
+        Self(value.0)
+    }
+}
+
+/// Representation of a positive value expressed in meters per second.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct PCE(pub f64);
+#[serde(try_from = "f64")]
+pub struct MetersPerSecond(f64);
 
-impl fmt::Display for PCE {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} PCE", self.0)
+impl MetersPerSecond {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+
+    pub(crate) fn to_num(self) -> PositiveNum {
+        PositiveNum::new_unchecked(self.0)
     }
 }
 
-/// Representation of a flow of vehicle, in PCE (passenger car equivalent) per second.
+/// Representation of a positive value representing lane number.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct Flow(pub f64);
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct Lanes(f64);
 
-impl fmt::Display for Flow {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} PCE/s", self.0)
+impl Lanes {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
     }
 }
 
-impl_ttf_on_unit!(
-    Time,
+/// Representation of a non-negative value representing Passenger car equivalent.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct PCE(f64);
+
+impl PCE {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value >= 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(0.0)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+}
+
+/// Representation of a positive value expressed in PCE per second.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct Flow(f64);
+
+impl Flow {
+    pub(crate) fn new_unchecked(value: f64) -> Self {
+        debug_assert!(value.is_finite());
+        debug_assert!(value > 0.0);
+        Self(value)
+    }
+
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+}
+
+impl_traits_on_positive_unit!(
+    AnySeconds,
+    NonNegativeSeconds,
+    PositiveSeconds,
     Utility,
     ValueOfTime,
     Lanes,
-    Length,
-    Speed,
+    NonNegativeMeters,
+    PositiveMeters,
+    AnyMeters,
+    MetersPerSecond,
     PCE,
     Flow,
-    NoUnit
+    AnyNum,
+    PositiveNum,
+    NonNegativeNum,
+    ZeroOneNum
 );
 
-impl_from_into_no_unit!(Time, Utility, ValueOfTime, Lanes, Length, Speed, PCE, Flow);
+impl_traits_on_non_negative_unit!(
+    NonNegativeMeters,
+    PCE,
+    NonNegativeNum,
+    ZeroOneNum,
+    NonNegativeSeconds,
+    AnySeconds,
+    Utility,
+    ValueOfTime,
+    AnyMeters,
+    AnyNum
+);
+
+impl_traits_on_any_unit!(AnySeconds, Utility, ValueOfTime, AnyMeters, AnyNum);
+
+macro_rules! impl_from_into_any_num(
+    ( $( $t:ident ),* ) => {
+        $(
+            impl From<AnyNum> for $t {
+                fn from(value: AnyNum) -> Self {
+                    debug_assert!(value.0.is_finite());
+                    Self(value.0)
+                }
+            }
+            impl From<$t> for AnyNum {
+                fn from(value: $t) -> Self {
+                    debug_assert!(value.0.is_finite());
+                    Self(value.0)
+                }
+            }
+        )*
+    };
+);
+
+impl_from_into_any_num!(AnySeconds, AnyMeters, Utility);
 
 macro_rules! impl_ops(
     ( $l_type:ident * $r_type:ident = $o_type:ident ) => {
@@ -532,68 +1044,159 @@ macro_rules! impl_ops(
             }
         }
     };
+    ( $l_type:ident + $r_type:ident = $o_type:ident ) => {
+        impl Add<$r_type> for $l_type {
+            type Output = $o_type;
+            fn add(self, other: $r_type) -> Self::Output {
+                $o_type(self.0 + other.0)
+            }
+        }
+        impl Add<$l_type> for $r_type {
+            type Output = $o_type;
+            fn add(self, other: $l_type) -> Self::Output {
+                $o_type(self.0 + other.0)
+            }
+        }
+    };
+    ( $l_type:ident += $r_type:ident ) => {
+        impl AddAssign<$r_type> for $l_type {
+            fn add_assign(&mut self, other: $r_type) {
+                self.0 += other.0;
+            }
+        }
+    };
+    ( $l_type:ident - $r_type:ident = $o_type:ident ) => {
+        impl Sub<$r_type> for $l_type {
+            type Output = $o_type;
+            fn sub(self, other: $r_type) -> Self::Output {
+                $o_type(self.0 - other.0)
+            }
+        }
+    };
+    ( $l_type:ident ^ $r_type:ident = $o_type:ident ) => {
+        impl Pow<$r_type> for $l_type {
+            type Output = $o_type;
+            fn pow(self, other: $r_type) -> Self::Output {
+                $o_type(self.0.powf(other.0))
+            }
+        }
+    };
 );
 
-impl_ops!(ValueOfTime * Time = Utility);
-impl_ops!(Speed * Time = Length);
-impl_ops!(Length / Speed = Time);
-impl_ops!(Length / Time = Speed);
-impl_ops!(Flow * Time = PCE);
-impl_ops!(PCE / Flow = Time);
-impl_ops!(PCE / Time = Flow);
-impl_ops!(Length * Lanes = Length);
+impl_ops!(ValueOfTime * NonNegativeSeconds = Utility);
+impl_ops!(ValueOfTime * PositiveSeconds = Utility);
+impl_ops!(MetersPerSecond * NonNegativeSeconds = NonNegativeMeters);
+impl_ops!(NonNegativeMeters * Lanes = NonNegativeMeters);
 impl_ops!(Flow * Lanes = Flow);
+impl_ops!(Flow * NonNegativeSeconds = PCE);
+impl_ops!(MetersPerSecond * PositiveSeconds = PositiveMeters);
+impl_ops!(PositiveNum * MetersPerSecond = MetersPerSecond);
+impl_ops!(AnySeconds * ZeroOneNum = AnySeconds);
+impl_ops!(NonNegativeSeconds * ZeroOneNum = NonNegativeSeconds);
+impl_ops!(NonNegativeMeters * ZeroOneNum = NonNegativeMeters);
+impl_ops!(MetersPerSecond * ZeroOneNum = MetersPerSecond);
 
-/// An interval between two [Time] units.
+impl_ops!(NonNegativeMeters / MetersPerSecond = NonNegativeSeconds);
+impl_ops!(NonNegativeMeters / NonNegativeSeconds = MetersPerSecond);
+impl_ops!(PCE / Flow = NonNegativeSeconds);
+impl_ops!(PCE / NonNegativeSeconds = Flow);
+impl_ops!(NonNegativeSeconds / PositiveNum = NonNegativeSeconds);
+impl_ops!(NonNegativeMeters / PositiveMeters = NonNegativeNum);
+impl_ops!(NonNegativeMeters / PositiveNum = NonNegativeMeters);
+impl_ops!(PositiveMeters / MetersPerSecond = PositiveSeconds);
+impl_ops!(PositiveMeters / PositiveMeters = PositiveNum);
+impl_ops!(PositiveSeconds / PositiveSeconds = PositiveNum);
+impl_ops!(PositiveNum / PositiveNum = PositiveNum);
+impl_ops!(NonNegativeNum / PositiveNum = NonNegativeNum);
+impl_ops!(NonNegativeSeconds / PositiveSeconds = NonNegativeNum);
+impl_ops!(AnySeconds / PositiveSeconds = AnyNum);
+impl_ops!(ZeroOneNum / PositiveNum = ZeroOneNum);
+
+impl_ops!(NonNegativeSeconds + PositiveSeconds = PositiveSeconds);
+impl_ops!(NonNegativeSeconds += PositiveSeconds);
+impl_ops!(NonNegativeNum + ZeroOneNum = NonNegativeNum);
+impl_ops!(NonNegativeNum += ZeroOneNum);
+
+impl_ops!(NonNegativeNum - NonNegativeNum = AnyNum);
+impl_ops!(PositiveNum - PositiveNum = AnyNum);
+impl_ops!(NonNegativeSeconds - NonNegativeSeconds = AnySeconds);
+impl_ops!(AnySeconds - NonNegativeSeconds = AnySeconds);
+impl_ops!(NonNegativeMeters - NonNegativeMeters = AnyMeters);
+
+impl_ops!(PositiveNum ^ PositiveNum = PositiveNum);
+
+/// A time interval.
 #[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
-pub struct Interval(pub [Time; 2]);
+pub struct Interval([NonNegativeSeconds; 2]);
+
+impl TryFrom<[f64; 2]> for Interval {
+    type Error = anyhow::Error;
+    fn try_from(value: [f64; 2]) -> Result<Self> {
+        let start = NonNegativeSeconds::try_from(value[0])?;
+        let end = NonNegativeSeconds::try_from(value[1])?;
+        if start >= end {
+            bail!(
+                "Intervals cannot have non-positive length: [{}, {}]",
+                value[0],
+                value[1]
+            );
+        }
+        Ok(Interval([start, end]))
+    }
+}
 
 impl Interval {
+    pub(crate) fn new_unchecked(start_value: f64, end_value: f64) -> Self {
+        debug_assert!(end_value > start_value);
+        let start = NonNegativeSeconds::new_unchecked(start_value);
+        let end = NonNegativeSeconds::new_unchecked(end_value);
+        Self([start, end])
+    }
+
     /// Returns the start of the interval.
-    pub const fn start(&self) -> Time {
+    pub const fn start(&self) -> NonNegativeSeconds {
         self.0[0]
     }
 
     /// Returns the end of the interval.
-    pub const fn end(&self) -> Time {
+    pub const fn end(&self) -> NonNegativeSeconds {
         self.0[1]
     }
 
     /// Returns the interval as a vector of two [Time] values.
-    pub fn to_vec(&self) -> Vec<Time> {
+    pub fn to_vec(&self) -> Vec<NonNegativeSeconds> {
         self.0.to_vec()
     }
-}
 
-impl Interval {
     /// Returns `true` if `time` is included in the (closed) interval.
-    pub fn contains(&self, time: Time) -> bool {
+    pub fn contains(&self, time: NonNegativeSeconds) -> bool {
         self.start() <= time && self.end() >= time
     }
-}
 
-impl Interval {
     /// Returns the length of the interval, i.e., the time that elapses between the start and the
     /// end of the interval.
-    pub fn length(&self) -> Time {
-        self.0[1] - self.0[0]
+    pub fn length(&self) -> PositiveSeconds {
+        PositiveSeconds(self.0[1].0 - self.0[0].0)
     }
 }
 
 /// Struct to describe statistics on a distribution.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Distribution<T> {
+pub(crate) struct Distribution<T> {
     mean: T,
     std: T,
     min: T,
     max: T,
 }
 
-impl<T: TTFNum> Distribution<T> {
+impl<T> Distribution<T>
+where
+    T: MetroNonNegativeNum,
+{
     /// Returns a `Distribution` from an iterator of elements of the distribution.
     ///
     /// Returns `None` if the iterator is empty.
-    pub fn from_iterator(iter: impl Iterator<Item = T>) -> Option<Distribution<T>> {
+    pub(crate) fn from_iterator(iter: impl Iterator<Item = T>) -> Option<Distribution<T>> {
         let mut sum = T::zero();
         let mut sum_squared = T::zero();
         let mut min = T::max_value();
@@ -616,10 +1219,8 @@ impl<T: TTFNum> Distribution<T> {
         if count == 0 {
             return None;
         }
-        let count_float =
-            T::from_usize(count).unwrap_or_else(|| panic!("Cannot convert {count:?} to TTFNum"));
-        let mean = sum / count_float;
-        let var = sum_squared / count_float - mean.powi(2);
+        let mean = sum / count;
+        let var = (sum_squared / count).sub_unchecked(mean.powi(2));
         let std = if var > T::zero() {
             var.sqrt()
         } else {
@@ -635,22 +1236,22 @@ impl<T: TTFNum> Distribution<T> {
     }
 
     /// Returns the mean of the distribution.
-    pub const fn mean(&self) -> T {
+    pub(crate) const fn mean(&self) -> T {
         self.mean
     }
 
     /// Returns the standard-deviation of the distribution.
-    pub const fn std(&self) -> T {
+    pub(crate) const fn std(&self) -> T {
         self.std
     }
 
     /// Returns the minimum of the distribution.
-    pub const fn min(&self) -> T {
+    pub(crate) const fn min(&self) -> T {
         self.min
     }
 
     /// Returns the maximum of the distribution.
-    pub const fn max(&self) -> T {
+    pub(crate) const fn max(&self) -> T {
         self.max
     }
 }
@@ -661,13 +1262,13 @@ mod tests {
 
     #[test]
     fn distribution_test() {
-        let values = vec![1., 2., 3., 4., 5.];
+        let values = vec![AnyNum(1.), AnyNum(2.), AnyNum(3.), AnyNum(4.), AnyNum(5.)];
         let d = Distribution::from_iterator(values.into_iter()).unwrap();
         let expected = Distribution {
-            mean: 3.,
-            std: 2.0f64.sqrt(),
-            min: 1.,
-            max: 5.,
+            mean: AnyNum(3.),
+            std: AnyNum(2.0f64.sqrt()),
+            min: AnyNum(1.),
+            max: AnyNum(5.),
         };
         assert_eq!(d, expected);
     }

@@ -12,11 +12,10 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashSet;
 use log::warn;
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::{clamp, ConstZero, Zero};
 use once_cell::sync::OnceCell;
 use petgraph::prelude::EdgeIndex;
-use serde::{Deserialize, Serialize};
-use ttf::{PwlXYF, TTFNum, TTF};
+use ttf::{PwlXYF, TTF};
 
 use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
@@ -29,11 +28,12 @@ use crate::network::road_network::{
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
 use crate::travel_utility::TravelUtility;
-use crate::units::{Interval, Length, NoUnit, Time, Utility};
+use crate::units::*;
 
 pub mod event;
 pub mod results;
 
+// TODO This should be a parameter of the simulation.
 const NB_INTERVALS: usize = 1500;
 
 /// A leg of a trip.
@@ -44,7 +44,7 @@ pub struct Leg {
     /// Type of the leg (road or virtual).
     pub(crate) class: LegType,
     /// Time spent at the stopping point of the leg, before starting the next leg (if any).
-    pub(crate) stopping_time: Time,
+    pub(crate) stopping_time: NonNegativeSeconds,
     /// Travel utility for this specific leg (a function of the travel time for this leg).
     pub(crate) travel_utility: TravelUtility,
     /// Schedule utility at the stopping point (a function of the arrival time at the stopping
@@ -57,7 +57,7 @@ impl Leg {
     pub fn new(
         id: usize,
         class: LegType,
-        stopping_time: Time,
+        stopping_time: NonNegativeSeconds,
         travel_utility: TravelUtility,
         schedule_utility: ScheduleUtility,
     ) -> Self {
@@ -94,7 +94,8 @@ impl Leg {
         schedule_utility_gamma: Option<f64>,
         schedule_utility_delta: Option<f64>,
     ) -> Result<Self> {
-        let stopping_time = Time::from_f64(stopping_time.unwrap_or(0.0)).unwrap();
+        let stopping_time = NonNegativeSeconds::try_from(stopping_time.unwrap_or(0.0))
+            .context("Value `stopping_time` does not satisfy the constraints")?;
         let class = match class_type {
             Some("Road") => {
                 let origin = class_origin.ok_or_else(|| {
@@ -116,8 +117,11 @@ impl Leg {
                 })
             }
             Some("Virtual") => {
-                let tt = Time::from_f64(class_travel_time.unwrap_or(0.0)).unwrap();
-                LegType::Virtual(TTF::Constant(tt))
+                // We ensure that the travel time is a non-negative value before putting it in the
+                // TTF as a AnySeconds.
+                let tt = NonNegativeSeconds::try_from(class_travel_time.unwrap_or(0.0))
+                    .context("Value `travel_time` does not satisfy the constraints")?;
+                LegType::Virtual(TTF::Constant(AnySeconds::from(tt)))
             }
             Some(s) => bail!("Unknown value for `class.type`: {s}"),
             None => bail!("Value `class.type` is mandatory"),
@@ -128,7 +132,8 @@ impl Leg {
             travel_utility_two,
             travel_utility_three,
             travel_utility_four,
-        );
+        )
+        .context("Failed to create travel utility")?;
         let schedule_utility = ScheduleUtility::from_values(
             schedule_utility_type,
             schedule_utility_tstar,
@@ -150,8 +155,8 @@ impl Leg {
     /// time.
     fn get_utility_decomposition(
         &self,
-        departure_time: Time,
-        travel_time: Time,
+        departure_time: NonNegativeSeconds,
+        travel_time: NonNegativeSeconds,
     ) -> (Utility, Utility) {
         (
             self.travel_utility.get_travel_utility(travel_time),
@@ -161,7 +166,11 @@ impl Leg {
     }
 
     /// Returns the utility of the leg, given the departure time and travel time.
-    fn get_utility_at(&self, departure_time: Time, travel_time: Time) -> Utility {
+    fn get_utility_at(
+        &self,
+        departure_time: NonNegativeSeconds,
+        travel_time: NonNegativeSeconds,
+    ) -> Utility {
         let (u0, u1) = self.get_utility_decomposition(departure_time, travel_time);
         u0 + u1
     }
@@ -171,10 +180,10 @@ impl Leg {
     fn init_virtual_leg_results(&self) -> LegResults {
         LegResults {
             id: self.id,
-            departure_time: Time::nan(),
-            arrival_time: Time::nan(),
-            travel_utility: Utility::nan(),
-            schedule_utility: Utility::nan(),
+            departure_time: NonNegativeSeconds::NAN,
+            arrival_time: NonNegativeSeconds::NAN,
+            travel_utility: Utility::NAN,
+            schedule_utility: Utility::NAN,
             class: LegTypeResults::Virtual,
             departure_time_shift: None,
         }
@@ -185,19 +194,19 @@ impl Leg {
     /// route, length and route free-flow travel time.
     fn init_road_leg_results(
         &self,
-        departure_time: Time,
-        arrival_time: Time,
+        departure_time: NonNegativeSeconds,
+        arrival_time: NonNegativeSeconds,
         route: Option<Vec<EdgeIndex>>,
-        length: Option<Length>,
-        route_free_flow_travel_time: Option<Time>,
-        global_free_flow_travel_time: Time,
+        length: Option<NonNegativeMeters>,
+        route_free_flow_travel_time: Option<NonNegativeSeconds>,
+        global_free_flow_travel_time: NonNegativeSeconds,
     ) -> LegResults {
         LegResults {
             id: self.id,
-            departure_time: Time::nan(),
-            arrival_time: Time::nan(),
-            travel_utility: Utility::nan(),
-            schedule_utility: Utility::nan(),
+            departure_time: NonNegativeSeconds::NAN,
+            arrival_time: NonNegativeSeconds::NAN,
+            travel_utility: Utility::NAN,
+            schedule_utility: Utility::NAN,
             class: LegTypeResults::Road(RoadLegResults::new(
                 departure_time,
                 arrival_time,
@@ -212,17 +221,16 @@ impl Leg {
 }
 
 /// Enum for the different classes of legs.
-#[derive(Clone, Debug, EnumAsInner, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
+#[derive(Clone, Debug, EnumAsInner)]
 pub enum LegType {
     /// A leg with travel on the road.
     Road(RoadLeg),
     /// A virtual leg, with a fixed TTF, independent from the road network.
-    Virtual(TTF<Time>),
+    Virtual(TTF<AnySeconds>),
 }
 
 /// A leg of a trip on the road network.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct RoadLeg {
     /// Origin node of the leg.
     pub(crate) origin: OriginalNodeId,
@@ -295,7 +303,7 @@ pub struct TravelingMode {
     /// The full trip consists realizing this legs one after the other.
     pub(crate) legs: Vec<Leg>,
     /// Delay between the departure time of the trip and the start of the first leg.
-    pub(crate) origin_delay: Time,
+    pub(crate) origin_delay: NonNegativeSeconds,
     /// Model used for the departure-time choice.
     pub(crate) departure_time_model: DepartureTimeModel,
     /// Total travel utility of the trip (a function of the total travel time of the trip).
@@ -318,7 +326,7 @@ impl TravelingMode {
     pub fn new(
         id: usize,
         legs: Vec<Leg>,
-        origin_delay: Time,
+        origin_delay: NonNegativeSeconds,
         departure_time_model: DepartureTimeModel,
         total_travel_utility: TravelUtility,
         origin_schedule_utility: ScheduleUtility,
@@ -369,7 +377,7 @@ impl TravelingMode {
     }
 
     /// Iterates over the TTFs of the virtual legs of the trip.
-    pub fn iter_virtual_legs(&'_ self) -> impl Iterator<Item = &'_ TTF<Time>> + '_ {
+    pub fn iter_virtual_legs(&'_ self) -> impl Iterator<Item = &'_ TTF<AnySeconds>> + '_ {
         self.legs.iter().filter_map(|leg| {
             if let LegType::Virtual(ttf) = &leg.class {
                 Some(ttf)
@@ -422,8 +430,10 @@ impl TravelingMode {
             total_travel_utility_two,
             total_travel_utility_three,
             total_travel_utility_four,
-        );
-        let origin_delay = Time::from_f64(origin_delay.unwrap_or(0.0)).unwrap();
+        )
+        .context("Failed to create total travel utility")?;
+        let origin_delay = NonNegativeSeconds::try_from(origin_delay.unwrap_or(0.0))
+            .context("Value `origin_delay` does not satisfy the constraints")?;
         let departure_time_model = DepartureTimeModel::from_values(
             dt_choice_type,
             dt_choice_departure_time,
@@ -472,10 +482,10 @@ impl TravelingMode {
 // The TTFs can be either owned or be references.
 type LegTTFs<'a> = Vec<LegTTF<'a>>;
 
-struct LegTTF<'a>(Either<&'a TTF<Time>, TTF<Time>>);
+struct LegTTF<'a>(Either<&'a TTF<AnySeconds>, TTF<AnySeconds>>);
 
 impl<'a> Deref for LegTTF<'a> {
-    type Target = TTF<Time>;
+    type Target = TTF<AnySeconds>;
     fn deref(&self) -> &Self::Target {
         match &self.0 {
             Either::Left(referenced) => referenced,
@@ -551,12 +561,18 @@ impl TravelingMode {
     }
 
     /// Returns the total utility of the trip given the departure time and the legs' TTFs.
-    fn get_total_utility(&self, departure_time: Time, leg_ttfs: &LegTTFs<'_>) -> Utility {
+    fn get_total_utility(
+        &self,
+        departure_time: NonNegativeSeconds,
+        leg_ttfs: &LegTTFs<'_>,
+    ) -> Utility {
         let mut current_time = departure_time + self.origin_delay;
-        let mut total_travel_time = Time::default();
+        let mut total_travel_time = NonNegativeSeconds::default();
         let mut total_utility = self.origin_schedule_utility.get_utility(departure_time);
         for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
-            let travel_time = leg_ttf.eval(current_time);
+            let travel_time =
+                NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(current_time)))
+                    .expect("The travel time is negative");
             let utility = leg.get_utility_at(current_time, travel_time);
             total_utility += utility;
             current_time += travel_time;
@@ -572,8 +588,13 @@ impl TravelingMode {
 
     /// Returns the total stopping time of the trip, i.e., the sum of the stopping time for each
     /// leg (plus the delay at origin).
-    fn get_total_stopping_time(&self) -> Time {
-        self.origin_delay + self.legs.iter().map(|l| l.stopping_time).sum()
+    fn get_total_stopping_time(&self) -> NonNegativeSeconds {
+        self.origin_delay
+            + self
+                .legs
+                .iter()
+                .map(|l| l.stopping_time)
+                .sum::<NonNegativeSeconds>()
     }
 
     /// Returns a [PwlXYF] that yields the utility for each possible departure time, given the
@@ -582,13 +603,14 @@ impl TravelingMode {
         &self,
         leg_ttfs: &LegTTFs<'_>,
         period: Interval,
-    ) -> PwlXYF<Time, Utility, NoUnit> {
-        let interval = period.length() / Time::from_usize(NB_INTERVALS).unwrap();
-        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| Some(*x + interval))
-            .take_while(|&x| x <= period.end())
-            .collect();
-
-        let mut utilities = vec![Utility::default(); tds.len()];
+    ) -> PwlXYF<AnySeconds, Utility, AnyNum> {
+        let interval = period.length() / NB_INTERVALS;
+        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| {
+            Some(*x + NonNegativeSeconds::from(interval))
+        })
+        .take_while(|&x| x <= period.end())
+        .collect();
+        let mut utilities = vec![Utility::ZERO; tds.len()];
         // Add schedule utility at origin.
         utilities
             .iter_mut()
@@ -606,7 +628,8 @@ impl TravelingMode {
                 .iter_mut()
                 .zip(current_times.iter_mut())
                 .for_each(|(u, t)| {
-                    let tt = leg_ttf.eval(*t);
+                    let tt = NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(*t)))
+                        .expect("The travel time is negative");
                     // Update the current time.
                     *t += tt;
                     // Increase the utility for the associated departure time.
@@ -626,11 +649,14 @@ impl TravelingMode {
             .iter_mut()
             .zip(current_times)
             .zip(tds)
-            .for_each(|((u, t), td)| {
-                let tot_tt = (t - td) - self.get_total_stopping_time();
+            .for_each(|((u, ta), td)| {
+                // total stopping time is always larger that
+                let tot_tt = ta
+                    .sub_unchecked(td)
+                    .sub_unchecked(self.get_total_stopping_time());
                 *u += self.total_travel_utility.get_travel_utility(tot_tt)
             });
-        PwlXYF::from_values(utilities, period.start(), interval)
+        PwlXYF::from_values(utilities, period.start().into(), interval.into())
     }
 
     /// Returns `true` if the [TravelingMode] is composed of virtual legs only.
@@ -645,7 +671,7 @@ impl TravelingMode {
     /// *Panics* if the trip is not virtual only.
     fn get_trip_results_for_virtual_only(
         &self,
-        departure_time: Time,
+        departure_time: NonNegativeSeconds,
         expected_utility: Utility,
     ) -> TripResults {
         assert!(
@@ -655,7 +681,7 @@ impl TravelingMode {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         let mut utility = self.origin_schedule_utility.get_utility(departure_time);
-        let mut total_travel_time = Time::zero();
+        let mut total_travel_time = NonNegativeSeconds::zero();
         for leg in self.legs.iter() {
             let ttf = if let LegType::Virtual(ttf) = &leg.class {
                 ttf
@@ -663,7 +689,11 @@ impl TravelingMode {
                 // All legs are virtual here.
                 unreachable!()
             };
-            let travel_time = ttf.eval(current_time);
+            // We can assume that the travel time is non-negative since this was checked when
+            // importing the virtual leg.
+            let travel_time = ttf
+                .eval(current_time.into())
+                .assume_non_negative_unchecked();
             let arrival_time = current_time + travel_time;
             total_travel_time += travel_time;
             let travel_utility = leg.travel_utility.get_travel_utility(travel_time);
@@ -702,7 +732,7 @@ impl TravelingMode {
     /// within-day model.
     fn init_trip_results_without_route(
         &self,
-        departure_time: Time,
+        departure_time: NonNegativeSeconds,
         expected_utility: Utility,
         leg_ttfs: &LegTTFs<'_>,
         preprocess_data: Option<&RoadNetworkPreprocessingData>,
@@ -711,7 +741,8 @@ impl TravelingMode {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         for (leg, leg_ttf) in self.iter_legs().zip(leg_ttfs.iter()) {
-            let travel_time = leg_ttf.eval(current_time);
+            let travel_time = NonNegativeSeconds::try_from(leg_ttf.eval(current_time.into()))
+                .expect("The travel time is negative");
             let arrival_time = current_time + travel_time;
             let leg_result = match &leg.class {
                 LegType::Road(road_leg) => {
@@ -727,7 +758,10 @@ impl TravelingMode {
                         let mut t = current_time;
                         let mut route = Vec::with_capacity(input_route.len());
                         for edge in input_route {
-                            t = t + vehicle_weights.weights()[edge].eval(t);
+                            t = t + NonNegativeSeconds::try_from(
+                                vehicle_weights.weights()[edge].eval(t.into()),
+                            )
+                            .expect("The travel time is negative");
                             route.push(crate::network::road_network::edge_index_of(*edge));
                         }
                         (t, Some(route))
@@ -792,7 +826,8 @@ impl TravelingMode {
         let (expected_utility, time_callback) = match &self.departure_time_model {
             &DepartureTimeModel::Constant(departure_time) => {
                 let expected_utility = self.get_total_utility(departure_time, &leg_ttfs);
-                let time_callback: Box<dyn FnOnce() -> Time> = Box::new(move || departure_time);
+                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> =
+                    Box::new(move || departure_time);
                 (expected_utility, time_callback)
             }
             DepartureTimeModel::Discrete {
@@ -802,7 +837,7 @@ impl TravelingMode {
                 choice_model,
             } => {
                 let period = period.unwrap_or_else(crate::parameters::period);
-                let half_interval = Time::average(*interval, Time::zero());
+                let half_interval = interval.half();
                 let dt_values_iter =
                     std::iter::successors(Some(period.start() + half_interval), |t| {
                         Some(*t + *interval)
@@ -818,11 +853,15 @@ impl TravelingMode {
                             self.id
                         )
                     })?;
-                let departure_time = Float::min(
-                    period.start() + half_interval + Time(interval.0 * chosen_id as f64) + *offset,
-                    period.end(),
-                );
-                let time_callback: Box<dyn FnOnce() -> Time> = Box::new(move || departure_time);
+                let departure_time = NonNegativeSeconds::try_from(clamp(
+                    AnySeconds::from(period.start() + half_interval + *interval * chosen_id)
+                        + *offset,
+                    period.start().into(),
+                    period.end().into(),
+                ))
+                .unwrap();
+                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> =
+                    Box::new(move || departure_time);
                 (expected_utility, time_callback)
             }
             DepartureTimeModel::Continuous {
@@ -838,6 +877,10 @@ impl TravelingMode {
                             self.id
                         )
                     })?;
+                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> = Box::new(move || {
+                    NonNegativeSeconds::try_from(time_callback())
+                        .expect("The travel time is negative")
+                });
                 (expected_utility, time_callback)
             }
         };
@@ -885,7 +928,7 @@ impl TravelingMode {
     #[allow(clippy::too_many_arguments)]
     fn init_trip_results_with_route(
         &self,
-        departure_time: Time,
+        departure_time: NonNegativeSeconds,
         expected_utility: Utility,
         preprocess_data: Option<&RoadNetworkPreprocessingData>,
         weights: Option<&RoadNetworkWeights>,
@@ -907,7 +950,10 @@ impl TravelingMode {
                         let mut t = current_time;
                         let mut route = Vec::with_capacity(input_route.len());
                         for edge in input_route {
-                            t = t + vehicle_weights.weights()[edge].eval(t);
+                            t = t + NonNegativeSeconds::try_from(
+                                vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                            )
+                            .expect("The travel time is negative");
                             route.push(crate::network::road_network::edge_index_of(*edge));
                         }
                         (t, route)
@@ -948,7 +994,10 @@ impl TravelingMode {
                     (arrival_time, leg_result)
                 }
                 LegType::Virtual(ttf) => (
-                    current_time + ttf.eval(current_time),
+                    current_time
+                        + ttf
+                            .eval(AnySeconds::from(current_time))
+                            .assume_non_negative_unchecked(),
                     leg.init_virtual_leg_results(),
                 ),
             };
@@ -980,27 +1029,23 @@ impl VirtualOnlyPreDayResults {
 }
 
 /// Model used to compute the chosen departure time.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
+#[derive(Clone, Debug)]
 pub enum DepartureTimeModel {
     /// The departure time is always equal to the given value.
-    Constant(Time),
+    Constant(NonNegativeSeconds),
     /// The departure time is chosen among a finite number of values.
-    #[serde(alias = "DiscreteChoice")]
     Discrete {
         /// Period in which the departure time is chosen.
         ///
         /// If `None`, the simulation period is used.
         period: Option<Interval>,
         /// Time between two departure-time interval.
-        interval: Time,
+        interval: NonNegativeSeconds,
         /// Offset time added to the chosen departure-time value (can be negative).
-        #[serde(default)]
-        offset: Time,
+        offset: AnySeconds,
         /// Discrete choice model.
-        choice_model: ChoiceModel<NoUnit>,
+        choice_model: ChoiceModel<Utility>,
     },
-    #[serde(alias = "ContinuousChoice")]
     /// The departure time is chosen according to a continuous choice model.
     Continuous {
         /// Period in which the departure time is chosen.
@@ -1008,7 +1053,7 @@ pub enum DepartureTimeModel {
         /// If `None`, the simulation period is used.
         period: Option<Interval>,
         /// Continuous choice model.
-        choice_model: ContinuousChoiceModel<NoUnit>,
+        choice_model: ContinuousChoiceModel,
     },
 }
 
@@ -1028,9 +1073,7 @@ impl DepartureTimeModel {
         fn period_as_interval(period: Vec<f64>) -> Result<Interval> {
             match period.len() {
                 2 => {
-                    let t0 = Time::from_f64(period[0]).unwrap();
-                    let t1 = Time::from_f64(period[1]).unwrap();
-                    Ok(Interval([t0, t1]))
+                    Interval::try_from([period[0], period[1]]).context("Value `period` is invalid")
                 }
                 _ => Err(anyhow!(
                     "Value `period` must be a List with 2 values, got `{:?}`",
@@ -1040,18 +1083,18 @@ impl DepartureTimeModel {
         }
         match model_type {
             Some("Constant") => {
-                let dt = departure_time.ok_or_else(|| {
+                let dt = NonNegativeSeconds::try_from(departure_time.ok_or_else(|| {
                     anyhow!("Value `departure_time` is mandatory when `type` is `\"Constant\"`")
-                })?;
-                Ok(Self::Constant(Time::from_f64(dt).unwrap()))
+                })?)
+                .context("Value `departure_time` does not satisfy the constraints")?;
+                Ok(Self::Constant(dt))
             }
             Some("Discrete") => {
                 let period = period.map(period_as_interval).transpose()?;
-                let interval = interval
-                    .map(|t| Time::from_f64(t).unwrap())
-                    .ok_or_else(|| {
-                        anyhow!("Value `interval` is mandatory when `type` is `\"Discrete\"`")
-                    })?;
+                let interval = NonNegativeSeconds::try_from(interval.ok_or_else(|| {
+                    anyhow!("Value `interval` is mandatory when `type` is `\"Discrete\"`")
+                })?)
+                .context("Value `interval` does not satisfy the constraints")?;
                 let choice_model = ChoiceModel::from_values(
                     choice_model_type,
                     choice_model_u,
@@ -1059,7 +1102,17 @@ impl DepartureTimeModel {
                     choice_model_constants,
                 )
                 .context("Failed to create a discrete choice model")?;
-                let offset = Time::from_f64(offset.unwrap_or(0.0)).unwrap();
+                let offset = AnySeconds::try_from(offset.unwrap_or(0.0))
+                    .context("Value `offset` does not satisfy the constraints")?;
+                if offset < -AnySeconds::from(interval.half())
+                    || offset > AnySeconds::from(interval.half())
+                {
+                    warn!(
+                        "Value `offset` ({}) is larger or smaller than the half interval ({})",
+                        f64::from(offset),
+                        f64::from(interval.half())
+                    );
+                }
                 Ok(Self::Discrete {
                     period,
                     interval,
@@ -1092,14 +1145,17 @@ impl DepartureTimeModel {
 /// Return an error if the destination cannot be reached with the given departure time from origin.
 fn get_arrival_time_and_route(
     leg: &RoadLeg,
-    departure_time: Time,
+    departure_time: NonNegativeSeconds,
     skims: &RoadNetworkSkim,
     progress_bar: MetroProgressBar,
     alloc: &mut EAAllocation,
-) -> Result<(Time, Vec<EdgeIndex>)> {
-    if let Some((arrival_time, route)) =
-        skims.earliest_arrival_query(leg.origin, leg.destination, departure_time, alloc)?
-    {
+) -> Result<(NonNegativeSeconds, Vec<EdgeIndex>)> {
+    if let Some((arrival_time, route)) = skims.earliest_arrival_query(
+        leg.origin,
+        leg.destination,
+        AnySeconds::from(departure_time),
+        alloc,
+    )? {
         if cfg!(debug_assertions) {
             // Check if there is a loop in the route.
             let n = route.iter().collect::<HashSet<_>>().len();
@@ -1112,6 +1168,9 @@ fn get_arrival_time_and_route(
                 })
             }
         }
+        let arrival_time = NonNegativeSeconds::try_from(arrival_time).with_context(|| {
+            format!("Got a negative travel time from the earliest-arrival query: {arrival_time}")
+        })?;
         Ok((arrival_time, route))
     } else {
         Err(anyhow!(

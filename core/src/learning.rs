@@ -4,16 +4,15 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Day-to-day learning models.
-use num_traits::{Float, One, Zero};
-use serde_derive::{Deserialize, Serialize};
+use num_traits::{ConstOne, One, Zero};
+use serde_derive::Deserialize;
 
-use crate::network::NetworkWeights;
-use crate::units::NoUnit;
+use crate::{network::NetworkWeights, units::*};
 
 /// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
 /// `x_t` and an update value `y`.
 /// value.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum LearningModel {
     /// Exponential learning model with adjustment for the initial weights.
@@ -24,10 +23,10 @@ pub enum LearningModel {
     ///
     /// When `T` is large, the exponential learning model is such that
     /// `x_{t+1} = alpha * x_t + (1 - alpha) * y_{t+1}`
-    Exponential(NoUnit),
+    Exponential(ZeroOneNum),
     /// Exponential learning model with no adjustment for the initial weights:
     /// `x_{t+1} = alpha * x_t + (1 - alpha) * y`.
-    ExponentialUnadjusted(NoUnit),
+    ExponentialUnadjusted(ZeroOneNum),
     /// Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
     Linear,
     /// Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
@@ -57,25 +56,30 @@ impl LearningModel {
         match self {
             &Self::Exponential(alpha) => {
                 // Use the formula to correct the weight of the first value.
-                let coef_update = if alpha == NoUnit::one() {
-                    NoUnit::one()
-                } else if alpha == NoUnit::zero() {
+                let coef_update = if alpha.is_one() {
+                    ZeroOneNum::ONE
+                } else if alpha.is_zero() {
                     // With `alpha = 0`, we resort to Linear learning.
                     return Self::Linear.learn(old_weights, update_weights, iteration_counter);
                 } else {
                     alpha
-                        / (NoUnit::one()
-                            - (NoUnit::one() - alpha).powi(iteration_counter as i32 + 1))
+                        / PositiveNum::try_from(
+                            alpha
+                                .one_minus()
+                                .powi(iteration_counter as i32 + 1)
+                                .one_minus(),
+                        )
+                        .unwrap()
                 };
-                old_weights.average(update_weights, 1.0 - coef_update.0)
+                old_weights.average(update_weights, coef_update.one_minus())
             }
             &Self::ExponentialUnadjusted(alpha) => {
-                old_weights.average(update_weights, 1.0 - alpha.0)
+                old_weights.average(update_weights, alpha.one_minus())
             }
             Self::Linear => {
                 let t = iteration_counter as f64;
                 let coef = t / (t + 1.0);
-                old_weights.average(update_weights, coef)
+                old_weights.average(update_weights, ZeroOneNum::new_unchecked(coef))
             }
             Self::Genetic => {
                 let t = iteration_counter as f64;
@@ -84,7 +88,7 @@ impl LearningModel {
             Self::Quadratic => {
                 let t = iteration_counter as f64;
                 let coef = t.sqrt() / (t.sqrt() + 1.0);
-                old_weights.average(update_weights, coef)
+                old_weights.average(update_weights, ZeroOneNum::new_unchecked(coef))
             }
         }
     }
@@ -98,12 +102,13 @@ mod tests {
     use crate::network::road_network::preprocess::unique_vehicle_index;
     use crate::network::road_network::weights::VehicleWeights;
     use crate::network::road_network::RoadNetworkWeights;
-    use crate::units::Time;
 
     fn get_weigths(v: f64) -> NetworkWeights {
         let rn = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                weights: [(0, TTF::Constant(Time(v)))].into_iter().collect(),
+                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(v)))]
+                    .into_iter()
+                    .collect(),
                 vehicle_ids: vec![0],
             }],
         };
@@ -194,7 +199,7 @@ mod tests {
         let w1 = get_weigths(10.);
         let w2 = get_weigths(20.);
         let w3 = get_weigths(30.);
-        let model = LearningModel::Exponential(NoUnit(0.2));
+        let model = LearningModel::Exponential(ZeroOneNum::new_unchecked(0.2));
         assert_eq!(
             model.learn(&w1, &w2, 0).road_network().unwrap().weights,
             get_weigths(20.).road_network().unwrap().weights
@@ -202,14 +207,24 @@ mod tests {
         let x2 = model.learn(&w1, &w2, 1);
         if let TTF::Constant(v) = x2.road_network().unwrap()[(uid, 0)] {
             let expected = (20. + 0.8 * 10.) * 0.2 / (1. - 0.8f64.powi(2));
-            assert!((v.0 - expected).abs() < 1e-4, "{:?} != {:?}", v, expected);
+            assert!(
+                (Into::<f64>::into(v) - expected).abs() < 1e-4,
+                "{:?} != {:?}",
+                v,
+                expected
+            );
         } else {
             panic!("Invalid road network weight: {:?}", x2.road_network());
         }
         let x3 = model.learn(&x2, &w3, 2);
         if let TTF::Constant(v) = x3.road_network().unwrap()[(uid, 0)] {
             let expected = (30. + 0.8 * 20. + 0.8f64.powi(2) * 10.) * 0.2 / (1. - 0.8f64.powi(3));
-            assert!((v.0 - expected).abs() < 1e-4, "{:?} != {:?}", v, expected);
+            assert!(
+                (Into::<f64>::into(v) - expected).abs() < 1e-4,
+                "{:?} != {:?}",
+                v,
+                expected
+            );
         } else {
             panic!("Invalid road network weight: {:?}", x3.road_network());
         }

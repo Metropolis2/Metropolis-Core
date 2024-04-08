@@ -854,7 +854,7 @@ where
             let node_data = forw_data.get(&node).unwrap();
             if node_data
                 .extra
-                .map(|t| t + T::margin() < key)
+                .map(|t| t + T::MARGIN < key)
                 .unwrap_or(false)
             {
                 // The node is already stalled with a smaller value.

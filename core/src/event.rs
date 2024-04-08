@@ -16,7 +16,7 @@ use crate::network::NetworkSkim;
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
-use crate::units::{Interval, Time};
+use crate::units::*;
 
 // Number of BinaryHeap in the equent queue.
 const Q: usize = 256;
@@ -54,7 +54,7 @@ pub(crate) trait Event: Debug {
         events: &'event mut EventQueue,
     ) -> Result<bool>;
     /// Returns the time at which the event occurs.
-    fn get_time(&self) -> Time;
+    fn get_time(&self) -> NonNegativeSeconds;
 }
 
 /// An entry for the [EventQueue].
@@ -63,7 +63,7 @@ pub(crate) trait Event: Debug {
 // Instead, they are cached to speed-up the queue.
 #[derive(Debug)]
 pub(crate) struct EventEntry {
-    time: Time,
+    time: NonNegativeSeconds,
     event: Box<dyn Event>,
 }
 
@@ -141,10 +141,10 @@ impl EventQueue {
         self.queues[i].push(EventEntry { time, event });
     }
 
-    fn index_of(&self, time: Time) -> usize {
+    fn index_of(&self, time: NonNegativeSeconds) -> usize {
         debug_assert!(time >= self.period.start());
-        let share = (time.0 - self.period.start().0) / self.period.length().0;
-        let index = (share * Q as f64) as usize;
+        let share = time.sub_unchecked(self.period.start()) / self.period.length();
+        let index = (share * Q).to_usize_unchecked();
         index.min(Q - 1)
     }
 }
@@ -155,7 +155,7 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     struct DummyEvent {
-        time: Time,
+        time: NonNegativeSeconds,
     }
 
     impl Event for DummyEvent {
@@ -168,24 +168,44 @@ mod tests {
         ) -> Result<bool> {
             Ok(false)
         }
-        fn get_time(&self) -> Time {
+        fn get_time(&self) -> NonNegativeSeconds {
             self.time
         }
     }
 
     #[test]
     fn event_queue_test() {
-        let mut q = EventQueue::new(vec![], Interval([Time(0.0), Time(64.0)]));
+        let mut q = EventQueue::new(vec![], Interval::new_unchecked(0.0, 64.0));
         assert_eq!(q.len(), 0);
-        q.push(Box::new(DummyEvent { time: Time(2.) }));
-        q.push(Box::new(DummyEvent { time: Time(1.) }));
-        q.push(Box::new(DummyEvent { time: Time(4.) }));
+        q.push(Box::new(DummyEvent {
+            time: NonNegativeSeconds::new_unchecked(2.),
+        }));
+        q.push(Box::new(DummyEvent {
+            time: NonNegativeSeconds::new_unchecked(1.),
+        }));
+        q.push(Box::new(DummyEvent {
+            time: NonNegativeSeconds::new_unchecked(4.),
+        }));
         assert_eq!(q.len(), 3);
-        assert_eq!(q.pop().unwrap().get_time(), Time(1.));
-        assert_eq!(q.pop().unwrap().get_time(), Time(2.));
-        q.push(Box::new(DummyEvent { time: Time(3.) }));
-        assert_eq!(q.pop().unwrap().get_time(), Time(3.));
-        assert_eq!(q.pop().unwrap().get_time(), Time(4.));
+        assert_eq!(
+            q.pop().unwrap().get_time(),
+            NonNegativeSeconds::new_unchecked(1.)
+        );
+        assert_eq!(
+            q.pop().unwrap().get_time(),
+            NonNegativeSeconds::new_unchecked(2.)
+        );
+        q.push(Box::new(DummyEvent {
+            time: NonNegativeSeconds::new_unchecked(3.),
+        }));
+        assert_eq!(
+            q.pop().unwrap().get_time(),
+            NonNegativeSeconds::new_unchecked(3.)
+        );
+        assert_eq!(
+            q.pop().unwrap().get_time(),
+            NonNegativeSeconds::new_unchecked(4.)
+        );
         assert_eq!(q.len(), 0);
     }
 }

@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::Duration;
 
 use crate::event::{Event, EventQueue};
@@ -19,49 +19,49 @@ use crate::network::road_network::RoadNetworkWeights;
 use crate::network::{NetworkSkim, NetworkWeights};
 use crate::parameters::SavingFormat;
 use crate::population::{agent_index, AgentIndex};
-use crate::units::{Distribution, Time, Utility};
+use crate::units::{Distribution, NonNegativeSeconds, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
 #[derive(Clone, Debug, Default)]
-pub struct SimulationResults {
+pub(crate) struct SimulationResults {
     /// [AggregateResults] of each iteration.
-    pub iterations: Vec<AggregateResults>,
+    pub(crate) iterations: Vec<AggregateResults>,
     /// [IterationResults] of the last iteration.
-    pub last_iteration: Option<IterationResults>,
+    pub(crate) last_iteration: Option<IterationResults>,
 }
 
 impl SimulationResults {
     /// Create an empty SimulationResults.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         SimulationResults::default()
     }
 
     /// Appends the [AggregateResults] of an iteration to the [SimulationResults].
-    pub fn push_iteration(&mut self, iteration: AggregateResults) {
+    pub(crate) fn push_iteration(&mut self, iteration: AggregateResults) {
         self.iterations.push(iteration);
     }
 }
 
 /// Aggregate results summarizing the results of an iteration.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateResults {
     /// Current value of the iteration counter.
-    pub iteration_counter: u32,
+    pub(crate) iteration_counter: u32,
     /// Distribution of the surplus of the agents.
-    pub surplus: Distribution<Utility>,
+    pub(crate) surplus: Distribution<Utility>,
     /// Mode-specific aggregate results.
-    pub mode_results: AggregateModeResults,
+    pub(crate) mode_results: AggregateModeResults,
     /// Root mean square difference between the simulated road-network weights of the current and
     /// previous iteration (except for the first iteration, where the expected weights are used
     /// instead).
     ///
     /// `None` if there is no road network.
-    pub sim_road_network_weights_rmse: Option<Time>,
+    pub(crate) sim_road_network_weights_rmse: Option<NonNegativeSeconds>,
     /// Root mean square difference between the simulated road-network weights of the current
     /// iteration and the expected road-network weights of the previous iteration.
     ///
     /// `None` if there is no road network.
-    pub exp_road_network_weights_rmse: Option<Time>,
+    pub(crate) exp_road_network_weights_rmse: Option<NonNegativeSeconds>,
 }
 
 /// Detailed results of an iteration.
@@ -407,7 +407,7 @@ impl PreDayAgentResults {
 /// Stores [AggregateResults] in the given output directory.
 ///
 /// The AggregateResults are stored in the file `iteration[counter].json`.
-pub fn save_aggregate_results(aggregate_results: &AggregateResults) -> Result<()> {
+pub(crate) fn save_aggregate_results(aggregate_results: &AggregateResults) -> Result<()> {
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
             io::parquet::append_parquet(

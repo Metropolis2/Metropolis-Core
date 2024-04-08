@@ -17,11 +17,10 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
-use num_traits::{Float, FromPrimitive, One, Zero};
+use num_traits::{Pow, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
-use serde_derive::{Deserialize, Serialize};
 use tch::HierarchyOverlay;
-use ttf::TTF;
+use ttf::{TTFNum, TTF};
 
 use self::parameters::AlgorithmType;
 pub(crate) use self::preprocess::RoadNetworkPreprocessingData;
@@ -32,7 +31,7 @@ pub(crate) use self::state::RoadNetworkState;
 use self::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
 pub(crate) use self::weights::RoadNetworkWeights;
 use crate::network::road_network::preprocess::unique_vehicle_index;
-use crate::units::{Flow, Lanes, Length, NoUnit, Speed, Time};
+use crate::units::*;
 
 static mut ROAD_NETWORK: OnceLock<RoadNetwork> = OnceLock::new();
 
@@ -111,7 +110,10 @@ pub(crate) fn iter_original_edge_ids() -> impl Iterator<Item = OriginalEdgeId> {
 }
 
 /// Returns the free-flow travel time for the given edge and vehicle.
-pub(crate) fn free_flow_travel_time_of_edge(edge_id: OriginalEdgeId, vehicle: &Vehicle) -> Time {
+pub(crate) fn free_flow_travel_time_of_edge(
+    edge_id: OriginalEdgeId,
+    vehicle: &Vehicle,
+) -> NonNegativeSeconds {
     let edge_idx = edge_index_of(edge_id);
     let edge = edge_by_index(edge_idx);
     edge.get_free_flow_travel_time(vehicle)
@@ -122,7 +124,7 @@ pub(crate) fn free_flow_travel_time_of_edge(edge_id: OriginalEdgeId, vehicle: &V
 pub(crate) fn route_free_flow_travel_time(
     route: impl Iterator<Item = EdgeIndex>,
     vehicle_id: OriginalVehicleId,
-) -> Time {
+) -> NonNegativeSeconds {
     let vehicle = vehicle_with_id(vehicle_id);
     route
         .map(|e| {
@@ -135,7 +137,7 @@ pub(crate) fn route_free_flow_travel_time(
 }
 
 /// Returns the length of the given route.
-pub(crate) fn route_length(route: impl Iterator<Item = EdgeIndex>) -> Length {
+pub(crate) fn route_length(route: impl Iterator<Item = EdgeIndex>) -> NonNegativeMeters {
     route
         .map(|e| {
             graph()
@@ -150,7 +152,7 @@ pub(crate) fn route_length(route: impl Iterator<Item = EdgeIndex>) -> Length {
 pub(crate) fn route_length_diff(
     first: impl Iterator<Item = OriginalEdgeId>,
     second: impl Iterator<Item = OriginalEdgeId>,
-) -> Length {
+) -> NonNegativeMeters {
     let second_edges: HashSet<EdgeIndex> = second.map(edge_index_of).collect();
     first
         .filter_map(|original_id| {
@@ -166,7 +168,7 @@ pub(crate) fn route_length_diff(
                 )
             }
         })
-        .sum::<Length>()
+        .sum::<NonNegativeMeters>()
 }
 
 fn vehicles() -> &'static [Vehicle] {
@@ -200,15 +202,14 @@ pub(crate) type OriginalNodeId = u64;
 pub(crate) type OriginalEdgeId = u64;
 
 /// A node of a road network.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct RoadNode {}
 
 /// Speed-density function that can be used for the running part of edges.
 ///
 /// A speed-density function gives the speed on an edge, as a function of the density of vehicle on
 /// this edge.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
+#[derive(Clone, Debug)]
 pub enum SpeedDensityFunction {
     /// Vehicles always travel at free-flow speed.
     FreeFlow,
@@ -217,7 +218,7 @@ pub enum SpeedDensityFunction {
     ///
     /// The parameter represents the capacity of each lane of the edge, in length unit per time
     /// unit.
-    Bottleneck(NoUnit),
+    Bottleneck(MetersPerSecond),
     /// A speed-density function with three regimes: free flow, congested and traffic jam.
     ThreeRegimes(ThreeRegimesSpeedDensityFunction),
 }
@@ -240,24 +241,32 @@ impl SpeedDensityFunction {
         match function_type {
             Some("FreeFlow") | None => Ok(SpeedDensityFunction::FreeFlow),
             Some("Bottleneck") => {
-                let capacity = NoUnit(capacity.ok_or_else(|| {
+                let capacity = MetersPerSecond::try_from(capacity.ok_or_else(|| {
                     anyhow!("Value `capacity` is mandatory when `type` is `\"Bottleneck\"`")
-                })?);
+                })?)
+                .context("Value `capacity` does not satisfy the constraints")?;
                 Ok(SpeedDensityFunction::Bottleneck(capacity))
             }
             Some("ThreeRegimes") => {
-                let min_density = NoUnit(min_density.ok_or_else(|| {
+                let min_density = NonNegativeNum::try_from(min_density.ok_or_else(|| {
                     anyhow!("Value `min_density` is mandatory when `type` is `\"ThreeRegimes\"`")
-                })?);
-                let jam_density = NoUnit(jam_density.ok_or_else(|| {
+                })?)
+                .context("Value `min_density` does not satisfy the constraints")?;
+                let jam_density = NonNegativeNum::try_from(jam_density.ok_or_else(|| {
                     anyhow!("Value `jam_density` is mandatory when `type` is `\"ThreeRegimes\"`")
-                })?);
-                let jam_speed = Speed(jam_speed.ok_or_else(|| {
+                })?)
+                .context("Value `jam_density` does not satisfy the constraints")?;
+                if jam_density < min_density {
+                    bail!("Value `jam_density` cannot be smaller than value `min_density`")
+                }
+                let jam_speed = MetersPerSecond::try_from(jam_speed.ok_or_else(|| {
                     anyhow!("Value `jam_speed` is mandatory when `type` is `\"ThreeRegimes\"`")
-                })?);
-                let beta = NoUnit(beta.ok_or_else(|| {
+                })?)
+                .context("Value `jam_speed` does not satisfy the constraints")?;
+                let beta = PositiveNum::try_from(beta.ok_or_else(|| {
                     anyhow!("Value `beta` is mandatory when `type` is `\"ThreeRegimes\"`")
-                })?);
+                })?)
+                .context("Value `beta` does not satisfy the constraints")?;
                 Ok(SpeedDensityFunction::ThreeRegimes(
                     ThreeRegimesSpeedDensityFunction {
                         min_density,
@@ -271,22 +280,36 @@ impl SpeedDensityFunction {
         }
     }
 
-    fn get_speed(&self, base_speed: Speed, occupied_length: Length, total_length: Length) -> Speed {
+    fn get_speed(
+        &self,
+        base_speed: MetersPerSecond,
+        occupied_length: NonNegativeMeters,
+        total_length: NonNegativeMeters,
+    ) -> MetersPerSecond {
         match self {
             SpeedDensityFunction::FreeFlow => base_speed,
             &SpeedDensityFunction::Bottleneck(capacity) => {
-                // `capacity` is expressed in Length / Time.
+                // `capacity` is expressed in MetersPerSecond.
                 // WARNING: The formula below is incorrect when there are vehicles with different
                 // speeds.
-                if occupied_length.0 <= capacity.0 * (total_length / base_speed).0 {
+                if occupied_length <= capacity * (total_length / base_speed)
+                    || total_length.is_zero()
+                {
                     base_speed
                 } else {
-                    Speed(total_length.0 * capacity.0 / occupied_length.0)
+                    // At this point, `occupied_length` and `total_length` cannot be zero.
+                    total_length.assume_positive_unchecked()
+                        / occupied_length.assume_positive_unchecked()
+                        * capacity
                 }
             }
             SpeedDensityFunction::ThreeRegimes(func) => {
-                let density = NoUnit((occupied_length / total_length).0);
-                func.get_speed(base_speed, density)
+                if total_length.is_zero() {
+                    base_speed
+                } else {
+                    let density = occupied_length / total_length.assume_positive_unchecked();
+                    func.get_speed(base_speed, density)
+                }
             }
         }
     }
@@ -305,49 +328,44 @@ impl SpeedDensityFunction {
 ///
 /// 3. **Traffic jam.** If density on the edge is larger than `jam_density`, travel time is equal
 ///    to `tt = distance / jam_speed`.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ThreeRegimesSpeedDensityFunction {
-    /// Density on the edge (between `0.0` and `1.0`) below which the speed is equal to free-flow
-    /// speed.
-    min_density: NoUnit,
-    /// Density on the edge (between `0.0` and `1.0`) above which the speed is equal to jam speed.
-    jam_density: NoUnit,
+    /// Density on the edge below which the speed is equal to free-flow speed.
+    min_density: NonNegativeNum,
+    /// Density on the edge above which the speed is equal to jam speed.
+    ///
+    /// Must not be smaller than `min_density`.
+    jam_density: NonNegativeNum,
     /// Speed at which the vehicle travel in case of traffic jam.
-    jam_speed: Speed,
+    jam_speed: MetersPerSecond,
     /// Parameter to compute the speed in the congested regime.
-    beta: NoUnit,
+    beta: PositiveNum,
 }
 
 impl ThreeRegimesSpeedDensityFunction {
     /// Return the speed as a function of the edge length, vehicle speed and density of vehicles on
     /// the edge (i.e., the share of length occupied by a vehicle).
-    fn get_speed(&self, ff_speed: Speed, density: NoUnit) -> Speed {
+    fn get_speed(&self, ff_speed: MetersPerSecond, density: NonNegativeNum) -> MetersPerSecond {
         if density >= self.jam_density {
             // Traffic jam: all vehicles travel at the jam speed.
-            Float::min(self.jam_speed, ff_speed)
-        } else if density >= self.min_density {
+            Ord::min(self.jam_speed, ff_speed)
+        } else if density > self.min_density {
             // Congestion.
-            let coef = ((density - self.min_density) / (self.jam_density - self.min_density))
-                .powf(self.beta);
-            let speed = Speed(ff_speed.0 * (1.0 - coef.0) + self.jam_speed.0 * coef.0);
-            Float::min(speed, ff_speed)
+            // TODO
+            // `density` is larger than `min_density` so the following is safe.
+            let num = PositiveNum::try_from(density - self.min_density).unwrap();
+            // `jam_density` is larger than `min_density` so the following is safe.
+            let den = PositiveNum::try_from(self.jam_density - self.min_density).unwrap();
+            let coef: PositiveNum = (num / den).pow(self.beta);
+            // `num` is smaller than `den` so the following is safe.
+            let coef = ZeroOneNum::try_from(coef).unwrap();
+            let speed = ff_speed * coef.one_minus() + self.jam_speed * coef;
+            Ord::min(speed, ff_speed)
         } else {
             // Vehicle can travel at full speed.
             ff_speed
         }
     }
-}
-
-fn default_flow() -> Flow {
-    Flow::infinity()
-}
-
-fn default_lanes() -> Lanes {
-    Lanes::one()
-}
-
-const fn default_is_true() -> bool {
-    true
 }
 
 /// An edge of a road network.
@@ -361,31 +379,24 @@ const fn default_is_true() -> bool {
 /// - A bottleneck part, where the exit flow of vehicle is limited by a given capacity.
 ///
 /// - A pending part, where vehicles waiting for downstream edges to get free are pending.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct RoadEdge {
     /// Original id of the edge.
     id: OriginalEdgeId,
     /// The base speed of the edge.
-    base_speed: Speed,
+    base_speed: MetersPerSecond,
     /// The length of the edge, from source node to target node.
-    length: Length,
+    length: NonNegativeMeters,
     /// The number of lanes on the edge.
-    #[serde(default = "default_lanes")]
     lanes: Lanes,
     /// Speed-density function for the running part of the edge.
-    #[serde(default)]
     speed_density: SpeedDensityFunction,
     /// Maximum flow of vehicle entering the edge (in PCE per second).
-    #[serde(default = "default_flow")]
-    #[serde(alias = "bottleneck_inflow")]
-    #[serde(alias = "bottleneck_outflow")]
-    bottleneck_flow: Flow,
+    bottleneck_flow: Option<Flow>,
     /// Constant travel time penalty for the runnning part of the edge.
-    #[serde(default = "Time::zero")]
-    constant_travel_time: Time,
+    constant_travel_time: NonNegativeSeconds,
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
-    #[serde(default = "default_is_true")]
     overtaking: bool,
 }
 
@@ -394,12 +405,12 @@ impl RoadEdge {
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         id: OriginalEdgeId,
-        base_speed: Speed,
-        length: Length,
+        base_speed: MetersPerSecond,
+        length: NonNegativeMeters,
         lanes: Lanes,
         speed_density: SpeedDensityFunction,
-        bottleneck_flow: Flow,
-        constant_travel_time: Time,
+        bottleneck_flow: Option<Flow>,
+        constant_travel_time: NonNegativeSeconds,
         overtaking: bool,
     ) -> Self {
         RoadEdge {
@@ -418,7 +429,7 @@ impl RoadEdge {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: OriginalEdgeId,
-        base_speed: Option<f64>,
+        speed: Option<f64>,
         length: Option<f64>,
         lanes: Option<f64>,
         speed_density_type: Option<&str>,
@@ -432,12 +443,14 @@ impl RoadEdge {
         overtaking: Option<bool>,
     ) -> Result<Self> {
         let base_speed =
-            Speed::from_f64(base_speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
-                .unwrap();
-        let length =
-            Length::from_f64(length.ok_or_else(|| anyhow!("Value `length` is mandatory"))?)
-                .unwrap();
-        let lanes = Lanes::from_f64(lanes.unwrap_or(1.0)).unwrap();
+            MetersPerSecond::try_from(speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
+                .context("Value `speed` does not satisfy the constraints")?;
+        let length = NonNegativeMeters::try_from(
+            length.ok_or_else(|| anyhow!("Value `length` is mandatory"))?,
+        )
+        .context("Value `length` does not satisfy the constraints")?;
+        let lanes = Lanes::try_from(lanes.unwrap_or(1.0))
+            .context("Value `lanes` does not satisfy the constraints")?;
         let speed_density = SpeedDensityFunction::from_values(
             speed_density_type,
             speed_density_capacity,
@@ -447,8 +460,15 @@ impl RoadEdge {
             speed_density_beta,
         )
         .context("Failed to create speed-density function")?;
-        let bottleneck_flow = Flow::from_f64(bottleneck_flow.unwrap_or(f64::INFINITY)).unwrap();
-        let constant_travel_time = Time::from_f64(constant_travel_time.unwrap_or(0.0)).unwrap();
+        let bottleneck_flow = bottleneck_flow
+            .map(|v| {
+                Flow::try_from(v)
+                    .context("Value `bottleneck_flow` does not satisfy the constraints")
+            })
+            .transpose()?;
+        let constant_travel_time =
+            NonNegativeSeconds::try_from(constant_travel_time.unwrap_or(0.0))
+                .context("Value `constant_travel_time` does not satisfy the constraints")?;
         let overtaking = overtaking.unwrap_or(true);
         Ok(RoadEdge {
             id,
@@ -470,7 +490,11 @@ impl RoadEdge {
 
     /// Return the travel time for the running part of the edge for a given vehicle, given the
     /// total length of the vehicles currently on the edge.
-    pub(crate) fn get_travel_time(&self, occupied_length: Length, vehicle: &Vehicle) -> Time {
+    pub(crate) fn get_travel_time(
+        &self,
+        occupied_length: NonNegativeMeters,
+        vehicle: &Vehicle,
+    ) -> NonNegativeSeconds {
         let vehicle_speed = vehicle.get_speed(self.base_speed);
         let variable_tt = self.length()
             / self
@@ -481,29 +505,29 @@ impl RoadEdge {
 
     /// Return the free-flow travel time on the road for the given vehicle.
     #[inline]
-    pub(crate) fn get_free_flow_travel_time(&self, vehicle: &Vehicle) -> Time {
-        self.get_travel_time(Length::zero(), vehicle)
+    pub(crate) fn get_free_flow_travel_time(&self, vehicle: &Vehicle) -> NonNegativeSeconds {
+        self.get_travel_time(NonNegativeMeters::zero(), vehicle)
     }
 
     /// Return the length of the edge, from source to target.
-    pub(crate) const fn length(&self) -> Length {
+    pub(crate) const fn length(&self) -> NonNegativeMeters {
         self.length
     }
 
     /// Return the total length of the edge that can be occupied by vehicles, i.e., the length of
     /// the edge multiplied by the number of lanes.
-    pub(crate) fn total_length(&self) -> Length {
+    pub(crate) fn total_length(&self) -> NonNegativeMeters {
         self.length * self.lanes
     }
 
     /// Return the effective bottleneck flow of the edge, i.e., the flow for all the lanes.
-    pub(crate) fn get_effective_flow(&self) -> Flow {
-        self.bottleneck_flow * self.lanes
+    pub(crate) fn get_effective_flow(&self) -> Option<Flow> {
+        self.bottleneck_flow.map(|flow| flow * self.lanes)
     }
 }
 
 /// Description of the graph of a [RoadNetwork].
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub(crate) struct RoadGraph {
     /// Directed graph of [RoadNode]s and [RoadEdge]s.
     graph: DiGraph<RoadNode, RoadEdge>,
@@ -646,7 +670,7 @@ fn compute_skims_inner(
             weights
                 .get(uvehicle_id, original_id)
                 .cloned()
-                .unwrap_or_else(|| TTF::Constant(Time::infinity()))
+                .unwrap_or(TTF::Constant(AnySeconds::INFINITY))
         };
         let hierarchy =
             HierarchyOverlay::order(graph(), weight_fn, self::parameters::contraction().clone());
@@ -713,7 +737,7 @@ fn free_flow_weights_inner(unique_vehicles: &UniqueVehicles) -> RoadNetworkWeigh
                 let tt = edge.weight().get_free_flow_travel_time(vehicle);
                 weights
                     .weights_mut()
-                    .insert(edge.weight().id, TTF::Constant(tt));
+                    .insert(edge.weight().id, TTF::Constant(AnySeconds::from(tt)));
             }
         }
         weights.weights_mut().shrink_to_fit();
@@ -744,113 +768,128 @@ mod tests {
     use super::*;
     use crate::{
         parameters::Parameters,
-        units::{Interval, Time, PCE},
+        units::{Interval, NonNegativeSeconds, PCE},
     };
 
     #[test]
     fn get_travel_time_test() {
         let mut edge = RoadEdge {
             id: 1,
-            base_speed: Speed(25.), // 50 km/h
-            length: Length(1000.),  // 1 km
-            lanes: Lanes(2.0),
+            base_speed: MetersPerSecond::new_unchecked(25.), // 50 km/h
+            length: NonNegativeMeters::new_unchecked(1000.), // 1 km
+            lanes: Lanes::new_unchecked(2.0),
             speed_density: SpeedDensityFunction::FreeFlow,
-            bottleneck_flow: Flow(f64::INFINITY),
-            constant_travel_time: Time(10.),
+            bottleneck_flow: None,
+            constant_travel_time: NonNegativeSeconds::new_unchecked(10.),
             overtaking: false,
         };
         let vehicle = Vehicle::new(
             1,
-            Length(10.),
-            PCE(1.),
+            NonNegativeMeters::new_unchecked(10.),
+            PCE::new_unchecked(1.),
             SpeedFunction::Base,
             HashSet::new(),
             HashSet::new(),
         );
         // 1 km at 50 km/h is 40s.
         assert_eq!(
-            edge.get_travel_time(Length(0.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(0.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
         assert_eq!(
-            edge.get_travel_time(Length(4000.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(4000.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
 
-        edge.speed_density = SpeedDensityFunction::Bottleneck(NoUnit(10.));
+        edge.speed_density = SpeedDensityFunction::Bottleneck(MetersPerSecond::new_unchecked(10.));
         // The capacity is 2 veh. / s. (there are two lanes) and each veh. can travel through the
         // edge in 40 s. so the threshold is at 80 veh. on the edge = 800 m occupied.
         assert_eq!(
-            edge.get_travel_time(Length(0.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(0.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
         assert_eq!(
-            edge.get_travel_time(Length(800.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(800.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
-        assert!(edge.get_travel_time(Length(801.), &vehicle) > Time(40.) + Time(10.));
+        assert!(
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(801.), &vehicle)
+                > NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
+        );
         // Double value of the threshold -> travel time is double.
         assert_eq!(
-            edge.get_travel_time(Length(1600.), &vehicle),
-            Time(80.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(1600.), &vehicle),
+            NonNegativeSeconds::new_unchecked(80.) + NonNegativeSeconds::new_unchecked(10.)
         );
 
         edge.speed_density = SpeedDensityFunction::ThreeRegimes(ThreeRegimesSpeedDensityFunction {
-            min_density: NoUnit(0.2),
-            jam_density: NoUnit(0.8),
-            jam_speed: Speed(5.), // 18 km/h
-            beta: NoUnit(2.),
+            min_density: NonNegativeNum::new_unchecked(0.2),
+            jam_density: NonNegativeNum::new_unchecked(0.8),
+            jam_speed: MetersPerSecond::new_unchecked(5.), // 18 km/h
+            beta: PositiveNum::new_unchecked(2.),
         });
         // Free-flow regime.
         assert_eq!(
-            edge.get_travel_time(Length(0.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(0.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
         assert_eq!(
-            edge.get_travel_time(Length(400.), &vehicle),
-            Time(40.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(400.), &vehicle),
+            NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
         // Congested regime.
-        let tt = edge.get_travel_time(Length(401.), &vehicle);
-        assert!(tt > Time(40.) + Time(10.), "{tt:?} <= Time(50.)");
+        let tt = edge.get_travel_time(NonNegativeMeters::new_unchecked(401.), &vehicle);
+        assert!(
+            tt > NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.),
+            "{tt:?} <= Time(50.)"
+        );
         // With occupied length 800.0, density is 0.4.
         // coef = (.2 / .6)^2 = 1/9.
         // speed = 25 * (1 - 1/9) + 5 * 1/9 ~= 22.7777.
         // tt ~= 1000 / 22.7777 ~= 43.9024.
         // + constant tt 10.0.
-        let tt = edge.get_travel_time(Length(800.), &vehicle);
-        assert!((tt.0 - 53.9024) < 1e-4, "{tt:?} != 53.9024");
+        let tt = edge.get_travel_time(NonNegativeMeters::new_unchecked(800.), &vehicle);
+        assert!(
+            (Into::<f64>::into(tt) - 53.9024) < 1e-4,
+            "{tt:?} != 53.9024"
+        );
         // With occupied length 1200.0, density is 0.6.
         // coef = (.4 / .6)^2 = 4/9.
         // speed = 25 * (1 - 4/9) + 5 * 4/9 ~= 16.1111.
         // tt ~= 1000 / 16.1111 ~= 62.0690.
         // + constant tt 10.0.
-        let tt = edge.get_travel_time(Length(1200.), &vehicle);
-        assert!((tt.0 - 72.0690).abs() < 1e-4, "{tt:?} != 72.0690");
+        let tt = edge.get_travel_time(NonNegativeMeters::new_unchecked(1200.), &vehicle);
+        assert!(
+            (Into::<f64>::into(tt) - 72.0690).abs() < 1e-4,
+            "{tt:?} != 72.0690"
+        );
         // With occupied length 1599.99, density is close to 0.8.
-        let tt = edge.get_travel_time(Length(1599.99999999), &vehicle);
-        assert!((tt.0 - 210.).abs() < 1e-4, "{tt:?} != 210.0");
+        let tt = edge.get_travel_time(NonNegativeMeters::new_unchecked(1599.99999999), &vehicle);
+        assert!(
+            (Into::<f64>::into(tt) - 210.).abs() < 1e-4,
+            "{tt:?} != 210.0"
+        );
         // Traffic jam.
         // 1 km at 18 km/h is 200s.
         assert_eq!(
-            edge.get_travel_time(Length(1600.), &vehicle),
-            Time(200.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(1600.), &vehicle),
+            NonNegativeSeconds::new_unchecked(200.) + NonNegativeSeconds::new_unchecked(10.)
         );
         assert_eq!(
-            edge.get_travel_time(Length(3200.), &vehicle),
-            Time(200.) + Time(10.)
+            edge.get_travel_time(NonNegativeMeters::new_unchecked(3200.), &vehicle),
+            NonNegativeSeconds::new_unchecked(200.) + NonNegativeSeconds::new_unchecked(10.)
         );
     }
 
     #[test]
     fn restricted_edges_test() {
         let rn_parameters = RoadNetworkParameters {
-            recording_interval: Time(1.0),
+            recording_interval: PositiveSeconds::new_unchecked(1.0),
             ..Default::default()
         };
         let parameters = Parameters {
             road_network: Some(rn_parameters),
-            period: Interval([Time(0.), Time(100.)]),
+            period: Interval::new_unchecked(0., 100.),
             ..Default::default()
         };
         crate::parameters::init(parameters).unwrap();
@@ -863,12 +902,12 @@ mod tests {
                 1,
                 RoadEdge::new(
                     0,
-                    Speed(1.0),
-                    Length(1.0),
-                    Lanes(1.0),
+                    MetersPerSecond::new_unchecked(1.0),
+                    NonNegativeMeters::new_unchecked(1.0),
+                    Lanes::new_unchecked(1.0),
                     SpeedDensityFunction::FreeFlow,
-                    Flow(1.0),
-                    Time(0.0),
+                    Some(Flow::new_unchecked(1.0)),
+                    NonNegativeSeconds::new_unchecked(0.0),
                     true,
                 ),
             ),
@@ -877,20 +916,20 @@ mod tests {
                 2,
                 RoadEdge::new(
                     1,
-                    Speed(1.0),
-                    Length(1.0),
-                    Lanes(1.0),
+                    MetersPerSecond::new_unchecked(1.0),
+                    NonNegativeMeters::new_unchecked(1.0),
+                    Lanes::new_unchecked(1.0),
                     SpeedDensityFunction::FreeFlow,
-                    Flow(1.0),
-                    Time(0.0),
+                    Some(Flow::new_unchecked(1.0)),
+                    NonNegativeSeconds::new_unchecked(0.0),
                     true,
                 ),
             ),
         ];
         let vehicle = Vehicle::new(
             1,
-            Length(1.0),
-            PCE(1.0),
+            NonNegativeMeters::new_unchecked(1.0),
+            PCE::new_unchecked(1.0),
             SpeedFunction::Base,
             HashSet::new(),
             [0].into_iter().collect(),
@@ -904,7 +943,7 @@ mod tests {
         let skim = skims[unique_vehicle_index(0)].as_ref().unwrap();
         assert_eq!(
             skim.profile_query(1, 2).unwrap(),
-            Some(&TTF::Constant(Time(1.0)))
+            Some(&TTF::Constant(AnySeconds::new_unchecked(1.0)))
         );
     }
 }

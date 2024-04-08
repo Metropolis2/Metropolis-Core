@@ -14,12 +14,12 @@ use askama::Template;
 use crate::mode::trip::results::LegTypeResults;
 use crate::mode::ModeResults;
 use crate::simulation::results::{AggregateResults, SimulationResults};
-use crate::units::Time;
+use crate::units::NonNegativeSeconds;
 
 /// Writes a HTML report of the given [SimulationResults].
 ///
 /// The report is written in file `report.html` in the given output directory.
-pub fn write_report(results: &SimulationResults) -> Result<()> {
+pub(crate) fn write_report(results: &SimulationResults) -> Result<()> {
     let report_results = build_report(results)?;
     let filename: PathBuf = [
         crate::parameters::output_directory().to_str().unwrap(),
@@ -66,9 +66,9 @@ fn build_report(results: &SimulationResults) -> Result<ReportResults> {
 #[derive(Debug)]
 struct IterationStatistics {
     /// Vec with the departure time of each agent.
-    road_departure_times: Vec<Time>,
+    road_departure_times: Vec<NonNegativeSeconds>,
     /// Vec with the arrival time of each agent.
-    road_arrival_times: Vec<Time>,
+    road_arrival_times: Vec<NonNegativeSeconds>,
 }
 
 /// Results used to build the HTML report of a simulation.

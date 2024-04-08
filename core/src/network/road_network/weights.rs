@@ -9,8 +9,7 @@ use std::ops::{Index, IndexMut};
 use anyhow::{bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::warn;
-use num_traits::{Float, Zero};
-use serde_derive::{Deserialize, Serialize};
+use num_traits::Zero;
 use ttf::{PwlTTF, TTF};
 
 use super::{
@@ -18,24 +17,24 @@ use super::{
     vehicle::OriginalVehicleId,
     OriginalEdgeId,
 };
-use crate::units::{Interval, Time};
+use crate::units::*;
 
 /// Structure to store the travel-time functions of each edge of a
 /// [RoadNetwork](super::RoadNetwork), for a group of unique vehicle types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VehicleWeights {
     /// Original id of the vehicle for which the weights are valid.
     pub(crate) vehicle_ids: Vec<OriginalVehicleId>,
     /// Weights.
-    pub(crate) weights: HashMap<OriginalEdgeId, TTF<Time>>,
+    pub(crate) weights: HashMap<OriginalEdgeId, TTF<AnySeconds>>,
 }
 
 impl VehicleWeights {
-    pub(crate) fn weights(&self) -> &HashMap<OriginalEdgeId, TTF<Time>> {
+    pub(crate) fn weights(&self) -> &HashMap<OriginalEdgeId, TTF<AnySeconds>> {
         &self.weights
     }
 
-    pub(crate) fn weights_mut(&mut self) -> &mut HashMap<OriginalEdgeId, TTF<Time>> {
+    pub(crate) fn weights_mut(&mut self) -> &mut HashMap<OriginalEdgeId, TTF<AnySeconds>> {
         &mut self.weights
     }
 
@@ -59,7 +58,7 @@ impl VehicleWeights {
 ///
 /// The outer vector has the same length as the number of unique vehicles of the associated
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct RoadNetworkWeights {
     pub(crate) weights: Vec<VehicleWeights>,
 }
@@ -90,7 +89,7 @@ impl RoadNetworkWeights {
         &self,
         vehicle_id: UniqueVehicleIndex,
         edge_id: OriginalEdgeId,
-    ) -> Option<&TTF<Time>> {
+    ) -> Option<&TTF<AnySeconds>> {
         self.weights[vehicle_id.index()].weights.get(&edge_id)
     }
 
@@ -114,11 +113,16 @@ impl RoadNetworkWeights {
     }
 }
 
-type XYVec = Vec<(Time, Time)>;
+type XYVec = Vec<(NonNegativeSeconds, NonNegativeSeconds)>;
 
 impl RoadNetworkWeights {
     pub(crate) fn from_values(
-        values: Vec<(OriginalVehicleId, OriginalEdgeId, Time, Time)>,
+        values: Vec<(
+            OriginalVehicleId,
+            OriginalEdgeId,
+            NonNegativeSeconds,
+            NonNegativeSeconds,
+        )>,
         unique_vehicles: &UniqueVehicles,
     ) -> Result<Self> {
         // Collect all the values in a map (vid, eid) -> (td, tt).
@@ -169,8 +173,10 @@ impl RoadNetworkWeights {
                             warn!("Skipping similar warnings...");
                         }
                     }
-                    TTF::Constant(crate::network::road_network::free_flow_travel_time_of_edge(
-                        edge_id, vehicle,
+                    TTF::Constant(AnySeconds::from(
+                        crate::network::road_network::free_flow_travel_time_of_edge(
+                            edge_id, vehicle,
+                        ),
                     ))
                 });
             }
@@ -231,7 +237,7 @@ impl RoadNetworkWeights {
     ///
     /// **Panics** if the two RoadNetworkWeights do not have the same shape.
     #[must_use]
-    pub fn average(&self, other: &Self, coefficient: f64) -> Self {
+    pub fn average(&self, other: &Self, coefficient: ZeroOneNum) -> Self {
         let mut new_weights = RoadNetworkWeights::with_capacity_in(self);
         for (i, (self_weights, other_weights)) in self.iter().zip(other.iter()).enumerate() {
             assert_eq!(
@@ -249,7 +255,7 @@ impl RoadNetworkWeights {
                     new_weights.weights[i].weights.insert(
                         *self_id,
                         self_ttf.apply(other_ttf, |w1, w2| {
-                            Time(coefficient * w1.0 + (1.0 - coefficient) * w2.0)
+                            w1 * coefficient + w2 * coefficient.one_minus()
                         }),
                     );
                 } else {
@@ -286,7 +292,7 @@ impl RoadNetworkWeights {
                     new_weights.weights[i].weights.insert(
                         *self_id,
                         self_ttf.apply(other_ttf, |w1, w2| {
-                            Time(w1.0.powf(a / (a + b)) * w2.0.powf(b / (a + b)))
+                            w1.powf(a / (a + b)) * w2.powf(b / (a + b))
                         }),
                     );
                 } else {
@@ -298,8 +304,8 @@ impl RoadNetworkWeights {
     }
 
     /// Returns the root mean squared difference between `self` and `other`.
-    pub fn rmse(&self, other: &Self) -> Time {
-        let mut rmse = Time::zero();
+    pub fn rmse(&self, other: &Self) -> NonNegativeSeconds {
+        let mut rmse = NonNegativeSeconds::zero();
         let mut n = 0;
         for (self_weights, other_weights) in self.iter().zip(other.iter()) {
             assert_eq!(
@@ -313,46 +319,55 @@ impl RoadNetworkWeights {
             );
             for (self_id, self_ttf) in self_weights.weights.iter() {
                 if let Some(other_ttf) = other_weights.weights.get(self_id) {
-                    rmse += self_ttf.squared_difference(other_ttf);
+                    rmse += self_ttf
+                        .squared_difference(other_ttf)
+                        .assume_non_negative_unchecked();
                     n += 1;
-                    debug_assert!(rmse.is_finite(), "{other_weights:?}");
                 } else {
                     panic!("The weights do not have the same edge ids");
                 }
             }
         }
-        Time((rmse.0 / n as f64).sqrt())
+        debug_assert!(n > 0);
+        (rmse / PositiveNum::new_unchecked(n as f64)).sqrt()
     }
 }
 
-fn build_ttf(mut xy_vec: XYVec, period: Interval, interval: Time) -> Result<TTF<Time>> {
+fn build_ttf(
+    mut xy_vec: XYVec,
+    period: Interval,
+    interval: PositiveSeconds,
+) -> Result<TTF<AnySeconds>> {
     xy_vec.sort_by_key(|(x, _)| *x);
     if xy_vec[0].0 != period.start() {
         bail!(
             "Invalid starting departure time: {} (expected: {})",
-            xy_vec[0].0 .0,
+            xy_vec[0].0,
             period.start()
         );
     }
     if !xy_vec
         .iter()
         .zip(std::iter::successors(Some(period.start()), |&t| {
-            Some(t + interval)
+            Some(t + NonNegativeSeconds::from(interval))
         }))
         .all(|(xy, xp_td)| xy.0 == xp_td)
     {
         bail!(
             "The departure time values are not evenly spaced with interval {}",
-            interval.0
+            interval
         );
     }
     let ttf = if xy_vec.iter().all(|xy| xy.1 == xy_vec[0].1) {
-        TTF::Constant(xy_vec[0].1)
+        TTF::Constant(AnySeconds::from(xy_vec[0].1))
     } else {
         TTF::Piecewise(PwlTTF::from_values(
-            xy_vec.into_iter().map(|xy| xy.1).collect(),
-            period.start(),
-            interval,
+            xy_vec
+                .into_iter()
+                .map(|xy| AnySeconds::from(xy.1))
+                .collect(),
+            AnySeconds::from(period.start()),
+            AnySeconds::from(interval),
         ))
     };
     Ok(ttf)
@@ -372,7 +387,7 @@ impl IndexMut<UniqueVehicleIndex> for RoadNetworkWeights {
 }
 
 impl Index<(UniqueVehicleIndex, OriginalEdgeId)> for RoadNetworkWeights {
-    type Output = TTF<Time>;
+    type Output = TTF<AnySeconds>;
     fn index(&self, (vehicle_id, edge_id): (UniqueVehicleIndex, OriginalEdgeId)) -> &Self::Output {
         &self.weights[vehicle_id.index()].weights[&edge_id]
     }
@@ -387,21 +402,27 @@ mod tests {
         let w0 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
                 vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(Time(10.)))].into_iter().collect(),
+                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(10.)))]
+                    .into_iter()
+                    .collect(),
             }],
         };
         let w1 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
                 vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(Time(20.)))].into_iter().collect(),
+                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(20.)))]
+                    .into_iter()
+                    .collect(),
             }],
         };
         // Result = 0.2 * 10 + 0.8 * 20 = 2 + 16 = 18.
         let w2 = vec![VehicleWeights {
             vehicle_ids: vec![0],
-            weights: [(0, TTF::Constant(Time(18.)))].into_iter().collect(),
+            weights: [(0, TTF::Constant(AnySeconds::new_unchecked(18.)))]
+                .into_iter()
+                .collect(),
         }];
-        assert_eq!(w0.average(&w1, 0.2).weights, w2);
+        assert_eq!(w0.average(&w1, ZeroOneNum::new_unchecked(0.2)).weights, w2);
     }
 
     #[test]
@@ -409,21 +430,28 @@ mod tests {
         let w0 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
                 vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(Time(2.)))].into_iter().collect(),
+                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(2.)))]
+                    .into_iter()
+                    .collect(),
             }],
         };
         let w1 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
                 vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(Time(3.)))].into_iter().collect(),
+                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(3.)))]
+                    .into_iter()
+                    .collect(),
             }],
         };
         // Result = (2^3 * 3^2)^(1/5) = 72^(1/5).
         let w2 = vec![VehicleWeights {
             vehicle_ids: vec![0],
-            weights: [(0, TTF::Constant(Time(72.0f64.powf(0.2))))]
-                .into_iter()
-                .collect(),
+            weights: [(
+                0,
+                TTF::Constant(AnySeconds::new_unchecked(72.0f64.powf(0.2))),
+            )]
+            .into_iter()
+            .collect(),
         }];
         assert_eq!(w0.genetic_average(&w1, 3.0, 2.0).weights, w2);
     }

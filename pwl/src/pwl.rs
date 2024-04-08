@@ -9,6 +9,7 @@ use std::fmt;
 use anyhow::anyhow;
 use either::Either;
 use itertools::Itertools;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::ttf_num::TTFNum;
@@ -57,16 +58,18 @@ struct DeserPwlXYF<X, Y> {
     interval_x: X,
 }
 
-impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
+impl<X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned, T> TryFrom<DeserPwlXYF<X, Y>>
+    for PwlXYF<X, Y, T>
+{
     type Error = anyhow::Error;
     fn try_from(value: DeserPwlXYF<X, Y>) -> Result<Self, Self::Error> {
-        if value.start_x < X::zero() {
+        if value.start_x < X::ZERO {
             return Err(anyhow!(
                 "`start_x` value must be non-negative, got {:?}",
                 value.start_x
             ));
         }
-        if value.interval_x < X::zero() {
+        if value.interval_x < X::ZERO {
             return Err(anyhow!(
                 "`interval_x` value must be non-negative, got {:?}",
                 value.interval_x
@@ -76,7 +79,7 @@ impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
         let points: Vec<_> = value
             .points
             .into_iter()
-            .map(|opt_y| opt_y.unwrap_or(Y::infinity()))
+            .map(|opt_y| opt_y.unwrap_or(Y::INFINITY))
             .collect();
         let (&min, &max) = points.iter().minmax().into_option().unwrap();
         let pwl_xyf = PwlXYF {
@@ -98,7 +101,8 @@ impl<X: TTFNum, Y: TTFNum, T> TryFrom<DeserPwlXYF<X, Y>> for PwlXYF<X, Y, T> {
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
 #[derive(PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "X: TTFNum, Y: TTFNum")]
+#[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
+#[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
 #[serde(try_from = "DeserPwlXYF<X, Y>")]
 pub struct PwlXYF<X, Y, T> {
     /// `y` values of the function.
@@ -194,7 +198,7 @@ where
 
     /// Returns the `x` value at the given index.
     pub fn x_at_index(&self, index: usize) -> X {
-        self.start_x + self.interval_x * X::from(index).unwrap()
+        self.start_x + self.interval_x * X::from_usize(index).unwrap()
     }
 
     /// Returns the `y` value at the given index.
@@ -211,7 +215,7 @@ where
 
     /// Returns the length of the period of the function.
     pub fn period_length(&self) -> X {
-        X::from(self.points.len() - 1).unwrap() * self.interval_x
+        X::from_usize(self.points.len() - 1).unwrap() * self.interval_x
     }
 
     /// Returns the middle `x` value.
@@ -266,8 +270,9 @@ where
         // For example, if `i = 11.3`, it means that the `y` value we are looking for is 70% of the
         // 11th `y` value and 30% of the 12th `y` value.
         let i = (x - self.start_x) / self.interval_x;
-        debug_assert!(i >= X::zero(), "{:?} < {:?}", x, self.start_x);
-        if i >= X::from(self.points.len() - 1).unwrap() {
+        debug_assert!(i >= X::ZERO, "{:?} < {:?}", x, self.start_x);
+        let index = i.trunc_to_usize();
+        if index >= self.points.len() - 1 {
             // Last known `x` is `start_x + interval_x * (n - 1)`, where `n` is the number of
             // points.
             // If `i >= n - 1`, it means that `(x - start_x) / interval_x >= n - 1` and thus
@@ -277,18 +282,16 @@ where
         }
         // `index` is such that `x[index] <= x < x[index + 1]`.
         // At this point, we know that `0 <= index < n - 1`.
-        let index = i.trunc().to_usize().unwrap();
-        debug_assert!(index < self.points.len() - 1);
         // `share` is the coefficient of `y[index + 1]` in the linear interpolation and `1 - share`
         // is the coefficient of `y[index]`.
-        let share = i % X::one();
-        debug_assert!(share >= X::zero());
-        debug_assert!(share < X::one());
+        let share = i % X::ONE;
+        debug_assert!(share >= X::ZERO);
+        debug_assert!(share < X::ONE);
         if share.is_zero() {
             // The `y` value for this exact `x` value is known.
             return self.points[index];
         }
-        ((self.points[index]).into() * (X::one() - share).into()
+        ((self.points[index]).into() * (X::ONE - share).into()
             + (self.points[index + 1]).into() * (share).into())
         .into()
     }
@@ -377,9 +380,9 @@ impl<T: TTFNum> PwlTTF<T> {
     pub fn ensure_fifo(&mut self) {
         for i in 1..self.points.len() {
             let diff =
-                self.x_at_index(i - 1) + self.points[i - 1] - self.x_at_index(i) - self.points[i];
-            if diff > -T::margin() {
-                self.points[i] += diff + T::margin();
+                self.x_at_index(i) + self.points[i] - self.x_at_index(i - 1) - self.points[i - 1];
+            if diff < T::MARGIN {
+                self.points[i] += T::MARGIN - diff;
             }
         }
         debug_assert!(self.is_fifo());
@@ -546,7 +549,7 @@ pub(crate) fn squared_difference<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> T {
     debug_assert_eq!(f.len(), g.len());
     debug_assert_eq!(f.start_x, g.start_x);
     debug_assert_eq!(f.interval_x, g.interval_x);
-    let mut diff = T::zero();
+    let mut diff = T::ZERO;
     for (((x0, f_y0), (x1, f_y1)), ((_, g_y0), (_, g_y1))) in f.double_iter().zip(g.double_iter()) {
         // Two possible cases.
         if ((f_y0 >= g_y0) && (f_y1 <= g_y1)) || ((f_y0 <= g_y0) && (f_y1 >= g_y1)) {
@@ -573,7 +576,7 @@ pub(crate) fn squared_difference<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> T {
 /// divided by the length of the period.
 pub(crate) fn squared_difference_cst<T: TTFNum>(f: &PwlTTF<T>, y: T) -> T {
     debug_assert!(!f.is_empty());
-    let mut diff = T::zero();
+    let mut diff = T::ZERO;
     for ((x0, f_y0), (x1, f_y1)) in f.double_iter() {
         // Two possible cases.
         if ((f_y0 >= y) && (f_y1 <= y)) || ((f_y0 <= y) && (f_y1 >= y)) {
@@ -610,9 +613,9 @@ fn triangle_squared_area<T: TTFNum>(
 ) -> T {
     debug_assert!(f_y0 == g_y0 || f_y1 == g_y1);
     if f_y0 == g_y0 {
-        (x1 - x0) * (f_y1 - g_y1).powi(2) / T::from_f64(3.0).unwrap()
+        (x1 - x0) * (f_y1 - g_y1).pow(2) / T::from_f64(3.0).unwrap()
     } else {
-        (x1 - x0) * (f_y0 - g_y0).powi(2) / T::from_f64(3.0).unwrap()
+        (x1 - x0) * (f_y0 - g_y0).pow(2) / T::from_f64(3.0).unwrap()
     }
 }
 
@@ -633,7 +636,7 @@ fn trapezoid_squared_area<T: TTFNum>(
         "f_y0: {f_y0:?}, f_y1: {f_y1:?}, g_y0: {g_y0:?}, g_y1: {g_y1:?}"
     );
     ((x1 - x0) / T::from_f64(3.0).unwrap())
-        * ((f_y0 - g_y0).powi(2) + (f_y1 - g_y1).powi(2) + (f_y0 - g_y0) * (f_y1 - g_y1))
+        * ((f_y0 - g_y0).pow(2) + (f_y1 - g_y1).pow(2) + (f_y0 - g_y0) * (f_y1 - g_y1))
 }
 
 pub(crate) fn apply<T: TTFNum, F: Fn(T, T) -> T>(
@@ -754,14 +757,19 @@ fn check_analyze_relative_position<T: TTFNum>(
 fn get_x_intersection<T: TTFNum>(x0: T, f_y0: T, g_y0: T, x1: T, f_y1: T, g_y1: T) -> T {
     let dy0 = f_y0 - g_y0;
     let dy1 = f_y1 - g_y1;
-    debug_assert!(dy0 <= T::zero() && T::zero() <= dy1 || dy1 <= T::zero() && T::zero() <= dy0);
+    debug_assert!(dy0 <= T::ZERO && T::ZERO <= dy1 || dy1 <= T::ZERO && T::ZERO <= dy0);
     if dy0.is_zero() {
         x0
     } else if dy1.is_zero() {
         x1
+    } else if dy0 > T::ZERO {
+        debug_assert!(dy1 < T::zero());
+        let alpha = dy0 / (dy0 - dy1);
+        x0 * (T::ONE - alpha) + x1 * alpha
     } else {
-        let alpha = dy0.abs() / (dy0.abs() + dy1.abs());
-        x0 * (T::one() - alpha) + x1 * alpha
+        debug_assert!(dy1 > T::zero());
+        let alpha = -dy0 / (-dy0 + dy1);
+        x0 * (T::ONE - alpha) + x1 * alpha
     }
 }
 

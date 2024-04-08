@@ -9,7 +9,9 @@ use road_network::{
     RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkSkims, RoadNetworkState,
     RoadNetworkWeights,
 };
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Serialize;
+
+use crate::units::ZeroOneNum;
 
 pub mod road_network;
 
@@ -157,7 +159,7 @@ impl NetworkState {
 }
 
 /// Simplified representation of the state of a network during a whole day.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct NetworkWeights {
     road_network: Option<RoadNetworkWeights>,
 }
@@ -180,7 +182,7 @@ impl NetworkWeights {
     /// Returns the weighted average beteen two [NetworkWeights], where `coefficient` is the weight
     /// of `self` and `1 - coefficient` is the weight of `other`.
     #[must_use]
-    pub fn average(&self, other: &NetworkWeights, coefficient: f64) -> NetworkWeights {
+    pub fn average(&self, other: &NetworkWeights, coefficient: ZeroOneNum) -> NetworkWeights {
         let rn_weights = if let (Some(self_rn_weights), Some(other_rn_weights)) =
             (&self.road_network, &other.road_network)
         {

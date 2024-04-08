@@ -5,10 +5,10 @@
 
 //! Structs to store results of road and virtual trips.
 use enum_as_inner::EnumAsInner;
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::{ConstZero, Zero};
 use petgraph::prelude::EdgeIndex;
-use serde::{Deserialize, Serialize};
-use ttf::{TTFNum, TTF};
+use serde_derive::Serialize;
+use ttf::TTF;
 
 use super::event::{RoadEvent, VehicleEvent};
 use super::{Leg, LegType, TravelingMode};
@@ -17,7 +17,7 @@ use crate::mode::ModeIndex;
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::RoadNetworkWeights;
 use crate::population::AgentIndex;
-use crate::units::{Distribution, Length, NoUnit, Time, Utility};
+use crate::units::*;
 
 /// The results for a [LegType::Road].
 #[derive(Debug, Clone, PartialEq)]
@@ -27,25 +27,25 @@ pub struct RoadLegResults {
     /// The route taken by the vehicle, together with the timings of the events.
     pub route: Vec<RoadEvent>,
     /// Total time spent traveling on an edge.
-    pub road_time: Time,
+    pub road_time: NonNegativeSeconds,
     /// Total time spent waiting at the in-bottleneck of an edge.
-    pub in_bottleneck_time: Time,
+    pub in_bottleneck_time: NonNegativeSeconds,
     /// Total time spent waiting at the out-bottleneck of an edge.
-    pub out_bottleneck_time: Time,
+    pub out_bottleneck_time: NonNegativeSeconds,
     /// Travel time of taking the same route, assuming no congestion.
-    pub route_free_flow_travel_time: Time,
+    pub route_free_flow_travel_time: NonNegativeSeconds,
     /// Travel time of the fastest no-congestion route between origin and destination of the leg.
-    pub global_free_flow_travel_time: Time,
+    pub global_free_flow_travel_time: NonNegativeSeconds,
     /// Length of the route taken.
-    pub length: Length,
+    pub length: NonNegativeMeters,
     /// Length of the route taken that was not taken during the previous iteration.
-    pub length_diff: Option<Length>,
+    pub length_diff: Option<NonNegativeMeters>,
     /// Expected departure time, in the pre-day model.
-    pub pre_exp_departure_time: Time,
+    pub pre_exp_departure_time: NonNegativeSeconds,
     /// Expected arrival time at destination (excluding the stopping time), in the pre-day model.
-    pub pre_exp_arrival_time: Time,
+    pub pre_exp_arrival_time: NonNegativeSeconds,
     /// Expected arrival time at destination (excluding the stopping time), when leaving origin.
-    pub exp_arrival_time: Time,
+    pub exp_arrival_time: NonNegativeSeconds,
 }
 
 impl RoadLegResults {
@@ -58,26 +58,27 @@ impl RoadLegResults {
 impl RoadLegResults {
     /// Creates a new [RoadLegResults] where only the results known at this time are filled.
     pub fn new(
-        departure_time: Time,
-        arrival_time: Time,
+        departure_time: NonNegativeSeconds,
+        arrival_time: NonNegativeSeconds,
         expected_route: Option<Vec<EdgeIndex>>,
-        length: Option<Length>,
-        route_free_flow_travel_time: Option<Time>,
-        global_free_flow_travel_time: Time,
+        length: Option<NonNegativeMeters>,
+        route_free_flow_travel_time: Option<NonNegativeSeconds>,
+        global_free_flow_travel_time: NonNegativeSeconds,
     ) -> Self {
         Self {
             expected_route,
-            length: length.unwrap_or_else(Length::nan),
-            route_free_flow_travel_time: route_free_flow_travel_time.unwrap_or_else(Time::nan),
+            length: length.unwrap_or(NonNegativeMeters::NAN),
+            route_free_flow_travel_time: route_free_flow_travel_time
+                .unwrap_or(NonNegativeSeconds::NAN),
             global_free_flow_travel_time,
             route: Vec::new(),
-            road_time: Time::zero(),
-            in_bottleneck_time: Time::zero(),
-            out_bottleneck_time: Time::zero(),
+            road_time: NonNegativeSeconds::ZERO,
+            in_bottleneck_time: NonNegativeSeconds::ZERO,
+            out_bottleneck_time: NonNegativeSeconds::ZERO,
             pre_exp_departure_time: departure_time,
             pre_exp_arrival_time: arrival_time,
             length_diff: None,
-            exp_arrival_time: Time::nan(),
+            exp_arrival_time: NonNegativeSeconds::NAN,
         }
     }
 
@@ -89,13 +90,13 @@ impl RoadLegResults {
             global_free_flow_travel_time: self.global_free_flow_travel_time,
             pre_exp_departure_time: self.pre_exp_departure_time,
             pre_exp_arrival_time: self.pre_exp_arrival_time,
-            road_time: Time::zero(),
-            in_bottleneck_time: Time::zero(),
-            out_bottleneck_time: Time::zero(),
-            route_free_flow_travel_time: Time::nan(),
-            length: Length::nan(),
+            road_time: NonNegativeSeconds::ZERO,
+            in_bottleneck_time: NonNegativeSeconds::ZERO,
+            out_bottleneck_time: NonNegativeSeconds::ZERO,
+            route_free_flow_travel_time: NonNegativeSeconds::NAN,
+            length: NonNegativeMeters::NAN,
             length_diff: None,
-            exp_arrival_time: Time::nan(),
+            exp_arrival_time: NonNegativeSeconds::NAN,
         }
     }
 
@@ -115,15 +116,15 @@ pub struct PreDayRoadLegResults {
     /// The expected route to be taken by the agent, together with the timings.
     pub route: Vec<RoadEvent>,
     /// Travel time of taking the same route, assuming no congestion.
-    pub route_free_flow_travel_time: Time,
+    pub route_free_flow_travel_time: NonNegativeSeconds,
     /// Travel time of the fastest no-congestion route between origin and destination of the leg.
-    pub global_free_flow_travel_time: Time,
+    pub global_free_flow_travel_time: NonNegativeSeconds,
     /// Length of the route taken.
-    pub length: Length,
+    pub length: NonNegativeMeters,
     /// Expected departure time, in the pre-day model.
-    pub pre_exp_departure_time: Time,
+    pub pre_exp_departure_time: NonNegativeSeconds,
     /// Expected arrival time at destination (excluding the stopping time), in the pre-day model.
-    pub pre_exp_arrival_time: Time,
+    pub pre_exp_arrival_time: NonNegativeSeconds,
 }
 
 impl From<RoadLegResults> for PreDayRoadLegResults {
@@ -189,9 +190,9 @@ pub struct LegResults {
     /// Id of the leg.
     pub id: usize,
     /// Departure time of the leg.
-    pub departure_time: Time,
+    pub departure_time: NonNegativeSeconds,
     /// Arrival time of the leg (before the stopping time).
-    pub arrival_time: Time,
+    pub arrival_time: NonNegativeSeconds,
     /// Travel utility for this leg.
     pub travel_utility: Utility,
     /// Schedule utility for this leg.
@@ -199,13 +200,13 @@ pub struct LegResults {
     /// Results specific to the leg's class (road, virtual).
     pub class: LegTypeResults,
     /// Difference between the departure time of the previous and current iteration.
-    pub departure_time_shift: Option<Time>,
+    pub departure_time_shift: Option<AnySeconds>,
 }
 
 impl LegResults {
     /// Returns the travel time of the leg.
-    fn travel_time(&self) -> Time {
-        self.arrival_time - self.departure_time
+    fn travel_time(&self) -> NonNegativeSeconds {
+        self.arrival_time.sub_unchecked(self.departure_time)
     }
 
     /// Returns the total utility of the leg (the sum of the travel and schedule utility).
@@ -214,7 +215,7 @@ impl LegResults {
     }
 
     /// Save the arrival time and utility decomposition of a leg.
-    pub fn save_results(&mut self, travel_time: Time, leg: &Leg) {
+    pub fn save_results(&mut self, travel_time: NonNegativeSeconds, leg: &Leg) {
         debug_assert!(!self.departure_time.is_nan());
         self.arrival_time = self.departure_time + travel_time;
         let (travel_utility, schedule_utility) =
@@ -267,10 +268,17 @@ impl PreDayLegResults {
                         edge: original_id,
                         entry_time: current_time,
                     };
-                    current_time += weights[(vehicle_id, original_id)].eval(current_time);
+                    current_time += NonNegativeSeconds::try_from(
+                        weights[(vehicle_id, original_id)].eval(AnySeconds::from(current_time)),
+                    )
+                    .expect("The travel time is negative");
                     output_route.push(road_event);
                 }
-                debug_assert!(current_time.approx_eq(&road_leg_result.pre_exp_arrival_time));
+                debug_assert!(
+                    (Into::<f64>::into(current_time)
+                        - Into::<f64>::into(road_leg_result.pre_exp_arrival_time))
+                        < 1e-4
+                );
                 road_leg_result.route = output_route;
                 road_leg_result.length =
                     crate::network::road_network::route_length(expected_route.iter().copied());
@@ -290,11 +298,11 @@ pub struct TripResults {
     /// The results specific to each leg of the trip.
     pub legs: Vec<LegResults>,
     /// Departure time from the origin of the first leg (before the delay time at origin).
-    pub departure_time: Time,
+    pub departure_time: NonNegativeSeconds,
     /// Arrival time at the destination of the last leg (after the stopping time).
-    pub arrival_time: Time,
+    pub arrival_time: NonNegativeSeconds,
     /// Total time spent traveling.
-    pub total_travel_time: Time,
+    pub total_travel_time: NonNegativeSeconds,
     /// (Deterministic) utility resulting from the trip.
     pub utility: Utility,
     /// Expected utility for the trip (from the pre-day model).
@@ -302,13 +310,13 @@ pub struct TripResults {
     /// If `true`, the trip is composed only of virtual legs.
     pub virtual_only: bool,
     /// Difference between the departure time of the previous and current iteration.
-    pub departure_time_shift: Option<Time>,
+    pub departure_time_shift: Option<AnySeconds>,
 }
 
 impl TripResults {
     pub(crate) fn new(
         legs: Vec<LegResults>,
-        departure_time: Time,
+        departure_time: NonNegativeSeconds,
         expected_utility: Utility,
         virtual_only: bool,
     ) -> Self {
@@ -316,9 +324,9 @@ impl TripResults {
             legs,
             departure_time,
             expected_utility,
-            arrival_time: Time::nan(),
-            total_travel_time: Time::nan(),
-            utility: Utility::nan(),
+            arrival_time: NonNegativeSeconds::NAN,
+            total_travel_time: NonNegativeSeconds::NAN,
+            utility: Utility::NAN,
             virtual_only,
             departure_time_shift: None,
         }
@@ -327,17 +335,17 @@ impl TripResults {
 
 impl TripResults {
     /// Returns the departure time of the trip.
-    pub fn departure_time(&self) -> Time {
+    pub fn departure_time(&self) -> NonNegativeSeconds {
         self.departure_time
     }
 
     /// Returns the arrival time of the trip.
-    pub fn arrival_time(&self) -> Time {
+    pub fn arrival_time(&self) -> NonNegativeSeconds {
         self.arrival_time
     }
 
     /// Returns the total travel time of the trip.
-    pub fn total_travel_time(&self) -> Time {
+    pub fn total_travel_time(&self) -> NonNegativeSeconds {
         self.total_travel_time
     }
 
@@ -365,10 +373,10 @@ impl TripResults {
                 .iter()
                 .map(|l| LegResults {
                     id: l.id,
-                    departure_time: Time::nan(),
-                    arrival_time: Time::nan(),
-                    travel_utility: Utility::nan(),
-                    schedule_utility: Utility::nan(),
+                    departure_time: NonNegativeSeconds::NAN,
+                    arrival_time: NonNegativeSeconds::NAN,
+                    travel_utility: Utility::NAN,
+                    schedule_utility: Utility::NAN,
                     class: match &l.class {
                         LegTypeResults::Road(road_leg) => LegTypeResults::Road(road_leg.reset()),
                         LegTypeResults::Virtual => LegTypeResults::Virtual,
@@ -380,9 +388,9 @@ impl TripResults {
             Self {
                 legs,
                 departure_time: self.departure_time,
-                arrival_time: Time::nan(),
-                total_travel_time: Time::nan(),
-                utility: Utility::nan(),
+                arrival_time: NonNegativeSeconds::NAN,
+                total_travel_time: NonNegativeSeconds::NAN,
+                utility: Utility::NAN,
                 expected_utility: self.expected_utility,
                 virtual_only: false,
                 departure_time_shift: None,
@@ -400,7 +408,7 @@ impl TripResults {
     ///
     /// After a call to this function, all values of the [TripResults] should be filled with some
     /// data.
-    pub fn save_results(&mut self, arrival_time: Time, trip: &TravelingMode) {
+    pub fn save_results(&mut self, arrival_time: NonNegativeSeconds, trip: &TravelingMode) {
         self.arrival_time = arrival_time;
         self.total_travel_time = self.legs.iter().map(|l| l.travel_time()).sum();
         let mut total_utility = self
@@ -453,7 +461,7 @@ pub struct PreDayTripResults {
     /// The results specific to each leg of the trip.
     pub legs: Vec<PreDayLegResults>,
     /// Departure time from the origin of the first leg (before the delay time at origin).
-    pub departure_time: Time,
+    pub departure_time: NonNegativeSeconds,
     /// Expected utility for the trip (from the pre-day model).
     pub expected_utility: Utility,
 }
@@ -482,90 +490,90 @@ impl PreDayTripResults {
 }
 
 /// Struct to store aggregate results specific to traveling modes of transportation.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateTripResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateTripResults {
     /// Number of trips taken with a traveling mode of transportation.
-    pub count: usize,
+    pub(crate) count: usize,
     /// Distribution of departure times from origin (before origin delay time).
-    pub departure_time: Distribution<Time>,
+    pub(crate) departure_time: Distribution<NonNegativeSeconds>,
     /// Distribution of arrival times (after last leg's stopping time).
-    pub arrival_time: Distribution<Time>,
+    pub(crate) arrival_time: Distribution<NonNegativeSeconds>,
     /// Distribution of total travel times (excluding stopping times and origin delay).
-    pub travel_time: Distribution<Time>,
+    pub(crate) travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of total utility.
-    pub utility: Distribution<Utility>,
+    pub(crate) utility: Distribution<Utility>,
     /// Distribution of expected utility (pre-day model).
-    pub expected_utility: Distribution<Utility>,
+    pub(crate) expected_utility: Distribution<Utility>,
     /// Distribution of departure time shift compared to previous iteration (except for the first
     /// iteration; excluding agents who choose a different mode compared to the previous
     /// iteration).
-    pub dep_time_shift: Option<Distribution<Time>>,
+    pub(crate) dep_time_shift: Option<Distribution<AnySeconds>>,
     /// Root mean squared distance of departure time compared to the previous iteration (except for
     /// the first iteration; excluding agents who choose a different mode compared to the previous
     /// iteration).
-    pub dep_time_rmse: Option<Time>,
+    pub(crate) dep_time_rmse: Option<NonNegativeSeconds>,
     /// Results specific to road legs.
-    pub road_leg: Option<AggregateRoadLegResults>,
+    pub(crate) road_leg: Option<AggregateRoadLegResults>,
     /// Results specific to virtual legs.
-    pub virtual_leg: Option<AggregateVirtualLegResults>,
+    pub(crate) virtual_leg: Option<AggregateVirtualLegResults>,
 }
 
 /// Struct to store aggregate results specific to the road legs.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateRoadLegResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateRoadLegResults {
     /// Number of road legs taken.
-    pub count: usize,
+    pub(crate) count: usize,
     /// Number of chosen modes with at least one road leg.
-    pub mode_count_one: usize,
+    pub(crate) mode_count_one: usize,
     /// Number of chosen modes with only road legs.
-    pub mode_count_all: usize,
+    pub(crate) mode_count_all: usize,
     /// Distribution of the number of road legs per trip.
-    pub count_distribution: Distribution<NoUnit>,
+    pub(crate) count_distribution: Distribution<NonNegativeNum>,
     /// Distribution of departure times from leg's origin.
-    pub departure_time: Distribution<Time>,
+    pub(crate) departure_time: Distribution<NonNegativeSeconds>,
     /// Distribution of arrival times at leg's destination (before the stopping time).
-    pub arrival_time: Distribution<Time>,
+    pub(crate) arrival_time: Distribution<NonNegativeSeconds>,
     /// Distribution of road time (time spent traveling on an edge).
-    pub road_time: Distribution<Time>,
+    pub(crate) road_time: Distribution<NonNegativeSeconds>,
     /// Distribution of in-bottleneck time (time spent waiting at the entry bottleneck of an edge).
-    pub in_bottleneck_time: Distribution<Time>,
+    pub(crate) in_bottleneck_time: Distribution<NonNegativeSeconds>,
     /// Distribution of out-bottleneck time (time spent waiting at the exit bottleneck of an edge).
-    pub out_bottleneck_time: Distribution<Time>,
+    pub(crate) out_bottleneck_time: Distribution<NonNegativeSeconds>,
     /// Distribution of total travel time (excluding stopping time).
-    pub travel_time: Distribution<Time>,
+    pub(crate) travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of route free-flow travel times.
-    pub route_free_flow_travel_time: Distribution<Time>,
+    pub(crate) route_free_flow_travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of global free-flow travel times.
-    pub global_free_flow_travel_time: Distribution<Time>,
+    pub(crate) global_free_flow_travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of the relative difference between actual travel time and route free-flow
     /// travel time.
-    pub route_congestion: Distribution<NoUnit>,
+    pub(crate) route_congestion: Distribution<NonNegativeNum>,
     /// Distribution of the relative difference between actual travel time and global free-flow
     /// travel time.
-    pub global_congestion: Distribution<NoUnit>,
+    pub(crate) global_congestion: Distribution<NonNegativeNum>,
     /// Distribution of route length.
-    pub length: Distribution<Length>,
+    pub(crate) length: Distribution<NonNegativeMeters>,
     /// Distribution of number of edges taken.
-    pub edge_count: Distribution<NoUnit>,
+    pub(crate) edge_count: Distribution<NonNegativeNum>,
     /// Distribution of leg's utility.
-    pub utility: Distribution<Utility>,
+    pub(crate) utility: Distribution<Utility>,
     /// Distribution of expected total travel time.
-    pub exp_travel_time: Distribution<Time>,
+    pub(crate) exp_travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of relative difference between expected travel time and actual travel time.
-    pub exp_travel_time_rel_diff: Distribution<NoUnit>,
+    pub(crate) exp_travel_time_rel_diff: Distribution<NonNegativeNum>,
     /// Distribution of absolute difference between expected travel time and actual travel time.
-    pub exp_travel_time_abs_diff: Distribution<Time>,
+    pub(crate) exp_travel_time_abs_diff: Distribution<NonNegativeSeconds>,
     /// Root mean squared difference between expected travel time and actual travel time.
-    pub exp_travel_time_diff_rmse: Time,
+    pub(crate) exp_travel_time_diff_rmse: NonNegativeSeconds,
     /// Distribution of length of the current route that was not used in the previous route.
-    pub length_diff: Option<Distribution<Length>>,
+    pub(crate) length_diff: Option<Distribution<NonNegativeMeters>>,
 }
 
 impl AggregateRoadLegResults {
     /// Returns [AggregateRoadLegResults] from the results of an iteration.
     fn from_agent_results(results: &TripAgentResults<'_>) -> Option<Self> {
         /// Returns a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
-        fn get_distribution<V: TTFNum, F>(
+        fn get_distribution<V: MetroNonNegativeNum, F>(
             results: &TripAgentResults<'_>,
             func: F,
         ) -> Distribution<V>
@@ -587,7 +595,7 @@ impl AggregateRoadLegResults {
         /// Returns a [Distribution] by applying a function over [LegResults] and [RoadLegResults].
         ///
         /// Only the values which are not NaN are considered.
-        fn get_distribution_with_filter<V: TTFNum, F>(
+        fn get_distribution_with_filter<V: MetroNonNegativeNum, F>(
             results: &TripAgentResults<'_>,
             func: F,
         ) -> Option<Distribution<V>>
@@ -616,7 +624,7 @@ impl AggregateRoadLegResults {
         }
         let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
             if m.nb_road_legs() > 0 {
-                Some(NoUnit(m.nb_road_legs() as f64))
+                Some(NonNegativeNum::new_unchecked(m.nb_road_legs() as f64))
             } else {
                 None
             }
@@ -634,40 +642,45 @@ impl AggregateRoadLegResults {
             get_distribution(results, |_, rlr| rlr.global_free_flow_travel_time);
         let route_congestion = get_distribution(results, |lr, rlr| {
             if rlr.route_free_flow_travel_time.is_zero() {
-                NoUnit::zero()
+                NonNegativeNum::ZERO
             } else {
-                NoUnit(
-                    (lr.travel_time().0 - rlr.route_free_flow_travel_time.0)
-                        / rlr.route_free_flow_travel_time.0,
-                )
+                (lr.travel_time() - rlr.route_free_flow_travel_time).assume_non_negative_unchecked()
+                    / rlr.route_free_flow_travel_time.assume_positive_unchecked()
             }
         });
         let global_congestion = get_distribution(results, |lr, rlr| {
             if rlr.global_free_flow_travel_time.is_zero() {
-                NoUnit::zero()
+                NonNegativeNum::ZERO
             } else {
-                NoUnit(
-                    (lr.travel_time().0 - rlr.global_free_flow_travel_time.0)
-                        / rlr.global_free_flow_travel_time.0,
-                )
+                (lr.travel_time() - rlr.global_free_flow_travel_time)
+                    .assume_non_negative_unchecked()
+                    / rlr.global_free_flow_travel_time.assume_positive_unchecked()
             }
         });
         let length = get_distribution(results, |_, rlr| rlr.length);
-        let edge_count = get_distribution(results, |_, rlr| NoUnit(rlr.edge_count() as f64));
+        let edge_count = get_distribution(results, |_, rlr| {
+            NonNegativeNum::new_unchecked(rlr.edge_count() as f64)
+        });
         let utility = get_distribution(results, |lr, _| lr.total_utility());
-        let exp_travel_time =
-            get_distribution(results, |lr, rlr| rlr.exp_arrival_time - lr.departure_time);
+        let exp_travel_time = get_distribution(results, |lr, rlr| {
+            rlr.exp_arrival_time.sub_unchecked(lr.departure_time)
+        });
         let exp_travel_time_rel_diff = get_distribution(results, |lr, rlr| {
-            let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
-            if exp_travel_time > Time::zero() {
-                NoUnit((exp_travel_time - lr.travel_time()).abs().0 / exp_travel_time.0)
+            let exp_travel_time = rlr.exp_arrival_time.sub_unchecked(lr.departure_time);
+            if exp_travel_time.is_zero() {
+                NonNegativeNum::ZERO
             } else {
-                NoUnit::zero()
+                (exp_travel_time - lr.travel_time())
+                    .abs()
+                    .assume_non_negative_unchecked()
+                    / exp_travel_time.assume_positive_unchecked()
             }
         });
         let exp_travel_time_abs_diff = get_distribution(results, |lr, rlr| {
             let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
-            (exp_travel_time - lr.travel_time()).abs()
+            (exp_travel_time - lr.travel_time())
+                .abs()
+                .assume_non_negative_unchecked()
         });
         let exp_travel_time_diff_rmse = compute_exp_travel_time_diff_rmse(results);
         let length_diff = get_distribution_with_filter(results, |_, rlr| rlr.length_diff);
@@ -699,41 +712,41 @@ impl AggregateRoadLegResults {
 }
 
 /// Struct to store aggregate results specific to the virtual legs.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateVirtualLegResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateVirtualLegResults {
     /// Number of virtual legs taken.
-    pub count: usize,
+    pub(crate) count: usize,
     /// Number of chosen modes with at least one virtual leg.
-    pub mode_count_one: usize,
+    pub(crate) mode_count_one: usize,
     /// Number of chosen modes with only virtual legs.
-    pub mode_count_all: usize,
+    pub(crate) mode_count_all: usize,
     /// Distribution of the number of virtual legs per trip.
-    pub count_distribution: Distribution<NoUnit>,
+    pub(crate) count_distribution: Distribution<NonNegativeNum>,
     /// Distribution of departure times from leg's origin.
-    pub departure_time: Distribution<Time>,
+    pub(crate) departure_time: Distribution<NonNegativeSeconds>,
     /// Distribution of arrival times at leg's destination (before the stopping time).
-    pub arrival_time: Distribution<Time>,
+    pub(crate) arrival_time: Distribution<NonNegativeSeconds>,
     /// Distribution of total travel time (excluding stopping time).
-    pub travel_time: Distribution<Time>,
+    pub(crate) travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of global free-flow travel times.
-    pub global_free_flow_travel_time: Distribution<Time>,
+    pub(crate) global_free_flow_travel_time: Distribution<NonNegativeSeconds>,
     /// Distribution of the relative difference between actual travel time and global free-flow
     /// travel time.
-    pub global_congestion: Distribution<NoUnit>,
+    pub(crate) global_congestion: Distribution<NonNegativeNum>,
     /// Distribution of leg's utility.
-    pub utility: Distribution<Utility>,
+    pub(crate) utility: Distribution<Utility>,
 }
 
 impl AggregateVirtualLegResults {
     /// Returns [AggregateVirtualLegResults] from the results of an iteration.
     fn from_agent_results(results: &TripAgentResults<'_>) -> Option<Self> {
         /// Return a [Distribution] by applying a function over [Leg], [TTF] and [LegResults].
-        fn get_distribution<V: TTFNum, F>(
+        fn get_distribution<V: MetroNonNegativeNum, F>(
             results: &TripAgentResults<'_>,
             func: F,
         ) -> Distribution<V>
         where
-            F: Fn(&Leg, &TTF<Time>, &LegResults) -> V,
+            F: Fn(&Leg, &TTF<AnySeconds>, &LegResults) -> V,
         {
             Distribution::from_iterator(results.iter().flat_map(|(m, r)| {
                 m.legs
@@ -761,7 +774,7 @@ impl AggregateVirtualLegResults {
         }
         let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
             if m.nb_virtual_legs() > 0 {
-                Some(NoUnit(m.nb_virtual_legs() as f64))
+                Some(NonNegativeNum::new_unchecked(m.nb_virtual_legs() as f64))
             } else {
                 None
             }
@@ -770,9 +783,17 @@ impl AggregateVirtualLegResults {
         let departure_time = get_distribution(results, |_, _, lr| lr.departure_time);
         let arrival_time = get_distribution(results, |_, _, lr| lr.arrival_time);
         let travel_time = get_distribution(results, |_, _, lr| lr.travel_time());
-        let global_free_flow_travel_time = get_distribution(results, |_, ttf, _| ttf.get_min());
+        let global_free_flow_travel_time = get_distribution(results, |_, ttf, _| {
+            NonNegativeSeconds::try_from(ttf.get_min()).expect("The travel time is negative")
+        });
         let global_congestion = get_distribution(results, |_, ttf, lr| {
-            NoUnit((lr.travel_time().0 - ttf.get_min().0) / ttf.get_min().0)
+            let min_ttf =
+                NonNegativeSeconds::try_from(ttf.get_min()).expect("The travel time is negative");
+            if min_ttf.is_zero() {
+                NonNegativeNum::ZERO
+            } else {
+                (lr.travel_time().sub_unchecked(min_ttf)) / min_ttf.assume_positive_unchecked()
+            }
         });
         let utility = get_distribution(results, |_, _, lr| lr.total_utility());
         Some(AggregateVirtualLegResults {
@@ -792,13 +813,13 @@ impl AggregateVirtualLegResults {
 
 /// Shorthand for a Vec to store tuples with, for each agent, the [TravelingMode] and the
 /// [TripResults].
-pub type TripAgentResults<'a> = Vec<(&'a TravelingMode, &'a TripResults)>;
+pub(crate) type TripAgentResults<'a> = Vec<(&'a TravelingMode, &'a TripResults)>;
 
 impl AggregateTripResults {
     /// Returns [AggregateTripResults] from the results of an iteration.
-    pub fn from_agent_results(results: TripAgentResults<'_>) -> Self {
+    pub(crate) fn from_agent_results(results: TripAgentResults<'_>) -> Self {
         /// Returns a [Distribution] by applying a function over [TravelingMode] and [TripResults].
-        fn get_distribution<V: TTFNum, F: Fn(&TravelingMode, &TripResults) -> V>(
+        fn get_distribution<V: MetroNonNegativeNum, F: Fn(&TravelingMode, &TripResults) -> V>(
             results: &TripAgentResults<'_>,
             func: F,
         ) -> Distribution<V> {
@@ -808,7 +829,7 @@ impl AggregateTripResults {
         ///
         /// Only the values which are not NaN are considered.
         fn get_distribution_with_filter<
-            V: TTFNum,
+            V: MetroNonNegativeNum,
             F: Fn(&TravelingMode, &TripResults) -> Option<V>,
         >(
             results: &TripAgentResults<'_>,
@@ -849,36 +870,43 @@ impl AggregateTripResults {
 ///
 /// Returns `None` if no agent have results for the previous iteration (first iteration or all
 /// agents switched mode).
-fn compute_dep_time_rmse(results: &TripAgentResults<'_>) -> Option<Time> {
+fn compute_dep_time_rmse(results: &TripAgentResults<'_>) -> Option<NonNegativeSeconds> {
     let (sum_squared_dist, n) = results
         .iter()
-        .filter_map(|(_, res)| res.departure_time_shift.map(|dts| dts.powi(2)))
-        .fold((Time::zero(), 0), |(sum, n), squared_dist| {
+        .filter_map(|(_, res)| {
+            res.departure_time_shift
+                .map(|dts| dts.powi(2).assume_non_negative_unchecked())
+        })
+        .fold((NonNegativeSeconds::ZERO, 0), |(sum, n), squared_dist| {
             (sum + squared_dist, n + 1)
         });
     if n == 0 {
         None
     } else {
-        let mean_squared_dist = sum_squared_dist / Time::from_usize(n).unwrap();
+        let mean_squared_dist = sum_squared_dist / n;
         Some(mean_squared_dist.sqrt())
     }
 }
 
 /// Returns the root mean squared error of the difference between the agent's travel time and their
 /// expected travel time.
-fn compute_exp_travel_time_diff_rmse(results: &TripAgentResults<'_>) -> Time {
+fn compute_exp_travel_time_diff_rmse(results: &TripAgentResults<'_>) -> NonNegativeSeconds {
     let sum_squared_dist = results
         .iter()
         .flat_map(|(_, res)| {
             res.legs.iter().flat_map(|lr| match &lr.class {
                 LegTypeResults::Road(rlr) => {
-                    let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
-                    Some((exp_travel_time - lr.travel_time()).powi(2))
+                    let exp_travel_time = rlr.exp_arrival_time;
+                    Some(
+                        (exp_travel_time - lr.travel_time())
+                            .powi(2)
+                            .assume_non_negative_unchecked(),
+                    )
                 }
                 _ => None,
             })
         })
-        .sum::<Time>();
-    let mean_squared_dist = sum_squared_dist / Time::from_usize(results.len()).unwrap();
+        .sum::<NonNegativeSeconds>();
+    let mean_squared_dist = sum_squared_dist / results.len();
     mean_squared_dist.sqrt()
 }

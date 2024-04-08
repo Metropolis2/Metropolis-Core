@@ -12,7 +12,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::learning::LearningModel;
 use crate::network::road_network::parameters::RoadNetworkParameters;
-use crate::units::{Interval, Time};
+use crate::units::Interval;
 
 static PARAMETERS: OnceLock<Parameters> = OnceLock::new();
 
@@ -116,7 +116,7 @@ impl SavingFormat {
 }
 
 /// Struct to store all the input file paths.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct InputFiles {
     pub(crate) agents: PathBuf,
     pub(crate) alternatives: PathBuf,
@@ -131,7 +131,7 @@ pub struct InputFiles {
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Parameters {
     /// Paths to the input files.
     pub input_files: InputFiles,
@@ -189,7 +189,7 @@ impl Default for Parameters {
         Self {
             input_files: Default::default(),
             output_directory: Default::default(),
-            period: Interval([Time(0.0), Time(3600.0 * 24.0)]),
+            period: Interval::new_unchecked(0.0, 3600.0 * 24.0),
             init_iteration_counter: 1,
             max_iterations: 1,
             road_network: Some(Default::default()),

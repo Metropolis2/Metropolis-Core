@@ -6,9 +6,8 @@
 //! Everything related to modes of transportation.
 use std::fmt;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use enum_as_inner::EnumAsInner;
-use num_traits::FromPrimitive;
 use serde_derive::{Deserialize, Serialize};
 
 use self::trip::results::{AggregateTripResults, PreDayTripResults, TripResults};
@@ -20,7 +19,7 @@ use crate::network::road_network::RoadNetworkWeights;
 use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::population::AgentIndex;
 use crate::progress_bar::MetroProgressBar;
-use crate::units::{Distribution, Time, Utility};
+use crate::units::{Distribution, NonNegativeSeconds, Utility};
 
 pub mod trip;
 
@@ -114,7 +113,8 @@ impl Mode {
     ) -> Result<Self> {
         let legs = legs.unwrap_or_default();
         if legs.is_empty() {
-            let constant_utility = Utility::from_f64(constant_utility.unwrap_or(0.0)).unwrap();
+            let constant_utility = Utility::try_from(constant_utility.unwrap_or(0.0))
+                .context("Value `constant_utility` does not satisfy the constraints")?;
             Ok(Self::Constant((id, constant_utility)))
         } else {
             Ok(Self::Trip(TravelingMode::from_values(
@@ -191,7 +191,7 @@ pub enum ModeResults {
 
 impl ModeResults {
     /// Returns the departure time of the trip (if any).
-    pub fn departure_time(&self) -> Option<Time> {
+    pub fn departure_time(&self) -> Option<NonNegativeSeconds> {
         match self {
             Self::Trip(trip_results) => Some(trip_results.departure_time),
             Self::Constant(_) => None,
@@ -282,26 +282,26 @@ impl PreDayModeResults {
 }
 
 /// Aggregate results of an iteration that are mode-specific.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateModeResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateModeResults {
     /// Results specific to traveling modes.
-    pub trip_modes: Option<AggregateTripResults>,
+    pub(crate) trip_modes: Option<AggregateTripResults>,
     /// Results specific to constant modes.
-    pub constant: Option<AggregateConstantResults>,
+    pub(crate) constant: Option<AggregateConstantResults>,
 }
 
 /// Aggregate results of an iteration specific to constant modes.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AggregateConstantResults {
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AggregateConstantResults {
     /// Number of agents who chose a constant mode.
-    pub count: usize,
+    pub(crate) count: usize,
     /// Distribution of the utility of the agents who chose a constant mode.
-    pub utility: Distribution<Utility>,
+    pub(crate) utility: Distribution<Utility>,
 }
 
 impl AggregateConstantResults {
     /// Creates a new [AggregateConstantResults] from a vector of [Utility].
-    pub fn from_utilities(utilities: Vec<Utility>) -> Self {
+    pub(crate) fn from_utilities(utilities: Vec<Utility>) -> Self {
         Self {
             count: utilities.len(),
             utility: Distribution::from_iterator(utilities.into_iter()).unwrap(),

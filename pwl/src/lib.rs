@@ -13,6 +13,7 @@ use std::cmp::Ordering;
 
 use either::Either;
 use num_traits::Zero;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub use self::pwl::{PwlTTF, PwlXYF};
@@ -42,7 +43,8 @@ impl UndercutDescriptor {
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(bound = "X: TTFNum, Y: TTFNum")]
+#[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
+#[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
 #[serde(untagged)]
 pub enum XYF<X, Y, T> {
     /// A piecewise-linear function.
@@ -244,7 +246,7 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => pwl::squared_difference_cst(f, c),
             (&Self::Constant(c), Self::Piecewise(g)) => pwl::squared_difference_cst(g, c),
             (&Self::Constant(a), &Self::Constant(b)) => {
-                let diff = (a - b).powi(2);
+                let diff = (a - b).pow(2);
                 debug_assert!(diff.is_finite(), "a: {a:?}, b: {b:?}");
                 diff
             }
@@ -311,9 +313,9 @@ impl<T: TTFNum> TTF<T> {
 fn parse_constant<'de, Y, D>(deserializer: D) -> Result<Y, D::Error>
 where
     D: Deserializer<'de>,
-    Y: TTFNum,
+    Y: TTFNum + Deserialize<'de>,
 {
-    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or_else(Y::infinity))
+    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or(Y::INFINITY))
 }
 
 #[cfg(test)]

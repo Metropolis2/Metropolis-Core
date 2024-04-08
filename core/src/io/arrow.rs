@@ -18,7 +18,6 @@ use arrow::datatypes::{DataType, Field, FieldRef, Schema};
 use arrow::record_batch::RecordBatch;
 use hashbrown::{HashMap, HashSet};
 use log::{info, warn};
-use num_traits::{FromPrimitive, ToPrimitive};
 use ttf::TTF;
 
 use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
@@ -32,7 +31,7 @@ use crate::population::Agent;
 use crate::simulation::results::{
     AgentResult, AgentResults, PreDayAgentResult, PreDayAgentResults,
 };
-use crate::units::{Interval, Time};
+use crate::units::*;
 
 pub trait ToArrow<const J: usize> {
     fn to_arrow(data: &Self) -> Result<[Option<RecordBatch>; J]>;
@@ -737,7 +736,12 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
 
 const RN_WEIGHTS_COLUMNS: [&str; 4] = ["vehicle_id", "edge_id", "departure_time", "travel_time"];
 
-type RnWeightsVec = Vec<(OriginalVehicleId, OriginalEdgeId, Time, Time)>;
+type RnWeightsVec = Vec<(
+    OriginalVehicleId,
+    OriginalEdgeId,
+    NonNegativeSeconds,
+    NonNegativeSeconds,
+)>;
 
 /// Reads an arrow `RecordBatch` with road-network weights data and returns a [RoadNetworkWeights].
 pub(crate) fn read_rn_weights(batch: RecordBatch) -> Result<RnWeightsVec> {
@@ -756,13 +760,14 @@ pub(crate) fn read_rn_weights(batch: RecordBatch) -> Result<RnWeightsVec> {
         let travel_time = get_value!(travel_time_values[i]);
         let vehicle_id = vehicle_id.ok_or_else(|| anyhow!("Value `vehicle_id` is mandatory"))?;
         let edge_id = edge_id.ok_or_else(|| anyhow!("Value `edge_id` is mandatory"))?;
-        let departure_time = Time::from_f64(
+        let departure_time = NonNegativeSeconds::try_from(
             departure_time.ok_or_else(|| anyhow!("Value `departure_time` is mandatory"))?,
         )
-        .unwrap();
-        let travel_time =
-            Time::from_f64(travel_time.ok_or_else(|| anyhow!("Value `travel_time` is mandatory"))?)
-                .unwrap();
+        .context("Value `departure_time` does not satisfy the constraints")?;
+        let travel_time = NonNegativeSeconds::try_from(
+            travel_time.ok_or_else(|| anyhow!("Value `travel_time` is mandatory"))?,
+        )
+        .context("Value `travel_time` does not satisfy the constraints")?;
         weights.push((vehicle_id, edge_id, departure_time, travel_time));
     }
     Ok(weights)
@@ -846,22 +851,22 @@ impl AgentResultsBuilder {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
-            .append_value(agent_result.expected_utility.to_f64().unwrap());
+            .append_value(Into::<f64>::into(agent_result.expected_utility));
         self.shifted_mode.append_value(agent_result.shifted_mode);
         match &agent_result.mode_results {
             ModeResults::Trip(trip) => {
                 self.departure_time
-                    .append_value(trip.departure_time.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(trip.departure_time));
                 self.arrival_time
-                    .append_value(trip.arrival_time.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(trip.arrival_time));
                 self.total_travel_time
-                    .append_value(trip.total_travel_time.to_f64().unwrap());
-                self.utility.append_value(trip.utility.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(trip.total_travel_time));
+                self.utility.append_value(Into::<f64>::into(trip.utility));
                 self.mode_expected_utility
-                    .append_value(trip.expected_utility.to_f64().unwrap());
-                if let Some(dts) = trip.departure_time_shift.as_ref() {
+                    .append_value(Into::<f64>::into(trip.expected_utility));
+                if let Some(dts) = trip.departure_time_shift {
                     self.departure_time_shift
-                        .append_value(dts.to_f64().unwrap());
+                        .append_value(Into::<f64>::into(dts));
                 } else {
                     self.departure_time_shift.append_null()
                 }
@@ -872,44 +877,44 @@ impl AgentResultsBuilder {
                     self.leg_id.append_value(leg.id as u64);
                     self.leg_index.append_value(i as u64);
                     self.leg_departure_time
-                        .append_value(leg.departure_time.to_f64().unwrap());
+                        .append_value(Into::<f64>::into(leg.departure_time));
                     self.leg_arrival_time
-                        .append_value(leg.arrival_time.to_f64().unwrap());
+                        .append_value(Into::<f64>::into(leg.arrival_time));
                     self.leg_travel_utility
-                        .append_value(leg.travel_utility.to_f64().unwrap());
+                        .append_value(Into::<f64>::into(leg.travel_utility));
                     self.leg_schedule_utility
-                        .append_value(leg.schedule_utility.to_f64().unwrap());
-                    if let Some(dts) = leg.departure_time_shift.as_ref() {
+                        .append_value(Into::<f64>::into(leg.schedule_utility));
+                    if let Some(dts) = leg.departure_time_shift {
                         self.leg_departure_time_shift
-                            .append_value(dts.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(dts));
                     } else {
                         self.leg_departure_time_shift.append_null();
                     }
                     if let LegTypeResults::Road(road_leg) = &leg.class {
                         nb_road_legs += 1;
                         self.leg_road_time
-                            .append_value(road_leg.road_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.road_time));
                         self.leg_in_bottleneck_time
-                            .append_value(road_leg.in_bottleneck_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.in_bottleneck_time));
                         self.leg_out_bottleneck_time
-                            .append_value(road_leg.out_bottleneck_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.out_bottleneck_time));
                         self.leg_route_free_flow_travel_time
-                            .append_value(road_leg.route_free_flow_travel_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.route_free_flow_travel_time));
                         self.leg_global_free_flow_travel_time
-                            .append_value(road_leg.global_free_flow_travel_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.global_free_flow_travel_time));
                         self.leg_length
-                            .append_value(road_leg.length.to_f64().unwrap());
-                        if let Some(ld) = road_leg.length_diff.as_ref() {
-                            self.leg_length_diff.append_value(ld.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.length));
+                        if let Some(ld) = road_leg.length_diff {
+                            self.leg_length_diff.append_value(Into::<f64>::into(ld));
                         } else {
                             self.leg_length_diff.append_null();
                         }
                         self.leg_pre_exp_departure_time
-                            .append_value(road_leg.pre_exp_departure_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.pre_exp_departure_time));
                         self.leg_pre_exp_arrival_time
-                            .append_value(road_leg.pre_exp_arrival_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.pre_exp_arrival_time));
                         self.leg_exp_arrival_time
-                            .append_value(road_leg.exp_arrival_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.exp_arrival_time));
                         self.leg_nb_edges.append_value(road_leg.route.len() as u64);
                         for window in road_leg.route.windows(2) {
                             let event = &window[0];
@@ -919,9 +924,9 @@ impl AgentResultsBuilder {
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(event.edge);
                             self.route_entry_time
-                                .append_value(event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(event.entry_time));
                             self.route_exit_time
-                                .append_value(next_event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(next_event.entry_time));
                         }
                         // The last event is not added by the previous for loop.
                         if let Some(last_event) = road_leg.route.last() {
@@ -930,9 +935,9 @@ impl AgentResultsBuilder {
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(last_event.edge);
                             self.route_entry_time
-                                .append_value(last_event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(last_event.entry_time));
                             self.route_exit_time
-                                .append_value(leg.arrival_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(leg.arrival_time));
                         }
                     } else {
                         nb_virtual_legs += 1;
@@ -952,13 +957,13 @@ impl AgentResultsBuilder {
                 self.nb_road_legs.append_value(nb_road_legs);
                 self.nb_virtual_legs.append_value(nb_virtual_legs);
             }
-            ModeResults::Constant(utility) => {
+            &ModeResults::Constant(utility) => {
                 self.departure_time.append_null();
                 self.arrival_time.append_null();
                 self.total_travel_time.append_null();
-                self.utility.append_value(utility.to_f64().unwrap());
+                self.utility.append_value(Into::<f64>::into(utility));
                 self.mode_expected_utility
-                    .append_value(utility.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(utility));
                 self.departure_time_shift.append_null();
                 self.nb_road_legs.append_null();
                 self.nb_virtual_legs.append_null();
@@ -1126,13 +1131,13 @@ impl PreDayAgentResultsBuilder {
         self.id.append_value(agent_result.id as u64);
         self.mode_id.append_value(agent_result.mode_id as u64);
         self.expected_utility
-            .append_value(agent_result.expected_utility.to_f64().unwrap());
+            .append_value(Into::<f64>::into(agent_result.expected_utility));
         match &agent_result.mode_results {
             PreDayModeResults::Trip(trip) => {
                 self.departure_time
-                    .append_value(trip.departure_time.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(trip.departure_time));
                 self.mode_expected_utility
-                    .append_value(trip.expected_utility.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(trip.expected_utility));
                 let mut nb_road_legs = 0;
                 let mut nb_virtual_legs = 0;
                 for (i, leg) in trip.legs.iter().enumerate() {
@@ -1142,15 +1147,15 @@ impl PreDayAgentResultsBuilder {
                     if let PreDayLegTypeResults::Road(road_leg) = &leg.class {
                         nb_road_legs += 1;
                         self.leg_route_free_flow_travel_time
-                            .append_value(road_leg.route_free_flow_travel_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.route_free_flow_travel_time));
                         self.leg_global_free_flow_travel_time
-                            .append_value(road_leg.global_free_flow_travel_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.global_free_flow_travel_time));
                         self.leg_length
-                            .append_value(road_leg.length.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.length));
                         self.leg_pre_exp_departure_time
-                            .append_value(road_leg.pre_exp_departure_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.pre_exp_departure_time));
                         self.leg_pre_exp_arrival_time
-                            .append_value(road_leg.pre_exp_arrival_time.to_f64().unwrap());
+                            .append_value(Into::<f64>::into(road_leg.pre_exp_arrival_time));
                         self.leg_nb_edges.append_value(road_leg.route.len() as u64);
                         for window in road_leg.route.windows(2) {
                             let event = &window[0];
@@ -1160,9 +1165,9 @@ impl PreDayAgentResultsBuilder {
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(event.edge);
                             self.route_entry_time
-                                .append_value(event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(event.entry_time));
                             self.route_exit_time
-                                .append_value(next_event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(next_event.entry_time));
                         }
                         // The last event is not added by the previous for loop.
                         if let Some(last_event) = road_leg.route.last() {
@@ -1171,9 +1176,9 @@ impl PreDayAgentResultsBuilder {
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(last_event.edge);
                             self.route_entry_time
-                                .append_value(last_event.entry_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(last_event.entry_time));
                             self.route_exit_time
-                                .append_value(road_leg.pre_exp_arrival_time.to_f64().unwrap());
+                                .append_value(Into::<f64>::into(road_leg.pre_exp_arrival_time));
                         }
                     } else {
                         nb_virtual_legs += 1;
@@ -1188,10 +1193,10 @@ impl PreDayAgentResultsBuilder {
                 self.nb_road_legs.append_value(nb_road_legs);
                 self.nb_virtual_legs.append_value(nb_virtual_legs);
             }
-            PreDayModeResults::Constant(utility) => {
+            &PreDayModeResults::Constant(utility) => {
                 self.departure_time.append_null();
                 self.mode_expected_utility
-                    .append_value(utility.to_f64().unwrap());
+                    .append_value(Into::<f64>::into(utility));
                 self.nb_road_legs.append_null();
                 self.nb_virtual_legs.append_null();
             }
@@ -1297,7 +1302,7 @@ impl ToArrow<3> for PreDayAgentResults {
 #[derive(Debug)]
 struct RoadNetworkWeightsBuilder {
     period: Interval,
-    interval: Time,
+    interval: PositiveSeconds,
     vehicle_id: UInt64Builder,
     edge_id: UInt64Builder,
     departure_time: Float64Builder,
@@ -1305,7 +1310,7 @@ struct RoadNetworkWeightsBuilder {
 }
 
 impl RoadNetworkWeightsBuilder {
-    fn new(period: Interval, interval: Time) -> Self {
+    fn new(period: Interval, interval: PositiveSeconds) -> Self {
         Self {
             period,
             interval,
@@ -1318,15 +1323,16 @@ impl RoadNetworkWeightsBuilder {
 }
 
 impl RoadNetworkWeightsBuilder {
-    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<Time>) {
-        let xs_iter =
-            std::iter::successors(Some(self.period.start()), |&t| Some(t + self.interval))
-                .take_while(|&t| t < self.period.end());
-        for (x, y) in xs_iter.map(|x| (x, ttf.eval(x))) {
+    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<AnySeconds>) {
+        let xs_iter = std::iter::successors(Some(self.period.start()), |&t| {
+            Some(t + NonNegativeSeconds::from(self.interval))
+        })
+        .take_while(|&t| t < self.period.end());
+        for (x, y) in xs_iter.map(|x| (x, ttf.eval(AnySeconds::from(x)))) {
             self.vehicle_id.append_value(vehicle_id);
             self.edge_id.append_value(edge_id);
-            self.departure_time.append_value(x.to_f64().unwrap());
-            self.travel_time.append_value(y.to_f64().unwrap());
+            self.departure_time.append_value(Into::<f64>::into(x));
+            self.travel_time.append_value(Into::<f64>::into(y));
         }
     }
 

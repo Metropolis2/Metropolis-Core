@@ -4,9 +4,10 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to travel utility models.
-use num_traits::{Float, Zero};
+use anyhow::{Context, Result};
+use num_traits::Zero;
 
-use crate::units::{Time, Utility, ValueOfTime};
+use crate::units::*;
 
 /// Representation of how the travel utility of an agent is computed.
 ///
@@ -29,23 +30,28 @@ impl Default for TravelUtility {
 
 impl TravelUtility {
     pub(crate) fn from_values(
-        a: Option<f64>,
-        b: Option<f64>,
-        c: Option<f64>,
-        d: Option<f64>,
-        e: Option<f64>,
-    ) -> Self {
-        Self::Polynomial(PolynomialFunction {
-            a: Utility(a.unwrap_or_default()),
-            b: ValueOfTime(b.unwrap_or_default()),
-            c: ValueOfTime(c.unwrap_or_default()),
-            d: ValueOfTime(d.unwrap_or_default()),
-            e: ValueOfTime(e.unwrap_or_default()),
-        })
+        constant_utility: Option<f64>,
+        one: Option<f64>,
+        two: Option<f64>,
+        three: Option<f64>,
+        four: Option<f64>,
+    ) -> Result<Self> {
+        Ok(Self::Polynomial(PolynomialFunction {
+            a: Utility::try_from(constant_utility.unwrap_or_default())
+                .context("Value `constant_utility` does not satisfy the constraints")?,
+            b: ValueOfTime::try_from(one.unwrap_or_default())
+                .context("Value `one` does not satisfy the constraints")?,
+            c: ValueOfTime::try_from(two.unwrap_or_default())
+                .context("Value `two` does not satisfy the constraints")?,
+            d: ValueOfTime::try_from(three.unwrap_or_default())
+                .context("Value `three` does not satisfy the constraints")?,
+            e: ValueOfTime::try_from(four.unwrap_or_default())
+                .context("Value `four` does not satisfy the constraints")?,
+        }))
     }
 
     /// Returns the travel utility given the travel time.
-    pub fn get_travel_utility(&self, travel_time: Time) -> Utility {
+    pub fn get_travel_utility(&self, travel_time: NonNegativeSeconds) -> Utility {
         match self {
             Self::Polynomial(function) => function.get_value(travel_time),
         }
@@ -70,7 +76,7 @@ pub struct PolynomialFunction {
 }
 
 impl PolynomialFunction {
-    fn get_value(&self, x: Time) -> Utility {
+    fn get_value(&self, x: NonNegativeSeconds) -> Utility {
         let mut v = self.a;
         if !self.b.is_zero() {
             v += x * self.b;
@@ -96,44 +102,44 @@ mod tests {
 
     #[test]
     fn get_travel_utility_test() {
-        let tt = Time(5.);
+        let tt = NonNegativeSeconds::new_unchecked(5.);
 
         let model = TravelUtility::default();
         assert_eq!(model.get_travel_utility(tt), Utility::zero());
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            b: ValueOfTime(-10.),
+            b: ValueOfTime::new_unchecked(-10.),
             ..Default::default()
         });
-        assert_eq!(model.get_travel_utility(tt), Utility(-50.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(-50.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            b: ValueOfTime(-30.),
-            c: ValueOfTime(2.),
+            b: ValueOfTime::new_unchecked(-30.),
+            c: ValueOfTime::new_unchecked(2.),
             ..Default::default()
         });
         // -30 * 5 + 2 * 5^2 = -100.
-        assert_eq!(model.get_travel_utility(tt), Utility(-100.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(-100.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            a: Utility(4.),
-            b: ValueOfTime(3.),
-            c: ValueOfTime(2.),
-            d: ValueOfTime(1.),
+            a: Utility::new_unchecked(4.),
+            b: ValueOfTime::new_unchecked(3.),
+            c: ValueOfTime::new_unchecked(2.),
+            d: ValueOfTime::new_unchecked(1.),
             ..Default::default()
         });
         // 4 + 3 * 5 + 2 * 5^2 + 1 * 5^3 = 194.
-        assert_eq!(model.get_travel_utility(tt), Utility(194.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(194.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            a: Utility(5.),
-            b: ValueOfTime(4.),
-            c: ValueOfTime(3.),
-            d: ValueOfTime(2.),
-            e: ValueOfTime(1.),
+            a: Utility::new_unchecked(5.),
+            b: ValueOfTime::new_unchecked(4.),
+            c: ValueOfTime::new_unchecked(3.),
+            d: ValueOfTime::new_unchecked(2.),
+            e: ValueOfTime::new_unchecked(1.),
             ..Default::default()
         });
         // 5 + 4 * 5 + 3 * 5^2 + 2 * 5^3 + 1 * 5^4 = 975.
-        assert_eq!(model.get_travel_utility(tt), Utility(975.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(975.));
     }
 }

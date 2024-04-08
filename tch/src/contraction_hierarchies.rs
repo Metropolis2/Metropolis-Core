@@ -13,6 +13,7 @@ use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
 use petgraph::Direction;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -71,7 +72,8 @@ pub enum HierarchyEdgeClass<T> {
 
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub struct HierarchyEdge<T> {
     ttf: TTF<T>,
     direction: HierarchyDirection,
@@ -113,7 +115,8 @@ impl<T> HierarchyEdge<T> {
 
 /// Structure representing a graph with a hierarchy of nodes.
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,

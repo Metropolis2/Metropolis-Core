@@ -3,19 +3,15 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
-use anyhow::{anyhow, Context, Result};
-use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+
+use anyhow::{bail, Context, Result};
 use ttf::{PwlXYF, TTFNum};
 
 use super::ContinuousChoiceCallback;
 
-const EULER_MASCHERONI: f64 = 0.5772156649;
-
-/// Return Euler's constant in the desired type.
-fn euler_mascheroni<V: TTFNum>() -> Result<V> {
-    V::from(EULER_MASCHERONI)
-        .ok_or_else(|| anyhow!("Cannot convert {:?} to Float", EULER_MASCHERONI))
-}
+/// Euler-Mascheroni constant
+const EGAMMA: f64 = 0.577_215_664_901_532_9_f64;
 
 /// A discrete or continuous Logit model.
 ///
@@ -39,7 +35,7 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// let (choice_id, _exp_payoff) = model.get_choice(&[1., 0.]).unwrap();
 /// assert_eq!(choice_id, 1);
 ///
-/// let bpf = PwlXYF::from_values(vec![0., 0.], 0., 1.);
+/// let bpf: PwlXYF<f64, f64, f64> = PwlXYF::from_values(vec![0., 0.], 0., 1.);
 /// let (callback, exp_payoff) = model.get_continuous_choice(bpf).unwrap();
 /// // The expected payoff is equal to the Euler's constant.
 /// assert!((exp_payoff - 0.5772156649).abs() < 1e-8);
@@ -47,20 +43,20 @@ fn euler_mascheroni<V: TTFNum>() -> Result<V> {
 /// // piecewise-linear function is constant between 0.0 and 1.0.
 /// assert_eq!(callback(), 0.8);
 /// ```
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct LogitModel<T> {
+#[derive(Clone, Debug)]
+pub struct LogitModel {
     /// Uniform random number between 0.0 and 1.0 for inversion sampling.
-    u: T,
+    u: f64,
     /// Variance of the error terms, must be positive.
-    mu: T,
+    mu: f64,
 }
 
-impl<T: TTFNum> LogitModel<T> {
+impl LogitModel {
     /// Initializes a Logit model.
     ///
     /// The value of `u` must be such that `0.0 <= u < 1.0`.
     /// The value of `mu` must be such that `mu > 0`.
-    pub fn new(u: T, mu: T) -> Self {
+    pub fn new(u: f64, mu: f64) -> Self {
         LogitModel { u, mu }
     }
 
@@ -72,44 +68,53 @@ impl<T: TTFNum> LogitModel<T> {
     /// Returns an Error if
     ///
     /// - The vector of values is empty.
-    ///
     /// - Invalid values where found (e.g., NAN or infinity).
-    ///
-    /// - Euler's constant is not a valid value for the Float type.
     ///
     /// When all assumptions are satisfied, the function always return a valid choice.
     /// The expected payoff is never NAN but it can be positive infinity when mu is large.
-    pub fn get_choice<V: TTFNum + Into<T> + From<T>>(&self, values: &[V]) -> Result<(usize, V)> {
+    pub fn get_choice<V>(&self, values: &[V]) -> Result<(usize, V)>
+    where
+        V: Copy + PartialOrd + TryFrom<f64> + Into<f64> + std::fmt::Debug,
+        <V as TryFrom<f64>>::Error: Into<anyhow::Error>,
+    {
         if values.is_empty() {
-            return Err(anyhow!(
-                "Cannot compute choice from an empty slice of values"
-            ));
+            bail!("Cannot compute choice from an empty slice of values");
         }
-        if values.iter().any(|&v| !v.is_finite()) {
-            return Err(anyhow!("Found a non-finite payoff: {:?}", values));
+        // Find the maximum value.
+        let max_value: f64 =
+            V::into(
+                values
+                    .iter()
+                    .try_fold(values[0], |m, v| match m.partial_cmp(v) {
+                        Some(Ordering::Less) => Ok(*v),
+                        None => {
+                            bail!("Cannot compare {:?} and {:?}", v, m);
+                        }
+                        _ => Ok(m),
+                    })?,
+            );
+        if !max_value.is_finite() {
+            bail!("Found a non-finite payoff: {:?}", max_value);
         }
-        // The maximum value is guaranteed to be finite because (i) all values are finite and (ii)
-        // there is at least one value.
-        let max_value = values.iter().fold(V::neg_infinity(), |m, &v| m.max(v));
         // Decrease the value of all alternatives by the maximum value to prevent overflow.
         // (v - max_value) is thus non-positive and mu is positive so the `exp` cannot overflow.
         // In the worse case, (v - max_value) / mu overflows to -Infinity and then the exponential
         // yields 0.0, which is fine.
-        // All exp_values are between 0.0 and 1.0.
-        let exp_values: Vec<T> = values
+        // All exp_values are thus between 0.0 and 1.0.
+        let exp_values: Vec<f64> = values
             .iter()
-            .map(|&v| ((v - max_value).into() / self.mu).exp())
+            .map(|&v| ((v.into() - max_value) / self.mu).exp())
             .collect();
         // Compute the denominator of the logit formula.
         // Sigma is guaranteed to be between 1.0 and values.len() because all exp_values are
         // between 0.0 and 1.0 and, for i such that v_i = max_value, exp_value_i is equal to 1.0.
-        let sigma = exp_values.iter().fold(T::zero(), |sum, &v| sum + v);
+        let sigma: f64 = exp_values.iter().sum();
         // Compute the cumulative logit probabilities and find the index of the alternative chosen
         // using the inverse sampling theorem.
         // The `unwrap` does not panic because `u` < 1.0 and for the last value, `cum_prob ` = 1.0.
         let (choice_id, _) = exp_values
             .iter()
-            .scan(T::zero(), |sum, &exp_v| {
+            .scan(0.0, |sum, &exp_v| {
                 *sum += exp_v / sigma;
                 Some(*sum)
             })
@@ -119,7 +124,7 @@ impl<T: TTFNum> LogitModel<T> {
         // Compute the expected payoff of the choice using the log-sum formula.
         // Do not forget to add back the maximum value that was substracted.
         let expected_value =
-            max_value + <V as From<T>>::from(self.mu * (sigma.ln() + euler_mascheroni()?));
+            V::try_from(max_value + self.mu * (sigma.ln() + EGAMMA)).map_err(|e| e.into())?;
         Ok((choice_id, expected_value))
     }
 
@@ -140,7 +145,7 @@ impl<T: TTFNum> LogitModel<T> {
     /// - `x1 - x0` is small
     ///
     /// - `mu` is small
-    fn get_cum_func_value(&self, (x0, y0): (T, T), (x1, y1): (T, T)) -> T {
+    fn get_cum_func_value(&self, (x0, y0): (f64, f64), (x1, y1): (f64, f64)) -> f64 {
         if y0 == y1 {
             // Area of a square.
             return (y0 / self.mu).exp() * (x1 - x0);
@@ -148,7 +153,7 @@ impl<T: TTFNum> LogitModel<T> {
         let y0_exp = (y0 / self.mu).exp();
         let y1_exp = (y1 / self.mu).exp();
         let y_exp_diff = y1_exp - y0_exp;
-        if y_exp_diff.is_zero() {
+        if y_exp_diff == 0.0 {
             // Practically a square.
             return y0_exp * (x1 - x0);
         }
@@ -157,9 +162,9 @@ impl<T: TTFNum> LogitModel<T> {
     }
 
     /// Returns the chosen x value, given the chosen segment and the distance to the threshold value.
-    fn get_chosen_x(&self, (x0, y0): (T, T), (x1, y1): (T, T), prob_diff: T) -> T {
+    fn get_chosen_x(&self, (x0, y0): (f64, f64), (x1, y1): (f64, f64), prob_diff: f64) -> f64 {
         let theta = (y1 - y0) / (x1 - x0);
-        let x = if theta.is_zero() {
+        let x = if theta == 0.0 {
             // y0 and y1 are practically equal so we use linear approximation.
             x0 + prob_diff / (y0 / self.mu).exp()
         } else {
@@ -182,35 +187,38 @@ impl<T: TTFNum> LogitModel<T> {
     /// - The breakpoint upper bound is infinite.
     ///
     /// - Euler's constant is not a valid value for the Float type.
-    pub fn get_continuous_choice<'a, X, Y>(
+    pub fn get_continuous_choice<'a, X, Y, T>(
         &'a self,
         func: PwlXYF<X, Y, T>,
     ) -> Result<(ContinuousChoiceCallback<'a, X>, Y)>
     where
-        X: TTFNum + Into<T> + From<T> + 'a,
-        Y: TTFNum + Into<T> + From<T> + 'a,
+        X: TTFNum + Into<T> + From<T> + Into<f64> + TryFrom<f64> + 'a,
+        Y: TTFNum + Into<T> + From<T> + Into<f64> + TryFrom<f64> + 'a,
+        T: TTFNum + 'a,
+        <X as TryFrom<f64>>::Error: Into<anyhow::Error>,
+        <Y as TryFrom<f64>>::Error: Into<anyhow::Error>,
     {
         // To prevent overflow, we force the values to be non-positive when computing the
         // probabilities (the expected payoff is not affected).
-        let max_value = func.max();
+        let max_value: f64 = func.max().into();
         if !max_value.is_finite() {
-            return Err(anyhow!("Found a non-finite payoff for function {:?}", func));
+            bail!("Found a non-finite payoff for function {:?}", func);
         }
         // Let M + 1 be the number of breakpoints.
         // Compute each part G_i of the cumulative distribution function, for 1 <= i <= M.
         // G_i is defined as the integral, from x_i to x_i+1, of exp(y(tau) / mu) d tau.
-        let cum_probs_parts: Vec<T> = func
+        let cum_probs_parts: Vec<f64> = func
             .double_iter()
             .map(|((x0, y0), (x1, y1))| {
                 self.get_cum_func_value(
-                    (x0.into(), (y0 - max_value).into()),
-                    (x1.into(), (y1 - max_value).into()),
+                    (x0.into(), Into::<f64>::into(y0) - max_value),
+                    (x1.into(), Into::<f64>::into(y1) - max_value),
                 )
             })
             .collect();
         // Compute the integral from x_1 to x_M+1 (i.e., the sum of the values G_i).
-        let sigma = cum_probs_parts.iter().fold(T::zero(), |sum, &v| sum + v);
-        if sigma == T::zero() {
+        let sigma: f64 = cum_probs_parts.iter().sum();
+        if sigma == 0.0 {
             // An overflow was probably encountered when computing the integrals because the slopes
             // are very large.
             // We try to use a discrete choice instead (this make sense if the slopes are indeed
@@ -223,8 +231,10 @@ impl<T: TTFNum> LogitModel<T> {
         }
         // Compute the expected payoff using the log-sum formula.
         // Do not forget to add back the maximum value that was substracted.
-        let expected_payoff =
-            max_value + <Y as From<T>>::from(self.mu * (sigma.ln() + euler_mascheroni()?));
+        let expected_payoff_float = max_value + self.mu * (sigma.ln() + EGAMMA);
+        let expected_payoff = Y::try_from(expected_payoff_float)
+            .map_err(Into::into)
+            .with_context(|| "Cannot convert `{expected_payoff_float}` to type Y")?;
         let callback_function = move || {
             // We want to find k such that F(x_k) <= u < F(x_k+1), where F(x_i) = sum_{j<=i} G_j / Sigma.
             // To do so, we compute the cumulative sum of G_i and we stop when the cumulative sum is
@@ -233,22 +243,24 @@ impl<T: TTFNum> LogitModel<T> {
             let threshold = self.u * sigma;
             let (k, cum_prob) = cum_probs_parts
                 .iter()
-                .scan(T::zero(), |sum, &g| {
+                .scan(0.0, |sum, &g| {
                     *sum += g;
                     Some(*sum)
                 })
                 .enumerate()
                 .find(|(_, cum_prob)| *cum_prob > threshold)
-                .unwrap_or_else(|| (cum_probs_parts.len() - 1, T::one()));
+                .unwrap_or_else(|| (cum_probs_parts.len() - 1, 1.0));
             let x0 = func.x_at_index(k);
             let x1 = func.x_at_index(k + 1);
             let y0 = func.y_at_index(k);
             let y1 = func.y_at_index(k + 1);
-            <X as From<T>>::from(self.get_chosen_x(
-                (x0.into(), (y0 - max_value).into()),
-                (x1.into(), (y1 - max_value).into()),
+            X::try_from(self.get_chosen_x(
+                (x0.into(), Into::<f64>::into(y0) - max_value),
+                (x1.into(), Into::<f64>::into(y1) - max_value),
                 cum_probs_parts[k] - (cum_prob - threshold),
             ))
+            .map_err(Into::into)
+            .unwrap()
         };
         Ok((Box::new(callback_function), expected_payoff))
     }
@@ -265,30 +277,27 @@ mod tests {
         let model = LogitModel::new(0.9f64, 2.0f64);
         // No choice: error.
         assert!(model.get_choice::<f64>(&[]).is_err());
-        // Invalid values: error.
+        // Invalid maximum values: error.
         assert!(model.get_choice(&[1., 0., f64::NAN]).is_err());
-        assert!(model.get_choice(&[1., 0., f64::NEG_INFINITY]).is_err());
+        // assert!(model.get_choice(&[1., 0., f64::NEG_INFINITY]).is_err());
         assert!(model.get_choice(&[1., 0., f64::INFINITY]).is_err());
         // Only 1 choice: this choice is returned with its payoff (+ mu * Euler's constant).
-        assert_eq!(
-            model.get_choice(&[1.]).unwrap(),
-            (0, 1. + 2. * EULER_MASCHERONI)
-        );
+        assert_eq!(model.get_choice(&[1.]).unwrap(), (0, 1. + 2. * EGAMMA));
         // 2 choices with same payoff, the second one is returned because u > 0.5.
         // Expected payoff is mu * ln(1 + 1) + mu * Euler's constant.
         assert_eq!(
             model.get_choice(&[0., 0.]).unwrap(),
-            (1, 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI)
+            (1, 2. * 2.0f64.ln() + 2. * EGAMMA)
         );
         // Vector of very large utilities.
         assert_eq!(
             model.get_choice(&[f64::MAX, f64::MAX]).unwrap(),
-            (1, f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI)
+            (1, f64::MAX + 2. * 2.0f64.ln() + 2. * EGAMMA)
         );
         // Vector of very small utilities.
         assert_eq!(
             model.get_choice(&[f64::MIN, f64::MIN]).unwrap(),
-            (1, f64::MIN + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI)
+            (1, f64::MIN + 2. * 2.0f64.ln() + 2. * EGAMMA)
         );
         // Very small mu.
         let model = LogitModel::new(1e-4, f64::MIN_POSITIVE);
@@ -366,30 +375,21 @@ mod tests {
         let bpf = PwlTTF::from_values(vec![0., 0.], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 4.);
-        assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EULER_MASCHERONI);
+        assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EGAMMA);
         // Very large slope 1.
         let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
-        assert_eq!(
-            choice.1,
-            f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_MASCHERONI
-        );
+        assert_eq!(choice.1, f64::MAX + 2. * 2.0f64.ln() + 2. * EGAMMA);
         // Very large slope 2.
         let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX, f64::MIN], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
-        assert_eq!(
-            choice.1,
-            f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
-        );
+        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EGAMMA);
         // Very large slope 3.
         let bpf = PwlTTF::from_values(vec![f64::MAX, f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 0.);
-        assert_eq!(
-            choice.1,
-            f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_MASCHERONI
-        );
+        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EGAMMA);
     }
 }

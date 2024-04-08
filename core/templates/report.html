@@ -103,11 +103,11 @@
 					{% for it in iterations %}
 					<tr>
 						<td scope="row" class="text-center">{{ it.iteration_counter }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean().0) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(f64::from(it.surplus.mean())) }}</td>
 						{% match it.mode_results.constant %}
 							{% when Some with (constant) %}
 								<td class="text-center">{{ constant.count }}</td>
-								<td class="text-center">{{ "{:.4}"|format(constant.utility.mean().0) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(constant.utility.mean())) }}</td>
 							{% when None %}
 								<td class="text-center">0</td>
 								<td class="text-center">N/A</td>
@@ -119,8 +119,8 @@
 								<td class="text-center">{{ "{}"|format(trip_results.departure_time.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(trip_results.arrival_time.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(trip_results.travel_time.mean()) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(trip_results.utility.mean().0) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(trip_results.expected_utility.mean().0) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.utility.mean())) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.expected_utility.mean())) }}</td>
 								{% match trip_results.dep_time_shift %}
 									{% when Some with (distr) %}
 									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
@@ -139,7 +139,7 @@
 									<td class="text-center">{{ rlr.count }}</td>
 									<td class="text-center">{{ rlr.mode_count_one }}</td>
 									<td class="text-center">{{ rlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.count_distribution.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.departure_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.arrival_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.road_time.mean()) }}</td>
@@ -148,18 +148,18 @@
 									<td class="text-center">{{ "{}"|format(rlr.travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.route_free_flow_travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.route_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.global_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.0}"|format(rlr.length.mean().0) }}</td>
-									<td class="text-center">{{ "{:.2}"|format(rlr.edge_count.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.utility.mean().0) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_rel_diff.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.route_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.global_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.0}"|format(f64::from(rlr.length.mean())) }}</td>
+									<td class="text-center">{{ "{:.2}"|format(f64::from(rlr.edge_count.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.utility.mean())) }}</td>
+									<td class="text-center">{{ "{:}"|format(rlr.exp_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.exp_travel_time_rel_diff.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_abs_diff.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_diff_rmse) }}</td>
 									{% match rlr.length_diff %}
 										{% when Some with (distr) %}
-										<td class="text-center">{{ "{:.2}"|format(distr.mean().0) }}</td>
+										<td class="text-center">{{ "{:.2}"|format(f64::from(distr.mean())) }}</td>
 										{% when None %}
 										<td class="text-center">N/A</td>
 									{% endmatch %}
@@ -174,13 +174,13 @@
 									<td class="text-center">{{ vlr.count }}</td>
 									<td class="text-center">{{ vlr.mode_count_one }}</td>
 									<td class="text-center">{{ vlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.count_distribution.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.departure_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.arrival_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.global_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.utility.mean().0) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.global_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.utility.mean())) }}</td>
 									{% when None %}
 									{% for _ in 0..10 %}
 									<td class="text-center">N/A</td>
@@ -194,13 +194,13 @@
 						{% endmatch %}
 						{% match it.sim_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{}"|format(value) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}
 						{% match it.exp_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{}"|format(value) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}

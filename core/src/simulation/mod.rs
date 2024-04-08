@@ -315,7 +315,7 @@ pub fn run_day_to_day_model(
 
 /// Returns [AggregateResults] given the [IterationResults] of the current iteration and the
 /// [AgentResults] of the previous iteration (if any).
-pub fn compute_aggregate_results(
+pub(crate) fn compute_aggregate_results(
     iteration_counter: u32,
     results: &IterationResults,
     prev_sim_weights: Option<&NetworkWeights>,
@@ -504,11 +504,11 @@ pub struct IterationOutput {
     /// Detailed results of the iteration.
     pub iteration_results: IterationResults,
     /// Aggregate results of the iteration.
-    pub aggregate_results: AggregateResults,
+    pub(crate) aggregate_results: AggregateResults,
     /// If `true`, the simulation should be stop (one stopping criterion was activated).
-    pub stop_simulation: bool,
+    pub(crate) stop_simulation: bool,
     /// The running times of the iteration.
-    pub running_times: IterationRunningTimes,
+    pub(crate) running_times: IterationRunningTimes,
 }
 
 fn record_time<Res>(func: impl FnOnce() -> Result<Res>) -> Result<(Res, Duration)> {

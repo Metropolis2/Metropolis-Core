@@ -14,7 +14,7 @@ use ttf::TTF;
 use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
 use super::OriginalNodeId;
 use crate::mode::Mode;
-use crate::units::Time;
+use crate::units::NonNegativeSeconds;
 
 /// Unique vehicle index.
 #[derive(
@@ -253,7 +253,7 @@ fn init_od_pairs(unique_vehicles: &UniqueVehicles) -> Result<Vec<ODPairs>> {
 }
 
 /// Map for some origin nodes, an OD-level travel-time, for some destination nodes.
-type ODTravelTimes = HashMap<(OriginalNodeId, OriginalNodeId), Time>;
+type ODTravelTimes = HashMap<(OriginalNodeId, OriginalNodeId), NonNegativeSeconds>;
 
 fn compute_free_flow_travel_times(
     unique_vehicles: &UniqueVehicles,
@@ -292,7 +292,10 @@ fn compute_free_flow_travel_times(
                             ));
                         }
                     };
-                    vehicle_ff_tts.insert((origin, destination), tt);
+                    vehicle_ff_tts.insert(
+                        (origin, destination),
+                        tt.try_into().expect("Free-flow travel time is negative"),
+                    );
                 }
             }
         }
@@ -305,7 +308,7 @@ mod tests {
 
     use super::*;
     use crate::network::road_network::vehicle::SpeedFunction;
-    use crate::units::{Length, Speed, PCE};
+    use crate::units::{MetersPerSecond, NonNegativeMeters, PCE};
 
     #[test]
     fn preprocess_vehicles_test() {
@@ -313,30 +316,39 @@ mod tests {
         // - Vehicles 0 and 1 are identical except for Length and PCE.
         // - Vehicles 0 and 2 are identical except for allowed / restricted edges.
         let speed_function = SpeedFunction::Piecewise(vec![
-            [Speed(0.), Speed(0.)],
-            [Speed(50.), Speed(50.)],
-            [Speed(120.0), Speed(90.)],
+            [
+                MetersPerSecond::new_unchecked(1.),
+                MetersPerSecond::new_unchecked(1.),
+            ],
+            [
+                MetersPerSecond::new_unchecked(50.),
+                MetersPerSecond::new_unchecked(50.),
+            ],
+            [
+                MetersPerSecond::new_unchecked(120.0),
+                MetersPerSecond::new_unchecked(90.),
+            ],
         ]);
         let v0 = Vehicle::new(
             1,
-            Length(10.0),
-            PCE(1.0),
+            NonNegativeMeters::new_unchecked(10.0),
+            PCE::new_unchecked(1.0),
             speed_function.clone(),
             HashSet::new(),
             [2].into_iter().collect(),
         );
         let v1 = Vehicle::new(
             2,
-            Length(30.0),
-            PCE(3.0),
+            NonNegativeMeters::new_unchecked(30.0),
+            PCE::new_unchecked(3.0),
             speed_function.clone(),
             HashSet::new(),
             [2].into_iter().collect(),
         );
         let v2 = Vehicle::new(
             3,
-            Length(10.0),
-            PCE(1.0),
+            NonNegativeMeters::new_unchecked(10.0),
+            PCE::new_unchecked(1.0),
             speed_function,
             [0, 1].into_iter().collect(),
             HashSet::new(),

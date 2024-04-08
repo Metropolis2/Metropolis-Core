@@ -17,7 +17,7 @@ use crate::network::{NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
-use crate::units::NoUnit;
+use crate::units::Utility;
 
 static AGENTS: OnceLock<Vec<Agent>> = OnceLock::new();
 
@@ -70,12 +70,12 @@ pub struct Agent {
     /// Choice model used for mode choice.
     ///
     /// When not specified, the first mode is always chosen.
-    pub(crate) mode_choice: Option<ChoiceModel<NoUnit>>,
+    pub(crate) mode_choice: Option<ChoiceModel<Utility>>,
 }
 
 impl Agent {
     /// Creates a new agent with the specified modes, mode-choice model and schedule utility.
-    pub fn new(id: usize, modes: Vec<Mode>, mode_choice: Option<ChoiceModel<NoUnit>>) -> Self {
+    pub fn new(id: usize, modes: Vec<Mode>, mode_choice: Option<ChoiceModel<Utility>>) -> Self {
         Agent {
             id,
             modes,
@@ -244,9 +244,8 @@ mod tests {
     use crate::units::Utility;
 
     fn get_agent() -> Agent {
-        let modes = vec![Mode::Constant((0, Utility(10.)))];
-        let choice_model =
-            ChoiceModel::Deterministic(DeterministicChoiceModel::new(NoUnit(0.0f64)));
+        let modes = vec![Mode::Constant((0, Utility::new_unchecked(10.)))];
+        let choice_model = ChoiceModel::Deterministic(DeterministicChoiceModel::new(0.0));
         Agent::new(1, modes, Some(choice_model))
     }
 
@@ -279,8 +278,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result.mode_index, mode_index(0));
-        assert_eq!(result.expected_utility, Utility(10.));
-        assert_eq!(result.mode_results, ModeResults::Constant(Utility(10.)));
+        assert_eq!(result.expected_utility, Utility::new_unchecked(10.));
+        assert_eq!(
+            result.mode_results,
+            ModeResults::Constant(Utility::new_unchecked(10.))
+        );
 
         assert_eq!(
             agent
@@ -297,7 +299,9 @@ mod tests {
             result
         );
 
-        agent.modes.push(Mode::Constant((1, Utility(15.))));
+        agent
+            .modes
+            .push(Mode::Constant((1, Utility::new_unchecked(15.))));
         let result = agent
             .make_pre_day_choice(
                 &Default::default(),
@@ -310,7 +314,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result.mode_index, mode_index(1));
-        assert_eq!(result.expected_utility, Utility(15.));
-        assert_eq!(result.mode_results, ModeResults::Constant(Utility(15.)));
+        assert_eq!(result.expected_utility, Utility::new_unchecked(15.));
+        assert_eq!(
+            result.mode_results,
+            ModeResults::Constant(Utility::new_unchecked(15.))
+        );
     }
 }
