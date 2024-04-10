@@ -891,12 +891,12 @@ fn compute_dep_time_rmse(results: &TripAgentResults<'_>) -> Option<NonNegativeSe
 /// Returns the root mean squared error of the difference between the agent's travel time and their
 /// expected travel time.
 fn compute_exp_travel_time_diff_rmse(results: &TripAgentResults<'_>) -> NonNegativeSeconds {
-    let sum_squared_dist = results
+    let (sum_squared_dist, n) = results
         .iter()
         .flat_map(|(_, res)| {
-            res.legs.iter().flat_map(|lr| match &lr.class {
+            res.legs.iter().filter_map(|lr| match &lr.class {
                 LegTypeResults::Road(rlr) => {
-                    let exp_travel_time = rlr.exp_arrival_time;
+                    let exp_travel_time = rlr.exp_arrival_time.sub_unchecked(lr.departure_time);
                     Some(
                         (exp_travel_time - lr.travel_time())
                             .powi(2)
@@ -906,7 +906,11 @@ fn compute_exp_travel_time_diff_rmse(results: &TripAgentResults<'_>) -> NonNegat
                 _ => None,
             })
         })
-        .sum::<NonNegativeSeconds>();
-    let mean_squared_dist = sum_squared_dist / results.len();
+        .fold((NonNegativeSeconds::ZERO, 0), |(sum, n), squared_dist| {
+            (sum + squared_dist, n + 1)
+        });
+    // This function should only be called when there is at least one road trip.
+    assert!(n > 0);
+    let mean_squared_dist = sum_squared_dist / n;
     mean_squared_dist.sqrt()
 }
