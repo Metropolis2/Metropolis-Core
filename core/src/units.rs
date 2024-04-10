@@ -27,6 +27,8 @@ use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
+const MARGIN: f64 = 1e-8;
+
 pub(crate) trait MetroPositiveNum:
     Sized
     + Copy
@@ -244,8 +246,8 @@ macro_rules! impl_traits_on_non_negative_unit(
                     self > Self::ZERO
                 }
                 fn sub_unchecked(self, other: Self) -> Self {
-                    debug_assert!(self.0 >= other.0);
-                    Self(self.0 - other.0)
+                    debug_assert!(self.0 + MARGIN >= other.0);
+                    Self((self.0 - other.0).max(0.0))
                 }
                 fn max_value() -> Self {
                     Self::upper_bound()
@@ -655,8 +657,12 @@ impl AnySeconds {
     }
 
     pub(crate) fn assume_non_negative_unchecked(self) -> NonNegativeSeconds {
-        debug_assert!(self.0 >= 0.0);
-        NonNegativeSeconds(self.0)
+        debug_assert!(
+            self.0 + MARGIN >= 0.0,
+            "Expected non-negative number, got: {}",
+            self.0
+        );
+        NonNegativeSeconds(self.0.max(0.0))
     }
 
     pub(crate) fn assume_positive_unchecked(self) -> PositiveSeconds {
@@ -860,8 +866,12 @@ impl AnyMeters {
     }
 
     pub(crate) fn assume_non_negative_unchecked(self) -> NonNegativeMeters {
-        debug_assert!(self.0 >= 0.0);
-        NonNegativeMeters(self.0)
+        debug_assert!(
+            self.0 + MARGIN >= 0.0,
+            "Expected non-negative number, got: {}",
+            self.0
+        );
+        NonNegativeMeters(self.0.max(0.0))
     }
 }
 
