@@ -176,9 +176,9 @@ pub fn run_iteration(
         record_time(|| Ok(stop(iteration_counter, iteration_results.agent_results())))?;
     let running_times = IterationRunningTimes {
         skims_computation: t1,
-        pre_day_model: t2,
-        within_day_model: t3,
-        day_to_day_model: t4,
+        demand_model: t2,
+        supply_model: t3,
+        learning_model: t4,
         aggregate_results_computation: t5,
         stopping_rules_check: t6,
         total: now.elapsed(),

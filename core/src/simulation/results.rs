@@ -71,9 +71,9 @@ pub struct IterationResults {
     pub agent_results: AgentResults,
     /// Expected weights of the network, before the day-to-day model.
     pub exp_weights: NetworkWeights,
-    /// Simulated weights of the network, during the within-day model.
+    /// Simulated weights of the network, during the supply model.
     pub sim_weights: NetworkWeights,
-    /// Expected weights of the network, after the day-to-day model.
+    /// Expected weights of the network, after the learning model.
     pub new_exp_weights: NetworkWeights,
     /// Skims of the network.
     pub skims: NetworkSkim,
@@ -124,12 +124,12 @@ pub struct IterationRunningTimes {
     pub total: Duration,
     /// Running time of skims computation.
     pub skims_computation: Duration,
-    /// Running time of pre-day model.
-    pub pre_day_model: Duration,
-    /// Running time of within-day model.
-    pub within_day_model: Duration,
-    /// Running time of day-to-day model.
-    pub day_to_day_model: Duration,
+    /// Running time of demand model.
+    pub demand_model: Duration,
+    /// Running time of supply model.
+    pub supply_model: Duration,
+    /// Running time of learning model.
+    pub learning_model: Duration,
     /// Running time of aggregate results computation.
     pub aggregate_results_computation: Duration,
     /// Running time to check the stopping rules.
@@ -143,12 +143,12 @@ pub struct RunningTimes {
     pub total: Duration,
     /// Total running time of skims computation.
     pub total_skims_computation: Duration,
-    /// Total running time of pre-day model.
-    pub total_pre_day_model: Duration,
-    /// Total running time of within-day model.
-    pub total_within_day_model: Duration,
-    /// Total running time of day-to-day model.
-    pub total_day_to_day_model: Duration,
+    /// Total running time of demand model.
+    pub total_demand_model: Duration,
+    /// Total running time of supply model.
+    pub total_supply_model: Duration,
+    /// Total running time of learning model.
+    pub total_learning_model: Duration,
     /// Total running time of aggregate results computation.
     pub total_aggregate_results_computation: Duration,
     /// Total running time to check the stopping rules.
@@ -157,12 +157,12 @@ pub struct RunningTimes {
     pub per_iteration: Duration,
     /// Running time of skims computation per iteration.
     pub per_iteration_skims_computation: Duration,
-    /// Running time of pre-day model.
-    pub per_iteration_pre_day_model: Duration,
-    /// Running time of within-day model.
-    pub per_iteration_within_day_model: Duration,
-    /// Running time of day-to-day model.
-    pub per_iteration_day_to_day_model: Duration,
+    /// Running time of demand model.
+    pub per_iteration_demand_model: Duration,
+    /// Running time of supply model.
+    pub per_iteration_supply_model: Duration,
+    /// Running time of learning model.
+    pub per_iteration_learning_model: Duration,
     /// Running time of skims computation per iteration.
     pub per_iteration_aggregate_results_computation: Duration,
     /// Running time to check the stopping rules per iteration.
@@ -174,9 +174,9 @@ impl RunningTimes {
     pub fn update(&mut self, iteration_running_times: &IterationRunningTimes) {
         self.total += iteration_running_times.total;
         self.total_skims_computation += iteration_running_times.skims_computation;
-        self.total_pre_day_model += iteration_running_times.pre_day_model;
-        self.total_within_day_model += iteration_running_times.within_day_model;
-        self.total_day_to_day_model += iteration_running_times.day_to_day_model;
+        self.total_demand_model += iteration_running_times.demand_model;
+        self.total_supply_model += iteration_running_times.supply_model;
+        self.total_learning_model += iteration_running_times.learning_model;
         self.total_aggregate_results_computation +=
             iteration_running_times.aggregate_results_computation;
         self.total_stopping_rules_check += iteration_running_times.stopping_rules_check;
@@ -186,9 +186,9 @@ impl RunningTimes {
     pub fn finish(&mut self, iteration_counter: u32) {
         self.per_iteration = self.total / iteration_counter;
         self.per_iteration_skims_computation = self.total_skims_computation / iteration_counter;
-        self.per_iteration_pre_day_model = self.total_pre_day_model / iteration_counter;
-        self.per_iteration_within_day_model = self.total_within_day_model / iteration_counter;
-        self.per_iteration_day_to_day_model = self.total_day_to_day_model / iteration_counter;
+        self.per_iteration_demand_model = self.total_demand_model / iteration_counter;
+        self.per_iteration_supply_model = self.total_supply_model / iteration_counter;
+        self.per_iteration_learning_model = self.total_learning_model / iteration_counter;
         self.per_iteration_aggregate_results_computation =
             self.total_aggregate_results_computation / iteration_counter;
         self.per_iteration_stopping_rules_check =
@@ -252,7 +252,7 @@ impl AgentResult {
     }
 
     /// Returns `true` if the agent has finished all its trips and activities, i.e., there is
-    /// nothing more to simulate for him / her in the within-day model.
+    /// nothing more to simulate for him / her in the supply model.
     pub fn is_finished(&self) -> bool {
         self.mode_results.is_finished()
     }
