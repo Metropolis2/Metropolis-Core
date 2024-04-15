@@ -177,6 +177,12 @@ macro_rules! impl_traits_on_positive_unit(
                 }
             }
 
+            impl From<&$t> for f64 {
+                fn from(value: &$t) -> f64 {
+                    value.0
+                }
+            }
+
             impl TryFrom<$t> for usize {
                 type Error = anyhow::Error;
                 fn try_from(value: $t) -> Result<Self> {
@@ -1136,7 +1142,7 @@ impl_ops!(NonNegativeMeters - NonNegativeMeters = AnyMeters);
 impl_ops!(PositiveNum ^ PositiveNum = PositiveNum);
 
 /// A time interval.
-#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Interval([NonNegativeSeconds; 2]);
 
 impl TryFrom<[f64; 2]> for Interval {
@@ -1156,6 +1162,11 @@ impl TryFrom<[f64; 2]> for Interval {
 }
 
 impl Interval {
+    pub(crate) fn new(start: NonNegativeSeconds, end: NonNegativeSeconds) -> Self {
+        debug_assert!(end > start);
+        Self([start, end])
+    }
+
     pub(crate) fn new_unchecked(start_value: f64, end_value: f64) -> Self {
         debug_assert!(end_value > start_value);
         let start = NonNegativeSeconds::new_unchecked(start_value);
@@ -1191,7 +1202,7 @@ impl Interval {
 }
 
 /// Struct to describe statistics on a distribution.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Distribution<T> {
     mean: T,
     std: T,
@@ -1207,8 +1218,8 @@ where
     ///
     /// Returns `None` if the iterator is empty.
     pub(crate) fn from_iterator(iter: impl Iterator<Item = T>) -> Option<Distribution<T>> {
-        let mut sum = T::zero();
-        let mut sum_squared = T::zero();
+        let mut sum = T::ZERO;
+        let mut sum_squared = T::ZERO;
         let mut min = T::max_value();
         let mut max = T::min_value();
         let mut count = 0;
@@ -1231,11 +1242,11 @@ where
         }
         let mean = sum / count;
         let var = (sum_squared / count).sub_unchecked(mean.powi(2));
-        let std = if var > T::zero() {
+        let std = if var > T::ZERO {
             var.sqrt()
         } else {
             // All values are equal but, because of roundings, var might be negative.
-            T::zero()
+            T::ZERO
         };
         Some(Distribution {
             mean,
