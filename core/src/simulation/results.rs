@@ -43,7 +43,7 @@ impl SimulationResults {
 }
 
 /// Aggregate results summarizing the results of an iteration.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateResults {
     /// Current value of the iteration counter.
     pub(crate) iteration_counter: u32,

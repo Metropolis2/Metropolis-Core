@@ -8,7 +8,6 @@ use std::fmt;
 
 use anyhow::{Context, Result};
 use enum_as_inner::EnumAsInner;
-use serde_derive::{Deserialize, Serialize};
 
 use self::trip::results::{AggregateTripResults, PreDayTripResults, TripResults};
 use self::trip::{Leg, TravelingMode};
@@ -26,9 +25,7 @@ pub mod trip;
 /// Mode identifier.
 ///
 /// The `n` modes of an [Agent](crate::agent::Agent) are indexed from `0` to `n-1`.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct ModeIndex(usize);
 
 impl ModeIndex {
@@ -282,7 +279,7 @@ impl PreDayModeResults {
 }
 
 /// Aggregate results of an iteration that are mode-specific.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateModeResults {
     /// Results specific to traveling modes.
     pub(crate) trip_modes: Option<AggregateTripResults>,
@@ -291,7 +288,7 @@ pub(crate) struct AggregateModeResults {
 }
 
 /// Aggregate results of an iteration specific to constant modes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateConstantResults {
     /// Number of agents who chose a constant mode.
     pub(crate) count: usize,

@@ -7,7 +7,6 @@
 use enum_as_inner::EnumAsInner;
 use num_traits::{ConstZero, Zero};
 use petgraph::prelude::EdgeIndex;
-use serde_derive::Serialize;
 use ttf::TTF;
 
 use super::event::{RoadEvent, VehicleEvent};
@@ -490,7 +489,7 @@ impl PreDayTripResults {
 }
 
 /// Struct to store aggregate results specific to traveling modes of transportation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateTripResults {
     /// Number of trips taken with a traveling mode of transportation.
     pub(crate) count: usize,
@@ -519,7 +518,7 @@ pub(crate) struct AggregateTripResults {
 }
 
 /// Struct to store aggregate results specific to the road legs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateRoadLegResults {
     /// Number of road legs taken.
     pub(crate) count: usize,
@@ -712,7 +711,7 @@ impl AggregateRoadLegResults {
 }
 
 /// Struct to store aggregate results specific to the virtual legs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct AggregateVirtualLegResults {
     /// Number of virtual legs taken.
     pub(crate) count: usize,

@@ -5,7 +5,7 @@
 
 //! Parameters related to the road network.
 use num_traits::ConstZero;
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 use tch::ContractionParameters;
 
 use crate::units::{MetersPerSecond, NonNegativeSeconds, PositiveSeconds};
@@ -102,7 +102,7 @@ impl Default for RoadNetworkParameters {
 }
 
 /// Algorithm type to use for the profile queries.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub enum AlgorithmType {
     /// Try to guess which algorithm will be the fastest.
     #[default]

@@ -7,7 +7,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
 use num_traits::ConstZero;
-use serde_derive::{Deserialize, Serialize};
 
 use super::OriginalEdgeId;
 use crate::units::*;
@@ -244,9 +243,7 @@ impl Vehicle {
 }
 
 /// Vehicle identifier.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct VehicleIndex(usize);
 
 impl VehicleIndex {

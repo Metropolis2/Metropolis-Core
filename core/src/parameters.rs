@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{bail, Result};
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 
 use crate::learning::LearningModel;
 use crate::network::road_network::parameters::RoadNetworkParameters;
@@ -97,7 +97,7 @@ const fn default_update_ratio() -> f64 {
 }
 
 /// Format to be used when saving files.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 pub enum SavingFormat {
     /// Parquet files.
     #[default]

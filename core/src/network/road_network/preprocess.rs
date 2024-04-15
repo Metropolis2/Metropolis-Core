@@ -8,7 +8,6 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
-use serde_derive::{Deserialize, Serialize};
 use ttf::TTF;
 
 use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
@@ -17,9 +16,7 @@ use crate::mode::Mode;
 use crate::units::NonNegativeSeconds;
 
 /// Unique vehicle index.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct UniqueVehicleIndex(usize);
 
 impl UniqueVehicleIndex {
