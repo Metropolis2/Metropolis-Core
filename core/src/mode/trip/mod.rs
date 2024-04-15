@@ -12,7 +12,7 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashSet;
 use log::warn;
-use num_traits::{clamp, ConstZero, Zero};
+use num_traits::{clamp, ConstZero};
 use once_cell::sync::OnceCell;
 use petgraph::prelude::EdgeIndex;
 use ttf::{PwlXYF, TTF};
@@ -681,7 +681,7 @@ impl TravelingMode {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         let mut utility = self.origin_schedule_utility.get_utility(departure_time);
-        let mut total_travel_time = NonNegativeSeconds::zero();
+        let mut total_travel_time = NonNegativeSeconds::ZERO;
         for leg in self.legs.iter() {
             let ttf = if let LegType::Virtual(ttf) = &leg.class {
                 ttf

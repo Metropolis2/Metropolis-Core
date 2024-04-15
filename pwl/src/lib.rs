@@ -12,7 +12,7 @@ mod ttf_num;
 use std::cmp::Ordering;
 
 use either::Either;
-use num_traits::Zero;
+use num_traits::ConstZero;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -59,9 +59,9 @@ pub enum XYF<X, Y, T> {
 /// If the function is piecewise-linear, it is represented using a [PwlTTF].
 pub type TTF<T> = XYF<T, T, T>;
 
-impl<X, Y: Zero, T> Default for XYF<X, Y, T> {
+impl<X, Y: ConstZero, T> Default for XYF<X, Y, T> {
     fn default() -> Self {
-        XYF::Constant(Y::zero())
+        XYF::Constant(Y::ZERO)
     }
 }
 

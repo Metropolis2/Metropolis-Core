@@ -17,7 +17,7 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
-use num_traits::{Pow, Zero};
+use num_traits::{ConstZero, Pow, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
 use tch::HierarchyOverlay;
 use ttf::{TTFNum, TTF};
@@ -506,7 +506,7 @@ impl RoadEdge {
     /// Return the free-flow travel time on the road for the given vehicle.
     #[inline]
     pub(crate) fn get_free_flow_travel_time(&self, vehicle: &Vehicle) -> NonNegativeSeconds {
-        self.get_travel_time(NonNegativeMeters::zero(), vehicle)
+        self.get_travel_time(NonNegativeMeters::ZERO, vehicle)
     }
 
     /// Return the length of the edge, from source to target.

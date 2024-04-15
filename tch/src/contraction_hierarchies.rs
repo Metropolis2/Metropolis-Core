@@ -328,7 +328,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     {
         alloc.reset();
         candidate_map.reset();
-        let zero = T::zero();
+        let zero = T::ZERO;
         let query =
             BidirectionalPointToPointQuery::new(source, target, departure_time, [zero, zero]);
         let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;

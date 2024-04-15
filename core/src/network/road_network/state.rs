@@ -42,7 +42,7 @@ impl RoadSegment {
     fn new() -> Self {
         let length_history = LengthXYFBuilder::new();
         RoadSegment {
-            occupied_length: NonNegativeMeters::zero(),
+            occupied_length: NonNegativeMeters::ZERO,
             length_history,
         }
     }
@@ -190,7 +190,7 @@ impl EdgeEntryState {
     fn get_closing_time(&self, vehicle_pce: PCE) -> NonNegativeSeconds {
         self.effective_flow
             .map(|f| vehicle_pce / f)
-            .unwrap_or(NonNegativeSeconds::zero())
+            .unwrap_or(NonNegativeSeconds::ZERO)
     }
 
     /// A vehicle is reaching the edge entry.
@@ -257,7 +257,7 @@ impl EdgeEntryState {
         debug_assert_ne!(self.status, EdgeEntryStatus::Open);
         let vehicle_headway = if is_phantom {
             // The vehicle has been phantomed, the available length is not reduced.
-            NonNegativeMeters::zero()
+            NonNegativeMeters::ZERO
         } else {
             vehicle_headway
         };
@@ -401,7 +401,7 @@ impl EdgeExitState {
     fn get_closing_time(&self, vehicle_pce: PCE) -> NonNegativeSeconds {
         self.effective_flow
             .map(|f| vehicle_pce / f)
-            .unwrap_or(NonNegativeSeconds::zero())
+            .unwrap_or(NonNegativeSeconds::ZERO)
     }
 
     /// A vehicle is reaching the end of the edge.
@@ -593,7 +593,7 @@ impl RoadEdgeState {
             .entry
             .as_mut()
             .map(|entry| entry.vehicle_enters(vehicle.pce, vehicle.headway, is_phantom))
-            .unwrap_or(NonNegativeSeconds::zero());
+            .unwrap_or(NonNegativeSeconds::ZERO);
         let travel_time = self.enters_road_segment(vehicle, current_time);
         (travel_time, closing_time)
     }
@@ -692,11 +692,11 @@ impl RoadEdgeState {
             entry: self
                 .entry
                 .map(|entry| entry.into_simulated_ttf())
-                .unwrap_or(TTF::Constant(AnySeconds::zero())),
+                .unwrap_or(TTF::Constant(AnySeconds::ZERO)),
             exit: self
                 .exit
                 .map(|exit| exit.into_simulated_ttf())
-                .unwrap_or(TTF::Constant(AnySeconds::zero())),
+                .unwrap_or(TTF::Constant(AnySeconds::ZERO)),
             road: self.road.into_simulated_length_function(),
         }
     }
@@ -988,7 +988,7 @@ impl RoadNetworkState {
             // Time delay after which the length liberated by the vehicle can be released from the
             // previous edge.
             let release_delay = edge_length / speed;
-            debug_assert!(release_delay > NonNegativeSeconds::zero());
+            debug_assert!(release_delay > NonNegativeSeconds::ZERO);
             release_event.at_time += release_delay;
             // Push an event to release the vehicle later.
             event_queue.push(release_event);
@@ -1228,7 +1228,7 @@ impl WaitXYFBuilder {
         debug_assert!(self.threshold < entry_time);
         let y = if self.prev_interval.1.is_zero() {
             // No entry at this interval.
-            NonNegativeSeconds::zero()
+            NonNegativeSeconds::ZERO
         } else {
             self.prev_interval.0 / self.prev_interval.1.assume_positive_unchecked()
         };
@@ -1291,8 +1291,8 @@ impl LengthXYFBuilder {
             end_x: period.end(),
             interval_x,
             threshold: (period.start() + interval_x).into(),
-            prev_interval: (NonNegativeMeters::zero(), NonNegativeNum::ZERO),
-            next_interval: (NonNegativeMeters::zero(), NonNegativeNum::ZERO),
+            prev_interval: (NonNegativeMeters::ZERO, NonNegativeNum::ZERO),
+            next_interval: (NonNegativeMeters::ZERO, NonNegativeNum::ZERO),
         }
     }
 
@@ -1323,7 +1323,7 @@ impl LengthXYFBuilder {
         debug_assert!(self.threshold < entry_time);
         let y = if self.prev_interval.1.is_zero() {
             // No entry at this interval.
-            NonNegativeMeters::zero()
+            NonNegativeMeters::ZERO
         } else {
             self.prev_interval.0 / self.prev_interval.1.assume_positive_unchecked()
         };

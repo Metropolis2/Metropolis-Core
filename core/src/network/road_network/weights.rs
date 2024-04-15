@@ -9,7 +9,7 @@ use std::ops::{Index, IndexMut};
 use anyhow::{bail, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use log::warn;
-use num_traits::Zero;
+use num_traits::ConstZero;
 use ttf::{PwlTTF, TTF};
 
 use super::{
@@ -305,7 +305,7 @@ impl RoadNetworkWeights {
 
     /// Returns the root mean squared difference between `self` and `other`.
     pub fn rmse(&self, other: &Self) -> NonNegativeSeconds {
-        let mut rmse = NonNegativeSeconds::zero();
+        let mut rmse = NonNegativeSeconds::ZERO;
         let mut n = 0;
         for (self_weights, other_weights) in self.iter().zip(other.iter()) {
             assert_eq!(

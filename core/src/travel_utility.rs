@@ -96,7 +96,7 @@ impl PolynomialFunction {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::Zero;
+    use num_traits::ConstZero;
 
     use super::*;
 
@@ -105,7 +105,7 @@ mod tests {
         let tt = NonNegativeSeconds::new_unchecked(5.);
 
         let model = TravelUtility::default();
-        assert_eq!(model.get_travel_utility(tt), Utility::zero());
+        assert_eq!(model.get_travel_utility(tt), Utility::ZERO);
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
             b: ValueOfTime::new_unchecked(-10.),

@@ -763,11 +763,11 @@ fn get_x_intersection<T: TTFNum>(x0: T, f_y0: T, g_y0: T, x1: T, f_y1: T, g_y1: 
     } else if dy1.is_zero() {
         x1
     } else if dy0 > T::ZERO {
-        debug_assert!(dy1 < T::zero());
+        debug_assert!(dy1 < T::ZERO);
         let alpha = dy0 / (dy0 - dy1);
         x0 * (T::ONE - alpha) + x1 * alpha
     } else {
-        debug_assert!(dy1 > T::zero());
+        debug_assert!(dy1 > T::ZERO);
         let alpha = -dy0 / (-dy0 + dy1);
         x0 * (T::ONE - alpha) + x1 * alpha
     }
