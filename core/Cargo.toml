@@ -49,5 +49,8 @@ simplelog = "0.12"
 time = { version = "0.3", features = ["serde-human-readable"] }
 zstd = "0.13"
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5"
+
 [lints]
 workspace = true

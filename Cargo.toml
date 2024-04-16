@@ -22,6 +22,9 @@ metropolis-core = { path = "core/" }
 serde = "1.0"
 tauri = { version = "1.5", features = ["dialog-open"], optional = true }
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5"
+
 [build-dependencies]
 tauri-build = { version = "1.5", features = [], optional = true }
 

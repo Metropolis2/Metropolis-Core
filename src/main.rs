@@ -6,6 +6,13 @@ use tauri;
 #[cfg(feature = "tauri")]
 use tauri::Window;
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn run_simulation(path: String, window: Window) {

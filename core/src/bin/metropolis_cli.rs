@@ -9,6 +9,13 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 /// METROPOLIS2 simulator.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
