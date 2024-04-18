@@ -8,7 +8,7 @@ use num_traits::ConstZero;
 use serde_derive::Deserialize;
 use tch::ContractionParameters;
 
-use crate::units::{MetersPerSecond, NonNegativeSeconds, PositiveSeconds};
+use crate::units::*;
 
 fn read_global() -> &'static RoadNetworkParameters {
     crate::parameters::road_network()

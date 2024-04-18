@@ -55,7 +55,7 @@ pub(crate) trait MetroPositiveNum:
     fn sqrt(self) -> Self {
         self.powf(0.5)
     }
-    fn from_usize_unchecked(value: usize) -> Self;
+    fn new_unchecked(value: f64) -> Self;
     fn to_usize_unchecked(self) -> usize;
 }
 
@@ -211,8 +211,10 @@ macro_rules! impl_traits_on_positive_unit(
                 fn sqrt(self) -> Self {
                     Self(self.0.sqrt())
                 }
-                fn from_usize_unchecked(value: usize) -> Self {
-                    Self::new_unchecked(value as f64)
+                fn new_unchecked(value: f64) -> Self {
+                    debug_assert!(value >= $t::lower_bound().0);
+                    debug_assert!(value <= $t::upper_bound().0);
+                    Self(value)
                 }
                 fn to_usize_unchecked(self) -> usize {
                     self.0 as usize
@@ -376,11 +378,6 @@ macro_rules! impl_traits_on_any_unit(
 pub struct AnyNum(f64);
 
 impl AnyNum {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN)
     }
@@ -423,12 +420,6 @@ impl From<PositiveNum> for AnyNum {
 pub struct NonNegativeNum(f64);
 
 impl NonNegativeNum {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value >= 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(0.0)
     }
@@ -479,12 +470,6 @@ impl TryFrom<AnyNum> for NonNegativeNum {
 pub struct PositiveNum(f64);
 
 impl PositiveNum {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -539,11 +524,6 @@ impl TryFrom<AnyNum> for PositiveNum {
 pub struct ZeroOneNum(f64);
 
 impl ZeroOneNum {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!((0.0..=1.0).contains(&value));
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(0.0)
     }
@@ -594,12 +574,6 @@ impl TryFrom<PositiveNum> for ZeroOneNum {
 pub struct NonNegativeSeconds(f64);
 
 impl NonNegativeSeconds {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value >= 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(0.0)
     }
@@ -649,11 +623,6 @@ impl TryFrom<AnySeconds> for NonNegativeSeconds {
 pub struct AnySeconds(f64);
 
 impl AnySeconds {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN)
     }
@@ -708,12 +677,6 @@ impl From<PositiveSeconds> for AnySeconds {
 pub struct PositiveSeconds(f64);
 
 impl PositiveSeconds {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -740,11 +703,6 @@ impl fmt::Display for PositiveSeconds {
 pub struct Utility(f64);
 
 impl Utility {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN)
     }
@@ -761,11 +719,6 @@ impl Utility {
 pub struct ValueOfTime(f64);
 
 impl ValueOfTime {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN)
     }
@@ -782,12 +735,6 @@ impl ValueOfTime {
 pub struct NonNegativeMeters(f64);
 
 impl NonNegativeMeters {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value >= 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(0.0)
     }
@@ -825,12 +772,6 @@ impl TryFrom<AnyMeters> for NonNegativeMeters {
 pub struct PositiveMeters(f64);
 
 impl PositiveMeters {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -858,11 +799,6 @@ impl TryFrom<NonNegativeMeters> for PositiveMeters {
 pub struct AnyMeters(f64);
 
 impl AnyMeters {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN)
     }
@@ -900,12 +836,6 @@ impl From<PositiveMeters> for AnyMeters {
 pub struct MetersPerSecond(f64);
 
 impl MetersPerSecond {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -925,12 +855,6 @@ impl MetersPerSecond {
 pub struct Lanes(f64);
 
 impl Lanes {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -946,12 +870,6 @@ impl Lanes {
 pub struct PCE(f64);
 
 impl PCE {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value >= 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(0.0)
     }
@@ -967,12 +885,6 @@ impl PCE {
 pub struct Flow(f64);
 
 impl Flow {
-    pub(crate) fn new_unchecked(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        debug_assert!(value > 0.0);
-        Self(value)
-    }
-
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
