@@ -1154,7 +1154,7 @@ where
         }
         let mean = sum / count;
         let var = (sum_squared / count).sub_unchecked(mean.powi(2));
-        let std = if var > T::ZERO {
+        let std = if var.is_positive() {
             var.sqrt()
         } else {
             // All values are equal but, because of roundings, var might be negative.

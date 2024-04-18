@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 

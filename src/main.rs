@@ -5,7 +5,6 @@
 use tauri;
 #[cfg(feature = "tauri")]
 use tauri::Window;
-
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 

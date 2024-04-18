@@ -8,13 +8,13 @@ pub mod results;
 
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
-use std::time::{Duration, Instant};
 
 use self::results::{
     AgentResults, AggregateResults, IterationResults, IterationRunningTimes, RunningTimes,

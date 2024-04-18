@@ -6,10 +6,10 @@
 //! Structs holding the results of a simulation.
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::time::Duration;
 
 use crate::event::{Event, EventQueue};
 use crate::io;
