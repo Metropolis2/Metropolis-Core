@@ -305,7 +305,7 @@ where
     /// Returns a new PwlXYF by applying a given function on the `y` values of the two input
     /// PwlXYFs.
     #[must_use]
-    pub fn map<F: Fn(Y) -> W, W>(&self, func: F) -> PwlXYF<X, W, T>
+    pub fn map<F, W>(&self, func: F) -> PwlXYF<X, W, T>
     where
         F: Fn(Y) -> W,
         W: TTFNum + Into<T> + From<T>,

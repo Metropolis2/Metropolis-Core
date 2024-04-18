@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use time::Duration;
+use std::time::Duration;
 
 use crate::event::{Event, EventQueue};
 use crate::io;

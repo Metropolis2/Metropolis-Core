@@ -673,7 +673,7 @@ fn compute_skims_inner(
                 .unwrap_or(TTF::Constant(AnySeconds::INFINITY))
         };
         let hierarchy =
-            HierarchyOverlay::order(graph(), weight_fn, self::parameters::contraction().clone());
+            HierarchyOverlay::order(graph(), weight_fn, parameters::contraction().clone());
         debug!(
             "Number of edges in the Hierarchy Overlay: {}",
             hierarchy.edge_count()
@@ -683,7 +683,7 @@ fn compute_skims_inner(
             hierarchy.complexity()
         );
         let mut skim = RoadNetworkSkim::new(hierarchy, graph().node_map.clone());
-        let use_intersect = match self::parameters::algorithm_type() {
+        let use_intersect = match parameters::algorithm_type() {
             AlgorithmType::Intersect => true,
             AlgorithmType::Tch => false,
             AlgorithmType::Best => {

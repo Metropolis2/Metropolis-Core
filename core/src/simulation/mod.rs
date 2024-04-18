@@ -14,7 +14,7 @@ use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
-use time::{Duration, Instant};
+use std::time::{Duration, Instant};
 
 use self::results::{
     AgentResults, AggregateResults, IterationResults, IterationRunningTimes, RunningTimes,
