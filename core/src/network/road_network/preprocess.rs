@@ -305,7 +305,7 @@ mod tests {
 
     use super::*;
     use crate::network::road_network::vehicle::SpeedFunction;
-    use crate::units::{MetersPerSecond, NonNegativeMeters, PCE};
+    use crate::units::*;
 
     #[test]
     fn preprocess_vehicles_test() {

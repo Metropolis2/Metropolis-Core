@@ -241,7 +241,7 @@ mod tests {
 
     use super::*;
     use crate::mode::{mode_index, ModeResults};
-    use crate::units::Utility;
+    use crate::units::MetroPositiveNum;
 
     fn get_agent() -> Agent {
         let modes = vec![Mode::Constant((0, Utility::new_unchecked(10.)))];
