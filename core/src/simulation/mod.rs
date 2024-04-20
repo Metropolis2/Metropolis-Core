@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
+use hashbrown::HashSet;
 use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
@@ -400,16 +401,15 @@ fn get_update_vector(iteration_counter: u32) -> Vec<bool> {
     updates
 }
 
-/// Initializes he simulation before running it.
+/// Initializes the simulation before running it.
 fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
     // Initialize the global rayon thread pool.
     rayon::ThreadPoolBuilder::new()
         .num_threads(crate::parameters::nb_threads())
         .build_global()
         .unwrap();
-    if crate::network::has_road_network() && !crate::parameters::has_road_network_parameters() {
-        bail!("The road-network parameters are mandatory when a road-network is used.");
-    }
+    // Check that the simulation is valid.
+    check_validity()?;
     // Pre-process the simulation.
     let preprocess_data = preprocess()?;
     let rn_weights = if crate::network::has_road_network() {
@@ -440,6 +440,50 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
     };
     let weights = NetworkWeights::new(rn_weights);
     Ok((preprocess_data, weights))
+}
+
+/// Performs some validity checks that can only be done when all the simulation input has been
+/// imported.
+fn check_validity() -> Result<()> {
+    if crate::network::has_road_network() && !crate::parameters::has_road_network_parameters() {
+        bail!("The road-network parameters are mandatory when a road-network is used.");
+    }
+    // Check that all road trips' origins and destinations are part of the road network.
+    let origins: HashSet<_> = crate::population::all_road_trips_origins();
+    let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
+    let road_network_nodes: HashSet<_> =
+        crate::network::road_network::iter_original_edge_ids().collect();
+    let invalid_origins: HashSet<_> = origins.difference(&road_network_nodes).collect();
+    if !invalid_origins.is_empty() {
+        let invalid_origins_as_vec: Vec<_> = invalid_origins
+            .into_iter()
+            .map(|n| format!("{}", n))
+            .collect();
+        let invalid_ids = if invalid_origins_as_vec.len() >= 2 {
+            format!("{}, ...", invalid_origins_as_vec[..2].join(", "))
+        } else {
+            invalid_origins_as_vec.join(", ")
+        };
+        let msg =
+            "The following node ids are used as trip origin but are not part of the road network";
+        bail!("{msg}: {invalid_ids}");
+    }
+    let invalid_destinations: HashSet<_> = destinations.difference(&road_network_nodes).collect();
+    if !invalid_destinations.is_empty() {
+        let invalid_destinations_as_vec: Vec<_> = invalid_destinations
+            .into_iter()
+            .map(|n| format!("{}", n))
+            .collect();
+        let invalid_ids = if invalid_destinations_as_vec.len() >= 10 {
+            format!("{}, ...", invalid_destinations_as_vec[..10].join(", "))
+        } else {
+            invalid_destinations_as_vec.join(", ")
+        };
+        let msg = "The following node ids are used as trip destination \
+                   but are not part of the road network";
+        bail!("{msg}: {invalid_ids}");
+    }
+    Ok(())
 }
 
 /// Computes the pre-day choices of the simulation.

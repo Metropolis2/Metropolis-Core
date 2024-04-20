@@ -9,10 +9,12 @@ use std::sync::OnceLock;
 
 use anyhow::{anyhow, bail, Context, Result};
 use choice::ChoiceModel;
+use hashbrown::HashSet;
 use itertools;
 
 use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::road_network::skim::EAAllocation;
+use crate::network::road_network::OriginalNodeId;
 use crate::network::{NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
@@ -52,6 +54,37 @@ pub(crate) fn agent(index: usize) -> &'static Agent {
 
 pub(crate) fn agent_alternative(index: usize, alt_index: ModeIndex) -> &'static Mode {
     &agent(index)[alt_index]
+}
+
+/// Returns an iterator over all the alternatives of the agents.
+pub(crate) fn iter_all_alternatives() -> impl Iterator<Item = &'static Mode> {
+    agents().iter().flat_map(|agent| agent.modes.iter())
+}
+
+pub(crate) fn all_road_trips_origins() -> HashSet<OriginalNodeId> {
+    iter_all_alternatives()
+        .filter_map(|alt| {
+            if let Mode::Trip(trip) = alt {
+                Some(trip.iter_road_legs().map(|trip| trip.origin))
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect()
+}
+
+pub(crate) fn all_road_trips_destinations() -> HashSet<OriginalNodeId> {
+    iter_all_alternatives()
+        .filter_map(|alt| {
+            if let Mode::Trip(trip) = alt {
+                Some(trip.iter_road_legs().map(|trip| trip.destination))
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect()
 }
 
 /// Representation of an independent and intelligent agent that makes one trip per day.
