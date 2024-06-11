@@ -452,15 +452,15 @@ fn check_validity() -> Result<()> {
     let origins: HashSet<_> = crate::population::all_road_trips_origins();
     let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
     let road_network_nodes: HashSet<_> =
-        crate::network::road_network::iter_original_edge_ids().collect();
+        crate::network::road_network::iter_original_node_ids().collect();
     let invalid_origins: HashSet<_> = origins.difference(&road_network_nodes).collect();
     if !invalid_origins.is_empty() {
         let invalid_origins_as_vec: Vec<_> = invalid_origins
             .into_iter()
             .map(|n| format!("{}", n))
             .collect();
-        let invalid_ids = if invalid_origins_as_vec.len() >= 2 {
-            format!("{}, ...", invalid_origins_as_vec[..2].join(", "))
+        let invalid_ids = if invalid_origins_as_vec.len() > 10 {
+            format!("{}, ...", invalid_origins_as_vec[..10].join(", "))
         } else {
             invalid_origins_as_vec.join(", ")
         };
@@ -474,7 +474,7 @@ fn check_validity() -> Result<()> {
             .into_iter()
             .map(|n| format!("{}", n))
             .collect();
-        let invalid_ids = if invalid_destinations_as_vec.len() >= 10 {
+        let invalid_ids = if invalid_destinations_as_vec.len() > 10 {
             format!("{}, ...", invalid_destinations_as_vec[..10].join(", "))
         } else {
             invalid_destinations_as_vec.join(", ")

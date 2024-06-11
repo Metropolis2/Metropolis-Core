@@ -109,6 +109,11 @@ pub(crate) fn iter_original_edge_ids() -> impl Iterator<Item = OriginalEdgeId> {
     graph().edge_map.keys().copied()
 }
 
+/// Returns an Iterator over the [OriginalNodeId] of the graph.
+pub(crate) fn iter_original_node_ids() -> impl Iterator<Item = OriginalNodeId> {
+    graph().node_map.keys().copied()
+}
+
 /// Returns the free-flow travel time for the given edge and vehicle.
 pub(crate) fn free_flow_travel_time_of_edge(
     edge_id: OriginalEdgeId,
