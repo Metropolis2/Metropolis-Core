@@ -372,10 +372,11 @@ impl From<AgentResult> for PreDayAgentResult {
 impl PreDayAgentResult {
     fn add_expected_route(
         &mut self,
+        i: usize,
         weights: &RoadNetworkWeights,
         unique_vehicles: &UniqueVehicles,
     ) {
-        let chosen_mode = crate::population::agent_alternative(self.id, self.mode_index);
+        let chosen_mode = crate::population::agent_alternative(i, self.mode_index);
         self.mode_results
             .add_expected_route(chosen_mode, weights, unique_vehicles)
     }
@@ -398,8 +399,8 @@ impl PreDayAgentResults {
         weights: &RoadNetworkWeights,
         unique_vehicles: &UniqueVehicles,
     ) {
-        for agent_result in self.0.iter_mut() {
-            agent_result.add_expected_route(weights, unique_vehicles);
+        for (i, agent_result) in self.0.iter_mut().enumerate() {
+            agent_result.add_expected_route(i, weights, unique_vehicles);
         }
     }
 }
