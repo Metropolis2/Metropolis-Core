@@ -28,7 +28,7 @@ const EGAMMA: f64 = 0.577_215_664_901_532_9_f64;
 /// let (choice_id, exp_payoff) = model.get_choice(&[0.]).unwrap();
 /// assert_eq!(choice_id, 0);
 /// // The expected payoff is equal to the Euler's constant.
-/// assert!((exp_payoff - 0.5772156649).abs() < 1e-8);
+/// assert!((exp_payoff - 0.5772156649f64).abs() < 1e-8);
 ///
 /// // The probabilities are `[e / (1 + e), 1 / (1 + e)]`, i.e., around 0.73 and 0.27.
 /// // With `u = 0.8`, the second alternative is chosen.
