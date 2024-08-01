@@ -184,6 +184,7 @@ impl Agent {
                             exp_skims,
                             &preprocess_data.network,
                             progress_bar.clone(),
+                            alloc,
                         )
                     }),
                     |iter| iter.unzip::<_, _, Vec<_>, Vec<_>>(),
@@ -219,6 +220,7 @@ impl Agent {
                     exp_skims,
                     &preprocess_data.network,
                     progress_bar,
+                    alloc,
                 )?;
                 let mode_result = callback(alloc)?;
                 Ok(AgentResult::new(

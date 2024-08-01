@@ -155,6 +155,7 @@ impl Mode {
         exp_skims: &'a NetworkSkim,
         preprocess_data: &'a NetworkPreprocessingData,
         progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'a>)> {
         match self {
             Self::Constant((_, u)) => Ok((*u, Box::new(|_| Ok(ModeResults::Constant(*u))))),
@@ -163,6 +164,7 @@ impl Mode {
                 exp_skims.get_road_network(),
                 preprocess_data.get_road_network(),
                 progress_bar,
+                alloc,
             ),
         }
     }

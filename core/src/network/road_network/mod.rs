@@ -356,7 +356,6 @@ impl ThreeRegimesSpeedDensityFunction {
             Ord::min(self.jam_speed, ff_speed)
         } else if density > self.min_density {
             // Congestion.
-            // TODO
             // `density` is larger than `min_density` so the following is safe.
             let num = PositiveNum::try_from(density - self.min_density).unwrap();
             // `jam_density` is larger than `min_density` so the following is safe.
@@ -662,10 +661,8 @@ fn compute_skims_inner(
     );
     for uvehicle_id in (0..all_od_pairs.len()).map(unique_vehicle_index) {
         let od_pairs = &all_od_pairs[uvehicle_id.index()];
-        if od_pairs.is_empty() {
-            // No one is using this vehicle so there is no need to compute the skims.
-            skims.push(None);
-        }
+        // TODO: Computing the hierarchy is not required in case there is no trip with the current
+        // unique vehicle.
         let nb_breakpoints = weights[uvehicle_id].complexity();
         debug!("Total number of breakpoints: {nb_breakpoints}");
         // TODO: In some cases, it might be faster to re-use the same order from one iteration

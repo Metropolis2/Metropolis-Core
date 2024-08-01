@@ -8,10 +8,11 @@ use std::ops::Index;
 
 use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
+use num_traits::ConstZero;
 use ttf::TTF;
 
 use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
-use super::OriginalNodeId;
+use super::{AnySeconds, OriginalNodeId};
 use crate::mode::Mode;
 use crate::units::NonNegativeSeconds;
 
@@ -226,21 +227,23 @@ fn init_od_pairs(unique_vehicles: &UniqueVehicles) -> Result<Vec<ODPairs>> {
     for agent in crate::population::agents() {
         for mode in agent.iter_modes() {
             if let Mode::Trip(trip_mode) = mode {
-                for leg in trip_mode.iter_road_legs() {
-                    let vehicle_id = leg.vehicle;
-                    let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id);
-                    if let Some(&uvehicle) = uvehicle {
-                        // Unwraping is safe because we are iterating over road legs.
-                        let origin = leg.origin;
-                        let destination = leg.destination;
-                        let vehicle_od_pairs = &mut od_pairs[uvehicle.index()];
-                        vehicle_od_pairs.add_pair(origin, destination);
-                    } else {
-                        return Err(anyhow!(
-                            "Agent {} has an invalid vehicle type index ({})",
-                            agent.id,
-                            vehicle_id,
-                        ));
+                if trip_mode.departure_time_model.requires_profile_query() {
+                    for leg in trip_mode.iter_road_legs() {
+                        let vehicle_id = leg.vehicle;
+                        let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id);
+                        if let Some(&uvehicle) = uvehicle {
+                            // Unwraping is safe because we are iterating over road legs.
+                            let origin = leg.origin;
+                            let destination = leg.destination;
+                            let vehicle_od_pairs = &mut od_pairs[uvehicle.index()];
+                            vehicle_od_pairs.add_pair(origin, destination);
+                        } else {
+                            return Err(anyhow!(
+                                "Agent {} has an invalid vehicle type index ({})",
+                                agent.id,
+                                vehicle_id,
+                            ));
+                        }
                     }
                 }
             }
@@ -259,6 +262,7 @@ fn compute_free_flow_travel_times(
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
     let free_flow_weights = super::free_flow_weights_inner(unique_vehicles);
     let skims = super::compute_skims_inner(&free_flow_weights, od_pairs)?;
+    let mut alloc = Default::default();
     for agent in crate::population::agents() {
         for mode in agent.iter_modes() {
             if let Mode::Trip(trip_mode) = mode {
@@ -271,19 +275,40 @@ fn compute_free_flow_travel_times(
                     let vehicle_skims = skims[uvehicle]
                         .as_ref()
                         .unwrap_or_else(|| panic!("No skims for unique vehicle {uvehicle:?}"));
-                    let ttf = vehicle_skims.profile_query(origin, destination)?;
-                    let tt = match ttf {
-                        Some(&TTF::Constant(tt)) => tt,
-                        None => {
+                    let tt = if let Ok(ttf) = vehicle_skims.profile_query(origin, destination) {
+                        // The profile query for this OD pairs has been pre-computed so we can use
+                        // it.
+                        match ttf {
+                            Some(&TTF::Constant(tt)) => tt,
+                            None => {
+                                return Err(anyhow!(
+                                    "No route from node {} to node {}",
+                                    origin,
+                                    destination
+                                ));
+                            }
+                            Some(TTF::Piecewise(_)) => {
+                                return Err(anyhow!(
+                                    "Free-flow travel time from {} to {} is not constant",
+                                    origin,
+                                    destination
+                                ));
+                            }
+                        }
+                    } else {
+                        // The profile query has not been pre-computed (probably because the
+                        // departure-time model is exogenous so the profile query is not required).
+                        // Insted, we run a earliest-arrival query.
+                        if let Some((arrival_time, _)) = vehicle_skims.earliest_arrival_query(
+                            origin,
+                            destination,
+                            AnySeconds::ZERO,
+                            &mut alloc,
+                        )? {
+                            arrival_time
+                        } else {
                             return Err(anyhow!(
                                 "No route from node {} to node {}",
-                                origin,
-                                destination
-                            ));
-                        }
-                        Some(TTF::Piecewise(_)) => {
-                            return Err(anyhow!(
-                                "Free-flow travel time from {} to {} is not constant",
                                 origin,
                                 destination
                             ));

@@ -799,12 +799,132 @@ impl TravelingMode {
         rn_skims: Option<&'b RoadNetworkSkims>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
         progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'b>)> {
         if let Some(choice) = self.choice.get() {
             // The TravelingMode is virtual only and the pre-day choices were already computed.
             return Ok(choice.to_expected_utility_and_mode_callback());
         }
-        self.make_pre_day_choice(rn_weights, rn_skims, preprocess_data, progress_bar)
+        self.make_pre_day_choice(rn_weights, rn_skims, preprocess_data, progress_bar, alloc)
+    }
+
+    /// Computes the pre-day choice for a mode with constant departure time.
+    ///
+    /// In this case, the profile queries were not computed so the expected utility must be
+    /// computed by running earliest-arrival queries or using the input routes.
+    fn constant_departure_time_pre_day_choice<'a: 'b, 'b>(
+        &'a self,
+        departure_time: NonNegativeSeconds,
+        rn_weights: Option<&'b RoadNetworkWeights>,
+        rn_skims: Option<&'b RoadNetworkSkims>,
+        preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
+        progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation,
+    ) -> Result<(Utility, ModeCallback<'b>)> {
+        debug_assert!(self.departure_time_model.is_constant());
+        let mut leg_results = Vec::with_capacity(self.legs.len());
+        let mut current_time = departure_time + self.origin_delay;
+        let mut total_travel_time = NonNegativeSeconds::default();
+        let mut expected_utility = self.origin_schedule_utility.get_utility(departure_time);
+        for leg in self.iter_legs() {
+            let (arrival_time, leg_result) = match &leg.class {
+                LegType::Road(road_leg) => {
+                    let uid = preprocess_data
+                        .expect("Got a road leg but there is no road network preprocess data.")
+                        .get_unique_vehicle_index(road_leg.vehicle);
+                    let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
+                        // Evaluate the travel time of the input route.
+                        let vehicle_weights = &rn_weights
+                            .expect("Got a road leg but there is no road network weights.")[uid];
+                        let mut t = current_time;
+                        let mut route = Vec::with_capacity(input_route.len());
+                        for edge in input_route {
+                            t = t + NonNegativeSeconds::try_from(
+                                vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                            )
+                            .expect("The travel time is negative");
+                            route.push(crate::network::road_network::edge_index_of(*edge));
+                        }
+                        (t, route)
+                    } else {
+                        // Run an earliest-arrival time query to get the travel time and fastest
+                        // path.
+                        // TODO. The route is not needed if pre_compute_route is false, only
+                        // the arrival time is needed.
+                        let vehicle_skims = rn_skims
+                            .expect("Got a road leg but there is no road network skims.")[uid]
+                            .as_ref()
+                            .expect("Road network skims are empty.");
+                        get_arrival_time_and_route(
+                            road_leg,
+                            current_time,
+                            vehicle_skims,
+                            progress_bar.clone(),
+                            alloc,
+                        )?
+                    };
+                    // Retrieve the global free-flow travel time.
+                    let global_free_flow_travel_time = *preprocess_data
+                        .expect("Got a road leg but there is no road network preprocess data.")
+                        .free_flow_travel_times_of_unique_vehicle(uid)
+                        .get(&(road_leg.origin, road_leg.destination))
+                        .expect("The free flow travel time of the OD pair has not been computed.");
+                    let leg_result = if self.pre_compute_route {
+                        // Compute the route free-flow travel time and length.
+                        let length =
+                            crate::network::road_network::route_length(route.iter().copied());
+                        let route_free_flow_travel_time =
+                            crate::network::road_network::route_free_flow_travel_time(
+                                route.iter().copied(),
+                                road_leg.vehicle,
+                            );
+                        leg.init_road_leg_results(
+                            current_time,
+                            arrival_time,
+                            Some(route),
+                            Some(length),
+                            Some(route_free_flow_travel_time),
+                            global_free_flow_travel_time,
+                        )
+                    } else {
+                        leg.init_road_leg_results(
+                            current_time,
+                            arrival_time,
+                            None,
+                            None,
+                            None,
+                            global_free_flow_travel_time,
+                        )
+                    };
+                    (arrival_time, leg_result)
+                }
+                LegType::Virtual(ttf) => (
+                    current_time
+                        + ttf
+                            .eval(AnySeconds::from(current_time))
+                            .assume_non_negative_unchecked(),
+                    leg.init_virtual_leg_results(),
+                ),
+            };
+            let travel_time = arrival_time.sub_unchecked(current_time);
+            expected_utility += leg.get_utility_at(current_time, travel_time);
+            total_travel_time += travel_time;
+            leg_results.push(leg_result);
+            current_time = arrival_time + leg.stopping_time;
+        }
+        expected_utility += self
+            .total_travel_utility
+            .get_travel_utility(total_travel_time);
+        expected_utility += self.destination_schedule_utility.get_utility(current_time);
+        let callback = move |_| {
+            Ok(ModeResults::Trip(TripResults::new(
+                leg_results,
+                departure_time,
+                expected_utility,
+                false,
+            )))
+        };
+        Ok((expected_utility, Box::new(callback)))
     }
 
     /// Computes the pre-day choice for this mode.
@@ -821,15 +941,20 @@ impl TravelingMode {
         rn_skims: Option<&'b RoadNetworkSkims>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
         progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'b>)> {
+        if let &DepartureTimeModel::Constant(departure_time) = &self.departure_time_model {
+            return self.constant_departure_time_pre_day_choice(
+                departure_time,
+                rn_weights,
+                rn_skims,
+                preprocess_data,
+                progress_bar,
+                alloc,
+            );
+        }
         let leg_ttfs = self.get_leg_ttfs(rn_weights, rn_skims, preprocess_data)?;
         let (expected_utility, time_callback) = match &self.departure_time_model {
-            &DepartureTimeModel::Constant(departure_time) => {
-                let expected_utility = self.get_total_utility(departure_time, &leg_ttfs);
-                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> =
-                    Box::new(move || departure_time);
-                (expected_utility, time_callback)
-            }
             DepartureTimeModel::Discrete {
                 period,
                 interval,
@@ -882,6 +1007,9 @@ impl TravelingMode {
                         .expect("The travel time is negative")
                 });
                 (expected_utility, time_callback)
+            }
+            &DepartureTimeModel::Constant(_) => {
+                unreachable!()
             }
         };
         if self.is_virtual_only() {
@@ -1029,7 +1157,7 @@ impl VirtualOnlyPreDayResults {
 }
 
 /// Model used to compute the chosen departure time.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, EnumAsInner)]
 pub enum DepartureTimeModel {
     /// The departure time is always equal to the given value.
     Constant(NonNegativeSeconds),
@@ -1058,6 +1186,16 @@ pub enum DepartureTimeModel {
 }
 
 impl DepartureTimeModel {
+    /// Returns `true` if the departure-time model requires pre-computing the profile query for the
+    /// trips' origin-destination pairs.
+    pub(crate) fn requires_profile_query(&self) -> bool {
+        match self {
+            Self::Constant(_) => false,
+            Self::Discrete { .. } => true,
+            Self::Continuous { .. } => true,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         model_type: Option<&str>,

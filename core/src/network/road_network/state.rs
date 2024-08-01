@@ -670,7 +670,6 @@ impl RoadEdgeState {
     ) -> NonNegativeSeconds {
         // The travel time needs to be computed before the vehicle enters so that it does not
         // generate its own congestion.
-        // TODO
         let tt = self.get_travel_time(vehicle);
         self.road.enters(vehicle.headway, current_time);
         tt
