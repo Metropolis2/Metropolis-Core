@@ -94,11 +94,14 @@ impl RoadNetworkSkim {
     ///     and Systems (ATMOS'10)_, 2010 .
     pub fn pre_compute_profile_queries_intersect(
         &mut self,
-        od_pairs: &HashMap<OriginalNodeId, HashSet<OriginalNodeId>>,
+        (od_pairs, nb_origins): (
+            impl ParallelIterator<Item = (OriginalNodeId, impl Iterator<Item = OriginalNodeId>)>,
+            usize,
+        ),
         search_spaces: &SearchSpaces<AnySeconds>,
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(od_pairs.len() as u64)
+            ProgressBar::new(nb_origins as u64)
         } else {
             ProgressBar::hidden()
         };
@@ -108,13 +111,11 @@ impl RoadNetworkSkim {
                 .unwrap(),
         );
         self.profile_query_cache = od_pairs
-            .par_iter()
-            .map(|(&source, targets)| {
+            .map(|(source, targets)| {
                 bp.inc(1);
                 let source_id = self.get_node_id(source);
                 let target_ttfs = targets
-                    .iter()
-                    .map(|&target| {
+                    .map(|target| {
                         let target_id = self.get_node_id(target);
                         let ttf =
                             algo::intersect_profile_query(source_id, target_id, search_spaces)?;
@@ -137,10 +138,13 @@ impl RoadNetworkSkim {
     /// travel-time functions are stored in a cache.
     pub fn pre_compute_profile_queries_tch(
         &mut self,
-        od_pairs: &HashMap<OriginalNodeId, HashSet<OriginalNodeId>>,
+        (od_pairs, nb_origins): (
+            impl ParallelIterator<Item = (OriginalNodeId, impl Iterator<Item = OriginalNodeId>)>,
+            usize,
+        ),
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(od_pairs.len() as u64)
+            ProgressBar::new(nb_origins as u64)
         } else {
             ProgressBar::hidden()
         };
@@ -151,15 +155,13 @@ impl RoadNetworkSkim {
         );
         let pool: Pool<TCHProfileAlloc> = Pool::new(rayon::current_num_threads(), Default::default);
         self.profile_query_cache = od_pairs
-            .par_iter()
             .map_init(
                 || pool.pull(Default::default),
-                |alloc, (&source, targets)| {
+                |alloc, (source, targets)| {
                     let source_id = self.get_node_id(source);
                     bp.inc(1);
                     let target_ttfs = targets
-                        .iter()
-                        .map(|&target| {
+                        .map(|target| {
                             let target_id = self.get_node_id(target);
                             let (profile_alloc, candidate_map) = alloc.get_mut_variables();
                             let ttf = self.hierarchy_overlay.profile_query(

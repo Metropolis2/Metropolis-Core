@@ -27,9 +27,6 @@ dependencies = [
   "test-examples",
 ]
 
-[tasks.format]
-toolchain = "nightly"
-
 [tasks.test]
 args = [
   "test",

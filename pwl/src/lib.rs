@@ -12,6 +12,7 @@ mod ttf_num;
 use std::cmp::Ordering;
 
 use either::Either;
+use enum_as_inner::EnumAsInner;
 use num_traits::ConstZero;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -42,7 +43,7 @@ impl UndercutDescriptor {
 /// A function that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, EnumAsInner)]
 #[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
 #[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
 #[serde(untagged)]

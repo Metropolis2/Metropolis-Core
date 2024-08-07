@@ -24,7 +24,7 @@ use ttf::{TTFNum, TTF};
 
 use self::parameters::AlgorithmType;
 pub(crate) use self::preprocess::RoadNetworkPreprocessingData;
-use self::preprocess::{ODPairs, UniqueVehicles};
+use self::preprocess::{ODPairsStruct, UniqueVehicles};
 use self::skim::RoadNetworkSkim;
 pub(crate) use self::skim::RoadNetworkSkims;
 pub(crate) use self::state::RoadNetworkState;
@@ -651,7 +651,7 @@ pub(crate) fn compute_skims(
 
 fn compute_skims_inner(
     weights: &RoadNetworkWeights,
-    all_od_pairs: &[ODPairs],
+    all_od_pairs: &[ODPairsStruct],
 ) -> Result<RoadNetworkSkims> {
     let mut skims = Vec::with_capacity(all_od_pairs.len());
     assert_eq!(
@@ -940,7 +940,7 @@ mod tests {
         init(road_network).unwrap();
         let weights = free_flow_weights_inner(&UniqueVehicles::init());
         debug_assert!(weights.get(unique_vehicle_index(0), 0).is_none());
-        let all_od_pairs = vec![ODPairs::from_vec(vec![(1, 2)])];
+        let all_od_pairs = vec![ODPairsStruct::from_vec(vec![(1, 2, true)])];
         let skims = compute_skims_inner(&weights, &all_od_pairs).unwrap();
         let skim = skims[unique_vehicle_index(0)].as_ref().unwrap();
         assert_eq!(

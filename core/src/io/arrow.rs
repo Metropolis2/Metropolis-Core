@@ -1327,7 +1327,7 @@ impl RoadNetworkWeightsBuilder {
         let xs_iter = std::iter::successors(Some(self.period.start()), |&t| {
             Some(t + NonNegativeSeconds::from(self.interval))
         })
-        .take_while(|&t| t < self.period.end());
+        .take_while(|&t| t <= self.period.end());
         for (x, y) in xs_iter.map(|x| (x, ttf.eval(AnySeconds::from(x)))) {
             self.vehicle_id.append_value(vehicle_id);
             self.edge_id.append_value(edge_id);
