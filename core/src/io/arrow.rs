@@ -672,11 +672,12 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<u64>)> 
     Ok((edges, unique_ids))
 }
 
-const VEHICLE_COLUMNS: [&str; 9] = [
+const VEHICLE_COLUMNS: [&str; 10] = [
     "vehicle_id",
     "headway",
     "pce",
     "speed_function.type",
+    "speed_function.upper_bound",
     "speed_function.coef",
     "speed_function.x",
     "speed_function.y",
@@ -692,6 +693,8 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
     let headway_values = get_column!(["headway"] in struct_array as f64);
     let pce_values = get_column!(["pce"] in struct_array as f64);
     let speed_function_type_values = get_column!(["speed_function", "type"] in struct_array as str);
+    let speed_function_upper_bound_values =
+        get_column!(["speed_function", "upper_bound"] in struct_array as f64);
     let speed_function_coef_values = get_column!(["speed_function", "coef"] in struct_array as f64);
     let speed_function_x_values =
         get_column!(["speed_function", "x"] in struct_array as List of f64);
@@ -707,6 +710,7 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
         let headway = get_value!(headway_values[i]);
         let pce = get_value!(pce_values[i]);
         let speed_function_type = get_value!(speed_function_type_values[i]);
+        let speed_function_upper_bound = get_value!(speed_function_upper_bound_values[i]);
         let speed_function_coef = get_value!(speed_function_coef_values[i]);
         let speed_function_x = get_list_values!(speed_function_x_values[i] as f64);
         let speed_function_y = get_list_values!(speed_function_y_values[i] as f64);
@@ -718,6 +722,7 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
             headway,
             pce,
             speed_function_type,
+            speed_function_upper_bound,
             speed_function_coef,
             speed_function_x,
             speed_function_y,

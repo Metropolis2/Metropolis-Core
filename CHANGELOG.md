@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
+  vehicle can travel.
+
 ## [1.0.0-4] - 2024-03-15
 
 ### Changed

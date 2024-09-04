@@ -91,7 +91,7 @@ trips = pl.DataFrame(
         "class.type": ["Road", "Virtual", "Virtual", "Road", "Road"],
         "class.origin": [1, None, None, 1, 3],
         "class.destination": [4, None, None, 3, 4],
-        "class.vehicle": [1, None, None, 2, 2],
+        "class.vehicle": [1, None, None, 2, 3],
         "class.route": [[1, 2, 3], None, None, None, None],
         "class.travel_time": [None, 5.0 * 60.0, 7.0 * 60.0, None, None],
         "stopping_time": [None, None, None, 5.0 * 60.0, None],
@@ -130,15 +130,16 @@ edges = pl.DataFrame(
 
 vehicles = pl.DataFrame(
     {
-        "vehicle_id": [1, 2, 3],
-        "headway": [8.0, 24.0, 0.0],
-        "pce": [None, 3.0, 0.1],
-        "speed_function.type": [None, "Multiplicator", "Piecewise"],
-        "speed_function.coef": [None, 0.8, None],
-        "speed_function.x": [None, None, [50.0 / 3.6, 90.0 / 3.6, 110.0 / 3.6, 130.0 / 3.6]],
-        "speed_function.y": [None, None, [50.0 / 3.6, 80.0 / 3.6, 90.0 / 3.6, 90.0 / 3.6]],
-        "allowed_edges": [[1, 2, 3], None, None],
-        "restricted_edges": [None, None, [2, 3]],
+        "vehicle_id": [1, 2, 3, 4],
+        "headway": [8.0, 24.0, 0.0, 8.0],
+        "pce": [None, 3.0, 0.1, 1.0],
+        "speed_function.type": [None, "UpperBound", "Multiplicator", "Piecewise"],
+        "speed_function.upper_bound": [None, 90.0 / 3.6, None, None],
+        "speed_function.coef": [None, None, 0.8, None],
+        "speed_function.x": [None, None, None, [50.0 / 3.6, 90.0 / 3.6, 110.0 / 3.6, 130.0 / 3.6]],
+        "speed_function.y": [None, None, None, [50.0 / 3.6, 80.0 / 3.6, 90.0 / 3.6, 90.0 / 3.6]],
+        "allowed_edges": [[1, 2, 3], None, None, None],
+        "restricted_edges": [None, None, None, [2, 3]],
     }
 )
 
@@ -177,12 +178,12 @@ edge_ttfs = pl.DataFrame(
 directory = os.path.join(OUTPUT_DIR, "unnested_parquet")
 if not os.path.isdir(directory):
     os.makedirs(directory)
-agents.write_parquet(os.path.join(directory, "agents.parquet"))
-alts.write_parquet(os.path.join(directory, "alts.parquet"))
-trips.write_parquet(os.path.join(directory, "trips.parquet"))
-edges.write_parquet(os.path.join(directory, "edges.parquet"))
-vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
-edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"))
+agents.write_parquet(os.path.join(directory, "agents.parquet"), use_pyarrow=True)
+alts.write_parquet(os.path.join(directory, "alts.parquet"), use_pyarrow=True)
+trips.write_parquet(os.path.join(directory, "trips.parquet"), use_pyarrow=True)
+edges.write_parquet(os.path.join(directory, "edges.parquet"), use_pyarrow=True)
+vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"), use_pyarrow=True)
+edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"), use_pyarrow=True)
 parameters["input_files"] = {
     "agents": "agents.parquet",
     "alternatives": "alts.parquet",
@@ -262,7 +263,9 @@ nested_edges = edges.select(
     "overtaking",
 )
 
-speed_function_schema = get_struct_schema("speed_function", ("type", "coef", "x", "y"))
+speed_function_schema = get_struct_schema(
+    "speed_function", ("type", "upper_bound", "coef", "x", "y")
+)
 nested_vehicles = vehicles.select(
     "vehicle_id",
     "headway",
@@ -275,12 +278,12 @@ nested_vehicles = vehicles.select(
 directory = os.path.join(OUTPUT_DIR, "parquet")
 if not os.path.isdir(directory):
     os.makedirs(directory)
-nested_agents.write_parquet(os.path.join(directory, "agents.parquet"))
-nested_alts.write_parquet(os.path.join(directory, "alts.parquet"))
-nested_trips.write_parquet(os.path.join(directory, "trips.parquet"))
-nested_edges.write_parquet(os.path.join(directory, "edges.parquet"))
-nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"))
-edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"))
+nested_agents.write_parquet(os.path.join(directory, "agents.parquet"), use_pyarrow=True)
+nested_alts.write_parquet(os.path.join(directory, "alts.parquet"), use_pyarrow=True)
+nested_trips.write_parquet(os.path.join(directory, "trips.parquet"), use_pyarrow=True)
+nested_edges.write_parquet(os.path.join(directory, "edges.parquet"), use_pyarrow=True)
+nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"), use_pyarrow=True)
+edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"), use_pyarrow=True)
 parameters["input_files"] = {
     "agents": "agents.parquet",
     "alternatives": "alts.parquet",
@@ -303,7 +306,7 @@ vehicles = vehicles.drop(
     "speed_function.x", "speed_function.y", "allowed_edges", "restricted_edges"
 )
 vehicles = vehicles.with_columns(
-    pl.Series([None, "Multiplicator", None]).alias("speed_function.type")
+    pl.Series([None, "UpperBound", "Multiplicator", None]).alias("speed_function.type")
 )
 directory = os.path.join(OUTPUT_DIR, "csv")
 if not os.path.isdir(directory):

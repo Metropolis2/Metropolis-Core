@@ -1,0 +1,3 @@
+agent_id,alt_id,trip_id,class.type,class.origin,class.destination,class.vehicle,class.route
+0,0,0,Road,1,3,1,1
+0,1,1,Road,1,3,1,2

@@ -18,19 +18,19 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
-arrow = { version = "51.0", default-features = false, features = ["csv"] }
+arrow = { version = "53.0", default-features = false, features = ["csv"] }
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
-fixedbitset = "0.4"
+fixedbitset = "0.4.2"
 hashbrown = { version = "0.14", features = ["rayon", "serde"] }
 indicatif = "0.17"
 log = "0.4"
 num-traits = "0.2"
-parquet = { version = "51.0", features = ["arrow", "json"] }
+parquet = { version = "53.0", features = ["arrow", "json"] }
 petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
 priority-queue = "2.0"
-object-pool = "0.5"
+object-pool = "0.6"
 ordered-float = { version = "4.1", features = ["serde"] }
 rayon = "1.5"
 serde = "1.0"

@@ -1,0 +1,25 @@
+{
+  "period": [
+    0,
+    3600
+  ],
+  "road_network": {
+    "recording_interval": 60,
+    "spillback": false,
+    "max_pending_duration": 0.0
+  },
+  "learning_model": {
+    "type": "Exponential",
+    "value": 0.01
+  },
+  "max_iterations": 1,
+  "input_files": {
+    "agents": "agents.csv",
+    "alternatives": "alts.csv",
+    "trips": "trips.csv",
+    "edges": "edges.csv",
+    "vehicle_types": "vehicles.csv"
+  },
+  "output_directory": "output",
+  "saving_format": "CSV"
+}

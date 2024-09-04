@@ -60,10 +60,10 @@ pub fn append_csv<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Result
         .iter()
         .collect();
     let mut df = if filename.is_file() {
-        let mut file =
-            File::open(&filename).with_context(|| format!("Cannot open file `{filename:?}`"))?;
-        let mut df = CsvReader::new(&mut file)
+        let mut df = CsvReadOptions::default()
             .with_schema(Some(Arc::new(Schema::from(D::schema()))))
+            .try_into_reader_with_file_path(Some(filename.clone()))
+            .with_context(|| format!("Cannot open file `{filename:?}`"))?
             .finish()
             .with_context(|| format!("Cannot read file `{filename:?}`"))?;
         df.vstack_mut(&append_df)

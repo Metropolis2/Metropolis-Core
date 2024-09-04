@@ -1,0 +1,4 @@
+edge_id,source,target,speed,length,lanes,bottleneck_flow
+1,1,3,20.0,10000.0,1.0,0.5
+2,1,2,10.0,10000.0,1.0,0.25
+3,2,3,10.0,0.0,1.0,

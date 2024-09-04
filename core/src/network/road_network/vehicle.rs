@@ -19,6 +19,8 @@ pub(crate) type OriginalVehicleId = u64;
 pub enum SpeedFunction {
     /// The identity function.
     Base,
+    /// The effective speed is bounded by a given value: `f(s) = max(s, ub)`.
+    UpperBound(MetersPerSecond),
     /// A linear function: `f(s) = a * s`.
     Multiplicator(PositiveNum),
     /// A piecewise-linear function, represented by a vector of breakpoints `(x, y)`, where `x` is
@@ -40,12 +42,20 @@ impl Default for SpeedFunction {
 impl SpeedFunction {
     fn from_values(
         function_type: Option<&str>,
+        upper_bound: Option<f64>,
         coef: Option<f64>,
         x: Option<Vec<f64>>,
         y: Option<Vec<f64>>,
     ) -> Result<Self> {
         match function_type {
             Some("Base") | None => Ok(Self::Base),
+            Some("UpperBound") => {
+                let upper_bound = MetersPerSecond::try_from(upper_bound.ok_or_else(|| {
+                    anyhow!("Value `upper_bound` is mandatory when `type` is `\"UpperBound\"`")
+                })?)
+                .context("Value `upper_bound` does not satisfy the constraints")?;
+                Ok(Self::UpperBound(upper_bound))
+            }
             Some("Multiplicator") => {
                 let coef = PositiveNum::try_from(coef.ok_or_else(|| {
                     anyhow!("Value `coef` is mandatory when `type` is `\"Multiplicator\"`")
@@ -97,6 +107,7 @@ impl SpeedFunction {
     pub(crate) fn get_speed(&self, base_speed: MetersPerSecond) -> MetersPerSecond {
         match self {
             SpeedFunction::Base => base_speed,
+            &SpeedFunction::UpperBound(upper_bound) => base_speed.min(upper_bound),
             &SpeedFunction::Multiplicator(mul) => base_speed * mul,
             SpeedFunction::Piecewise(values) => {
                 match values.binary_search_by_key(&base_speed, |&[x, _]| x) {
@@ -181,6 +192,7 @@ impl Vehicle {
         headway: Option<f64>,
         pce: Option<f64>,
         speed_function_type: Option<&str>,
+        speed_function_upper_bound: Option<f64>,
         speed_function_coef: Option<f64>,
         speed_function_x: Option<Vec<f64>>,
         speed_function_y: Option<Vec<f64>>,
@@ -199,6 +211,7 @@ impl Vehicle {
         }
         let speed_function = SpeedFunction::from_values(
             speed_function_type,
+            speed_function_upper_bound,
             speed_function_coef,
             speed_function_x,
             speed_function_y,
