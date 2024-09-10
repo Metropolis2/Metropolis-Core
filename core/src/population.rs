@@ -93,7 +93,7 @@ pub(crate) fn all_road_trips_destinations() -> HashSet<OriginalNodeId> {
 ///
 /// - A set of [modes](Mode) that he/she can take to perform his/her trip.
 /// - A [ChoiceModel] describing how his/her mode is chosen, given the expected utilities for each
-/// mode.
+///   mode.
 #[derive(Clone, Debug)]
 pub struct Agent {
     /// Id used when writing the results of the agents.
@@ -163,7 +163,7 @@ impl Agent {
     ///
     /// It is an error to call this function with `update = false` and no results for the previous
     /// day.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn make_pre_day_choice(
         &self,
         weights: &NetworkWeights,

@@ -173,7 +173,7 @@ where
     /// - `edge`: The edge to relax
     ///
     /// - `current`: The node that is currently settled. This is an endpoint of the edge. The other
-    /// endpoint being the node to update.
+    ///   endpoint being the node to update.
     ///
     /// - `key`: The key of node `current`.
     ///

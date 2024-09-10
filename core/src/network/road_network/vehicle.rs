@@ -186,7 +186,7 @@ impl Vehicle {
 }
 
 impl Vehicle {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: OriginalVehicleId,
         headway: Option<f64>,

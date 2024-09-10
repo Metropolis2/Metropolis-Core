@@ -77,7 +77,7 @@ impl Mode {
     /// Creates a `Mode` from input values.
     ///
     /// Returns an error if some values are invalid.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: usize,
         origin_delay: Option<f64>,

@@ -25,7 +25,7 @@ async fn run_routing(path: String, window: Window) {
 }
 
 #[cfg(feature = "tauri")]
-#[allow(clippy::disallowed_types)]
+#[expect(clippy::disallowed_types)]
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![run_simulation, run_routing])

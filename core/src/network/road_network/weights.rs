@@ -3,7 +3,6 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 //! Description of the [RoadNetworkWeights].
-#![allow(clippy::disallowed_types)]
 use std::ops::{Index, IndexMut};
 
 use anyhow::{bail, Context, Result};

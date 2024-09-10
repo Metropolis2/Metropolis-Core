@@ -73,7 +73,7 @@ impl Leg {
     /// Creates a `Leg` from input values.
     ///
     /// Returns an error if some values are invalid.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: usize,
         class_type: Option<&str>,
@@ -392,7 +392,7 @@ impl TravelingMode {
     /// Creates a `TravelingMode` from input values.
     ///
     /// Returns an error if some values are invalid.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: usize,
         origin_delay: Option<f64>,
@@ -1053,7 +1053,7 @@ impl TravelingMode {
     ///
     /// Not all values of the trip results are filled. Some values should be filled in the
     /// within-day model.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn init_trip_results_with_route(
         &self,
         departure_time: NonNegativeSeconds,
@@ -1196,7 +1196,7 @@ impl DepartureTimeModel {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         model_type: Option<&str>,
         departure_time: Option<f64>,

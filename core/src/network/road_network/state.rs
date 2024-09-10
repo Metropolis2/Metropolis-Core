@@ -872,7 +872,7 @@ impl RoadNetworkState {
     ///
     /// Events to trigger the bottleneck re-opening at the edge entry and at the exit of the
     /// previous edge (if any) might be pushed to the event queue.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn enters_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
@@ -942,7 +942,7 @@ impl RoadNetworkState {
     ///
     /// If the edge has a limited bottleneck flow, an event will be triggered later to re-open the
     /// edge's exit bottleneck.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn release_from_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
