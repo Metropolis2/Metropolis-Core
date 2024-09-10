@@ -219,9 +219,9 @@ impl ODPairsStruct {
             .insert((destination, requires_profile_query));
     }
 
-    /// Returns `true` if the [ODPairs] is empty.
+    /// Returns `true` if the [ODPairs] has no pair.
     pub fn is_empty(&self) -> bool {
-        self.unique_origins.is_empty() && self.unique_destinations.is_empty()
+        self.pairs.is_empty()
     }
 
     /// Returns the set of unique origins.
@@ -271,10 +271,14 @@ fn init_od_pairs(unique_vehicles: &UniqueVehicles) -> Result<Vec<ODPairsStruct>>
                 let requires_profile_query =
                     trip_mode.departure_time_model.requires_profile_query();
                 for leg in trip_mode.iter_road_legs() {
+                    if leg.route.is_some() {
+                        // A route is specified for this leg so there is no need to consider this
+                        // OD pair in the skims.
+                        continue;
+                    }
                     let vehicle_id = leg.vehicle;
                     let uvehicle = unique_vehicles.vehicle_map.get(&vehicle_id);
                     if let Some(&uvehicle) = uvehicle {
-                        // Unwraping is safe because we are iterating over road legs.
                         let origin = leg.origin;
                         let destination = leg.destination;
                         let vehicle_od_pairs = &mut od_pairs[uvehicle.index()];
@@ -304,49 +308,56 @@ fn compute_free_flow_travel_times(
     let free_flow_weights = super::free_flow_weights_inner(unique_vehicles);
     let skims = super::compute_skims_inner(&free_flow_weights, od_pairs)?;
     for (vehicle_index, vehicle_od_pairs) in od_pairs.iter().enumerate() {
-        let vehicle_skims = skims[unique_vehicle_index(vehicle_index)]
-            .as_ref()
-            .unwrap_or_else(|| panic!("No skims for unique vehicle {vehicle_index}"));
-        let vehicle_ff_tts: ODTravelTimes = vehicle_od_pairs
-            .pairs
-            .par_iter()
-            .map(|(&origin, set)| {
-                set.par_iter()
-                    .map(move |&(destination, requires_profile_query)| {
-                        (origin, destination, requires_profile_query)
-                    })
-            })
-            .flatten()
-            .map_init(
-                EAAllocation::default,
-                |alloc, (origin, destination, requires_profile_query)| {
-                    let maybe_tt: Option<_> = if requires_profile_query {
-                        let maybe_ttf = vehicle_skims.profile_query(origin, destination)?;
-                        maybe_ttf.map(|ttf| {
-                            assert!(ttf.is_constant());
-                            ttf.as_constant().copied().unwrap()
+        if let Some(vehicle_skims) = skims[unique_vehicle_index(vehicle_index)].as_ref() {
+            let vehicle_ff_tts: ODTravelTimes = vehicle_od_pairs
+                .pairs
+                .par_iter()
+                .map(|(&origin, set)| {
+                    set.par_iter()
+                        .map(move |&(destination, requires_profile_query)| {
+                            (origin, destination, requires_profile_query)
                         })
-                    } else {
-                        // The profile query has not been pre-computed (probably because there is no
-                        // trip with a departure-time choice for this OD pair).
-                        // Insted, we run a earliest-arrival query.
-                        vehicle_skims
-                            .earliest_arrival_query(origin, destination, AnySeconds::ZERO, alloc)?
-                            .map(|(arrival_time, _route)| arrival_time)
-                    };
-                    let tt = maybe_tt.ok_or(anyhow!(
-                        "No route from node {} to node {}",
-                        origin,
-                        destination
-                    ))?;
-                    Ok((
-                        (origin, destination),
-                        tt.try_into().expect("Free-flow travel time is negative"),
-                    ))
-                },
-            )
-            .collect::<Result<_>>()?;
-        free_flow_travel_times[vehicle_index] = vehicle_ff_tts;
+                })
+                .flatten()
+                .map_init(
+                    EAAllocation::default,
+                    |alloc, (origin, destination, requires_profile_query)| {
+                        let maybe_tt: Option<_> = if requires_profile_query {
+                            let maybe_ttf = vehicle_skims.profile_query(origin, destination)?;
+                            maybe_ttf.map(|ttf| {
+                                assert!(ttf.is_constant());
+                                ttf.as_constant().copied().unwrap()
+                            })
+                        } else {
+                            // The profile query has not been pre-computed (probably because there is no
+                            // trip with a departure-time choice for this OD pair).
+                            // Insted, we run a earliest-arrival query.
+                            vehicle_skims
+                                .earliest_arrival_query(
+                                    origin,
+                                    destination,
+                                    AnySeconds::ZERO,
+                                    alloc,
+                                )?
+                                .map(|(arrival_time, _route)| arrival_time)
+                        };
+                        let tt = maybe_tt.ok_or(anyhow!(
+                            "No route from node {} to node {}",
+                            origin,
+                            destination
+                        ))?;
+                        Ok((
+                            (origin, destination),
+                            tt.try_into().expect("Free-flow travel time is negative"),
+                        ))
+                    },
+                )
+                .collect::<Result<_>>()?;
+            free_flow_travel_times[vehicle_index] = vehicle_ff_tts;
+        } else {
+            // No skims for the unique vehicle.
+            assert!(vehicle_od_pairs.is_empty());
+        }
     }
     Ok(free_flow_travel_times)
 }

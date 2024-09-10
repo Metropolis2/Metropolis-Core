@@ -406,7 +406,7 @@ pub struct RoadEdge {
 
 impl RoadEdge {
     /// Creates a new RoadEdge.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub const fn new(
         id: OriginalEdgeId,
         base_speed: MetersPerSecond,
@@ -430,7 +430,7 @@ impl RoadEdge {
     }
 
     /// Creates a new RoadEdge from deserialied values.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: OriginalEdgeId,
         speed: Option<f64>,
@@ -661,8 +661,11 @@ fn compute_skims_inner(
     );
     for uvehicle_id in (0..all_od_pairs.len()).map(unique_vehicle_index) {
         let od_pairs = &all_od_pairs[uvehicle_id.index()];
-        // TODO: Computing the hierarchy is not required in case there is no trip with the current
-        // unique vehicle.
+        if od_pairs.is_empty() {
+            // There is no OD pair for this vehicle so we can skip it.
+            skims.push(Default::default());
+            continue;
+        }
         let nb_breakpoints = weights[uvehicle_id].complexity();
         debug!("Total number of breakpoints: {nb_breakpoints}");
         // TODO: In some cases, it might be faster to re-use the same order from one iteration

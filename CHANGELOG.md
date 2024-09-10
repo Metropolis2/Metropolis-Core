@@ -13,6 +13,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
   vehicle can travel.
 
+### Changed
+
+- [DEV] Road-network skims are not computed when they are not needed (e.g., when all trips have a
+  route given as input).
+
 ## [1.0.0-4] - 2024-03-15
 
 ### Changed

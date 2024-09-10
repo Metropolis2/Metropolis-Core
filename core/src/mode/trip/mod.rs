@@ -749,29 +749,36 @@ impl TravelingMode {
                     let preprocess_data = preprocess_data
                         .expect("Got a road leg without road-network preprocessing data");
                     let uid = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
-                    let (arrival_time, route_opt) = if let Some(input_route) =
-                        road_leg.route.as_ref()
-                    {
-                        // A route is given as input so the route is `pre-computed` anyway.
-                        let vehicle_weights = &weights
-                            .expect("Got a road leg but there is no road network weights.")[uid];
-                        let mut t = current_time;
-                        let mut route = Vec::with_capacity(input_route.len());
-                        for edge in input_route {
-                            t = t + NonNegativeSeconds::try_from(
-                                vehicle_weights.weights()[edge].eval(t.into()),
-                            )
-                            .expect("The travel time is negative");
-                            route.push(crate::network::road_network::edge_index_of(*edge));
-                        }
-                        (t, Some(route))
-                    } else {
-                        (arrival_time, None)
-                    };
-                    let global_free_flow_travel_time = *preprocess_data
-                        .free_flow_travel_times_of_unique_vehicle(uid)
-                        .get(&(road_leg.origin, road_leg.destination))
-                        .expect("The free flow travel time of the OD pair has not been computed.");
+                    let (arrival_time, route_opt, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            // A route is given as input so the route is `pre-computed` anyway.
+                            let vehicle_weights = &weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(t.into()),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, Some(route), global_free_flow_travel_time)
+                        } else {
+                            let global_free_flow_travel_time = *preprocess_data
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, None, global_free_flow_travel_time)
+                        };
                     leg.init_road_leg_results(
                         current_time,
                         arrival_time,
@@ -832,43 +839,52 @@ impl TravelingMode {
                     let uid = preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
                         .get_unique_vehicle_index(road_leg.vehicle);
-                    let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
-                        // Evaluate the travel time of the input route.
-                        let vehicle_weights = &rn_weights
-                            .expect("Got a road leg but there is no road network weights.")[uid];
-                        let mut t = current_time;
-                        let mut route = Vec::with_capacity(input_route.len());
-                        for edge in input_route {
-                            t = t + NonNegativeSeconds::try_from(
-                                vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
-                            )
-                            .expect("The travel time is negative");
-                            route.push(crate::network::road_network::edge_index_of(*edge));
-                        }
-                        (t, route)
-                    } else {
-                        // Run an earliest-arrival time query to get the travel time and fastest
-                        // path.
-                        // TODO. The route is not needed if pre_compute_route is false, only
-                        // the arrival time is needed.
-                        let vehicle_skims = rn_skims
-                            .expect("Got a road leg but there is no road network skims.")[uid]
-                            .as_ref()
-                            .expect("Road network skims are empty.");
-                        get_arrival_time_and_route(
-                            road_leg,
-                            current_time,
-                            vehicle_skims,
-                            progress_bar.clone(),
-                            alloc,
-                        )?
-                    };
-                    // Retrieve the global free-flow travel time.
-                    let global_free_flow_travel_time = *preprocess_data
-                        .expect("Got a road leg but there is no road network preprocess data.")
-                        .free_flow_travel_times_of_unique_vehicle(uid)
-                        .get(&(road_leg.origin, road_leg.destination))
-                        .expect("The free flow travel time of the OD pair has not been computed.");
+                    let (arrival_time, route, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            // Evaluate the travel time of the input route.
+                            let vehicle_weights = &rn_weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, route, global_free_flow_travel_time)
+                        } else {
+                            // Run an earliest-arrival time query to get the travel time and fastest
+                            // path.
+                            // TODO. The route is not needed if pre_compute_route is false, only
+                            // the arrival time is needed.
+                            let vehicle_skims = rn_skims
+                                .expect("Got a road leg but there is no road network skims.")[uid]
+                                .as_ref()
+                                .expect("Road network skims are empty.");
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                road_leg,
+                                current_time,
+                                vehicle_skims,
+                                progress_bar.clone(),
+                                alloc,
+                            )?;
+                            let global_free_flow_travel_time = *preprocess_data
+                            .expect("Got a road leg but there is no road network preprocess data.")
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, route, global_free_flow_travel_time)
+                        };
                     let leg_result = if self.pre_compute_route {
                         // Compute the route free-flow travel time and length.
                         let length =
@@ -1072,32 +1088,47 @@ impl TravelingMode {
                     let uid = preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
                         .get_unique_vehicle_index(road_leg.vehicle);
-                    let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
-                        let vehicle_weights = &weights
-                            .expect("Got a road leg but there is no road network weights.")[uid];
-                        let mut t = current_time;
-                        let mut route = Vec::with_capacity(input_route.len());
-                        for edge in input_route {
-                            t = t + NonNegativeSeconds::try_from(
-                                vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
-                            )
-                            .expect("The travel time is negative");
-                            route.push(crate::network::road_network::edge_index_of(*edge));
-                        }
-                        (t, route)
-                    } else {
-                        let vehicle_skims = skims
-                            .expect("Got a road leg but there is no road network skims.")[uid]
-                            .as_ref()
-                            .expect("Road network skims are empty.");
-                        get_arrival_time_and_route(
-                            road_leg,
-                            current_time,
-                            vehicle_skims,
-                            progress_bar.clone(),
-                            alloc,
-                        )?
-                    };
+                    let (arrival_time, route, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            let vehicle_weights = &weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, route, global_free_flow_travel_time)
+                        } else {
+                            let vehicle_skims = skims
+                                .expect("Got a road leg but there is no road network skims.")[uid]
+                                .as_ref()
+                                .expect("Road network skims are empty.");
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                road_leg,
+                                current_time,
+                                vehicle_skims,
+                                progress_bar.clone(),
+                                alloc,
+                            )?;
+                            let global_free_flow_travel_time = *preprocess_data
+                            .expect("Got a road leg but there is no road network preprocess data.")
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, route, global_free_flow_travel_time)
+                        };
                     // Compute the route free-flow travel time and length.
                     let length = crate::network::road_network::route_length(route.iter().copied());
                     let route_free_flow_travel_time =
@@ -1105,12 +1136,6 @@ impl TravelingMode {
                             route.iter().copied(),
                             road_leg.vehicle,
                         );
-                    // Retrieve the global free-flow travel time.
-                    let global_free_flow_travel_time = *preprocess_data
-                        .expect("Got a road leg but there is no road network preprocess data.")
-                        .free_flow_travel_times_of_unique_vehicle(uid)
-                        .get(&(road_leg.origin, road_leg.destination))
-                        .expect("The free flow travel time of the OD pair has not been computed.");
                     let leg_result = leg.init_road_leg_results(
                         current_time,
                         arrival_time,
