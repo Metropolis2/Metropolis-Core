@@ -29,7 +29,7 @@ pub trait NodeMap {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Self::Node, &Self::Value)> + 'a>;
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Self::Node, &'a Self::Value)> + 'a>;
 }
 
 impl<N, V> NodeMap for hashbrown::HashMap<N, V>
@@ -56,7 +56,7 @@ where
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &V)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &'a V)> + 'a> {
         Box::new(self.iter().map(|(n, v)| (*n, v)))
     }
 }
@@ -92,7 +92,7 @@ where
     fn is_empty(&self) -> bool {
         self.iter().next().is_some()
     }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &V)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &'a V)> + 'a> {
         Box::new(self.as_slice().iter().filter_map(|opt| {
             if let Some((n, v)) = opt {
                 Some((*n, v))
@@ -182,7 +182,7 @@ where
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &V)> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &'a V)> + 'a> {
         unsafe {
             Box::new(
                 self.bs
@@ -214,7 +214,7 @@ impl<NM: NodeMap> NodeMap for &mut NM {
     fn is_empty(&self) -> bool {
         (**self).is_empty()
     }
-    fn iter<'b>(&'b self) -> Box<dyn Iterator<Item = (Self::Node, &Self::Value)> + 'b> {
+    fn iter<'b>(&'b self) -> Box<dyn Iterator<Item = (Self::Node, &'b Self::Value)> + 'b> {
         (**self).iter()
     }
 }
