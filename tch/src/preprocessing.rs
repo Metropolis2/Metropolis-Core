@@ -18,7 +18,6 @@ use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
 use petgraph::Direction;
 use rayon::prelude::*;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -126,9 +125,7 @@ impl ToContractNode {
 }
 
 /// Structure for edges in a [ContractionGraph].
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound(serialize = "T: Serialize"))]
-#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
+#[derive(Clone, Debug)]
 pub(crate) struct ToContractEdge<T> {
     /// Current metric of the edge.
     ttf: TTF<T>,

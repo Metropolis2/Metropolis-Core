@@ -6,7 +6,6 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-use anyhow::anyhow;
 use either::Either;
 use itertools::Itertools;
 use serde::de::DeserializeOwned;
@@ -51,49 +50,6 @@ impl<Y: PartialOrd + Copy> MinMax<Y> {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct DeserPwlXYF<X, Y> {
-    points: Vec<Option<Y>>,
-    start_x: X,
-    interval_x: X,
-}
-
-impl<X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned, T> TryFrom<DeserPwlXYF<X, Y>>
-    for PwlXYF<X, Y, T>
-{
-    type Error = anyhow::Error;
-    fn try_from(value: DeserPwlXYF<X, Y>) -> Result<Self, Self::Error> {
-        if value.start_x < X::ZERO {
-            return Err(anyhow!(
-                "`start_x` value must be non-negative, got {:?}",
-                value.start_x
-            ));
-        }
-        if value.interval_x < X::ZERO {
-            return Err(anyhow!(
-                "`interval_x` value must be non-negative, got {:?}",
-                value.interval_x
-            ));
-        }
-        // Deserialize `None` as infinity.
-        let points: Vec<_> = value
-            .points
-            .into_iter()
-            .map(|opt_y| opt_y.unwrap_or(Y::INFINITY))
-            .collect();
-        let (&min, &max) = points.iter().minmax().into_option().unwrap();
-        let pwl_xyf = PwlXYF {
-            points,
-            min,
-            max,
-            start_x: value.start_x,
-            interval_x: value.interval_x,
-            convert_type: std::marker::PhantomData,
-        };
-        Ok(pwl_xyf)
-    }
-}
-
 /// A piecewise-linear function represented by a Vec of points `y`.
 ///
 /// The `x` points are evenly spaced, starting at `start_x`, with interval given by `interval_x`.
@@ -103,21 +59,17 @@ impl<X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned, T> TryFrom<Dese
 #[derive(PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
 #[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
-#[serde(try_from = "DeserPwlXYF<X, Y>")]
 pub struct PwlXYF<X, Y, T> {
     /// `y` values of the function.
     points: Vec<Y>,
     /// Minimum `y` value of the function.
-    #[serde(skip)]
     min: Y,
     /// Maximum `y` value of the function.
-    #[serde(skip)]
     max: Y,
     /// Starting `x` value.
     start_x: X,
     /// Interval between two `x` values.
     interval_x: X,
-    #[serde(skip)]
     convert_type: std::marker::PhantomData<T>,
 }
 

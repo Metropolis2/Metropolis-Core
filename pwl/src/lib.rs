@@ -15,7 +15,7 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use num_traits::ConstZero;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 pub use self::pwl::{PwlTTF, PwlXYF};
 pub use self::ttf_num::TTFNum;
@@ -46,12 +46,10 @@ impl UndercutDescriptor {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, EnumAsInner)]
 #[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
 #[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
-#[serde(untagged)]
 pub enum XYF<X, Y, T> {
     /// A piecewise-linear function.
     Piecewise(PwlXYF<X, Y, T>),
     /// A constant function.
-    #[serde(deserialize_with = "parse_constant")]
     Constant(Y),
 }
 
@@ -308,15 +306,6 @@ impl<T: TTFNum> TTF<T> {
             Self::Constant(_) => (),
         }
     }
-}
-
-/// Deserializes a [TTFNum] value such that `null` values are parsed as Infinity.
-fn parse_constant<'de, Y, D>(deserializer: D) -> Result<Y, D::Error>
-where
-    D: Deserializer<'de>,
-    Y: TTFNum + Deserialize<'de>,
-{
-    Deserialize::deserialize(deserializer).map(|x: Option<_>| x.unwrap_or(Y::INFINITY))
 }
 
 #[cfg(test)]

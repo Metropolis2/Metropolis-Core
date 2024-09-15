@@ -110,8 +110,6 @@ pub enum AlgorithmType {
 /// Format to be used when saving files.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub enum SavingFormat {
-    /// Zstd-compressed JSON files.
-    JSON,
     /// Parquet files.
     #[default]
     Parquet,
@@ -221,8 +219,7 @@ pub struct Query {
 }
 
 /// Result of a query.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug)]
 pub enum QueryResult {
     /// Id, arrival time and route (for earliest-arrival queries).
     EarliestArrival((u64, Option<f64>, Option<Vec<u64>>)),
@@ -254,7 +251,7 @@ pub struct DetailedOutput {
 }
 
 /// Global output for a set of queries.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct Output {
     /// Secondary results.
     pub details: DetailedOutput,
@@ -543,20 +540,12 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                     crate::io::csv::write_csv(&order_map, &parameters.output_directory)
                         .context("Failed to write node order")?;
                 }
-                SavingFormat::JSON => {
-                    crate::io::json::write_json(
-                        &order_map,
-                        &parameters.output_directory,
-                        "node_order",
-                    )
-                    .context("Failed to write node order")?;
-                }
             }
         }
 
         if parameters.output_overlay {
-            crate::io::json::write_json(&overlay, &parameters.output_directory, "overlay")
-                .context("Cannot write overlay")?;
+            // TODO: Implement this with bincode (JSON is too complex to be used here).
+            unimplemented!()
         }
 
         if parameters.algorithm == AlgorithmType::Intersect {
@@ -712,10 +701,6 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
         }
         SavingFormat::CSV => {
             crate::io::csv::write_csv(&results, &parameters.output_directory)
-                .context("Failed to write results")?;
-        }
-        SavingFormat::JSON => {
-            crate::io::json::write_json(&results, &parameters.output_directory, "results")
                 .context("Failed to write results")?;
         }
     }
