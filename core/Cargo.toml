@@ -23,6 +23,7 @@ arrow = { version = "53.0", default-features = false, features = ["csv"] }
 askama = { version = "0.12", default-features = false, features = [
   "serde-json",
 ] }
+bincode = "1.3.3"
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.6"

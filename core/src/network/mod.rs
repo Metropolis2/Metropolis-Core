@@ -9,7 +9,7 @@ use road_network::{
     RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkSkims, RoadNetworkState,
     RoadNetworkWeights,
 };
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 
 use crate::units::ZeroOneNum;
 
@@ -109,7 +109,7 @@ pub fn preprocess() -> Result<NetworkPreprocessingData> {
 /// A skim can be composed of the following parts (all of them are optional):
 ///
 /// - a [RoadNetworkSkims].
-#[derive(Clone, Default, Debug, Serialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct NetworkSkim {
     road_network: Option<RoadNetworkSkims>,
 }

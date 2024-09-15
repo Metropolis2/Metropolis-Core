@@ -490,7 +490,15 @@ fn check_validity() -> Result<()> {
 pub fn compute_and_store_choices() -> Result<()> {
     let (preprocess_data, weights) = initialize()?;
     info!("Computing skims");
-    let skims = crate::network::compute_skims(&weights, &preprocess_data.network)?;
+    let filename = PathBuf::from("skims.bin");
+    let skims = if filename.is_file() {
+        bincode::deserialize_from(std::fs::File::open(filename)?)?
+    } else {
+        let skims = crate::network::compute_skims(&weights, &preprocess_data.network)?;
+        let mut writer = std::fs::File::create(filename)?;
+        bincode::serialize_into(&mut writer, &skims)?;
+        skims
+    };
     info!("Running demand model");
     let bp = MetroProgressBar::new(crate::population::nb_agents());
     let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(

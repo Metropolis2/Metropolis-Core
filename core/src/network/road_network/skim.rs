@@ -13,7 +13,7 @@ use log::{log_enabled, Level};
 use object_pool::Pool;
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
 use ttf::TTF;
@@ -24,8 +24,8 @@ use crate::units::AnySeconds;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Default, Debug, Serialize)]
-#[serde(into = "SerializedRoadNetworkSkims")]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+// #[serde(into = "SerializedRoadNetworkSkims")]
 pub struct RoadNetworkSkims(pub Vec<Option<RoadNetworkSkim>>);
 
 impl Index<UniqueVehicleIndex> for RoadNetworkSkims {
@@ -37,7 +37,7 @@ impl Index<UniqueVehicleIndex> for RoadNetworkSkims {
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct RoadNetworkSkim {
     /// Hierarchy overlay of the road-network graph.
     hierarchy_overlay: HierarchyOverlay<AnySeconds>,
