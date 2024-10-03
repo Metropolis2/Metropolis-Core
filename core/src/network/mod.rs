@@ -5,6 +5,7 @@
 
 //! Description of the supply side of a simulation.
 use anyhow::Result;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 use road_network::{
     RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkSkims, RoadNetworkState,
     RoadNetworkWeights,
@@ -109,7 +110,7 @@ pub fn preprocess() -> Result<NetworkPreprocessingData> {
 /// A skim can be composed of the following parts (all of them are optional):
 ///
 /// - a [RoadNetworkSkims].
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, Archive, Rdeser, Rser)]
 pub struct NetworkSkim {
     road_network: Option<RoadNetworkSkims>,
 }
@@ -215,7 +216,7 @@ impl NetworkWeights {
 
 /// Structure representing network data that is pre-computed before the first iteration of the
 /// simulation.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Archive, Rdeser, Rser)]
 pub struct NetworkPreprocessingData {
     road_network: Option<RoadNetworkPreprocessingData>,
 }

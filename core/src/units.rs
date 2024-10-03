@@ -24,6 +24,7 @@ use std::ops::*;
 
 use anyhow::{bail, Result};
 use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero};
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
@@ -569,7 +570,19 @@ impl TryFrom<PositiveNum> for ZeroOneNum {
 
 /// Representation of a non-negative time duration or timestamp, expressed in seconds.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    PartialOrd,
+    Deserialize,
+    Serialize,
+    Archive,
+    Rdeser,
+    Rser,
+)]
 #[serde(try_from = "f64")]
 pub struct NonNegativeSeconds(f64);
 
@@ -618,7 +631,19 @@ impl TryFrom<AnySeconds> for NonNegativeSeconds {
 
 /// Representation of a duration or timestamp, expressed in seconds.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(
+    Default,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    PartialOrd,
+    Deserialize,
+    Serialize,
+    Archive,
+    Rdeser,
+    Rser,
+)]
 #[serde(try_from = "f64")]
 pub struct AnySeconds(f64);
 

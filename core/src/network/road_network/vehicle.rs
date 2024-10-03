@@ -7,6 +7,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
 use num_traits::ConstZero;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 
 use super::OriginalEdgeId;
 use crate::units::*;
@@ -256,7 +257,9 @@ impl Vehicle {
 }
 
 /// Vehicle identifier.
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Archive, Rdeser, Rser,
+)]
 pub struct VehicleIndex(usize);
 
 impl VehicleIndex {

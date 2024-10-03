@@ -6,6 +6,7 @@
 //! Everything related to simulations.
 pub mod results;
 
+use std::io::{Read, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -16,6 +17,7 @@ use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
+use rkyv::{deserialize, rancor::Error, Archive, Deserialize as Rdeser, Serialize as Rser};
 
 use self::results::{
     AgentResults, AggregateResults, IterationResults, IterationRunningTimes, RunningTimes,
@@ -26,7 +28,7 @@ use crate::io;
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
+use crate::network::{ArchivedNetworkSkim, NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::population::agent_index;
 use crate::progress_bar::MetroProgressBar;
 use crate::report;
@@ -411,7 +413,19 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
     // Check that the simulation is valid.
     check_validity()?;
     // Pre-process the simulation.
-    let preprocess_data = preprocess()?;
+    let filename = PathBuf::from("preprocess.rkyv");
+    let preprocess_data = if filename.is_file() {
+        let mut bytes = Vec::new();
+        std::fs::File::open(filename)?.read_to_end(&mut bytes)?;
+        let archived = unsafe { rkyv::access_unchecked::<ArchivedPreprocessingData>(&bytes[..]) };
+        deserialize::<PreprocessingData, Error>(archived)?
+    } else {
+        let data = preprocess()?;
+        let mut writer = std::fs::File::create(filename)?;
+        let bytes = rkyv::to_bytes::<Error>(&data)?;
+        writer.write_all(&bytes)?;
+        data
+    };
     let rn_weights = if crate::network::has_road_network() {
         // Read the input road-network conditions or create free-flow conditions if no file is
         // given.
@@ -490,13 +504,17 @@ fn check_validity() -> Result<()> {
 pub fn compute_and_store_choices() -> Result<()> {
     let (preprocess_data, weights) = initialize()?;
     info!("Computing skims");
-    let filename = PathBuf::from("skims.bin");
+    let filename = PathBuf::from("skims.rkyv");
     let skims = if filename.is_file() {
-        bincode::deserialize_from(std::fs::File::open(filename)?)?
+        let mut bytes = Vec::new();
+        std::fs::File::open(filename)?.read_to_end(&mut bytes)?;
+        let archived = unsafe { rkyv::access_unchecked::<ArchivedNetworkSkim>(&bytes[..]) };
+        deserialize::<NetworkSkim, Error>(archived)?
     } else {
         let skims = crate::network::compute_skims(&weights, &preprocess_data.network)?;
         let mut writer = std::fs::File::create(filename)?;
-        bincode::serialize_into(&mut writer, &skims)?;
+        let bytes = rkyv::to_bytes::<Error>(&skims)?;
+        writer.write_all(&bytes)?;
         skims
     };
     info!("Running demand model");
@@ -544,7 +562,7 @@ fn stop(iteration_counter: u32, _results: &AgentResults) -> bool {
 }
 
 /// Additional input data for the simulation which is computed before running the simulation.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Archive, Rdeser, Rser)]
 pub struct PreprocessingData {
     /// Network-specific pre-processing data.
     pub network: NetworkPreprocessingData,

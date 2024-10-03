@@ -15,6 +15,7 @@ either = "1.6"
 enum-as-inner = "0.6"
 itertools = "0.13"
 num-traits = "0.2"
+rkyv = { version = "0.8.8", features = ["hashbrown-0_14"] }
 serde = "1.0"
 
 [lints]

@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 use either::Either;
 use enum_as_inner::EnumAsInner;
 use num_traits::ConstZero;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +44,9 @@ impl UndercutDescriptor {
 /// A function that can be either constant or piecewise-linear.
 ///
 /// If the function is piecewise-linear, it is represented using a [PwlXYF].
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, EnumAsInner)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Deserialize, Serialize, EnumAsInner, Archive, Rdeser, Rser,
+)]
 #[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
 #[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
 pub enum XYF<X, Y, T> {

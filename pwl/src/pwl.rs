@@ -8,6 +8,7 @@ use std::fmt;
 
 use either::Either;
 use itertools::Itertools;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +57,7 @@ impl<Y: PartialOrd + Copy> MinMax<Y> {
 ///
 /// The `x` values are of type `X`, the `y` values are of type `Y`.
 /// The `T` generic type is used to convert from `X` to `Y`.
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Archive, Rdeser, Rser)]
 #[serde(bound(serialize = "X: Serialize, Y: Serialize"))]
 #[serde(bound(deserialize = "X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned"))]
 pub struct PwlXYF<X, Y, T> {

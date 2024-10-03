@@ -11,8 +11,9 @@ use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
 use object_pool::Pool;
-use petgraph::graph::{EdgeIndex, NodeIndex};
+use petgraph::graph::{node_index, EdgeIndex, NodeIndex};
 use rayon::prelude::*;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 use serde::{Deserialize, Serialize};
 use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
@@ -24,7 +25,7 @@ use crate::units::AnySeconds;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, Archive, Rdeser, Rser)]
 // #[serde(into = "SerializedRoadNetworkSkims")]
 pub struct RoadNetworkSkims(pub Vec<Option<RoadNetworkSkim>>);
 
@@ -37,14 +38,41 @@ impl Index<UniqueVehicleIndex> for RoadNetworkSkims {
 
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, Archive, Rdeser, Rser)]
 pub struct RoadNetworkSkim {
     /// Hierarchy overlay of the road-network graph.
+    #[rkyv(with=HierarchyOverlayDummy)]
     hierarchy_overlay: HierarchyOverlay<AnySeconds>,
     /// Mapping from original node id to simulation NodeIndex.
-    node_map: HashMap<OriginalNodeId, NodeIndex>,
+    node_map: HashMap<OriginalNodeId, NodeIndexDef>,
     /// Travel time functions for each used OD pair.
     profile_query_cache: ODTravelTimeFunctions,
+}
+
+#[derive(Archive, Rdeser, Rser)]
+#[rkyv(remote=HierarchyOverlay<AnySeconds>)]
+#[rkyv(archived=ArchivedHierarchyOverlay)]
+struct HierarchyOverlayDummy;
+
+impl From<HierarchyOverlayDummy> for HierarchyOverlay<AnySeconds> {
+    fn from(_: HierarchyOverlayDummy) -> Self {
+        Default::default()
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize, Archive, Rdeser, Rser)]
+struct NodeIndexDef(u32);
+
+impl From<NodeIndexDef> for NodeIndex {
+    fn from(value: NodeIndexDef) -> Self {
+        node_index(value.0 as usize)
+    }
+}
+
+impl From<NodeIndex> for NodeIndexDef {
+    fn from(value: NodeIndex) -> Self {
+        NodeIndexDef(value.index() as u32)
+    }
 }
 
 impl RoadNetworkSkim {
@@ -55,7 +83,7 @@ impl RoadNetworkSkim {
     ) -> Self {
         RoadNetworkSkim {
             hierarchy_overlay,
-            node_map,
+            node_map: node_map.into_iter().map(|(a, b)| (a, b.into())).collect(),
             profile_query_cache: HashMap::new(),
         }
     }
@@ -183,10 +211,11 @@ impl RoadNetworkSkim {
     }
 
     fn get_node_id(&self, original_id: OriginalNodeId) -> NodeIndex {
-        *self
-            .node_map
-            .get(&original_id)
-            .unwrap_or_else(|| panic!("No node with id {original_id} in the road-network graph"))
+        NodeIndex::from(
+            *self.node_map.get(&original_id).unwrap_or_else(|| {
+                panic!("No node with id {original_id} in the road-network graph")
+            }),
+        )
     }
 
     /// Return the travel-time function resulting from the profile query between two nodes.

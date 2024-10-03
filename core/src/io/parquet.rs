@@ -47,6 +47,11 @@ pub fn write_parquet_with_prefix<D: ToArrow<J>, const J: usize>(
                 .with_context(|| format!("Cannot create file `{filename:?}`"))?;
             let props = WriterProperties::builder()
                 .set_compression(Compression::SNAPPY)
+                .set_data_page_size_limit(1024 * 1024)
+                .set_data_page_row_count_limit(200_000)
+                .set_max_row_group_size(1024 * 1024)
+                .set_write_batch_size(512 * 512)
+                .set_created_by("METROPOLIS2".to_owned())
                 .build();
             let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))
                 .with_context(|| format!("Cannot create writer for file `{filename:?}`"))?;

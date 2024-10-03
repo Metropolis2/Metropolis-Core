@@ -10,6 +10,7 @@ use anyhow::{anyhow, Result};
 use hashbrown::{HashMap, HashSet};
 use num_traits::ConstZero;
 use rayon::prelude::*;
+use rkyv::{Archive, Deserialize as Rdeser, Serialize as Rser};
 
 use super::skim::EAAllocation;
 use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
@@ -18,7 +19,9 @@ use crate::mode::Mode;
 use crate::units::NonNegativeSeconds;
 
 /// Unique vehicle index.
-#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Archive, Rdeser, Rser,
+)]
 pub struct UniqueVehicleIndex(usize);
 
 impl UniqueVehicleIndex {
@@ -39,7 +42,7 @@ pub const fn unique_vehicle_index(x: usize) -> UniqueVehicleIndex {
 }
 
 /// Struct to store the set of unique vehicles and the equivalences between vehicles.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Archive, Rdeser, Rser)]
 pub(crate) struct UniqueVehicles {
     /// Index in the road network's vehicle list of the reference unique vehicles.
     list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)>,
@@ -106,7 +109,7 @@ impl Index<OriginalVehicleId> for UniqueVehicles {
 }
 
 /// Set of pre-processing data used for different road-network computation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Archive, Rdeser, Rser)]
 pub struct RoadNetworkPreprocessingData {
     /// Set of unique vehicles.
     pub(crate) unique_vehicles: UniqueVehicles,
@@ -177,7 +180,7 @@ impl RoadNetworkPreprocessingData {
 
 /// Structure representing the origin-destination pairs for which at least one agent can make a
 /// trip, with a given vehicle.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Archive, Rdeser, Rser)]
 pub struct ODPairsStruct {
     /// Set of nodes used as origin for at least one trip which requires profile query.
     unique_origins: HashSet<OriginalNodeId>,
