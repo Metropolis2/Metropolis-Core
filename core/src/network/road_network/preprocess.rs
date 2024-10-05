@@ -17,6 +17,10 @@ use super::{AnySeconds, OriginalNodeId};
 use crate::mode::Mode;
 use crate::units::NonNegativeSeconds;
 
+// Threshold used to consider a node as a popular origin or destination (see
+// [ODPairsStruct::popular_origins_and_destinations]).
+const POPULAR_THRESHOLD: usize = 20;
+
 /// Unique vehicle index.
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct UniqueVehicleIndex(usize);
@@ -183,7 +187,12 @@ pub struct ODPairsStruct {
     unique_origins: HashSet<OriginalNodeId>,
     /// Set of nodes used as destination for at least one trip which requires profile query.
     unique_destinations: HashSet<OriginalNodeId>,
+    /// For each origin node, the set of destination nodes (with a boolean indicating whether the
+    /// OD pair requires a profile query).
     pairs: ODPairs,
+    /// For each destination node, the set of origin nodes (with a boolean indicating whether the
+    /// OD pair requires a profile query).
+    reverse_pairs: ODPairs,
 }
 
 /// For each node used as origin, a set of nodes used as destination, with a boolean indicating
@@ -217,6 +226,10 @@ impl ODPairsStruct {
             .entry(origin)
             .or_default()
             .insert((destination, requires_profile_query));
+        self.reverse_pairs
+            .entry(destination)
+            .or_default()
+            .insert((origin, requires_profile_query));
     }
 
     /// Returns `true` if the [ODPairs] has no pair.
@@ -260,6 +273,96 @@ impl ODPairsStruct {
             }),
             self.pairs.len(),
         )
+    }
+
+    /// Returns the most popular origins and destination.
+    ///
+    /// A node is a "popular" origin if it the origin for at least `POPULAR_THRESHOLD` OD pairs for which the
+    /// destination appears in at least `POPULAR_THRESHOLD` OD pairs.
+    pub fn popular_origins_and_destinations(&self) -> (Vec<OriginalNodeId>, Vec<OriginalNodeId>) {
+        // How many times each node is used as origin.
+        let origin_counts: HashMap<OriginalNodeId, usize> = self
+            .pairs
+            .iter()
+            .map(|(&o, dests)| {
+                (
+                    o,
+                    dests
+                        .iter()
+                        .filter(|(_d, requires_profile)| *requires_profile)
+                        .count(),
+                )
+            })
+            .collect();
+        // How many times each node is used as destination.
+        let destination_counts: HashMap<OriginalNodeId, usize> = self
+            .reverse_pairs
+            .iter()
+            .map(|(&d, origins)| {
+                (
+                    d,
+                    origins
+                        .iter()
+                        .filter(|(_o, requires_profile)| *requires_profile)
+                        .count(),
+                )
+            })
+            .collect();
+        // Nodes which are used more than POPULAR_THRESHOLD times as origin.
+        let main_origins: HashSet<OriginalNodeId> = origin_counts
+            .into_iter()
+            .filter_map(|(o, c)| {
+                if c >= POPULAR_THRESHOLD {
+                    Some(o)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // Nodes which are used more than POPULAR_THRESHOLD times as destination.
+        let main_destinations: HashSet<OriginalNodeId> = destination_counts
+            .into_iter()
+            .filter_map(|(o, c)| {
+                if c >= POPULAR_THRESHOLD {
+                    Some(o)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let popular_origins: Vec<OriginalNodeId> = self
+            .pairs
+            .iter()
+            .filter_map(|(&o, dests)| {
+                let c = dests
+                    .iter()
+                    .filter(|(d, requires_profile)| {
+                        *requires_profile && main_destinations.contains(d)
+                    })
+                    .count();
+                if c >= POPULAR_THRESHOLD {
+                    Some(o)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let popular_destinations: Vec<OriginalNodeId> = self
+            .reverse_pairs
+            .iter()
+            .filter_map(|(&d, origins)| {
+                let c = origins
+                    .iter()
+                    .filter(|(o, requires_profile)| *requires_profile && main_origins.contains(o))
+                    .count();
+                if c >= POPULAR_THRESHOLD {
+                    Some(d)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        (popular_origins, popular_destinations)
     }
 }
 

@@ -65,13 +65,16 @@ impl RoadNetworkSkim {
     /// destinations.
     pub fn get_search_spaces(
         &mut self,
-        origins: &HashSet<OriginalNodeId>,
-        destinations: &HashSet<OriginalNodeId>,
+        origins: Vec<OriginalNodeId>,
+        destinations: Vec<OriginalNodeId>,
     ) -> SearchSpaces<AnySeconds> {
-        let sources: HashSet<_> = origins.iter().map(|&o_id| self.get_node_id(o_id)).collect();
+        let sources: HashSet<_> = origins
+            .into_iter()
+            .map(|o_id| self.get_node_id(o_id))
+            .collect();
         let targets: HashSet<_> = destinations
-            .iter()
-            .map(|&d_id| self.get_node_id(d_id))
+            .into_iter()
+            .map(|d_id| self.get_node_id(d_id))
             .collect();
         self.hierarchy_overlay.get_search_spaces(&sources, &targets)
     }
@@ -110,20 +113,53 @@ impl RoadNetworkSkim {
                 .template("{bar:60} ETA: {eta}")
                 .unwrap(),
         );
+        let pool: Pool<TCHProfileAlloc> = Pool::new(rayon::current_num_threads(), Default::default);
         self.profile_query_cache = od_pairs
-            .map(|(source, targets)| {
-                bp.inc(1);
-                let source_id = self.get_node_id(source);
-                let target_ttfs = targets
-                    .map(|target| {
+            .map_init(
+                || pool.pull(Default::default),
+                |alloc, (source, targets)| {
+                    bp.inc(1);
+                    let source_id = self.get_node_id(source);
+                    let mut extra_targets = Vec::with_capacity(targets.size_hint().1.unwrap_or(16));
+                    let mut target_ttfs = if search_spaces.has_forward_search_space(&source_id) {
+                        targets
+                            .filter_map(|target| {
+                                let target_id = self.get_node_id(target);
+                                if search_spaces.has_backward_search_space(&target_id) {
+                                    Some(
+                                        algo::intersect_profile_query(
+                                            source_id,
+                                            target_id,
+                                            search_spaces,
+                                        )
+                                        .map(|ttf| (target, ttf)),
+                                    )
+                                } else {
+                                    extra_targets.push(target);
+                                    None
+                                }
+                            })
+                            .collect::<Result<HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>>()?
+                    } else {
+                        extra_targets.extend(targets);
+                        HashMap::with_capacity(extra_targets.len())
+                    };
+                    // Run TCH queries for the remaining pairs.
+                    for target in extra_targets {
                         let target_id = self.get_node_id(target);
-                        let ttf =
-                            algo::intersect_profile_query(source_id, target_id, search_spaces)?;
-                        Ok((target, ttf))
-                    })
-                    .collect::<Result<HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>>()?;
-                Ok((source, target_ttfs))
-            })
+                        let (profile_alloc, candidate_map) = alloc.get_mut_variables();
+                        let ttf = self.hierarchy_overlay.profile_query(
+                            source_id,
+                            target_id,
+                            &mut profile_alloc.interval_search,
+                            &mut profile_alloc.profile_search,
+                            candidate_map,
+                        );
+                        target_ttfs.insert(target, ttf);
+                    }
+                    Ok((source, target_ttfs))
+                },
+            )
             .collect::<Result<ODTravelTimeFunctions>>()?;
         bp.finish_and_clear();
         Ok(())
