@@ -603,6 +603,16 @@ pub struct SearchSpaces<T> {
 }
 
 impl<T> SearchSpaces<T> {
+    /// Returns `true` if the given node has a forward search space.
+    pub fn has_forward_search_space(&self, node: &NodeIndex) -> bool {
+        self.forward.contains_key(node)
+    }
+
+    /// Returns `true` if the given node has a backward search space.
+    pub fn has_backward_search_space(&self, node: &NodeIndex) -> bool {
+        self.backward.contains_key(node)
+    }
+
     /// Returns a reference to the search spaces of the given node (in forward direction), if it
     /// exits.
     pub fn get_forward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {

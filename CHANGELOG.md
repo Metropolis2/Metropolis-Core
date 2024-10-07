@@ -17,6 +17,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [DEV] Road-network skims are not computed when they are not needed (e.g., when all trips have a
   route given as input).
+- [DEV] Do not compute search space for origin / destination nodes with few occurences. A TCH query
+  is run instead of Intersect query in this case.
 
 ## [1.0.0-4] - 2024-03-15
 

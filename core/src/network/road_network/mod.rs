@@ -700,9 +700,11 @@ fn compute_skims_inner(
             }
         };
         if use_intersect {
+            debug!("Finding most popular origins and destinations");
+            let (popular_origins, popular_destinations) =
+                od_pairs.popular_origins_and_destinations();
             debug!("Computing search spaces");
-            let search_spaces =
-                skim.get_search_spaces(od_pairs.unique_origins(), od_pairs.unique_destinations());
+            let search_spaces = skim.get_search_spaces(popular_origins, popular_destinations);
             debug!(
                 "Complexity of the search spaces: {}",
                 search_spaces.complexity()
