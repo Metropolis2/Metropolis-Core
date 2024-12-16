@@ -16,10 +16,22 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Changed
 
+- [USER] Improve the error message that is shown when some origin / destination nodes are not part
+  of the road network.
+- [INPUT] Default number of iterations (`max_iterations`) is 1 (it was 0).
+- [OUTPUT] Update the terminology for `running_times.json` output file.
+- [OUTPUT] Optimize file size of `report.html`.
+- [DEV] Use `jemalloc` as allocator for improved performances on Linux systems.
+- [DEV] Profile queries are not computed for origin-destination pairs with no departure-time choice.
 - [DEV] Road-network skims are not computed when they are not needed (e.g., when all trips have a
   route given as input).
-- [DEV] Do not compute search space for origin / destination nodes with few occurences. A TCH query
+- [DEV] Do not compute search space for origin / destination nodes with few occurrences. A TCH query
   is run instead of Intersect query in this case.
+
+### Fixed
+
+- [OUTPUT] Fix the computation for expected travel time difference RMSE.
+- [DEV] Various improvements and bug fixes.
 
 ## [1.0.0-4] - 2024-03-15
 
