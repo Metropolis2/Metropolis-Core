@@ -12,6 +12,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
   vehicle can travel.
+- [USER] The error messages are logged to the `log.txt` output file.
 
 ### Changed
 

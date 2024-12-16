@@ -24,15 +24,22 @@ pub mod units;
 use std::env;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 // Dependencies only used in the bins.
 use clap as _;
+use log::error;
 
 /// Deserializes a simulation, runs it and stores the results to a given output directory.
 ///
 /// This function takes as argument the path to the `parameters.json` file.
 pub fn run_simulation(path: &Path) -> Result<()> {
-    run_simulation_imp(path, None::<std::io::Empty>)
+    let res = run_simulation_imp(path, None::<std::io::Empty>);
+    if let Err(ref err) = res {
+        error!("{err:?}");
+        Err(anyhow!("Failed to run simulation"))
+    } else {
+        Ok(())
+    }
 }
 
 /// Deserializes a simulation, runs it and stores the results to a given output directory.
@@ -43,7 +50,13 @@ pub fn run_simulation_with_writer<W: std::io::Write + Send + 'static>(
     path: &Path,
     writer: W,
 ) -> Result<()> {
-    run_simulation_imp(path, Some(writer))
+    let res = run_simulation_imp(path, Some(writer));
+    if let Err(ref err) = res {
+        error!("{err:?}");
+        Err(anyhow!("Failed to run simulation"))
+    } else {
+        Ok(())
+    }
 }
 
 fn run_simulation_imp<W: std::io::Write + Send + 'static>(
