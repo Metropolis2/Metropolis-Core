@@ -6,43 +6,44 @@
 //! Utility functions to work with polars library.
 
 use anyhow::Result;
+use polars::datatypes::PlSmallStr;
 use polars::prelude::*;
 
 use crate::simulation::results::AggregateResults;
 
 pub trait ToPolars {
     fn to_dataframe(self) -> Result<DataFrame>;
-    fn schema() -> ArrowSchema;
+    fn schema() -> Schema;
 }
 
 macro_rules! add_const {
     ($df:ident, $name:expr, $const:expr) => {
-        $df.with_column(Series::new($name, &[$const]))?;
+        $df.with_column(Series::new(PlSmallStr::from_str($name), &[$const]))?;
     };
 }
 
 macro_rules! add_null_const {
     ($df:ident, $name:expr, $type:expr) => {
-        $df.with_column(Series::full_null($name, 1, &$type))?;
+        $df.with_column(Series::full_null(PlSmallStr::from_str($name), 1, &$type))?;
     };
 }
 
 macro_rules! add_distr {
     ($df:ident, $name:expr, $var:expr) => {
         $df.with_column(Series::new(
-            concat!($name, "_mean"),
+            PlSmallStr::from_str(concat!($name, "_mean")),
             &[Into::<f64>::into($var.mean())],
         ))?;
         $df.with_column(Series::new(
-            concat!($name, "_std"),
+            PlSmallStr::from_str(concat!($name, "_std")),
             &[Into::<f64>::into($var.std())],
         ))?;
         $df.with_column(Series::new(
-            concat!($name, "_min"),
+            PlSmallStr::from_str(concat!($name, "_min")),
             &[Into::<f64>::into($var.min())],
         ))?;
         $df.with_column(Series::new(
-            concat!($name, "_max"),
+            PlSmallStr::from_str(concat!($name, "_max")),
             &[Into::<f64>::into($var.max())],
         ))?;
     };
@@ -51,22 +52,22 @@ macro_rules! add_distr {
 macro_rules! add_null_distr {
     ($df:ident, $name:expr) => {
         $df.with_column(Series::full_null(
-            concat!($name, "_mean"),
+            PlSmallStr::from_str(concat!($name, "_mean")),
             1,
             &DataType::Float64,
         ))?;
         $df.with_column(Series::full_null(
-            concat!($name, "_std"),
+            PlSmallStr::from_str(concat!($name, "_std")),
             1,
             &DataType::Float64,
         ))?;
         $df.with_column(Series::full_null(
-            concat!($name, "_min"),
+            PlSmallStr::from_str(concat!($name, "_min")),
             1,
             &DataType::Float64,
         ))?;
         $df.with_column(Series::full_null(
-            concat!($name, "_max"),
+            PlSmallStr::from_str(concat!($name, "_max")),
             1,
             &DataType::Float64,
         ))?;
@@ -121,39 +122,35 @@ macro_rules! add_null_virtual_leg_columns {
 
 macro_rules! add_distr_to_fields {
     ($fields:ident, $name:expr) => {
-        $fields.push(ArrowField::new(
-            concat!($name, "_mean"),
-            ArrowDataType::Float64,
-            true,
-        ));
-        $fields.push(ArrowField::new(
-            concat!($name, "_std"),
-            ArrowDataType::Float64,
-            true,
-        ));
-        $fields.push(ArrowField::new(
-            concat!($name, "_min"),
-            ArrowDataType::Float64,
-            true,
-        ));
-        $fields.push(ArrowField::new(
-            concat!($name, "_max"),
-            ArrowDataType::Float64,
-            true,
-        ));
+        $fields.insert(
+            PlSmallStr::from_str(concat!($name, "_mean")),
+            DataType::Float64,
+        );
+        $fields.insert(
+            PlSmallStr::from_str(concat!($name, "_std")),
+            DataType::Float64,
+        );
+        $fields.insert(
+            PlSmallStr::from_str(concat!($name, "_min")),
+            DataType::Float64,
+        );
+        $fields.insert(
+            PlSmallStr::from_str(concat!($name, "_max")),
+            DataType::Float64,
+        );
     };
 }
 
 macro_rules! add_cst_to_fields {
     ($fields:ident, $name:expr, $dtype:expr) => {
-        $fields.push(ArrowField::new($name, $dtype, true));
+        $fields.insert(PlSmallStr::from_str($name), $dtype);
     };
 }
 
 impl ToPolars for AggregateResults {
     fn to_dataframe(self) -> Result<DataFrame> {
-        let mut df = DataFrame::new(vec![Series::new(
-            "iteration_counter",
+        let mut df = DataFrame::new(vec![Column::new(
+            "iteration_counter".into(),
             &[self.iteration_counter],
         )])?;
         add_distr!(df, "surplus", self.surplus);
@@ -327,66 +324,62 @@ impl ToPolars for AggregateResults {
         }
         Ok(df)
     }
-    fn schema() -> ArrowSchema {
-        let mut fields = Vec::with_capacity(256);
-        add_cst_to_fields!(fields, "iteration_counter", ArrowDataType::UInt32);
-        add_distr_to_fields!(fields, "surplus");
-        add_cst_to_fields!(fields, "trip_alt_count", ArrowDataType::UInt64);
-        add_distr_to_fields!(fields, "alt_departure_time");
-        add_distr_to_fields!(fields, "alt_arrival_time");
-        add_distr_to_fields!(fields, "alt_travel_time");
-        add_distr_to_fields!(fields, "alt_utility");
-        add_distr_to_fields!(fields, "alt_expected_utility");
-        add_distr_to_fields!(fields, "alt_dep_time_shift");
-        add_cst_to_fields!(fields, "alt_dep_time_rmse", ArrowDataType::Float64);
-        add_cst_to_fields!(fields, "road_trip_count", ArrowDataType::UInt64);
+    fn schema() -> Schema {
+        let mut schema = Schema::with_capacity(256);
+        add_cst_to_fields!(schema, "iteration_counter", DataType::UInt32);
+        add_distr_to_fields!(schema, "surplus");
+        add_cst_to_fields!(schema, "trip_alt_count", DataType::UInt64);
+        add_distr_to_fields!(schema, "alt_departure_time");
+        add_distr_to_fields!(schema, "alt_arrival_time");
+        add_distr_to_fields!(schema, "alt_travel_time");
+        add_distr_to_fields!(schema, "alt_utility");
+        add_distr_to_fields!(schema, "alt_expected_utility");
+        add_distr_to_fields!(schema, "alt_dep_time_shift");
+        add_cst_to_fields!(schema, "alt_dep_time_rmse", DataType::Float64);
+        add_cst_to_fields!(schema, "road_trip_count", DataType::UInt64);
+        add_cst_to_fields!(schema, "nb_agents_at_least_one_road_trip", DataType::UInt64);
+        add_cst_to_fields!(schema, "nb_agents_all_road_trips", DataType::UInt64);
+        add_distr_to_fields!(schema, "road_trip_count_by_agent");
+        add_distr_to_fields!(schema, "road_trip_departure_time");
+        add_distr_to_fields!(schema, "road_trip_arrival_time");
+        add_distr_to_fields!(schema, "road_trip_road_time");
+        add_distr_to_fields!(schema, "road_trip_in_bottleneck_time");
+        add_distr_to_fields!(schema, "road_trip_out_bottleneck_time");
+        add_distr_to_fields!(schema, "road_trip_travel_time");
+        add_distr_to_fields!(schema, "road_trip_route_free_flow_travel_time");
+        add_distr_to_fields!(schema, "road_trip_global_free_flow_travel_time");
+        add_distr_to_fields!(schema, "road_trip_route_congestion");
+        add_distr_to_fields!(schema, "road_trip_global_congestion");
+        add_distr_to_fields!(schema, "road_trip_length");
+        add_distr_to_fields!(schema, "road_trip_edge_count");
+        add_distr_to_fields!(schema, "road_trip_utility");
+        add_distr_to_fields!(schema, "road_trip_exp_travel_time");
+        add_distr_to_fields!(schema, "road_trip_exp_travel_time_rel_diff");
+        add_distr_to_fields!(schema, "road_trip_exp_travel_time_abs_diff");
         add_cst_to_fields!(
-            fields,
-            "nb_agents_at_least_one_road_trip",
-            ArrowDataType::UInt64
-        );
-        add_cst_to_fields!(fields, "nb_agents_all_road_trips", ArrowDataType::UInt64);
-        add_distr_to_fields!(fields, "road_trip_count_by_agent");
-        add_distr_to_fields!(fields, "road_trip_departure_time");
-        add_distr_to_fields!(fields, "road_trip_arrival_time");
-        add_distr_to_fields!(fields, "road_trip_road_time");
-        add_distr_to_fields!(fields, "road_trip_in_bottleneck_time");
-        add_distr_to_fields!(fields, "road_trip_out_bottleneck_time");
-        add_distr_to_fields!(fields, "road_trip_travel_time");
-        add_distr_to_fields!(fields, "road_trip_route_free_flow_travel_time");
-        add_distr_to_fields!(fields, "road_trip_global_free_flow_travel_time");
-        add_distr_to_fields!(fields, "road_trip_route_congestion");
-        add_distr_to_fields!(fields, "road_trip_global_congestion");
-        add_distr_to_fields!(fields, "road_trip_length");
-        add_distr_to_fields!(fields, "road_trip_edge_count");
-        add_distr_to_fields!(fields, "road_trip_utility");
-        add_distr_to_fields!(fields, "road_trip_exp_travel_time");
-        add_distr_to_fields!(fields, "road_trip_exp_travel_time_rel_diff");
-        add_distr_to_fields!(fields, "road_trip_exp_travel_time_abs_diff");
-        add_cst_to_fields!(
-            fields,
+            schema,
             "road_trip_exp_travel_time_diff_rmse",
-            ArrowDataType::Float64
+            DataType::Float64
         );
-        add_distr_to_fields!(fields, "road_trip_length_diff");
-        add_cst_to_fields!(fields, "virtual_trip_count", ArrowDataType::UInt64);
+        add_distr_to_fields!(schema, "road_trip_length_diff");
+        add_cst_to_fields!(schema, "virtual_trip_count", DataType::UInt64);
         add_cst_to_fields!(
-            fields,
+            schema,
             "nb_agents_at_least_one_virtual_trip",
-            ArrowDataType::UInt64
+            DataType::UInt64
         );
-        add_cst_to_fields!(fields, "nb_agents_all_virtual_trips", ArrowDataType::UInt64);
-        add_distr_to_fields!(fields, "virtual_trip_count_by_agent");
-        add_distr_to_fields!(fields, "virtual_trip_departure_time");
-        add_distr_to_fields!(fields, "virtual_trip_arrival_time");
-        add_distr_to_fields!(fields, "virtual_trip_travel_time");
-        add_distr_to_fields!(fields, "virtual_trip_global_free_flow_travel_time");
-        add_distr_to_fields!(fields, "virtual_trip_global_congestion");
-        add_distr_to_fields!(fields, "virtual_trip_utility");
-        add_cst_to_fields!(fields, "no_trip_alt_count", ArrowDataType::UInt64);
-        add_distr_to_fields!(fields, "constant_utility");
-        add_cst_to_fields!(fields, "sim_road_network_cond_rmse", ArrowDataType::Float64);
-        add_cst_to_fields!(fields, "exp_road_network_cond_rmse", ArrowDataType::Float64);
-        ArrowSchema::from(fields)
+        add_cst_to_fields!(schema, "nb_agents_all_virtual_trips", DataType::UInt64);
+        add_distr_to_fields!(schema, "virtual_trip_count_by_agent");
+        add_distr_to_fields!(schema, "virtual_trip_departure_time");
+        add_distr_to_fields!(schema, "virtual_trip_arrival_time");
+        add_distr_to_fields!(schema, "virtual_trip_travel_time");
+        add_distr_to_fields!(schema, "virtual_trip_global_free_flow_travel_time");
+        add_distr_to_fields!(schema, "virtual_trip_global_congestion");
+        add_distr_to_fields!(schema, "virtual_trip_utility");
+        add_cst_to_fields!(schema, "no_trip_alt_count", DataType::UInt64);
+        add_distr_to_fields!(schema, "constant_utility");
+        add_cst_to_fields!(schema, "sim_road_network_cond_rmse", DataType::Float64);
+        add_cst_to_fields!(schema, "exp_road_network_cond_rmse", DataType::Float64);
+        schema
     }
 }
