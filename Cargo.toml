@@ -20,7 +20,8 @@ publish = false
 tch = { path = "tch/" }
 metropolis-core = { path = "core/" }
 serde = "1.0"
-tauri = { version = "1.5", features = ["dialog-open"], optional = true }
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = "2"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

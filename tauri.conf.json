@@ -1,40 +1,35 @@
 {
   "build": {
-    "devPath": "./gui",
-    "distDir": "./gui",
+    "frontendDist": "./gui",
+    "features": [
+      "gui"
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/icon.ico"
+    ]
+  },
+  "productName": "Metropolis2GUI",
+  "mainBinaryName": "Metropolis2GUI",
+  "version": "1.0.0-4",
+  "identifier": "com.metropolis2.metropolis2gui",
+  "plugins": {},
+  "app": {
     "withGlobalTauri": true,
-    "features": ["gui"]
-  },
-  "package": {
-    "productName": "Metropolis2GUI",
-    "version": "1.0.0-4"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "dialog": {
-        "all": false,
-        "open": true
-      }
-    },
     "windows": [
       {
         "title": "METROPOLIS2 GUI - 1.0.0-4",
         "width": 700,
-        "height": 900
+        "height": 900,
+        "useHttpsScheme": true
       }
     ],
     "security": {
       "csp": null
-    },
-    "bundle": {
-      "active": true,
-      "targets": "all",
-      "identifier": "com.metropolis2.metropolis2gui",
-      "icon": [
-        "icons/32x32.png",
-        "icons/icon.ico"
-      ]
     }
   }
 }
