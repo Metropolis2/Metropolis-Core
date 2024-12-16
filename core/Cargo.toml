@@ -26,7 +26,7 @@ askama = { version = "0.12", default-features = false, features = [
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.6"
-hashbrown = { version = "0.14", features = ["rayon"] }
+hashbrown = { version = "0.15", features = ["rayon"] }
 indicatif = "0.17"
 itertools = "0.13"
 log = "0.4"

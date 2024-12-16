@@ -204,7 +204,7 @@ where
         } else {
             self.queue.push(v, ops.get_key(&v_label_from_u));
             let v_data = ops.as_new_data(Some(u), v_label_from_u);
-            self.data.insert_unique_unchecked(v, v_data).1
+            unsafe { self.data.insert_unique_unchecked(v, v_data).1 }
         };
         ops.node_is_relaxed(u, v, u_data, v_data, query);
     }

@@ -6,7 +6,7 @@
 use std::cmp::Reverse;
 use std::hash::{BuildHasher, Hash};
 
-use hashbrown::hash_map::DefaultHashBuilder;
+use hashbrown::DefaultHashBuilder;
 use priority_queue::PriorityQueue;
 
 /// Trait representing a priority queue of (key, value) items that are sorted in increasing order

@@ -70,6 +70,8 @@ pub enum HierarchyEdgeClass<T> {
     PackedShortcut(EdgePack<T>),
 }
 
+type HierarchyEdgeReference<'a, T> = EdgeReference<'a, HierarchyEdge<T>>;
+
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(bound(serialize = "T: Serialize"))]
@@ -152,9 +154,9 @@ impl<T> HierarchyOverlay<T> {
         &'a self,
     ) -> EdgeFiltered<
         &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(EdgeReference<'a, HierarchyEdge<T>>) -> bool,
+        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
     > {
-        EdgeFiltered::from_fn(&self.graph, |e: EdgeReference<'a, HierarchyEdge<T>>| {
+        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
             e.weight().direction == HierarchyDirection::Upward
         })
     }
@@ -165,9 +167,9 @@ impl<T> HierarchyOverlay<T> {
         &'a self,
     ) -> EdgeFiltered<
         &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(EdgeReference<'a, HierarchyEdge<T>>) -> bool,
+        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
     > {
-        EdgeFiltered::from_fn(&self.graph, |e: EdgeReference<'a, HierarchyEdge<T>>| {
+        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
             e.weight().direction == HierarchyDirection::Downward
         })
     }

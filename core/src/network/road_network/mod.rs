@@ -38,6 +38,7 @@ static mut ROAD_NETWORK: OnceLock<RoadNetwork> = OnceLock::new();
 /// Tries to initialize the global value of the road network.
 ///
 /// Returns an Err if the value is already initialized.
+#[allow(static_mut_refs)]
 pub fn init(value: RoadNetwork) -> Result<()> {
     unsafe {
         let res = ROAD_NETWORK.set(value);
@@ -64,10 +65,12 @@ pub fn replace(value: RoadNetwork) {
 }
 
 /// Returns `true` if the global road network is defined.
+#[allow(static_mut_refs)]
 pub fn is_init() -> bool {
     unsafe { ROAD_NETWORK.get().is_some() }
 }
 
+#[allow(static_mut_refs)]
 fn read_global() -> &'static RoadNetwork {
     unsafe { ROAD_NETWORK.get().expect("Global road network is not set") }
 }

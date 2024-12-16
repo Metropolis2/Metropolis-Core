@@ -1,3 +1,9 @@
+// Copyright 2024 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
+//! Integration test based on a grid network (like Manhattan).
 use hashbrown::HashMap;
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeReference};
 use petgraph::visit::EdgeRef;

@@ -1,3 +1,9 @@
+// Copyright 2024 Lucas Javaudin
+//
+// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
+//! Integration test for network loops.
 use hashbrown::{HashMap, HashSet};
 use petgraph::graph::{node_index, DiGraph};
 use petgraph::prelude::{EdgeIndex, NodeIndex};

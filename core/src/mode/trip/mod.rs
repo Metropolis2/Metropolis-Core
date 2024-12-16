@@ -484,7 +484,7 @@ type LegTTFs<'a> = Vec<LegTTF<'a>>;
 
 struct LegTTF<'a>(Either<&'a TTF<AnySeconds>, TTF<AnySeconds>>);
 
-impl<'a> Deref for LegTTF<'a> {
+impl Deref for LegTTF<'_> {
     type Target = TTF<AnySeconds>;
     fn deref(&self) -> &Self::Target {
         match &self.0 {
