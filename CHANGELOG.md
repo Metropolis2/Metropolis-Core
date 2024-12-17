@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-5] - 2024-12-17
+
 ### Added
 
 - [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
@@ -503,7 +505,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-4...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-5...HEAD
+[1.0.0-5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-5
 [1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4
 [1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
