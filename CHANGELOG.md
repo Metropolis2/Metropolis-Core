@@ -31,6 +31,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [OUTPUT] Fix the computation for expected travel time difference RMSE.
+- [DEV] Fix a stack overflow that could happen when recursively running too many events.
 - [DEV] Various improvements and bug fixes.
 
 ## [1.0.0-4] - 2024-03-15

@@ -499,14 +499,9 @@ impl VehicleEvent {
                 unreachable!();
             }
         } {
-            if next_event.at_time == current_time {
-                // Next event can be executed immediately.
-                return next_event.execute(input, road_network_state, alloc, events);
-            } else {
-                debug_assert!(next_event.at_time > current_time);
-                // Push next event to the queue.
-                events.push(Box::new(next_event));
-            }
+            debug_assert!(next_event.at_time >= current_time);
+            // Push next event to the queue.
+            events.push(Box::new(next_event));
         }
         Ok(false)
     }
