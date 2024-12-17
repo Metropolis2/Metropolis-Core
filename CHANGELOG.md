@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-6] - 2024-12-17
+
+### Fixed
+
+- [DEV] Fix duckscript bug in the release.
+
 ## [1.0.0-5] - 2024-12-17
 
 ### Added
@@ -505,7 +511,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-5...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-6...HEAD
+[1.0.0-6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-6
 [1.0.0-5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-5
 [1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4
 [1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
