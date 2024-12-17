@@ -1,6 +1,6 @@
 [package]
 name = "metropolis-core"
-version = "1.0.0-5"
+version = "1.0.0-6"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "METROPOLIS2: A mesoscopic transport simulator"

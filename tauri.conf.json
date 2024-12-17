@@ -15,14 +15,14 @@
   },
   "productName": "Metropolis2GUI",
   "mainBinaryName": "Metropolis2GUI",
-  "version": "1.0.0-5",
+  "version": "1.0.0-6",
   "identifier": "com.metropolis2.metropolis2gui",
   "plugins": {},
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "METROPOLIS2 GUI - 1.0.0-5",
+        "title": "METROPOLIS2 GUI - 1.0.0-6",
         "width": 700,
         "height": 900,
         "useHttpsScheme": true
