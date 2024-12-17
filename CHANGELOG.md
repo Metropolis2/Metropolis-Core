@@ -13,6 +13,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [DEV] Fix duckscript bug in the release.
+- [DEV] Fix bug with Tauri on MacOS.
 
 ## [1.0.0-5] - 2024-12-17
 

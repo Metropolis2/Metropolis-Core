@@ -7,7 +7,7 @@ use std::{io, path::PathBuf};
 
 use metropolis_core::run_simulation_with_writer;
 use serde::Serialize;
-use tauri::Window;
+use tauri::{Emitter, Window};
 use tch::run_queries_with_writer;
 
 #[derive(Debug, Default, Clone, Serialize)]
