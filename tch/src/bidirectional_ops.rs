@@ -28,7 +28,7 @@ use crate::query::BidirectionalQuery;
 /// - A [DijkstraOps] for the backward search.
 ///
 /// - An (optional) set of instructions that are performed when the two searches meet and that tell
-/// when the algorithm can be stopped.
+///   when the algorithm can be stopped.
 pub trait BidirectionalDijkstraOps {
     /// Type of the nodes.
     type Node;
@@ -854,7 +854,7 @@ where
             let node_data = forw_data.get(&node).unwrap();
             if node_data
                 .extra
-                .map(|t| t + T::margin() < key)
+                .map(|t| t + T::MARGIN < key)
                 .unwrap_or(false)
             {
                 // The node is already stalled with a smaller value.

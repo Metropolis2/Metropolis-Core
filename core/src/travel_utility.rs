@@ -4,55 +4,56 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Everything related to travel utility models.
-use log::warn;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use ttf::TTFNum;
+use anyhow::{Context, Result};
+use num_traits::Zero;
 
-use crate::units::{Time, Utility, ValueOfTime};
+use crate::units::*;
 
 /// Representation of how the travel utility of an agent is computed.
 ///
 /// **Warning**: This is used to compute the travel *utility* (not the travel *cost*), which is
 /// usually negative.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
-#[serde(from = "DeserTravelUtility<T>")]
-#[serde(bound = "T: TTFNum")]
-pub enum TravelUtility<T> {
+#[derive(Clone, Debug, PartialEq)]
+pub enum TravelUtility {
     /// Travel utility is a polynomial function of travel time (with degree 4):
     /// `u = a + b * tt + c * tt^2 + d * tt^3 + e * tt^4`.
     ///
     /// The constant, linear, quadratic and cubic function are special cases of this function.
-    Polynomial(PolynomialFunction<T>),
+    Polynomial(PolynomialFunction),
 }
 
-impl<T: Default> Default for TravelUtility<T> {
+impl Default for TravelUtility {
     fn default() -> Self {
         Self::Polynomial(Default::default())
     }
 }
 
-impl<T: TTFNum> TravelUtility<T> {
+impl TravelUtility {
     pub(crate) fn from_values(
-        a: Option<f64>,
-        b: Option<f64>,
-        c: Option<f64>,
-        d: Option<f64>,
-        e: Option<f64>,
-    ) -> Self {
-        Self::Polynomial(PolynomialFunction {
-            a: T::from_f64(a.unwrap_or(0.0)).unwrap(),
-            b: T::from_f64(b.unwrap_or(0.0)).unwrap(),
-            c: T::from_f64(c.unwrap_or(0.0)).unwrap(),
-            d: T::from_f64(d.unwrap_or(0.0)).unwrap(),
-            e: T::from_f64(e.unwrap_or(0.0)).unwrap(),
-        })
+        constant_utility: Option<f64>,
+        one: Option<f64>,
+        two: Option<f64>,
+        three: Option<f64>,
+        four: Option<f64>,
+    ) -> Result<Self> {
+        Ok(Self::Polynomial(PolynomialFunction {
+            a: Utility::try_from(constant_utility.unwrap_or_default())
+                .context("Value `constant_utility` does not satisfy the constraints")?,
+            b: ValueOfTime::try_from(one.unwrap_or_default())
+                .context("Value `one` does not satisfy the constraints")?,
+            c: ValueOfTime::try_from(two.unwrap_or_default())
+                .context("Value `two` does not satisfy the constraints")?,
+            d: ValueOfTime::try_from(three.unwrap_or_default())
+                .context("Value `three` does not satisfy the constraints")?,
+            e: ValueOfTime::try_from(four.unwrap_or_default())
+                .context("Value `four` does not satisfy the constraints")?,
+        }))
     }
 
     /// Returns the travel utility given the travel time.
-    pub fn get_travel_utility(&self, travel_time: Time<T>) -> Utility<T> {
+    pub fn get_travel_utility(&self, travel_time: NonNegativeSeconds) -> Utility {
         match self {
-            Self::Polynomial(function) => Utility(function.get_value(travel_time.0)),
+            Self::Polynomial(function) => function.get_value(travel_time),
         }
     }
 }
@@ -60,218 +61,85 @@ impl<T: TTFNum> TravelUtility<T> {
 /// A polynomial function of degree 4.
 ///
 /// Constant, linear, quadratic and cubic functions are special cases.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-#[serde(bound(serialize = "T: TTFNum"))]
-pub struct PolynomialFunction<T> {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PolynomialFunction {
     /// Coefficient of degree 0.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_zero")]
-    pub a: T,
+    pub a: Utility,
     /// Coefficient of degree 1.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_zero")]
-    pub b: T,
+    pub b: ValueOfTime,
     /// Coefficient of degree 2.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_zero")]
-    pub c: T,
+    pub c: ValueOfTime,
     /// Coefficient of degree 3.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_zero")]
-    pub d: T,
+    pub d: ValueOfTime,
     /// Coefficient of degree 4.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_zero")]
-    pub e: T,
+    pub e: ValueOfTime,
 }
 
-impl<T: TTFNum> PolynomialFunction<T> {
-    fn get_value(&self, x: T) -> T {
-        self.a + x * (self.b + x * (self.c + x * (self.d + x * self.e)))
-    }
-}
-
-fn is_zero<T: Default + PartialEq>(x: &T) -> bool {
-    x == &T::default()
-}
-
-/// Equivalent of [TravelUtility] that is used for deserializiation.
-///
-/// This allows backward-compatibility with deprecated fields.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "type", content = "value")]
-#[serde(bound(deserialize = "T: Default + DeserializeOwned"))]
-enum DeserTravelUtility<T> {
-    /// Utility is always zero.
-    None,
-    /// Utility is a proportional to travel time, i.e., the given value is the value of the
-    /// coefficient of degree 1 in the polynomial function.
-    Proportional(ValueOfTime<T>),
-    /// Utility is a quadratic function of travel time (with no constant).
-    Quadratic {
-        /// Coefficient of degree 1.
-        a: ValueOfTime<T>,
-        /// Coefficient of degree 2.
-        b: ValueOfTime<T>,
-    },
-    /// See [TravelUtility].
-    Polynomial(PolynomialFunction<T>),
-}
-
-impl<T: Default> From<DeserTravelUtility<T>> for TravelUtility<T> {
-    fn from(value: DeserTravelUtility<T>) -> Self {
-        match value {
-            DeserTravelUtility::None => {
-                warn!("Type `None` is deprecated for `travel_utility` and will be removed in the future");
-                Self::Polynomial(PolynomialFunction {
-                    a: T::default(),
-                    b: T::default(),
-                    c: T::default(),
-                    d: T::default(),
-                    e: T::default(),
-                })
-            }
-            DeserTravelUtility::Proportional(a) => {
-                warn!("Type `Proportional` is deprecated for `travel_utility` and will be removed in the future");
-                Self::Polynomial(PolynomialFunction {
-                    a: T::default(),
-                    b: a.0,
-                    c: T::default(),
-                    d: T::default(),
-                    e: T::default(),
-                })
-            }
-            DeserTravelUtility::Quadratic { a, b } => {
-                warn!("Type `Quadratic` is deprecated for `travel_utility` and will be removed in the future");
-                Self::Polynomial(PolynomialFunction {
-                    a: T::default(),
-                    b: a.0,
-                    c: b.0,
-                    d: T::default(),
-                    e: T::default(),
-                })
-            }
-            DeserTravelUtility::Polynomial(f) => Self::Polynomial(f),
+impl PolynomialFunction {
+    fn get_value(&self, x: NonNegativeSeconds) -> Utility {
+        let mut v = self.a;
+        if !self.b.is_zero() {
+            v += x * self.b;
         }
+        if !self.c.is_zero() {
+            v += x.powi(2) * self.c;
+        }
+        if !self.d.is_zero() {
+            v += x.powi(3) * self.d;
+        }
+        if !self.e.is_zero() {
+            v += x.powi(4) * self.e;
+        }
+        v
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use num_traits::Zero;
+    use num_traits::ConstZero;
 
     use super::*;
 
     #[test]
-    fn deser_travel_utility_test() {
-        let js = "{
-            \"type\": \"None\"
-        }";
-        let u = serde_json::from_str::<TravelUtility<f64>>(js).unwrap();
-        assert_eq!(u, TravelUtility::default());
-
-        let js = "{
-            \"type\": \"Proportional\",
-            \"value\": 10.0
-        }";
-        let u = serde_json::from_str::<TravelUtility<f64>>(js).unwrap();
-        assert_eq!(
-            u,
-            TravelUtility::Polynomial(PolynomialFunction {
-                b: 10.,
-                ..Default::default()
-            })
-        );
-
-        let js = "{
-            \"type\": \"Quadratic\",
-            \"value\": {
-                \"a\": 1.0,
-                \"b\": 2.0
-            }
-        }";
-        let u = serde_json::from_str::<TravelUtility<f64>>(js).unwrap();
-        assert_eq!(
-            u,
-            TravelUtility::Polynomial(PolynomialFunction {
-                b: 1.,
-                c: 2.,
-                ..Default::default()
-            })
-        );
-
-        let js = "{
-            \"type\": \"Polynomial\",
-            \"value\": {
-                \"a\": 1.0,
-                \"b\": 2.0,
-                \"c\": 3.0,
-                \"d\": 4.0,
-                \"e\": 5.0
-            }
-        }";
-        let u = serde_json::from_str::<TravelUtility<f64>>(js).unwrap();
-        assert_eq!(
-            u,
-            TravelUtility::Polynomial(PolynomialFunction {
-                a: 1.,
-                b: 2.,
-                c: 3.,
-                d: 4.,
-                e: 5.,
-                ..Default::default()
-            })
-        );
-
-        let js = "{
-            \"type\": \"Polynomial\",
-            \"value\": {
-            }
-        }";
-        let u = serde_json::from_str::<TravelUtility<f64>>(js).unwrap();
-        assert_eq!(u, TravelUtility::default());
-    }
-
-    #[test]
     fn get_travel_utility_test() {
-        let tt = Time(5.);
+        let tt = NonNegativeSeconds::new_unchecked(5.);
 
         let model = TravelUtility::default();
-        assert_eq!(model.get_travel_utility(tt), Utility::zero());
+        assert_eq!(model.get_travel_utility(tt), Utility::ZERO);
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            b: -10.,
+            b: ValueOfTime::new_unchecked(-10.),
             ..Default::default()
         });
-        assert_eq!(model.get_travel_utility(tt), Utility(-50.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(-50.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            b: -30.,
-            c: 2.,
+            b: ValueOfTime::new_unchecked(-30.),
+            c: ValueOfTime::new_unchecked(2.),
             ..Default::default()
         });
         // -30 * 5 + 2 * 5^2 = -100.
-        assert_eq!(model.get_travel_utility(tt), Utility(-100.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(-100.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            a: 4.,
-            b: 3.,
-            c: 2.,
-            d: 1.,
+            a: Utility::new_unchecked(4.),
+            b: ValueOfTime::new_unchecked(3.),
+            c: ValueOfTime::new_unchecked(2.),
+            d: ValueOfTime::new_unchecked(1.),
             ..Default::default()
         });
         // 4 + 3 * 5 + 2 * 5^2 + 1 * 5^3 = 194.
-        assert_eq!(model.get_travel_utility(tt), Utility(194.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(194.));
 
         let model = TravelUtility::Polynomial(PolynomialFunction {
-            a: 5.,
-            b: 4.,
-            c: 3.,
-            d: 2.,
-            e: 1.,
+            a: Utility::new_unchecked(5.),
+            b: ValueOfTime::new_unchecked(4.),
+            c: ValueOfTime::new_unchecked(3.),
+            d: ValueOfTime::new_unchecked(2.),
+            e: ValueOfTime::new_unchecked(1.),
             ..Default::default()
         });
         // 5 + 4 * 5 + 3 * 5^2 + 2 * 5^3 + 1 * 5^4 = 975.
-        assert_eq!(model.get_travel_utility(tt), Utility(975.));
+        assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(975.));
     }
 }

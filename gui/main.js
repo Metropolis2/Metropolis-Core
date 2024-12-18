@@ -16,6 +16,7 @@ async function fileselect() {
     if (path) {
       pathBox.innerHTML = path;
       runButton.removeAttribute("disabled");
+      routingButton.removeAttribute("disabled");
     }
   });
 }
@@ -28,34 +29,46 @@ async function listenlog() {
 
 async function listenrun() {
   await listen("run-done", (_) => {
-    runButton.innerHTML = "Done!";
+    buttonRow.innerHTML = "<b>Done!</b>";
   });
 }
 
 async function listenrunfailed() {
   await listen("run-failed", (_) => {
-    runButton.innerHTML = "Failed!";
+    buttonRow.innerHTML = "<b>Failed!</b>";
   });
 }
 
-async function runsimulation() {
-  runButton.setAttribute("disabled", "disabled");
+async function runSimulation() {
   openButton.setAttribute("disabled", "disabled");
-  runButton.innerHTML = "Running simulation...";
+  buttonRow.innerHTML = "<b>Running simulation...</b>";
   var path = pathBox.innerHTML;
   invoke("run_simulation", { path: path });
   listenrun();
   listenrunfailed();
 }
 
+async function runRouting() {
+  openButton.setAttribute("disabled", "disabled");
+  buttonRow.innerHTML = "<b>Running routing...</b>";
+  var path = pathBox.innerHTML;
+  invoke("run_routing", { path: path });
+  listenrun();
+  listenrunfailed();
+}
+
 let openButton;
 let runButton;
+let routingButton;
+let buttonRow;
 let logBox;
 let pathBox;
 
 window.addEventListener("DOMContentLoaded", () => {
   openButton = document.querySelector("#open-button");
   runButton = document.querySelector("#run-button");
+  routingButton = document.querySelector("#routing-button");
+  buttonRow = document.querySelector("#button-row");
   pathBox = document.querySelector("#path-box");
   logBox = document.querySelector("#log-box");
 
@@ -64,7 +77,10 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   runButton.addEventListener("click", (_) => {
-    runsimulation();
+    runSimulation();
+  });
+  routingButton.addEventListener("click", (_) => {
+    runRouting();
   });
 
   listenlog();

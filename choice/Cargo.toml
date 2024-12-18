@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl" }
 anyhow = "1.0"
-serde = "1.0"
+either = "1.6"
 
 [lints]
 workspace = true

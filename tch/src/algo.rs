@@ -350,7 +350,7 @@ pub fn intersect_earliest_arrival_query<T: TTFNum>(
         if candidates.is_empty() {
             return Ok(None);
         }
-        let mut earliest_arrival = T::infinity();
+        let mut earliest_arrival = T::INFINITY;
         for candidate in candidates.iter() {
             let source_ttf = &source_space[candidate];
             let target_ttf = &target_space[candidate];

@@ -4,7 +4,7 @@
 		<meta charset="UTF-8" />
 		<link rel="stylesheet" href="styles.css" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>METROPOLIS2 - v1.0.0-4</title>
+		<title>METROPOLIS2 - v1.0.0-6</title>
 		<script type="module" src="/main.js" defer></script>
 	</head>
 
@@ -15,8 +15,9 @@
 				<button id="open-button" style="width: 100px;">Browse</button>
 			</div>
 
-			<div class="row">
-				<button id="run-button" disabled>Run simulation</button>
+			<div id="button-row" class="row">
+				<button style="width: 200px;" id="run-button" disabled>Run simulation</button>
+				<button style="width: 200px;" id="routing-button" disabled>Run routing</button>
 			</div>
 
 			<div id="log-box" class="scroll" readonly=true placeholder="The logs of METROPOLIS2 will appear here..."></div>

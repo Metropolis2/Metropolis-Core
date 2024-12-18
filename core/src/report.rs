@@ -6,25 +6,29 @@
 //! HTML report with the results of a simulation.
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use askama::Template;
-use ttf::TTFNum;
 
 use crate::mode::trip::results::LegTypeResults;
 use crate::mode::ModeResults;
 use crate::simulation::results::{AggregateResults, SimulationResults};
-use crate::units::Time;
+use crate::units::{Interval, NonNegativeSeconds};
+
+const NB_BINS: usize = 128;
 
 /// Writes a HTML report of the given [SimulationResults].
 ///
 /// The report is written in file `report.html` in the given output directory.
-pub fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path) -> Result<()> {
+pub(crate) fn write_report(results: &SimulationResults) -> Result<()> {
     let report_results = build_report(results)?;
-    let filename: PathBuf = [output_dir.to_str().unwrap(), "report.html"]
-        .iter()
-        .collect();
+    let filename: PathBuf = [
+        crate::parameters::output_directory().to_str().unwrap(),
+        "report.html",
+    ]
+    .iter()
+    .collect();
     let mut file = File::create(filename)?;
     let render = report_results.render()?;
     file.write_all(render.as_bytes())?;
@@ -32,7 +36,7 @@ pub fn write_report<T: TTFNum>(results: &SimulationResults<T>, output_dir: &Path
 }
 
 /// Returns a [ReportResults] given the [SimulationResults].
-fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResults<T>> {
+fn build_report(results: &SimulationResults) -> Result<ReportResults> {
     if let Some(last_iteration) = &results.last_iteration {
         let mut road_departure_times = Vec::with_capacity(last_iteration.agent_results().len());
         let mut road_arrival_times = Vec::with_capacity(last_iteration.agent_results().len());
@@ -46,10 +50,16 @@ fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResul
                 }
             }
         }
+        road_departure_times.sort_unstable();
+        road_arrival_times.sort_unstable();
+
+        let departure_time_histogram =
+            get_histogram(road_departure_times, crate::parameters::period());
+        let arrival_time_histogram = get_histogram(road_arrival_times, crate::parameters::period());
 
         let last_iteration = IterationStatistics {
-            road_departure_times,
-            road_arrival_times,
+            departure_time_histogram,
+            arrival_time_histogram,
         };
         Ok(ReportResults {
             iterations: results.iterations.clone(),
@@ -60,19 +70,72 @@ fn build_report<T: TTFNum>(results: &SimulationResults<T>) -> Result<ReportResul
     }
 }
 
+#[derive(Debug)]
+struct Histogram {
+    bars: Vec<usize>,
+    period: Interval,
+}
+
 /// Statistics computed from the [SimulationResults].
 #[derive(Debug)]
-struct IterationStatistics<T> {
-    /// Vec with the departure time of each agent.
-    road_departure_times: Vec<Time<T>>,
-    /// Vec with the arrival time of each agent.
-    road_arrival_times: Vec<Time<T>>,
+struct IterationStatistics {
+    departure_time_histogram: Histogram,
+    arrival_time_histogram: Histogram,
 }
 
 /// Results used to build the HTML report of a simulation.
 #[derive(Debug, Template)]
-#[template(path = "report.html")]
-struct ReportResults<T: TTFNum> {
-    pub(crate) iterations: Vec<AggregateResults<T>>,
-    pub(crate) last_iteration: IterationStatistics<T>,
+#[template(path = "report.html", whitespace = "suppress")]
+struct ReportResults {
+    pub(crate) iterations: Vec<AggregateResults>,
+    pub(crate) last_iteration: IterationStatistics,
+}
+
+fn get_histogram(values: Vec<NonNegativeSeconds>, min_period: Interval) -> Histogram {
+    debug_assert!(!values.is_empty());
+    // debug_assert!(values.is_sorted());
+    let mut bars = Vec::with_capacity(NB_BINS);
+    let period = Interval::new(
+        min_period.start().min(values[0]),
+        min_period.end().max(values[values.len() - 1]),
+    );
+    let interval = period.length() / NB_BINS;
+    let mut t = period.start();
+    let mut n = 0;
+    for (i, v) in values.iter().enumerate() {
+        while v > &(t + interval).into() {
+            bars.push(i - n);
+            n = i;
+            t += interval;
+        }
+    }
+    bars.push(values.len() - n);
+    if bars.len() < NB_BINS {
+        bars.extend(std::iter::repeat(0).take(NB_BINS - bars.len()));
+    }
+    Histogram { bars, period }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn histogram_test() {
+        let values = vec![
+            NonNegativeSeconds::try_from(3.0).unwrap(),
+            NonNegativeSeconds::try_from(5.0).unwrap(),
+            NonNegativeSeconds::try_from(5.1).unwrap(),
+            NonNegativeSeconds::try_from(5.2).unwrap(),
+            NonNegativeSeconds::try_from(9.0).unwrap(),
+            NonNegativeSeconds::try_from(12.0).unwrap(),
+            NonNegativeSeconds::try_from(15.0).unwrap(),
+        ];
+        let period = Interval::try_from([0.0, 2.0 * NB_BINS as f64]).unwrap();
+        let mut exp_bars = vec![0, 1, 3, 0, 1, 1, 0, 1];
+        exp_bars.append(&mut vec![0; NB_BINS - exp_bars.len()]);
+        let histogram = get_histogram(values, period);
+        assert_eq!(exp_bars, histogram.bars);
+        assert_eq!(period, histogram.period);
+    }
 }

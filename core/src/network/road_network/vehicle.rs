@@ -6,24 +6,23 @@
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
 use anyhow::{anyhow, bail, Context, Result};
 use hashbrown::HashSet;
-use num_traits::{FromPrimitive, Zero};
-use serde_derive::{Deserialize, Serialize};
-use ttf::TTFNum;
+use num_traits::ConstZero;
 
 use super::OriginalEdgeId;
-use crate::units::{Length, Speed, PCE};
+use crate::units::*;
 
 /// Identifier of the vehicles as given by the user.
-pub type OriginalVehicleId = u64;
+pub(crate) type OriginalVehicleId = u64;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
-pub enum SpeedFunction<T> {
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpeedFunction {
     /// The identity function.
     Base,
+    /// The effective speed is bounded by a given value: `f(s) = max(s, ub)`.
+    UpperBound(MetersPerSecond),
     /// A linear function: `f(s) = a * s`.
-    Multiplicator(T),
+    Multiplicator(PositiveNum),
     /// A piecewise-linear function, represented by a vector of breakpoints `(x, y)`, where `x` is
     /// the base speed on the edge and `y` is the effective speed.
     ///
@@ -31,32 +30,37 @@ pub enum SpeedFunction<T> {
     ///
     /// If the edge's base speed is out of bound (i.e., smaller than the smaller `x` value or
     /// larger than the largest `x` value), the base speed is used as the effective speed.
-    Piecewise(Vec<[Speed<T>; 2]>),
+    Piecewise(Vec<[MetersPerSecond; 2]>),
 }
 
-impl<T> Default for SpeedFunction<T> {
+impl Default for SpeedFunction {
     fn default() -> Self {
         Self::Base
     }
 }
 
-impl<T: TTFNum> SpeedFunction<T> {
+impl SpeedFunction {
     fn from_values(
         function_type: Option<&str>,
+        upper_bound: Option<f64>,
         coef: Option<f64>,
         x: Option<Vec<f64>>,
         y: Option<Vec<f64>>,
     ) -> Result<Self> {
         match function_type {
             Some("Base") | None => Ok(Self::Base),
+            Some("UpperBound") => {
+                let upper_bound = MetersPerSecond::try_from(upper_bound.ok_or_else(|| {
+                    anyhow!("Value `upper_bound` is mandatory when `type` is `\"UpperBound\"`")
+                })?)
+                .context("Value `upper_bound` does not satisfy the constraints")?;
+                Ok(Self::UpperBound(upper_bound))
+            }
             Some("Multiplicator") => {
-                let coef = T::from_f64(coef.ok_or_else(|| {
+                let coef = PositiveNum::try_from(coef.ok_or_else(|| {
                     anyhow!("Value `coef` is mandatory when `type` is `\"Multiplicator\"`")
                 })?)
-                .unwrap();
-                if coef <= T::zero() {
-                    bail!("Value `coef` must be positive");
-                }
+                .context("Value `coef` does not satisfy the constraints")?;
                 Ok(Self::Multiplicator(coef))
             }
             Some("Piecewise") => {
@@ -75,20 +79,20 @@ impl<T: TTFNum> SpeedFunction<T> {
                 if !x.windows(2).all(|values| values[0] <= values[1]) {
                     bail!("The values in `x` must be sorted in increasing order");
                 }
-                if x[0] <= 0.0 {
-                    bail!("The values in `x` must be all positive numbers");
-                }
-                if y[0] <= 0.0 {
-                    bail!("The values in `y` must be all positive numbers");
-                }
                 if x.len() != y.len() {
                     bail!("`x` and `y` must have the same number of values");
                 }
                 let values = x
                     .into_iter()
                     .zip(y)
-                    .map(|(x, y)| [Speed::from_f64(x).unwrap(), Speed::from_f64(y).unwrap()])
-                    .collect();
+                    .map(|(x, y)| {
+                        if let (Ok(x), Ok(y)) = (MetersPerSecond::try_from(x), MetersPerSecond::try_from(y)) {
+                            Ok([x, y])
+                        } else {
+                            Err(anyhow!("The value of `x` or `y` does not satisfy the constraints: `x = {x}`, `y = {y}`"))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
                 Ok(Self::Piecewise(values))
             }
             Some(s) => Err(anyhow!("Unknown type: {s}")),
@@ -100,10 +104,11 @@ impl<T: TTFNum> SpeedFunction<T> {
     /// If `self` is a piecewise-linear function and the baseline speed is out of bounds (the
     /// baseline speed is smaller than the smallest `x` or larger than the largest `x`), then the
     /// identity function is used.
-    pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
+    pub(crate) fn get_speed(&self, base_speed: MetersPerSecond) -> MetersPerSecond {
         match self {
             SpeedFunction::Base => base_speed,
-            SpeedFunction::Multiplicator(mul) => Speed(*mul * base_speed.0),
+            &SpeedFunction::UpperBound(upper_bound) => base_speed.min(upper_bound),
+            &SpeedFunction::Multiplicator(mul) => base_speed * mul,
             SpeedFunction::Piecewise(values) => {
                 match values.binary_search_by_key(&base_speed, |&[x, _]| x) {
                     // The effective speed at the base speed is known.
@@ -114,9 +119,14 @@ impl<T: TTFNum> SpeedFunction<T> {
                             // Base speed is out of bound.
                             return base_speed;
                         }
-                        let alpha = (base_speed.0 - values[i - 1][0].0)
-                            / (values[i][0].0 - values[i - 1][0].0);
-                        Speed(alpha * values[i][1].0 + (T::one() - alpha) * values[i - 1][1].0)
+                        // values[i-1][0] < base_speed < values[i-1][1].
+                        let num = (base_speed.to_num() - values[i - 1][0].to_num())
+                            .assume_positive_unchecked();
+                        let den = (values[i][0].to_num() - values[i - 1][0].to_num())
+                            .assume_positive_unchecked();
+                        // num < den so num / den is smaller than one.
+                        let alpha = (num / den).assume_zero_one_unchecked();
+                        values[i][1] * alpha + values[i - 1][1] * alpha.one_minus()
                     }
                 }
             }
@@ -125,35 +135,31 @@ impl<T: TTFNum> SpeedFunction<T> {
 }
 
 /// A road vehicle with a given headway, [PCE] and [SpeedFunction].
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Vehicle<T> {
+#[derive(Clone, Debug)]
+pub struct Vehicle {
     /// Identifier of the vehicle.
     pub(crate) id: OriginalVehicleId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
-    #[serde(alias = "length")]
-    headway: Length<T>,
+    pub(crate) headway: NonNegativeMeters,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
-    pce: PCE<T>,
+    pub(crate) pce: PCE,
     /// Speed function that gives the vehicle speed as a function of the edge base speed.
-    #[serde(default)]
-    speed_function: SpeedFunction<T>,
+    pub(crate) speed_function: SpeedFunction,
     /// Set of edge indices that the vehicle is allowed to take (by default, all edges are allowed,
     /// unlesse specified in `restricted_edges`).
-    #[serde(default)]
-    allowed_edges: HashSet<OriginalEdgeId>,
+    pub(crate) allowed_edges: HashSet<OriginalEdgeId>,
     /// Set of edge indices that the vehicle cannot take. Note that `restricted_edges` is ignored
     /// if `allowed_edges` is specified.
-    #[serde(default)]
-    restricted_edges: HashSet<OriginalEdgeId>,
+    pub(crate) restricted_edges: HashSet<OriginalEdgeId>,
 }
 
-impl<T> Vehicle<T> {
+impl Vehicle {
     /// Creates a new vehicle with a given headway, [PCE] and [SpeedFunction].
     pub const fn new(
         id: OriginalVehicleId,
-        headway: Length<T>,
-        pce: PCE<T>,
-        speed_function: SpeedFunction<T>,
+        headway: NonNegativeMeters,
+        pce: PCE,
+        speed_function: SpeedFunction,
         allowed_edges: HashSet<OriginalEdgeId>,
         restricted_edges: HashSet<OriginalEdgeId>,
     ) -> Self {
@@ -168,7 +174,7 @@ impl<T> Vehicle<T> {
     }
 
     /// Returns `true` if the vehicle type has access to the given edge.
-    pub fn can_access(&self, edge_id: OriginalEdgeId) -> bool {
+    pub(crate) fn can_access(&self, edge_id: OriginalEdgeId) -> bool {
         // Edge is allowed explicitly.
         let is_allowed = self.allowed_edges.contains(&edge_id);
         // Edge is not allowed but other edges are explicitly allowed.
@@ -179,25 +185,14 @@ impl<T> Vehicle<T> {
     }
 }
 
-impl<T: Copy> Vehicle<T> {
-    /// Returns the headway of the vehicle.
-    pub const fn get_headway(&self) -> Length<T> {
-        self.headway
-    }
-
-    /// Returns the PCE of the vehicle.
-    pub const fn get_pce(&self) -> PCE<T> {
-        self.pce
-    }
-}
-
-impl<T: TTFNum> Vehicle<T> {
-    #[allow(clippy::too_many_arguments)]
+impl Vehicle {
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: OriginalVehicleId,
         headway: Option<f64>,
         pce: Option<f64>,
         speed_function_type: Option<&str>,
+        speed_function_upper_bound: Option<f64>,
         speed_function_coef: Option<f64>,
         speed_function_x: Option<Vec<f64>>,
         speed_function_y: Option<Vec<f64>>,
@@ -205,18 +200,18 @@ impl<T: TTFNum> Vehicle<T> {
         restricted_edges: Option<Vec<u64>>,
         edge_ids: &HashSet<u64>,
     ) -> Result<Self> {
-        let headway =
-            Length::from_f64(headway.ok_or_else(|| anyhow!("Value `headway` is mandatory"))?)
-                .unwrap();
-        if headway < Length::zero() {
-            bail!("Value `headway` must be non-negative");
-        }
-        let pce = PCE::from_f64(pce.unwrap_or(1.0)).unwrap();
-        if pce < PCE::zero() {
+        let headway = NonNegativeMeters::try_from(
+            headway.ok_or_else(|| anyhow!("Value `headway` is mandatory"))?,
+        )
+        .context("Value `headway` does not satisfy the constraints")?;
+        let pce = PCE::try_from(pce.unwrap_or(1.0))
+            .context("Value `pce` does not satisfy the constraints")?;
+        if pce < PCE::ZERO {
             bail!("Value `pce` must be non-negative");
         }
         let speed_function = SpeedFunction::from_values(
             speed_function_type,
+            speed_function_upper_bound,
             speed_function_coef,
             speed_function_x,
             speed_function_y,
@@ -242,7 +237,7 @@ impl<T: TTFNum> Vehicle<T> {
     }
 
     /// Returns the effective speed of the vehicle given the baseline speed on the road.
-    pub fn get_speed(&self, base_speed: Speed<T>) -> Speed<T> {
+    pub(crate) fn get_speed(&self, base_speed: MetersPerSecond) -> MetersPerSecond {
         self.speed_function.get_speed(base_speed)
     }
 
@@ -253,7 +248,7 @@ impl<T: TTFNum> Vehicle<T> {
     /// 1. They have the same speed function.
     /// 2. They have acces to the same edges (i.e., the sets of allowed edges and restricted edges
     ///    are equal).
-    pub fn share_weights(&self, other: &Vehicle<T>) -> bool {
+    pub(crate) fn share_weights(&self, other: &Vehicle) -> bool {
         self.speed_function == other.speed_function
             && self.allowed_edges == other.allowed_edges
             && self.restricted_edges == other.restricted_edges
@@ -261,9 +256,7 @@ impl<T: TTFNum> Vehicle<T> {
 }
 
 /// Vehicle identifier.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct VehicleIndex(usize);
 
 impl VehicleIndex {
@@ -279,7 +272,7 @@ impl VehicleIndex {
 }
 
 /// Short version of `VehicleIndex::new`.
-pub const fn vehicle_index(x: usize) -> VehicleIndex {
+pub(crate) const fn vehicle_index(x: usize) -> VehicleIndex {
     VehicleIndex::new(x)
 }
 
@@ -290,26 +283,74 @@ mod tests {
     #[test]
     fn speed_function_test() {
         let base = SpeedFunction::Base;
-        assert_eq!(base.get_speed(Speed(0.0)), Speed(0.0));
-        assert_eq!(base.get_speed(Speed(130.0)), Speed(130.0));
-        assert_eq!(base.get_speed(Speed(50.0)), Speed(50.0));
-        assert_eq!(base.get_speed(Speed(70.0)), Speed(70.0));
+        assert_eq!(
+            base.get_speed(MetersPerSecond::new_unchecked(1.0)),
+            MetersPerSecond::new_unchecked(1.0)
+        );
+        assert_eq!(
+            base.get_speed(MetersPerSecond::new_unchecked(130.0)),
+            MetersPerSecond::new_unchecked(130.0)
+        );
+        assert_eq!(
+            base.get_speed(MetersPerSecond::new_unchecked(50.0)),
+            MetersPerSecond::new_unchecked(50.0)
+        );
+        assert_eq!(
+            base.get_speed(MetersPerSecond::new_unchecked(70.0)),
+            MetersPerSecond::new_unchecked(70.0)
+        );
 
-        let mult = SpeedFunction::Multiplicator(0.9);
-        assert_eq!(mult.get_speed(Speed(0.0)), Speed(0.0));
-        assert_eq!(mult.get_speed(Speed(130.0)), Speed(130.0 * 0.9));
-        assert_eq!(mult.get_speed(Speed(50.0)), Speed(50.0 * 0.9));
-        assert_eq!(mult.get_speed(Speed(70.0)), Speed(70.0 * 0.9));
+        let mult = SpeedFunction::Multiplicator(PositiveNum::new_unchecked(0.9));
+        assert_eq!(
+            mult.get_speed(MetersPerSecond::new_unchecked(1.0)),
+            MetersPerSecond::new_unchecked(0.9)
+        );
+        assert_eq!(
+            mult.get_speed(MetersPerSecond::new_unchecked(130.0)),
+            MetersPerSecond::new_unchecked(130.0 * 0.9)
+        );
+        assert_eq!(
+            mult.get_speed(MetersPerSecond::new_unchecked(50.0)),
+            MetersPerSecond::new_unchecked(50.0 * 0.9)
+        );
+        assert_eq!(
+            mult.get_speed(MetersPerSecond::new_unchecked(70.0)),
+            MetersPerSecond::new_unchecked(70.0 * 0.9)
+        );
 
         let func = SpeedFunction::Piecewise(vec![
-            [Speed(0.0), Speed(0.0)],
-            [Speed(50.0), Speed(50.0)],
-            [Speed(90.0), Speed(80.0)],
-            [Speed(130.0), Speed(110.0)],
+            [
+                MetersPerSecond::new_unchecked(1.0),
+                MetersPerSecond::new_unchecked(1.0),
+            ],
+            [
+                MetersPerSecond::new_unchecked(50.0),
+                MetersPerSecond::new_unchecked(50.0),
+            ],
+            [
+                MetersPerSecond::new_unchecked(90.0),
+                MetersPerSecond::new_unchecked(80.0),
+            ],
+            [
+                MetersPerSecond::new_unchecked(130.0),
+                MetersPerSecond::new_unchecked(110.0),
+            ],
         ]);
-        assert_eq!(func.get_speed(Speed(0.0)), Speed(0.0));
-        assert_eq!(func.get_speed(Speed(130.0)), Speed(110.0));
-        assert_eq!(func.get_speed(Speed(50.0)), Speed(50.0));
-        assert_eq!(func.get_speed(Speed(70.0)), Speed(65.0));
+        assert_eq!(
+            func.get_speed(MetersPerSecond::new_unchecked(1.0)),
+            MetersPerSecond::new_unchecked(1.0)
+        );
+        assert_eq!(
+            func.get_speed(MetersPerSecond::new_unchecked(130.0)),
+            MetersPerSecond::new_unchecked(110.0)
+        );
+        assert_eq!(
+            func.get_speed(MetersPerSecond::new_unchecked(50.0)),
+            MetersPerSecond::new_unchecked(50.0)
+        );
+        assert_eq!(
+            func.get_speed(MetersPerSecond::new_unchecked(70.0)),
+            MetersPerSecond::new_unchecked(65.0)
+        );
     }
 }

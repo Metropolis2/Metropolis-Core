@@ -103,11 +103,11 @@
 					{% for it in iterations %}
 					<tr>
 						<td scope="row" class="text-center">{{ it.iteration_counter }}</td>
-						<td class="text-center">{{ "{:.4}"|format(it.surplus.mean().0) }}</td>
+						<td class="text-center">{{ "{:.4}"|format(f64::from(it.surplus.mean())) }}</td>
 						{% match it.mode_results.constant %}
 							{% when Some with (constant) %}
 								<td class="text-center">{{ constant.count }}</td>
-								<td class="text-center">{{ "{:.4}"|format(constant.utility.mean().0) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(constant.utility.mean())) }}</td>
 							{% when None %}
 								<td class="text-center">0</td>
 								<td class="text-center">N/A</td>
@@ -119,8 +119,8 @@
 								<td class="text-center">{{ "{}"|format(trip_results.departure_time.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(trip_results.arrival_time.mean()) }}</td>
 								<td class="text-center">{{ "{}"|format(trip_results.travel_time.mean()) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(trip_results.utility.mean().0) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(trip_results.expected_utility.mean().0) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.utility.mean())) }}</td>
+								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.expected_utility.mean())) }}</td>
 								{% match trip_results.dep_time_shift %}
 									{% when Some with (distr) %}
 									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
@@ -139,7 +139,7 @@
 									<td class="text-center">{{ rlr.count }}</td>
 									<td class="text-center">{{ rlr.mode_count_one }}</td>
 									<td class="text-center">{{ rlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.count_distribution.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.departure_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.arrival_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.road_time.mean()) }}</td>
@@ -148,18 +148,18 @@
 									<td class="text-center">{{ "{}"|format(rlr.travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.route_free_flow_travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.route_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.global_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.0}"|format(rlr.length.mean().0) }}</td>
-									<td class="text-center">{{ "{:.2}"|format(rlr.edge_count.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.utility.mean().0) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(rlr.exp_travel_time_rel_diff.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.route_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.global_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.0}"|format(f64::from(rlr.length.mean())) }}</td>
+									<td class="text-center">{{ "{:.2}"|format(f64::from(rlr.edge_count.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.utility.mean())) }}</td>
+									<td class="text-center">{{ "{:}"|format(rlr.exp_travel_time.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.exp_travel_time_rel_diff.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_abs_diff.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_diff_rmse) }}</td>
 									{% match rlr.length_diff %}
 										{% when Some with (distr) %}
-										<td class="text-center">{{ "{:.2}"|format(distr.mean().0) }}</td>
+										<td class="text-center">{{ "{:.2}"|format(f64::from(distr.mean())) }}</td>
 										{% when None %}
 										<td class="text-center">N/A</td>
 									{% endmatch %}
@@ -174,13 +174,13 @@
 									<td class="text-center">{{ vlr.count }}</td>
 									<td class="text-center">{{ vlr.mode_count_one }}</td>
 									<td class="text-center">{{ vlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.count_distribution.mean()) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.count_distribution.mean())) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.departure_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.arrival_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.travel_time.mean()) }}</td>
 									<td class="text-center">{{ "{}"|format(vlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.global_congestion.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(vlr.utility.mean().0) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.global_congestion.mean())) }}</td>
+									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.utility.mean())) }}</td>
 									{% when None %}
 									{% for _ in 0..10 %}
 									<td class="text-center">N/A</td>
@@ -194,13 +194,13 @@
 						{% endmatch %}
 						{% match it.sim_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{}"|format(value) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}
 						{% match it.exp_road_network_weights_rmse %}
 							{% when Some with (value) %}
-							<td class="text-center">{{ "{:.4}"|format(value.0) }}</td>
+							<td class="text-center">{{ "{}"|format(value) }}</td>
 							{% when None %}
 							<td class="text-center">N/A</td>
 						{% endmatch %}
@@ -270,53 +270,124 @@
 		<script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
 
 		<script>
-			const data = {{iterations|json|safe}};
+			function secondsToString(seconds) {
+				var date = new Date(0);
+				date.setSeconds(seconds);
+				var isoString = date.toISOString();
+				return isoString;
+			}
 
-			var road_departure_times = {{last_iteration.road_departure_times|json|safe}};
-			var road_arrival_times = {{last_iteration.road_arrival_times|json|safe}};
+			const iters = [
+				{% for it in iterations %}
+				{{ it.iteration_counter }},
+				{% endfor %}
+			];
+			const surplus = [
+				{% for it in iterations %}
+				{{ f64::from(it.surplus.mean()) }},
+				{% endfor %}
+			];
+			const mean_departure_time = [
+				{% for it in iterations %}
+				{% match it.mode_results.trip_modes %}
+				{% when Some with (trip_results) %}
+				secondsToString({{ f64::from(trip_results.departure_time.mean()) }}),
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+			const dt_rmse = [
+				{% for it in iterations %}
+				{% match it.mode_results.trip_modes %}
+				{% when Some with (trip_results) %}
+				{% match trip_results.dep_time_rmse %}
+				{% when Some with (value) %}
+				secondsToString({{ f64::from(value.clone()) }}),
+				{% when None %}
+				"",
+				{% endmatch %}
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+			const travel_time = [
+				{% for it in iterations %}
+				{% match it.mode_results.trip_modes %}
+				{% when Some with (trip_results) %}
+				secondsToString({{ f64::from(trip_results.travel_time.mean()) }}),
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+			const expect_rmse = [
+				{% for it in iterations %}
+				{% match it.mode_results.trip_modes %}
+				{% when Some with (trip_results) %}
+				{% match trip_results.road_leg %}
+				{% when Some with (rlr) %}
+				secondsToString({{ f64::from(rlr.exp_travel_time_diff_rmse.clone()) }}),
+				{% when None %}
+				{% endmatch %}
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+			const sim_rn_cond_rmse = [
+				{% for it in iterations %}
+				{% match it.sim_road_network_weights_rmse %}
+				{% when Some with (value) %}
+				secondsToString({{ f64::from(value.clone()) }}),
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+			const exp_rn_cond_rmse = [
+				{% for it in iterations %}
+				{% match it.exp_road_network_weights_rmse %}
+				{% when Some with (value) %}
+				secondsToString({{ f64::from(value.clone()) }}),
+				{% when None %}
+				{% endmatch %}
+				{% endfor %}
+			];
+
+			function linspace(start, stop, num) {
+				const step = (stop - start) / (num - 1);
+				return Array.from({length: num}, (_, i) => secondsToString(start + step * i));
+			}
+
+			const departure_time_bars = [
+				{% for i in last_iteration.departure_time_histogram.bars %}
+				{{ i }},
+				{% endfor %}
+			];
+			const dt_start = {{ f64::from(last_iteration.departure_time_histogram.period.start()) }};
+			const dt_end = {{ f64::from(last_iteration.departure_time_histogram.period.end()) }};
+			const dt_interval = (dt_end - dt_start) / departure_time_bars.length;
+			const road_departure_times = linspace(
+				dt_start + dt_interval / 2,
+				dt_end - dt_interval / 2,
+				departure_time_bars.length,
+			);
+
+			const arrival_time_bars = [
+				{% for i in last_iteration.arrival_time_histogram.bars %}
+				{{ i }},
+				{% endfor %}
+			];
+			const at_start = {{ f64::from(last_iteration.arrival_time_histogram.period.start()) }};
+			const at_end = {{ f64::from(last_iteration.arrival_time_histogram.period.end()) }};
+			const at_interval = (at_end - at_start) / arrival_time_bars.length;
+			const road_arrival_times = linspace(
+				at_start + at_interval / 2,
+				at_end - at_interval / 2,
+				arrival_time_bars.length,
+			);
 
 			$(document).ready(function() {
 							var firstHeight = $('.first').height();
 							$("thead tr.second th").css("top", firstHeight)
 						});
-
-			var iters = [];
-			var surplus = [];
-			var mean_departure_time = [];
-			var dt_rmse = [];
-			var travel_time = [];
-			var expect_rmse = [];
-			var sim_rn_cond_rmse = [];
-			var exp_rn_cond_rmse = [];
-			for (let i = 0; i < data.length; i++) {
-				iters.push(data[i].iteration_counter);
-				// Surplus
-				surplus.push(data[i].surplus.mean);
-				// Mean departure time
-				var t = new Date(0);
-				t.setSeconds(data[i].mode_results.trip_modes.departure_time.mean);
-				mean_departure_time.push(t.toISOString());
-				// Departure time RMSE
-				var t = new Date(0);
-				t.setSeconds(data[i].mode_results.trip_modes.dep_time_rmse);
-				dt_rmse.push(t.toISOString());
-				// Mean travel time
-				var t = new Date(0);
-				t.setSeconds(data[i].mode_results.trip_modes.travel_time.mean);
-				travel_time.push(t.toISOString());
-				// Exp. travel time diff RMSE
-				var t = new Date(0);
-				t.setSeconds(data[i].mode_results.trip_modes.road_leg.exp_travel_time_diff_rmse);
-				expect_rmse.push(t.toISOString());
-				// Sim. road network conditions RMSE
-				var t = new Date(0);
-				t.setSeconds(data[i].sim_road_network_weights_rmse);
-				sim_rn_cond_rmse.push(t.toISOString());
-				// Exp. road network conditions RMSE
-				var t = new Date(0);
-				t.setSeconds(data[i].exp_road_network_weights_rmse);
-				exp_rn_cond_rmse.push(t.toISOString());
-			}
 
 			var surplus_trace = {
 							x: iters,
@@ -325,112 +396,114 @@
 						};
 			Plotly.newPlot('surplusChart', [surplus_trace]);
 
-			var mean_departure_time_trace = {
-							x: iters,
-							y: mean_departure_time,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('meanDepartureTimeChart', [mean_departure_time_trace], layout);
+			if (mean_departure_time.length > 0) {
+				var mean_departure_time_trace = {
+					x: iters,
+					y: mean_departure_time,
+					type: 'scatter'
+				};
+				var layout = {
+					yaxis: {
+						tickformat: "%H:%M:%S"
+					}
+				};
+				Plotly.newPlot('meanDepartureTimeChart', [mean_departure_time_trace], layout);
+			}
 
-			var dt_rmse_trace = {
-							x: iters,
-							y: dt_rmse,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('dtRmseChart', [dt_rmse_trace], layout);
+			if (dt_rmse.length > 0) {
+				var dt_rmse_trace = {
+								x: iters,
+								y: dt_rmse,
+								type: 'scatter'
+							};
+				var layout = {
+								yaxis: {
+												tickformat: "%H:%M:%S"
+											}
+							};
+				Plotly.newPlot('dtRmseChart', [dt_rmse_trace], layout);
+			}
 
-			var travel_time_trace = {
-							x: iters,
-							y: travel_time,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('travelTimeChart', [travel_time_trace], layout);
+			if (travel_time.length) {
+				var travel_time_trace = {
+					x: iters,
+					y: travel_time,
+					type: 'scatter'
+				};
+				var layout = {
+					yaxis: {
+						tickformat: "%H:%M:%S"
+					}
+				};
+				Plotly.newPlot('travelTimeChart', [travel_time_trace], layout);
+			}
 
-			var expect_rmse_trace = {
-							x: iters,
-							y: expect_rmse,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('expectRmseChart', [expect_rmse_trace], layout);
+			if (expect_rmse.length > 0) {
+				var expect_rmse_trace = {
+								x: iters,
+								y: expect_rmse,
+								type: 'scatter'
+							};
+				var layout = {
+								yaxis: {
+												tickformat: "%H:%M:%S"
+											}
+							};
+				Plotly.newPlot('expectRmseChart', [expect_rmse_trace], layout);
+			}
 
-			var sim_rn_cond_rmse_trace = {
-							x: iters,
-							y: sim_rn_cond_rmse,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('simRnCondRmseChart', [sim_rn_cond_rmse_trace], layout);
+			if (sim_rn_cond_rmse.length > 0) {
+				var sim_rn_cond_rmse_trace = {
+					x: iters,
+					y: sim_rn_cond_rmse,
+					type: 'scatter'
+				};
+				var layout = {
+					yaxis: {
+						tickformat: "%H:%M:%S"
+					}
+				};
+				Plotly.newPlot('simRnCondRmseChart', [sim_rn_cond_rmse_trace], layout);
+			}
 
-			var exp_rn_cond_rmse_trace = {
-							x: iters,
-							y: exp_rn_cond_rmse,
-							type: 'scatter'
-						};
-			var layout = {
-							yaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
-			Plotly.newPlot('expRnCondRmseChart', [exp_rn_cond_rmse_trace], layout);
+			if (exp_rn_cond_rmse.length > 0) {
+				var exp_rn_cond_rmse_trace = {
+					x: iters,
+					y: exp_rn_cond_rmse,
+					type: 'scatter'
+				};
+				var layout = {
+					yaxis: {
+						tickformat: "%H:%M:%S"
+					}
+				};
+				Plotly.newPlot('expRnCondRmseChart', [exp_rn_cond_rmse_trace], layout);
+			}
 
-			road_departure_times = road_departure_times.map(function(v) {
-							var t = new Date(0);
-							t.setSeconds(v);
-							return t.toISOString();
-						});
 			var road_departure_times_trace = {
-							x: road_departure_times,
-							type: 'histogram',
-								histnorm: 'probability',
-						};
+				x: road_departure_times,
+				y: departure_time_bars,
+				line_shape: "hvh",
+			};
 			var layout = {
-							title: "Departure times distribution",
-							xaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
+				title: "Departure times distribution",
+				xaxis: {
+					tickformat: "%H:%M:%S"
+				}
+			};
 			Plotly.newPlot('roadDepartureTimeHist', [road_departure_times_trace], layout);
 
-			road_arrival_times = road_arrival_times.map(function(v) {
-							var t = new Date(0);
-							t.setSeconds(v);
-							return t.toISOString();
-						});
 			var road_arrival_times_trace = {
-							x: road_arrival_times,
-							type: 'histogram',
-								histnorm: 'probability',
-						};
+				x: road_arrival_times,
+				y: arrival_time_bars,
+				line_shape: "hvh",
+			};
 			var layout = {
-							title: "Arrival times distribution",
-							xaxis: {
-											tickformat: "%H:%M:%S"
-										}
-						};
+				title: "Arrival times distribution",
+				xaxis: {
+					tickformat: "%H:%M:%S"
+				}
+			};
 			Plotly.newPlot('roadArrivalTimeHist', [road_arrival_times_trace], layout);
 		</script>
 	</body>

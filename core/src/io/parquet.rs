@@ -74,9 +74,13 @@ pub fn append_parquet<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Re
         let mut file =
             File::open(&filename).with_context(|| format!("Cannot open file `{filename:?}`"))?;
         let mut df = ParquetReader::new(&mut file)
-            .with_schema(Some(Arc::new(D::schema())))
             .finish()
             .with_context(|| format!("Cannot read file `{filename:?}`"))?;
+        debug_assert_eq!(
+            df.schema(),
+            D::schema(),
+            "Invalid parquet schema for file `{filename:?}`"
+        );
         df.vstack_mut(&append_df)
             .context("Cannot append iteration results to DataFrame")?;
         df

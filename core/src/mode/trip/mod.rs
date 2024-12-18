@@ -12,11 +12,10 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashSet;
 use log::warn;
-use num_traits::{Float, FromPrimitive, Zero};
+use num_traits::{clamp, ConstZero};
 use once_cell::sync::OnceCell;
 use petgraph::prelude::EdgeIndex;
-use serde::{Deserialize, Serialize};
-use ttf::{PwlXYF, TTFNum, TTF};
+use ttf::{PwlXYF, TTF};
 
 use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
@@ -24,47 +23,43 @@ use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
 use crate::network::road_network::vehicle::OriginalVehicleId;
 use crate::network::road_network::{
-    OriginalEdgeId, OriginalNodeId, RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkWeights,
+    OriginalEdgeId, OriginalNodeId, RoadNetworkPreprocessingData, RoadNetworkWeights,
 };
 use crate::progress_bar::MetroProgressBar;
 use crate::schedule_utility::ScheduleUtility;
 use crate::travel_utility::TravelUtility;
-use crate::units::{Interval, Length, NoUnit, Time, Utility};
+use crate::units::*;
 
 pub mod event;
 pub mod results;
 
+// TODO This should be a parameter of the simulation.
 const NB_INTERVALS: usize = 1500;
 
 /// A leg of a trip.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
-pub struct Leg<T> {
+#[derive(Clone, Debug)]
+pub struct Leg {
     /// Id used when writing the results of the leg.
-    #[serde(default)]
     pub(crate) id: usize,
     /// Type of the leg (road or virtual).
-    pub(crate) class: LegType<T>,
+    pub(crate) class: LegType,
     /// Time spent at the stopping point of the leg, before starting the next leg (if any).
-    #[serde(default)]
-    pub(crate) stopping_time: Time<T>,
+    pub(crate) stopping_time: NonNegativeSeconds,
     /// Travel utility for this specific leg (a function of the travel time for this leg).
-    #[serde(default)]
-    pub(crate) travel_utility: TravelUtility<T>,
+    pub(crate) travel_utility: TravelUtility,
     /// Schedule utility at the stopping point (a function of the arrival time at the stopping
     /// point).
-    #[serde(default)]
-    pub(crate) schedule_utility: ScheduleUtility<T>,
+    pub(crate) schedule_utility: ScheduleUtility,
 }
 
-impl<T: TTFNum> Leg<T> {
+impl Leg {
     /// Creates a new [Leg].
     pub fn new(
         id: usize,
-        class: LegType<T>,
-        stopping_time: Time<T>,
-        travel_utility: TravelUtility<T>,
-        schedule_utility: ScheduleUtility<T>,
+        class: LegType,
+        stopping_time: NonNegativeSeconds,
+        travel_utility: TravelUtility,
+        schedule_utility: ScheduleUtility,
     ) -> Self {
         Self {
             id,
@@ -78,7 +73,7 @@ impl<T: TTFNum> Leg<T> {
     /// Creates a `Leg` from input values.
     ///
     /// Returns an error if some values are invalid.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: usize,
         class_type: Option<&str>,
@@ -99,7 +94,8 @@ impl<T: TTFNum> Leg<T> {
         schedule_utility_gamma: Option<f64>,
         schedule_utility_delta: Option<f64>,
     ) -> Result<Self> {
-        let stopping_time = Time::from_f64(stopping_time.unwrap_or(0.0)).unwrap();
+        let stopping_time = NonNegativeSeconds::try_from(stopping_time.unwrap_or(0.0))
+            .context("Value `stopping_time` does not satisfy the constraints")?;
         let class = match class_type {
             Some("Road") => {
                 let origin = class_origin.ok_or_else(|| {
@@ -121,8 +117,11 @@ impl<T: TTFNum> Leg<T> {
                 })
             }
             Some("Virtual") => {
-                let tt = Time::from_f64(class_travel_time.unwrap_or(0.0)).unwrap();
-                LegType::Virtual(TTF::Constant(tt))
+                // We ensure that the travel time is a non-negative value before putting it in the
+                // TTF as a AnySeconds.
+                let tt = NonNegativeSeconds::try_from(class_travel_time.unwrap_or(0.0))
+                    .context("Value `travel_time` does not satisfy the constraints")?;
+                LegType::Virtual(TTF::Constant(AnySeconds::from(tt)))
             }
             Some(s) => bail!("Unknown value for `class.type`: {s}"),
             None => bail!("Value `class.type` is mandatory"),
@@ -133,7 +132,8 @@ impl<T: TTFNum> Leg<T> {
             travel_utility_two,
             travel_utility_three,
             travel_utility_four,
-        );
+        )
+        .context("Failed to create travel utility")?;
         let schedule_utility = ScheduleUtility::from_values(
             schedule_utility_type,
             schedule_utility_tstar,
@@ -155,9 +155,9 @@ impl<T: TTFNum> Leg<T> {
     /// time.
     fn get_utility_decomposition(
         &self,
-        departure_time: Time<T>,
-        travel_time: Time<T>,
-    ) -> (Utility<T>, Utility<T>) {
+        departure_time: NonNegativeSeconds,
+        travel_time: NonNegativeSeconds,
+    ) -> (Utility, Utility) {
         (
             self.travel_utility.get_travel_utility(travel_time),
             self.schedule_utility
@@ -166,20 +166,24 @@ impl<T: TTFNum> Leg<T> {
     }
 
     /// Returns the utility of the leg, given the departure time and travel time.
-    fn get_utility_at(&self, departure_time: Time<T>, travel_time: Time<T>) -> Utility<T> {
+    fn get_utility_at(
+        &self,
+        departure_time: NonNegativeSeconds,
+        travel_time: NonNegativeSeconds,
+    ) -> Utility {
         let (u0, u1) = self.get_utility_decomposition(departure_time, travel_time);
         u0 + u1
     }
 
     /// Returns an initialized [LegResults] representing a virtual leg, given the expected departure
     /// time and arrival time.
-    fn init_virtual_leg_results(&self) -> LegResults<T> {
+    fn init_virtual_leg_results(&self) -> LegResults {
         LegResults {
             id: self.id,
-            departure_time: Time::nan(),
-            arrival_time: Time::nan(),
-            travel_utility: Utility::nan(),
-            schedule_utility: Utility::nan(),
+            departure_time: NonNegativeSeconds::NAN,
+            arrival_time: NonNegativeSeconds::NAN,
+            travel_utility: Utility::NAN,
+            schedule_utility: Utility::NAN,
             class: LegTypeResults::Virtual,
             departure_time_shift: None,
         }
@@ -190,19 +194,19 @@ impl<T: TTFNum> Leg<T> {
     /// route, length and route free-flow travel time.
     fn init_road_leg_results(
         &self,
-        departure_time: Time<T>,
-        arrival_time: Time<T>,
+        departure_time: NonNegativeSeconds,
+        arrival_time: NonNegativeSeconds,
         route: Option<Vec<EdgeIndex>>,
-        length: Option<Length<T>>,
-        route_free_flow_travel_time: Option<Time<T>>,
-        global_free_flow_travel_time: Time<T>,
-    ) -> LegResults<T> {
+        length: Option<NonNegativeMeters>,
+        route_free_flow_travel_time: Option<NonNegativeSeconds>,
+        global_free_flow_travel_time: NonNegativeSeconds,
+    ) -> LegResults {
         LegResults {
             id: self.id,
-            departure_time: Time::nan(),
-            arrival_time: Time::nan(),
-            travel_utility: Utility::nan(),
-            schedule_utility: Utility::nan(),
+            departure_time: NonNegativeSeconds::NAN,
+            arrival_time: NonNegativeSeconds::NAN,
+            travel_utility: Utility::NAN,
+            schedule_utility: Utility::NAN,
             class: LegTypeResults::Road(RoadLegResults::new(
                 departure_time,
                 arrival_time,
@@ -217,18 +221,16 @@ impl<T: TTFNum> Leg<T> {
 }
 
 /// Enum for the different classes of legs.
-#[derive(Clone, Debug, EnumAsInner, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
-#[serde(bound = "T: TTFNum")]
-pub enum LegType<T> {
+#[derive(Clone, Debug, EnumAsInner)]
+pub enum LegType {
     /// A leg with travel on the road.
     Road(RoadLeg),
     /// A virtual leg, with a fixed TTF, independent from the road network.
-    Virtual(TTF<Time<T>>),
+    Virtual(TTF<AnySeconds>),
 }
 
 /// A leg of a trip on the road network.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct RoadLeg {
     /// Origin node of the leg.
     pub(crate) origin: OriginalNodeId,
@@ -256,10 +258,6 @@ impl RoadLeg {
             route: None,
         }
     }
-}
-
-fn default_is_true() -> bool {
-    true
 }
 
 /// Representation of the mode of transportation for a trip with one or more legs, consisting in
@@ -296,51 +294,43 @@ fn default_is_true() -> bool {
 ///
 /// In practice, one of `total_travel_utility` or legs' `travel_utility` is usually null but this
 /// is not enforced by the model.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
-pub struct TravelingMode<T> {
+#[derive(Clone, Debug)]
+pub struct TravelingMode {
     /// Id of the mode, used in the output.
-    #[serde(default)]
     pub(crate) id: usize,
     /// The legs of the trips.
     ///
     /// The full trip consists realizing this legs one after the other.
-    pub(crate) legs: Vec<Leg<T>>,
+    pub(crate) legs: Vec<Leg>,
     /// Delay between the departure time of the trip and the start of the first leg.
-    #[serde(default)]
-    pub(crate) origin_delay: Time<T>,
+    pub(crate) origin_delay: NonNegativeSeconds,
     /// Model used for the departure-time choice.
-    pub(crate) departure_time_model: DepartureTimeModel<T>,
+    pub(crate) departure_time_model: DepartureTimeModel,
     /// Total travel utility of the trip (a function of the total travel time of the trip).
-    #[serde(default)]
-    pub(crate) total_travel_utility: TravelUtility<T>,
+    pub(crate) total_travel_utility: TravelUtility,
     /// Schedule utility at origin of the trip (a function of the departure time from origin).
-    #[serde(default)]
-    pub(crate) origin_schedule_utility: ScheduleUtility<T>,
+    pub(crate) origin_schedule_utility: ScheduleUtility,
     /// Schedule utility at destination of the trip (a function of the arrival time at
     /// destination).
-    #[serde(default)]
-    pub(crate) destination_schedule_utility: ScheduleUtility<T>,
+    pub(crate) destination_schedule_utility: ScheduleUtility,
     /// If `true`, the routes of the trip are computed during the pre-day model (faster).
     /// If `false`, they are computed during the within-day model (which means that the route for
     /// second and after legs is computed using the actual departure time, not the predicted one)..
-    #[serde(default = "default_is_true")]
     pub(crate) pre_compute_route: bool,
     /// Results of the pre-day model for this mode (when the mode is virtual only).
-    #[serde(skip)]
-    pub(crate) choice: OnceCell<VirtualOnlyPreDayResults<T>>,
+    pub(crate) choice: OnceCell<VirtualOnlyPreDayResults>,
 }
 
-impl<T> TravelingMode<T> {
+impl TravelingMode {
     /// Creates a new [TravelingMode].
     pub fn new(
         id: usize,
-        legs: Vec<Leg<T>>,
-        origin_delay: Time<T>,
-        departure_time_model: DepartureTimeModel<T>,
-        total_travel_utility: TravelUtility<T>,
-        origin_schedule_utility: ScheduleUtility<T>,
-        destination_schedule_utility: ScheduleUtility<T>,
+        legs: Vec<Leg>,
+        origin_delay: NonNegativeSeconds,
+        departure_time_model: DepartureTimeModel,
+        total_travel_utility: TravelUtility,
+        origin_schedule_utility: ScheduleUtility,
+        destination_schedule_utility: ScheduleUtility,
     ) -> Self {
         Self {
             id,
@@ -371,7 +361,7 @@ impl<T> TravelingMode<T> {
     }
 
     /// Iterates over the legs of the trip.
-    pub fn iter_legs(&'_ self) -> impl Iterator<Item = &'_ Leg<T>> + '_ {
+    pub fn iter_legs(&'_ self) -> impl Iterator<Item = &'_ Leg> + '_ {
         self.legs.iter()
     }
 
@@ -387,7 +377,7 @@ impl<T> TravelingMode<T> {
     }
 
     /// Iterates over the TTFs of the virtual legs of the trip.
-    pub fn iter_virtual_legs(&'_ self) -> impl Iterator<Item = &'_ TTF<Time<T>>> + '_ {
+    pub fn iter_virtual_legs(&'_ self) -> impl Iterator<Item = &'_ TTF<AnySeconds>> + '_ {
         self.legs.iter().filter_map(|leg| {
             if let LegType::Virtual(ttf) = &leg.class {
                 Some(ttf)
@@ -398,11 +388,11 @@ impl<T> TravelingMode<T> {
     }
 }
 
-impl<T: TTFNum> TravelingMode<T> {
+impl TravelingMode {
     /// Creates a `TravelingMode` from input values.
     ///
     /// Returns an error if some values are invalid.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         id: usize,
         origin_delay: Option<f64>,
@@ -431,7 +421,7 @@ impl<T: TTFNum> TravelingMode<T> {
         destination_utility_gamma: Option<f64>,
         destination_utility_delta: Option<f64>,
         pre_compute_route: Option<bool>,
-        legs: Vec<Leg<T>>,
+        legs: Vec<Leg>,
     ) -> Result<Self> {
         debug_assert!(!legs.is_empty());
         let total_travel_utility = TravelUtility::from_values(
@@ -440,8 +430,10 @@ impl<T: TTFNum> TravelingMode<T> {
             total_travel_utility_two,
             total_travel_utility_three,
             total_travel_utility_four,
-        );
-        let origin_delay = Time::from_f64(origin_delay.unwrap_or(0.0)).unwrap();
+        )
+        .context("Failed to create total travel utility")?;
+        let origin_delay = NonNegativeSeconds::try_from(origin_delay.unwrap_or(0.0))
+            .context("Value `origin_delay` does not satisfy the constraints")?;
         let departure_time_model = DepartureTimeModel::from_values(
             dt_choice_type,
             dt_choice_departure_time,
@@ -488,12 +480,12 @@ impl<T: TTFNum> TravelingMode<T> {
 // Type for the TTFs of the legs of a trip.
 //
 // The TTFs can be either owned or be references.
-type LegTTFs<'a, T> = Vec<LegTTF<'a, T>>;
+type LegTTFs<'a> = Vec<LegTTF<'a>>;
 
-struct LegTTF<'a, T>(Either<&'a TTF<Time<T>>, TTF<Time<T>>>);
+struct LegTTF<'a>(Either<&'a TTF<AnySeconds>, TTF<AnySeconds>>);
 
-impl<'a, T: TTFNum> Deref for LegTTF<'a, T> {
-    type Target = TTF<Time<T>>;
+impl Deref for LegTTF<'_> {
+    type Target = TTF<AnySeconds>;
     fn deref(&self) -> &Self::Target {
         match &self.0 {
             Either::Left(referenced) => referenced,
@@ -502,17 +494,17 @@ impl<'a, T: TTFNum> Deref for LegTTF<'a, T> {
     }
 }
 
-impl<T: TTFNum> TravelingMode<T> {
+impl TravelingMode {
     /// Returns a Vec of TTFs, corresponding to the TTF of each leg given the road-network skims.
     ///
     /// Returns an error if the road-network skims are invalid or if a leg is not feasible (the
     /// origin and destination are disconnected).
     fn get_leg_ttfs<'a>(
         &'a self,
-        rn_weights: Option<&'a RoadNetworkWeights<T>>,
-        rn_skims: Option<&'a RoadNetworkSkims<T>>,
-        preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
-    ) -> Result<LegTTFs<'a, T>> {
+        rn_weights: Option<&'a RoadNetworkWeights>,
+        rn_skims: Option<&'a RoadNetworkSkims>,
+        preprocess_data: Option<&RoadNetworkPreprocessingData>,
+    ) -> Result<LegTTFs<'a>> {
         self.legs
             .iter()
             .map(|l| {
@@ -569,12 +561,18 @@ impl<T: TTFNum> TravelingMode<T> {
     }
 
     /// Returns the total utility of the trip given the departure time and the legs' TTFs.
-    fn get_total_utility(&self, departure_time: Time<T>, leg_ttfs: &LegTTFs<'_, T>) -> Utility<T> {
+    fn get_total_utility(
+        &self,
+        departure_time: NonNegativeSeconds,
+        leg_ttfs: &LegTTFs<'_>,
+    ) -> Utility {
         let mut current_time = departure_time + self.origin_delay;
-        let mut total_travel_time = Time::default();
+        let mut total_travel_time = NonNegativeSeconds::default();
         let mut total_utility = self.origin_schedule_utility.get_utility(departure_time);
         for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
-            let travel_time = leg_ttf.eval(current_time);
+            let travel_time =
+                NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(current_time)))
+                    .expect("The travel time is negative");
             let utility = leg.get_utility_at(current_time, travel_time);
             total_utility += utility;
             current_time += travel_time;
@@ -590,23 +588,29 @@ impl<T: TTFNum> TravelingMode<T> {
 
     /// Returns the total stopping time of the trip, i.e., the sum of the stopping time for each
     /// leg (plus the delay at origin).
-    fn get_total_stopping_time(&self) -> Time<T> {
-        self.origin_delay + self.legs.iter().map(|l| l.stopping_time).sum()
+    fn get_total_stopping_time(&self) -> NonNegativeSeconds {
+        self.origin_delay
+            + self
+                .legs
+                .iter()
+                .map(|l| l.stopping_time)
+                .sum::<NonNegativeSeconds>()
     }
 
     /// Returns a [PwlXYF] that yields the utility for each possible departure time, given the
     /// legs' TTFs.
     fn get_utility_function(
         &self,
-        leg_ttfs: &LegTTFs<'_, T>,
-        period: Interval<T>,
-    ) -> PwlXYF<Time<T>, Utility<T>, NoUnit<T>> {
-        let interval = period.length() / Time::from_usize(NB_INTERVALS).unwrap();
-        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| Some(*x + interval))
-            .take_while(|&x| x <= period.end())
-            .collect();
-
-        let mut utilities = vec![Utility::default(); tds.len()];
+        leg_ttfs: &LegTTFs<'_>,
+        period: Interval,
+    ) -> PwlXYF<AnySeconds, Utility, AnyNum> {
+        let interval = period.length() / NB_INTERVALS;
+        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| {
+            Some(*x + NonNegativeSeconds::from(interval))
+        })
+        .take_while(|&x| x <= period.end())
+        .collect();
+        let mut utilities = vec![Utility::ZERO; tds.len()];
         // Add schedule utility at origin.
         utilities
             .iter_mut()
@@ -624,7 +628,8 @@ impl<T: TTFNum> TravelingMode<T> {
                 .iter_mut()
                 .zip(current_times.iter_mut())
                 .for_each(|(u, t)| {
-                    let tt = leg_ttf.eval(*t);
+                    let tt = NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(*t)))
+                        .expect("The travel time is negative");
                     // Update the current time.
                     *t += tt;
                     // Increase the utility for the associated departure time.
@@ -644,11 +649,14 @@ impl<T: TTFNum> TravelingMode<T> {
             .iter_mut()
             .zip(current_times)
             .zip(tds)
-            .for_each(|((u, t), td)| {
-                let tot_tt = (t - td) - self.get_total_stopping_time();
+            .for_each(|((u, ta), td)| {
+                // total stopping time is always larger that
+                let tot_tt = ta
+                    .sub_unchecked(td)
+                    .sub_unchecked(self.get_total_stopping_time());
                 *u += self.total_travel_utility.get_travel_utility(tot_tt)
             });
-        PwlXYF::from_values(utilities, period.start(), interval)
+        PwlXYF::from_values(utilities, period.start().into(), interval.into())
     }
 
     /// Returns `true` if the [TravelingMode] is composed of virtual legs only.
@@ -663,9 +671,9 @@ impl<T: TTFNum> TravelingMode<T> {
     /// *Panics* if the trip is not virtual only.
     fn get_trip_results_for_virtual_only(
         &self,
-        departure_time: Time<T>,
-        expected_utility: Utility<T>,
-    ) -> TripResults<T> {
+        departure_time: NonNegativeSeconds,
+        expected_utility: Utility,
+    ) -> TripResults {
         assert!(
             self.is_virtual_only(),
             "The function `get_trip_results_for_virtual_only` is only available for virtual only trips"
@@ -673,7 +681,7 @@ impl<T: TTFNum> TravelingMode<T> {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         let mut utility = self.origin_schedule_utility.get_utility(departure_time);
-        let mut total_travel_time = Time::zero();
+        let mut total_travel_time = NonNegativeSeconds::ZERO;
         for leg in self.legs.iter() {
             let ttf = if let LegType::Virtual(ttf) = &leg.class {
                 ttf
@@ -681,7 +689,11 @@ impl<T: TTFNum> TravelingMode<T> {
                 // All legs are virtual here.
                 unreachable!()
             };
-            let travel_time = ttf.eval(current_time);
+            // We can assume that the travel time is non-negative since this was checked when
+            // importing the virtual leg.
+            let travel_time = ttf
+                .eval(current_time.into())
+                .assume_non_negative_unchecked();
             let arrival_time = current_time + travel_time;
             total_travel_time += travel_time;
             let travel_utility = leg.travel_utility.get_travel_utility(travel_time);
@@ -720,45 +732,53 @@ impl<T: TTFNum> TravelingMode<T> {
     /// within-day model.
     fn init_trip_results_without_route(
         &self,
-        departure_time: Time<T>,
-        expected_utility: Utility<T>,
-        leg_ttfs: &LegTTFs<'_, T>,
-        road_network: Option<&RoadNetwork<T>>,
-        preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
-        weights: Option<&RoadNetworkWeights<T>>,
-    ) -> TripResults<T> {
+        departure_time: NonNegativeSeconds,
+        expected_utility: Utility,
+        leg_ttfs: &LegTTFs<'_>,
+        preprocess_data: Option<&RoadNetworkPreprocessingData>,
+        weights: Option<&RoadNetworkWeights>,
+    ) -> TripResults {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         for (leg, leg_ttf) in self.iter_legs().zip(leg_ttfs.iter()) {
-            let travel_time = leg_ttf.eval(current_time);
+            let travel_time = NonNegativeSeconds::try_from(leg_ttf.eval(current_time.into()))
+                .expect("The travel time is negative");
             let arrival_time = current_time + travel_time;
             let leg_result = match &leg.class {
                 LegType::Road(road_leg) => {
                     let preprocess_data = preprocess_data
                         .expect("Got a road leg without road-network preprocessing data");
                     let uid = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
-                    let (arrival_time, route_opt) = if let Some(input_route) =
-                        road_leg.route.as_ref()
-                    {
-                        // A route is given as input so the route is `pre-computed` anyway.
-                        let road_network =
-                            road_network.expect("Got a road leg but there is not road network.");
-                        let vehicle_weights = &weights
-                            .expect("Got a road leg but there is no road network weights.")[uid];
-                        let mut t = current_time;
-                        let mut route = Vec::with_capacity(input_route.len());
-                        for edge in input_route {
-                            t = t + vehicle_weights.weights()[edge].eval(t);
-                            route.push(road_network.edge_id_of(*edge));
-                        }
-                        (t, Some(route))
-                    } else {
-                        (arrival_time, None)
-                    };
-                    let global_free_flow_travel_time = *preprocess_data
-                        .free_flow_travel_times_of_unique_vehicle(uid)
-                        .get(&(road_leg.origin, road_leg.destination))
-                        .expect("The free flow travel time of the OD pair has not been computed.");
+                    let (arrival_time, route_opt, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            // A route is given as input so the route is `pre-computed` anyway.
+                            let vehicle_weights = &weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(t.into()),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, Some(route), global_free_flow_travel_time)
+                        } else {
+                            let global_free_flow_travel_time = *preprocess_data
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, None, global_free_flow_travel_time)
+                        };
                     leg.init_road_leg_results(
                         current_time,
                         arrival_time,
@@ -782,25 +802,145 @@ impl<T: TTFNum> TravelingMode<T> {
     /// is computed only the first time this function is called.
     pub fn get_pre_day_choice<'a: 'b, 'b>(
         &'a self,
-        road_network: Option<&'b RoadNetwork<T>>,
-        simulation_period: Interval<T>,
-        rn_weights: Option<&'b RoadNetworkWeights<T>>,
-        rn_skims: Option<&'b RoadNetworkSkims<T>>,
-        preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
+        rn_weights: Option<&'b RoadNetworkWeights>,
+        rn_skims: Option<&'b RoadNetworkSkims>,
+        preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
         progress_bar: MetroProgressBar,
-    ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
+        alloc: &mut EAAllocation,
+    ) -> Result<(Utility, ModeCallback<'b>)> {
         if let Some(choice) = self.choice.get() {
             // The TravelingMode is virtual only and the pre-day choices were already computed.
             return Ok(choice.to_expected_utility_and_mode_callback());
         }
-        self.make_pre_day_choice(
-            road_network,
-            simulation_period,
-            rn_weights,
-            rn_skims,
-            preprocess_data,
-            progress_bar,
-        )
+        self.make_pre_day_choice(rn_weights, rn_skims, preprocess_data, progress_bar, alloc)
+    }
+
+    /// Computes the pre-day choice for a mode with constant departure time.
+    ///
+    /// In this case, the profile queries were not computed so the expected utility must be
+    /// computed by running earliest-arrival queries or using the input routes.
+    fn constant_departure_time_pre_day_choice<'a: 'b, 'b>(
+        &'a self,
+        departure_time: NonNegativeSeconds,
+        rn_weights: Option<&'b RoadNetworkWeights>,
+        rn_skims: Option<&'b RoadNetworkSkims>,
+        preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
+        progress_bar: MetroProgressBar,
+        alloc: &mut EAAllocation,
+    ) -> Result<(Utility, ModeCallback<'b>)> {
+        debug_assert!(self.departure_time_model.is_constant());
+        let mut leg_results = Vec::with_capacity(self.legs.len());
+        let mut current_time = departure_time + self.origin_delay;
+        let mut total_travel_time = NonNegativeSeconds::default();
+        let mut expected_utility = self.origin_schedule_utility.get_utility(departure_time);
+        for leg in self.iter_legs() {
+            let (arrival_time, leg_result) = match &leg.class {
+                LegType::Road(road_leg) => {
+                    let uid = preprocess_data
+                        .expect("Got a road leg but there is no road network preprocess data.")
+                        .get_unique_vehicle_index(road_leg.vehicle);
+                    let (arrival_time, route, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            // Evaluate the travel time of the input route.
+                            let vehicle_weights = &rn_weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, route, global_free_flow_travel_time)
+                        } else {
+                            // Run an earliest-arrival time query to get the travel time and fastest
+                            // path.
+                            // TODO. The route is not needed if pre_compute_route is false, only
+                            // the arrival time is needed.
+                            let vehicle_skims = rn_skims
+                                .expect("Got a road leg but there is no road network skims.")[uid]
+                                .as_ref()
+                                .expect("Road network skims are empty.");
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                road_leg,
+                                current_time,
+                                vehicle_skims,
+                                progress_bar.clone(),
+                                alloc,
+                            )?;
+                            let global_free_flow_travel_time = *preprocess_data
+                            .expect("Got a road leg but there is no road network preprocess data.")
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, route, global_free_flow_travel_time)
+                        };
+                    let leg_result = if self.pre_compute_route {
+                        // Compute the route free-flow travel time and length.
+                        let length =
+                            crate::network::road_network::route_length(route.iter().copied());
+                        let route_free_flow_travel_time =
+                            crate::network::road_network::route_free_flow_travel_time(
+                                route.iter().copied(),
+                                road_leg.vehicle,
+                            );
+                        leg.init_road_leg_results(
+                            current_time,
+                            arrival_time,
+                            Some(route),
+                            Some(length),
+                            Some(route_free_flow_travel_time),
+                            global_free_flow_travel_time,
+                        )
+                    } else {
+                        leg.init_road_leg_results(
+                            current_time,
+                            arrival_time,
+                            None,
+                            None,
+                            None,
+                            global_free_flow_travel_time,
+                        )
+                    };
+                    (arrival_time, leg_result)
+                }
+                LegType::Virtual(ttf) => (
+                    current_time
+                        + ttf
+                            .eval(AnySeconds::from(current_time))
+                            .assume_non_negative_unchecked(),
+                    leg.init_virtual_leg_results(),
+                ),
+            };
+            let travel_time = arrival_time.sub_unchecked(current_time);
+            expected_utility += leg.get_utility_at(current_time, travel_time);
+            total_travel_time += travel_time;
+            leg_results.push(leg_result);
+            current_time = arrival_time + leg.stopping_time;
+        }
+        expected_utility += self
+            .total_travel_utility
+            .get_travel_utility(total_travel_time);
+        expected_utility += self.destination_schedule_utility.get_utility(current_time);
+        let callback = move |_| {
+            Ok(ModeResults::Trip(TripResults::new(
+                leg_results,
+                departure_time,
+                expected_utility,
+                false,
+            )))
+        };
+        Ok((expected_utility, Box::new(callback)))
     }
 
     /// Computes the pre-day choice for this mode.
@@ -813,28 +953,32 @@ impl<T: TTFNum> TravelingMode<T> {
     /// *Panics* if the function is called with only virtual legs and with a non-empty OnceCell.
     fn make_pre_day_choice<'a: 'b, 'b>(
         &'a self,
-        road_network: Option<&'b RoadNetwork<T>>,
-        simulation_period: Interval<T>,
-        rn_weights: Option<&'b RoadNetworkWeights<T>>,
-        rn_skims: Option<&'b RoadNetworkSkims<T>>,
-        preprocess_data: Option<&'b RoadNetworkPreprocessingData<T>>,
+        rn_weights: Option<&'b RoadNetworkWeights>,
+        rn_skims: Option<&'b RoadNetworkSkims>,
+        preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
         progress_bar: MetroProgressBar,
-    ) -> Result<(Utility<T>, ModeCallback<'b, T>)> {
+        alloc: &mut EAAllocation,
+    ) -> Result<(Utility, ModeCallback<'b>)> {
+        if let &DepartureTimeModel::Constant(departure_time) = &self.departure_time_model {
+            return self.constant_departure_time_pre_day_choice(
+                departure_time,
+                rn_weights,
+                rn_skims,
+                preprocess_data,
+                progress_bar,
+                alloc,
+            );
+        }
         let leg_ttfs = self.get_leg_ttfs(rn_weights, rn_skims, preprocess_data)?;
         let (expected_utility, time_callback) = match &self.departure_time_model {
-            &DepartureTimeModel::Constant(departure_time) => {
-                let expected_utility = self.get_total_utility(departure_time, &leg_ttfs);
-                let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
-                (expected_utility, time_callback)
-            }
             DepartureTimeModel::Discrete {
                 period,
                 interval,
                 offset,
                 choice_model,
             } => {
-                let period = period.unwrap_or(simulation_period);
-                let half_interval = Time::average(*interval, Time::zero());
+                let period = period.unwrap_or_else(crate::parameters::period);
+                let half_interval = interval.half();
                 let dt_values_iter =
                     std::iter::successors(Some(period.start() + half_interval), |t| {
                         Some(*t + *interval)
@@ -850,21 +994,22 @@ impl<T: TTFNum> TravelingMode<T> {
                             self.id
                         )
                     })?;
-                let departure_time = Float::min(
-                    period.start()
-                        + half_interval
-                        + Time(interval.0 * T::from_usize(chosen_id).unwrap())
+                let departure_time = NonNegativeSeconds::try_from(clamp(
+                    AnySeconds::from(period.start() + half_interval + *interval * chosen_id)
                         + *offset,
-                    period.end(),
-                );
-                let time_callback: Box<dyn FnOnce() -> Time<T>> = Box::new(move || departure_time);
+                    period.start().into(),
+                    period.end().into(),
+                ))
+                .unwrap();
+                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> =
+                    Box::new(move || departure_time);
                 (expected_utility, time_callback)
             }
             DepartureTimeModel::Continuous {
                 period: period_opt,
                 choice_model,
             } => {
-                let period = period_opt.unwrap_or(simulation_period);
+                let period = period_opt.unwrap_or(crate::parameters::period());
                 let utilities = self.get_utility_function(&leg_ttfs, period);
                 let (time_callback, expected_utility) =
                     choice_model.get_choice(utilities).with_context(|| {
@@ -873,7 +1018,14 @@ impl<T: TTFNum> TravelingMode<T> {
                             self.id
                         )
                     })?;
+                let time_callback: Box<dyn FnOnce() -> NonNegativeSeconds> = Box::new(move || {
+                    NonNegativeSeconds::try_from(time_callback())
+                        .expect("The travel time is negative")
+                });
                 (expected_utility, time_callback)
+            }
+            &DepartureTimeModel::Constant(_) => {
+                unreachable!()
             }
         };
         if self.is_virtual_only() {
@@ -894,7 +1046,6 @@ impl<T: TTFNum> TravelingMode<T> {
                 Ok(ModeResults::Trip(self.init_trip_results_with_route(
                     departure_time,
                     expected_utility,
-                    road_network,
                     preprocess_data,
                     rn_weights,
                     rn_skims,
@@ -906,7 +1057,6 @@ impl<T: TTFNum> TravelingMode<T> {
                     departure_time,
                     expected_utility,
                     &leg_ttfs,
-                    road_network,
                     preprocess_data,
                     rn_weights,
                 )))
@@ -919,61 +1069,73 @@ impl<T: TTFNum> TravelingMode<T> {
     ///
     /// Not all values of the trip results are filled. Some values should be filled in the
     /// within-day model.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn init_trip_results_with_route(
         &self,
-        departure_time: Time<T>,
-        expected_utility: Utility<T>,
-        road_network: Option<&RoadNetwork<T>>,
-        preprocess_data: Option<&RoadNetworkPreprocessingData<T>>,
-        weights: Option<&RoadNetworkWeights<T>>,
-        skims: Option<&RoadNetworkSkims<T>>,
+        departure_time: NonNegativeSeconds,
+        expected_utility: Utility,
+        preprocess_data: Option<&RoadNetworkPreprocessingData>,
+        weights: Option<&RoadNetworkWeights>,
+        skims: Option<&RoadNetworkSkims>,
         progress_bar: MetroProgressBar,
-        alloc: &mut EAAllocation<T>,
-    ) -> Result<TripResults<T>> {
+        alloc: &mut EAAllocation,
+    ) -> Result<TripResults> {
         let mut leg_results = Vec::with_capacity(self.legs.len());
         let mut current_time = departure_time + self.origin_delay;
         for leg in self.iter_legs() {
             let (arrival_time, leg_result) = match &leg.class {
                 LegType::Road(road_leg) => {
-                    let road_network =
-                        road_network.expect("Got a road leg but there is not road network.");
                     let uid = preprocess_data
                         .expect("Got a road leg but there is no road network preprocess data.")
                         .get_unique_vehicle_index(road_leg.vehicle);
-                    let (arrival_time, route) = if let Some(input_route) = road_leg.route.as_ref() {
-                        let vehicle_weights = &weights
-                            .expect("Got a road leg but there is no road network weights.")[uid];
-                        let mut t = current_time;
-                        let mut route = Vec::with_capacity(input_route.len());
-                        for edge in input_route {
-                            t = t + vehicle_weights.weights()[edge].eval(t);
-                            route.push(road_network.edge_id_of(*edge));
-                        }
-                        (t, route)
-                    } else {
-                        let vehicle_skims = skims
-                            .expect("Got a road leg but there is no road network skims.")[uid]
-                            .as_ref()
-                            .expect("Road network skims are empty.");
-                        get_arrival_time_and_route(
-                            road_leg,
-                            current_time,
-                            vehicle_skims,
-                            progress_bar.clone(),
-                            alloc,
-                        )?
-                    };
+                    let (arrival_time, route, global_free_flow_travel_time) =
+                        if let Some(input_route) = road_leg.route.as_ref() {
+                            let vehicle_weights = &weights
+                                .expect("Got a road leg but there is no road network weights.")
+                                [uid];
+                            let mut t = current_time;
+                            let mut route = Vec::with_capacity(input_route.len());
+                            for edge in input_route {
+                                t = t + NonNegativeSeconds::try_from(
+                                    vehicle_weights.weights()[edge].eval(AnySeconds::from(t)),
+                                )
+                                .expect("The travel time is negative");
+                                route.push(crate::network::road_network::edge_index_of(*edge));
+                            }
+                            let global_free_flow_travel_time =
+                                crate::network::road_network::route_free_flow_travel_time(
+                                    route.iter().copied(),
+                                    road_leg.vehicle,
+                                );
+                            (t, route, global_free_flow_travel_time)
+                        } else {
+                            let vehicle_skims = skims
+                                .expect("Got a road leg but there is no road network skims.")[uid]
+                                .as_ref()
+                                .expect("Road network skims are empty.");
+                            let (arrival_time, route) = get_arrival_time_and_route(
+                                road_leg,
+                                current_time,
+                                vehicle_skims,
+                                progress_bar.clone(),
+                                alloc,
+                            )?;
+                            let global_free_flow_travel_time = *preprocess_data
+                            .expect("Got a road leg but there is no road network preprocess data.")
+                            .free_flow_travel_times_of_unique_vehicle(uid)
+                            .get(&(road_leg.origin, road_leg.destination))
+                            .expect(
+                                "The free flow travel time of the OD pair has not been computed.",
+                            );
+                            (arrival_time, route, global_free_flow_travel_time)
+                        };
                     // Compute the route free-flow travel time and length.
-                    let length = road_network.route_length(route.iter().copied());
-                    let route_free_flow_travel_time = road_network
-                        .route_free_flow_travel_time(route.iter().copied(), road_leg.vehicle);
-                    // Retrieve the global free-flow travel time.
-                    let global_free_flow_travel_time = *preprocess_data
-                        .expect("Got a road leg but there is no road network preprocess data.")
-                        .free_flow_travel_times_of_unique_vehicle(uid)
-                        .get(&(road_leg.origin, road_leg.destination))
-                        .expect("The free flow travel time of the OD pair has not been computed.");
+                    let length = crate::network::road_network::route_length(route.iter().copied());
+                    let route_free_flow_travel_time =
+                        crate::network::road_network::route_free_flow_travel_time(
+                            route.iter().copied(),
+                            road_leg.vehicle,
+                        );
                     let leg_result = leg.init_road_leg_results(
                         current_time,
                         arrival_time,
@@ -985,7 +1147,10 @@ impl<T: TTFNum> TravelingMode<T> {
                     (arrival_time, leg_result)
                 }
                 LegType::Virtual(ttf) => (
-                    current_time + ttf.eval(current_time),
+                    current_time
+                        + ttf
+                            .eval(AnySeconds::from(current_time))
+                            .assume_non_negative_unchecked(),
                     leg.init_virtual_leg_results(),
                 ),
             };
@@ -1003,54 +1168,60 @@ impl<T: TTFNum> TravelingMode<T> {
 
 /// Expected utility and trip results for a [TravelingMode] with only virtual legs.
 #[derive(Clone, Debug)]
-pub(crate) struct VirtualOnlyPreDayResults<T> {
-    expected_utility: Utility<T>,
-    trip_results: TripResults<T>,
+pub(crate) struct VirtualOnlyPreDayResults {
+    expected_utility: Utility,
+    trip_results: TripResults,
 }
 
-impl<T: TTFNum> VirtualOnlyPreDayResults<T> {
+impl VirtualOnlyPreDayResults {
     /// Returns a tuple with the expected utility and a [ModeCallback].
-    fn to_expected_utility_and_mode_callback(&'_ self) -> (Utility<T>, ModeCallback<'_, T>) {
+    fn to_expected_utility_and_mode_callback(&'_ self) -> (Utility, ModeCallback<'_>) {
         let callback = move |_| Ok(ModeResults::Trip(self.trip_results.clone()));
         (self.expected_utility, Box::new(callback))
     }
 }
 
 /// Model used to compute the chosen departure time.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "type", content = "value")]
-pub enum DepartureTimeModel<T> {
+#[derive(Clone, Debug, EnumAsInner)]
+pub enum DepartureTimeModel {
     /// The departure time is always equal to the given value.
-    Constant(Time<T>),
+    Constant(NonNegativeSeconds),
     /// The departure time is chosen among a finite number of values.
-    #[serde(alias = "DiscreteChoice")]
     Discrete {
         /// Period in which the departure time is chosen.
         ///
         /// If `None`, the simulation period is used.
-        period: Option<Interval<T>>,
+        period: Option<Interval>,
         /// Time between two departure-time interval.
-        interval: Time<T>,
+        interval: NonNegativeSeconds,
         /// Offset time added to the chosen departure-time value (can be negative).
-        #[serde(default)]
-        offset: Time<T>,
+        offset: AnySeconds,
         /// Discrete choice model.
-        choice_model: ChoiceModel<NoUnit<T>>,
+        choice_model: ChoiceModel<Utility>,
     },
-    #[serde(alias = "ContinuousChoice")]
     /// The departure time is chosen according to a continuous choice model.
     Continuous {
         /// Period in which the departure time is chosen.
         ///
         /// If `None`, the simulation period is used.
-        period: Option<Interval<T>>,
+        period: Option<Interval>,
         /// Continuous choice model.
-        choice_model: ContinuousChoiceModel<NoUnit<T>>,
+        choice_model: ContinuousChoiceModel,
     },
 }
 
-impl<T: TTFNum> DepartureTimeModel<T> {
-    #[allow(clippy::too_many_arguments)]
+impl DepartureTimeModel {
+    /// Returns `true` if the departure-time model requires pre-computing the profile query for the
+    /// trips' origin-destination pairs.
+    pub(crate) fn requires_profile_query(&self) -> bool {
+        match self {
+            Self::Constant(_) => false,
+            Self::Discrete { .. } => true,
+            Self::Continuous { .. } => true,
+        }
+    }
+
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
         model_type: Option<&str>,
         departure_time: Option<f64>,
@@ -1062,12 +1233,10 @@ impl<T: TTFNum> DepartureTimeModel<T> {
         choice_model_mu: Option<f64>,
         choice_model_constants: Option<Vec<f64>>,
     ) -> Result<Self> {
-        fn period_as_interval<T: TTFNum>(period: Vec<f64>) -> Result<Interval<T>> {
+        fn period_as_interval(period: Vec<f64>) -> Result<Interval> {
             match period.len() {
                 2 => {
-                    let t0 = Time::from_f64(period[0]).unwrap();
-                    let t1 = Time::from_f64(period[1]).unwrap();
-                    Ok(Interval([t0, t1]))
+                    Interval::try_from([period[0], period[1]]).context("Value `period` is invalid")
                 }
                 _ => Err(anyhow!(
                     "Value `period` must be a List with 2 values, got `{:?}`",
@@ -1077,18 +1246,18 @@ impl<T: TTFNum> DepartureTimeModel<T> {
         }
         match model_type {
             Some("Constant") => {
-                let dt = departure_time.ok_or_else(|| {
+                let dt = NonNegativeSeconds::try_from(departure_time.ok_or_else(|| {
                     anyhow!("Value `departure_time` is mandatory when `type` is `\"Constant\"`")
-                })?;
-                Ok(Self::Constant(Time::from_f64(dt).unwrap()))
+                })?)
+                .context("Value `departure_time` does not satisfy the constraints")?;
+                Ok(Self::Constant(dt))
             }
             Some("Discrete") => {
-                let period = period.map(|p| period_as_interval(p)).transpose()?;
-                let interval = interval
-                    .map(|t| Time::from_f64(t).unwrap())
-                    .ok_or_else(|| {
-                        anyhow!("Value `interval` is mandatory when `type` is `\"Discrete\"`")
-                    })?;
+                let period = period.map(period_as_interval).transpose()?;
+                let interval = NonNegativeSeconds::try_from(interval.ok_or_else(|| {
+                    anyhow!("Value `interval` is mandatory when `type` is `\"Discrete\"`")
+                })?)
+                .context("Value `interval` does not satisfy the constraints")?;
                 let choice_model = ChoiceModel::from_values(
                     choice_model_type,
                     choice_model_u,
@@ -1096,7 +1265,17 @@ impl<T: TTFNum> DepartureTimeModel<T> {
                     choice_model_constants,
                 )
                 .context("Failed to create a discrete choice model")?;
-                let offset = Time::from_f64(offset.unwrap_or(0.0)).unwrap();
+                let offset = AnySeconds::try_from(offset.unwrap_or(0.0))
+                    .context("Value `offset` does not satisfy the constraints")?;
+                if offset < -AnySeconds::from(interval.half())
+                    || offset > AnySeconds::from(interval.half())
+                {
+                    warn!(
+                        "Value `offset` ({}) is larger or smaller than the half interval ({})",
+                        f64::from(offset),
+                        f64::from(interval.half())
+                    );
+                }
                 Ok(Self::Discrete {
                     period,
                     interval,
@@ -1105,7 +1284,7 @@ impl<T: TTFNum> DepartureTimeModel<T> {
                 })
             }
             Some("Continuous") => {
-                let period = period.map(|p| period_as_interval(p)).transpose()?;
+                let period = period.map(period_as_interval).transpose()?;
                 let choice_model = ContinuousChoiceModel::from_values(
                     choice_model_type,
                     choice_model_u,
@@ -1127,16 +1306,19 @@ impl<T: TTFNum> DepartureTimeModel<T> {
 /// given origin, destination and departure time.
 ///
 /// Return an error if the destination cannot be reached with the given departure time from origin.
-fn get_arrival_time_and_route<T: TTFNum>(
+fn get_arrival_time_and_route(
     leg: &RoadLeg,
-    departure_time: Time<T>,
-    skims: &RoadNetworkSkim<T>,
+    departure_time: NonNegativeSeconds,
+    skims: &RoadNetworkSkim,
     progress_bar: MetroProgressBar,
-    alloc: &mut EAAllocation<T>,
-) -> Result<(Time<T>, Vec<EdgeIndex>)> {
-    if let Some((arrival_time, route)) =
-        skims.earliest_arrival_query(leg.origin, leg.destination, departure_time, alloc)?
-    {
+    alloc: &mut EAAllocation,
+) -> Result<(NonNegativeSeconds, Vec<EdgeIndex>)> {
+    if let Some((arrival_time, route)) = skims.earliest_arrival_query(
+        leg.origin,
+        leg.destination,
+        AnySeconds::from(departure_time),
+        alloc,
+    )? {
         if cfg!(debug_assertions) {
             // Check if there is a loop in the route.
             let n = route.iter().collect::<HashSet<_>>().len();
@@ -1149,6 +1331,9 @@ fn get_arrival_time_and_route<T: TTFNum>(
                 })
             }
         }
+        let arrival_time = NonNegativeSeconds::try_from(arrival_time).with_context(|| {
+            format!("Got a negative travel time from the earliest-arrival query: {arrival_time}")
+        })?;
         Ok((arrival_time, route))
     } else {
         Err(anyhow!(

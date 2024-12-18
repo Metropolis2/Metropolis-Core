@@ -3,24 +3,22 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Integration test for road restrictions.
 use hashbrown::HashSet;
-use metropolis_core::agent::Agent;
-use metropolis_core::learning::LearningModel;
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::Mode;
+use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
 use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
-use metropolis_core::network::road_network::{
-    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
-};
-use metropolis_core::network::Network;
+use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
+use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
+use metropolis_core::population::Agent;
 use metropolis_core::schedule_utility::ScheduleUtility;
-use metropolis_core::simulation::Simulation;
 use metropolis_core::travel_utility::TravelUtility;
-use metropolis_core::units::{Flow, Interval, Lanes, Length, Speed, Time, PCE};
-use num_traits::Float;
+use metropolis_core::units::*;
+use num_traits::{ConstOne, ConstZero};
 
-fn get_simulation() -> Simulation<f64> {
+fn init_simulation() {
     // Create a network with 4 nodes and two different routes to go from node 0 to node 3.
     // One route (0 -> 1 -> 3) is always faster than the other (0 -> 2 -> 3).
     // Edge 0: 0 -> 1 (tt = 1).
@@ -33,12 +31,12 @@ fn get_simulation() -> Simulation<f64> {
             1,
             RoadEdge::new(
                 0,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
@@ -47,12 +45,12 @@ fn get_simulation() -> Simulation<f64> {
             2,
             RoadEdge::new(
                 1,
-                Speed(1.0),
-                Length(2.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(2.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
@@ -61,12 +59,12 @@ fn get_simulation() -> Simulation<f64> {
             3,
             RoadEdge::new(
                 2,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
@@ -75,12 +73,12 @@ fn get_simulation() -> Simulation<f64> {
             3,
             RoadEdge::new(
                 3,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
@@ -89,24 +87,24 @@ fn get_simulation() -> Simulation<f64> {
     // Only vehicle type `v0` has acces to edge 2 (and thus to route 0 -> 1 -> 3).
     let v0 = Vehicle::new(
         1,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         HashSet::new(),
         HashSet::new(),
     );
     let v1 = Vehicle::new(
         2,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         [0, 1, 3].into_iter().collect(),
         HashSet::new(),
     );
     let v2 = Vehicle::new(
         3,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         HashSet::new(),
         [2].into_iter().collect(),
@@ -117,8 +115,8 @@ fn get_simulation() -> Simulation<f64> {
     // -> 3 is feasible.
     let v3 = Vehicle::new(
         4,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         [0, 1, 3].into_iter().collect(),
         [1].into_iter().collect(),
@@ -145,15 +143,15 @@ fn get_simulation() -> Simulation<f64> {
         let leg = Leg::new(
             1,
             LegType::Road(RoadLeg::new(0, 3, v)),
-            Time::default(),
+            NonNegativeSeconds::ZERO,
             TravelUtility::default(),
             ScheduleUtility::None,
         );
         let trip = TravelingMode::new(
             1,
             vec![leg],
-            Time::default(),
-            DepartureTimeModel::Constant(Time(0.)),
+            NonNegativeSeconds::ZERO,
+            DepartureTimeModel::Constant(NonNegativeSeconds::ZERO),
             TravelUtility::default(),
             ScheduleUtility::None,
             ScheduleUtility::None,
@@ -163,44 +161,31 @@ fn get_simulation() -> Simulation<f64> {
     }
 
     let parameters = Parameters {
-        input_files: Default::default(),
-        output_directory: Default::default(),
-        period: Interval([Time(0.0), Time(50.0)]),
-        learning_model: LearningModel::Exponential(0.0),
+        period: Interval::try_from([0.0, 50.0]).unwrap(),
         road_network: Some(RoadNetworkParameters {
-            contraction: Default::default(),
-            recording_interval: Time(1.0),
-            approximation_bound: Time(0.0),
-            max_pending_duration: Time(f64::INFINITY),
             spillback: false,
-            backward_wave_speed: None,
-            constrain_inflow: true,
-            algorithm_type: Default::default(),
+            ..Default::default()
         }),
-        init_iteration_counter: 1,
         max_iterations: 1,
-        update_ratio: 1.0,
-        random_seed: None,
-        nb_threads: 0,
-        saving_format: Default::default(),
-        only_compute_decisions: false,
+        ..Default::default()
     };
 
-    Simulation::new(agents, network, parameters)
+    metropolis_core::parameters::init(parameters).unwrap();
+    metropolis_core::population::init(agents).unwrap();
+    metropolis_core::network::init(network).unwrap();
 }
 
 #[test]
 fn restricted_road_test() {
-    let simulation = get_simulation();
-    let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation.get_network().get_free_flow_weights(
-        simulation.get_parameters().period,
-        simulation.get_parameters().road_network.as_ref(),
-        &preprocess_data.network,
+    init_simulation();
+    let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
+    let rn_weights = metropolis_core::network::road_network::free_flow_weights(
+        &preprocess_data.network.get_road_network().unwrap(),
     );
-    let results = simulation
-        .run_iteration(weights, None, None, 1, &preprocess_data)
-        .unwrap();
+    let weights = NetworkWeights::new(Some(rn_weights));
+    let results =
+        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
+            .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
     // An arrival time of 2. means that the route 0 -> 1 -> 3 was taken (only possible for agent
@@ -215,7 +200,7 @@ fn restricted_road_test() {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
             ta,
-            Time(exp_ta),
+            NonNegativeSeconds::try_from(exp_ta).unwrap(),
             "Agent {} took the incorrect route.\nAgent result: {:?}",
             i,
             agent_res

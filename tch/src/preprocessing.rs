@@ -18,6 +18,7 @@ use petgraph::graph::{node_index, DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeRef, IntoNodeReferences, NodeFiltered, VisitMap, Visitable};
 use petgraph::Direction;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -126,7 +127,8 @@ impl ToContractNode {
 
 /// Structure for edges in a [ContractionGraph].
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub(crate) struct ToContractEdge<T> {
     /// Current metric of the edge.
     ttf: TTF<T>,
@@ -752,7 +754,7 @@ impl<T: TTFNum> ContractionGraph<T> {
                 if score.get_max() < edge_score.get_min() {
                     return true;
                 }
-                let (_merged_ttf, descr) = score.add(T::margin()).merge(edge_score);
+                let (_merged_ttf, descr) = score.add(T::MARGIN).merge(edge_score);
                 !descr.g_undercuts_strictly && descr.f_undercuts_strictly
             } else {
                 false

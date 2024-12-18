@@ -10,38 +10,14 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use log::info;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::parameters::Parameters;
-use crate::{
-    network::{road_network::RoadNetwork, Network},
-    simulation::Simulation,
-};
 
 /// Deserializes parameters from JSON files.
-pub fn get_parameters_from_json(path: &Path) -> Result<Parameters<f64>> {
+pub fn get_parameters_from_json(path: &Path) -> Result<Parameters> {
     read_json(path).context("Failed to read parameters")
-}
-
-/// Deserializes a simulation from JSON files.
-pub fn get_simulation_from_json_files(
-    agents: &Path,
-    parameters: &Path,
-    road_network: Option<&Path>,
-) -> Result<Simulation<f64>> {
-    // Read input files.
-    info!("Reading input files");
-    let agents = read_json(agents)?;
-    let parameters = read_json(parameters)?;
-    let road_network: Option<RoadNetwork<f64>> = if let Some(rn) = road_network {
-        Some(read_json(rn)?)
-    } else {
-        None
-    };
-    let network = Network::new(road_network);
-    Ok(Simulation::new(agents, network, parameters))
 }
 
 /// Read some deserializable data from an uncompressed or a zstd-compressed JSON file.

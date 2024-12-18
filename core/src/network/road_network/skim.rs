@@ -16,21 +16,20 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
-use ttf::{TTFNum, TTF};
+use ttf::TTF;
 
 use super::preprocess::UniqueVehicleIndex;
 use super::OriginalNodeId;
-use crate::units::Time;
+use crate::units::AnySeconds;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
 #[derive(Clone, Default, Debug, Serialize)]
-#[serde(bound(serialize = "T: TTFNum"))]
-#[serde(into = "SerializedRoadNetworkSkims<T>")]
-pub struct RoadNetworkSkims<T>(pub Vec<Option<RoadNetworkSkim<T>>>);
+#[serde(into = "SerializedRoadNetworkSkims")]
+pub struct RoadNetworkSkims(pub Vec<Option<RoadNetworkSkim>>);
 
-impl<T> Index<UniqueVehicleIndex> for RoadNetworkSkims<T> {
-    type Output = Option<RoadNetworkSkim<T>>;
+impl Index<UniqueVehicleIndex> for RoadNetworkSkims {
+    type Output = Option<RoadNetworkSkim>;
     fn index(&self, x: UniqueVehicleIndex) -> &Self::Output {
         &self.0[x.index()]
     }
@@ -39,19 +38,19 @@ impl<T> Index<UniqueVehicleIndex> for RoadNetworkSkims<T> {
 /// Structure holding the data needed to compute earliest-arrival and profile queries for a graph
 /// representing the road network with fixed weights.
 #[derive(Clone, Default, Debug)]
-pub struct RoadNetworkSkim<T> {
+pub struct RoadNetworkSkim {
     /// Hierarchy overlay of the road-network graph.
-    hierarchy_overlay: HierarchyOverlay<Time<T>>,
+    hierarchy_overlay: HierarchyOverlay<AnySeconds>,
     /// Mapping from original node id to simulation NodeIndex.
     node_map: HashMap<OriginalNodeId, NodeIndex>,
     /// Travel time functions for each used OD pair.
-    profile_query_cache: ODTravelTimeFunctions<T>,
+    profile_query_cache: ODTravelTimeFunctions,
 }
 
-impl<T: TTFNum> RoadNetworkSkim<T> {
+impl RoadNetworkSkim {
     /// Creates a new RoadNetworkSkim.
     pub fn new(
-        hierarchy_overlay: HierarchyOverlay<Time<T>>,
+        hierarchy_overlay: HierarchyOverlay<AnySeconds>,
         node_map: HashMap<OriginalNodeId, NodeIndex>,
     ) -> Self {
         RoadNetworkSkim {
@@ -66,13 +65,16 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     /// destinations.
     pub fn get_search_spaces(
         &mut self,
-        origins: &HashSet<OriginalNodeId>,
-        destinations: &HashSet<OriginalNodeId>,
-    ) -> SearchSpaces<Time<T>> {
-        let sources: HashSet<_> = origins.iter().map(|&o_id| self.get_node_id(o_id)).collect();
+        origins: Vec<OriginalNodeId>,
+        destinations: Vec<OriginalNodeId>,
+    ) -> SearchSpaces<AnySeconds> {
+        let sources: HashSet<_> = origins
+            .into_iter()
+            .map(|o_id| self.get_node_id(o_id))
+            .collect();
         let targets: HashSet<_> = destinations
-            .iter()
-            .map(|&d_id| self.get_node_id(d_id))
+            .into_iter()
+            .map(|d_id| self.get_node_id(d_id))
             .collect();
         self.hierarchy_overlay.get_search_spaces(&sources, &targets)
     }
@@ -95,11 +97,14 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     ///     and Systems (ATMOS'10)_, 2010 .
     pub fn pre_compute_profile_queries_intersect(
         &mut self,
-        od_pairs: &HashMap<OriginalNodeId, HashSet<OriginalNodeId>>,
-        search_spaces: &SearchSpaces<Time<T>>,
+        (od_pairs, nb_origins): (
+            impl ParallelIterator<Item = (OriginalNodeId, impl Iterator<Item = OriginalNodeId>)>,
+            usize,
+        ),
+        search_spaces: &SearchSpaces<AnySeconds>,
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(od_pairs.len() as u64)
+            ProgressBar::new(nb_origins as u64)
         } else {
             ProgressBar::hidden()
         };
@@ -108,23 +113,54 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
                 .template("{bar:60} ETA: {eta}")
                 .unwrap(),
         );
+        let pool: Pool<TCHProfileAlloc> = Pool::new(rayon::current_num_threads(), Default::default);
         self.profile_query_cache = od_pairs
-            .par_iter()
-            .map(|(&source, targets)| {
-                bp.inc(1);
-                let source_id = self.get_node_id(source);
-                let target_ttfs = targets
-                    .iter()
-                    .map(|&target| {
+            .map_init(
+                || pool.pull(Default::default),
+                |alloc, (source, targets)| {
+                    bp.inc(1);
+                    let source_id = self.get_node_id(source);
+                    let mut extra_targets = Vec::with_capacity(targets.size_hint().1.unwrap_or(16));
+                    let mut target_ttfs = if search_spaces.has_forward_search_space(&source_id) {
+                        targets
+                            .filter_map(|target| {
+                                let target_id = self.get_node_id(target);
+                                if search_spaces.has_backward_search_space(&target_id) {
+                                    Some(
+                                        algo::intersect_profile_query(
+                                            source_id,
+                                            target_id,
+                                            search_spaces,
+                                        )
+                                        .map(|ttf| (target, ttf)),
+                                    )
+                                } else {
+                                    extra_targets.push(target);
+                                    None
+                                }
+                            })
+                            .collect::<Result<HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>>()?
+                    } else {
+                        extra_targets.extend(targets);
+                        HashMap::with_capacity(extra_targets.len())
+                    };
+                    // Run TCH queries for the remaining pairs.
+                    for target in extra_targets {
                         let target_id = self.get_node_id(target);
-                        let ttf =
-                            algo::intersect_profile_query(source_id, target_id, search_spaces)?;
-                        Ok((target, ttf))
-                    })
-                    .collect::<Result<HashMap<OriginalNodeId, Option<TTF<Time<T>>>>>>()?;
-                Ok((source, target_ttfs))
-            })
-            .collect::<Result<ODTravelTimeFunctions<T>>>()?;
+                        let (profile_alloc, candidate_map) = alloc.get_mut_variables();
+                        let ttf = self.hierarchy_overlay.profile_query(
+                            source_id,
+                            target_id,
+                            &mut profile_alloc.interval_search,
+                            &mut profile_alloc.profile_search,
+                            candidate_map,
+                        );
+                        target_ttfs.insert(target, ttf);
+                    }
+                    Ok((source, target_ttfs))
+                },
+            )
+            .collect::<Result<ODTravelTimeFunctions>>()?;
         bp.finish_and_clear();
         Ok(())
     }
@@ -138,10 +174,13 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
     /// travel-time functions are stored in a cache.
     pub fn pre_compute_profile_queries_tch(
         &mut self,
-        od_pairs: &HashMap<OriginalNodeId, HashSet<OriginalNodeId>>,
+        (od_pairs, nb_origins): (
+            impl ParallelIterator<Item = (OriginalNodeId, impl Iterator<Item = OriginalNodeId>)>,
+            usize,
+        ),
     ) -> Result<()> {
         let bp = if log_enabled!(Level::Info) {
-            ProgressBar::new(od_pairs.len() as u64)
+            ProgressBar::new(nb_origins as u64)
         } else {
             ProgressBar::hidden()
         };
@@ -150,18 +189,15 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
                 .template("{bar:60} ETA: {eta}")
                 .unwrap(),
         );
-        let pool: Pool<TCHProfileAlloc<T>> =
-            Pool::new(rayon::current_num_threads(), Default::default);
+        let pool: Pool<TCHProfileAlloc> = Pool::new(rayon::current_num_threads(), Default::default);
         self.profile_query_cache = od_pairs
-            .par_iter()
             .map_init(
                 || pool.pull(Default::default),
-                |alloc, (&source, targets)| {
+                |alloc, (source, targets)| {
                     let source_id = self.get_node_id(source);
                     bp.inc(1);
                     let target_ttfs = targets
-                        .iter()
-                        .map(|&target| {
+                        .map(|target| {
                             let target_id = self.get_node_id(target);
                             let (profile_alloc, candidate_map) = alloc.get_mut_variables();
                             let ttf = self.hierarchy_overlay.profile_query(
@@ -173,11 +209,11 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
                             );
                             Ok((target, ttf))
                         })
-                        .collect::<Result<HashMap<OriginalNodeId, Option<TTF<Time<T>>>>>>()?;
+                        .collect::<Result<HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>>()?;
                     Ok((source, target_ttfs))
                 },
             )
-            .collect::<Result<ODTravelTimeFunctions<T>>>()?;
+            .collect::<Result<ODTravelTimeFunctions>>()?;
         bp.finish_and_clear();
         Ok(())
     }
@@ -198,7 +234,7 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         &self,
         from: OriginalNodeId,
         to: OriginalNodeId,
-    ) -> Result<Option<&TTF<Time<T>>>> {
+    ) -> Result<Option<&TTF<AnySeconds>>> {
         self.profile_query_cache
             .get(&from)
             .and_then(|targets| targets.get(&to))
@@ -223,9 +259,9 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
         &self,
         from: OriginalNodeId,
         to: OriginalNodeId,
-        at_time: Time<T>,
-        alloc: &mut EAAllocation<T>,
-    ) -> Result<Option<(Time<T>, Vec<EdgeIndex>)>> {
+        at_time: AnySeconds,
+        alloc: &mut EAAllocation,
+    ) -> Result<Option<(AnySeconds, Vec<EdgeIndex>)>> {
         self.hierarchy_overlay.earliest_arrival_query(
             self.get_node_id(from),
             self.get_node_id(to),
@@ -248,12 +284,10 @@ impl<T: TTFNum> RoadNetworkSkim<T> {
 }
 
 #[derive(Clone, Default, Debug, Serialize)]
-#[serde(bound = "T: TTFNum")]
-struct SerializedRoadNetworkSkims<T>(Vec<Vec<ODPairTTF<T>>>);
+struct SerializedRoadNetworkSkims(Vec<Vec<ODPairTTF>>);
 
 #[derive(Clone, Default, Debug, Serialize)]
-#[serde(bound = "T: TTFNum")]
-struct ODPairTTF<T> {
+struct ODPairTTF {
     /// Original id of the origin node.
     origin: OriginalNodeId,
     /// Original id of the destination node.
@@ -261,11 +295,11 @@ struct ODPairTTF<T> {
     /// Travel-time function from origin to destination.
     ///
     /// `None` if destination cannot be reached from origin.
-    ttf: Option<TTF<Time<T>>>,
+    ttf: Option<TTF<AnySeconds>>,
 }
 
-impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
-    fn from(skims: RoadNetworkSkims<T>) -> Self {
+impl From<RoadNetworkSkims> for SerializedRoadNetworkSkims {
+    fn from(skims: RoadNetworkSkims) -> Self {
         let mut serialized_skims = Vec::with_capacity(skims.0.len());
         for vehicle_skims in skims.0 {
             let mut serialized_vehicle_skims = Vec::new();
@@ -289,29 +323,29 @@ impl<T> From<RoadNetworkSkims<T>> for SerializedRoadNetworkSkims<T> {
 /// Map for some origin nodes, an OD-level travel-time function, for some destination nodes.
 ///
 /// The map uses the original node ids.
-type ODTravelTimeFunctions<T> =
-    HashMap<OriginalNodeId, HashMap<OriginalNodeId, Option<TTF<Time<T>>>>>;
+type ODTravelTimeFunctions =
+    HashMap<OriginalNodeId, HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>;
 
 /// A memory allocation that holds the structures required during earliest arrival queries.
 #[derive(Clone, Debug, Default)]
-pub struct EAAllocation<T: TTFNum> {
-    ea_alloc: DefaultEarliestArrivalAllocation<Time<T>>,
-    candidate_map: HashMap<NodeIndex, (Time<T>, Time<T>)>,
+pub struct EAAllocation {
+    ea_alloc: DefaultEarliestArrivalAllocation<AnySeconds>,
+    candidate_map: HashMap<NodeIndex, (AnySeconds, AnySeconds)>,
 }
 
 /// A memory allocation for TCH profile queries.
 #[derive(Clone, Debug, Default)]
-struct TCHProfileAlloc<T: TTFNum> {
-    profile_alloc: DefaultTCHProfileAllocation<Time<T>>,
-    candidate_map: HashMap<NodeIndex, Time<T>>,
+struct TCHProfileAlloc {
+    profile_alloc: DefaultTCHProfileAllocation<AnySeconds>,
+    candidate_map: HashMap<NodeIndex, AnySeconds>,
 }
 
-impl<T: TTFNum> TCHProfileAlloc<T> {
+impl TCHProfileAlloc {
     fn get_mut_variables(
         &mut self,
     ) -> (
-        &mut DefaultTCHProfileAllocation<Time<T>>,
-        &mut HashMap<NodeIndex, Time<T>>,
+        &mut DefaultTCHProfileAllocation<AnySeconds>,
+        &mut HashMap<NodeIndex, AnySeconds>,
     ) {
         (&mut self.profile_alloc, &mut self.candidate_map)
     }

@@ -13,6 +13,7 @@ use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
 use petgraph::Direction;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ttf::{TTFNum, TTF};
 
@@ -69,9 +70,12 @@ pub enum HierarchyEdgeClass<T> {
     PackedShortcut(EdgePack<T>),
 }
 
+type HierarchyEdgeReference<'a, T> = EdgeReference<'a, HierarchyEdge<T>>;
+
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub struct HierarchyEdge<T> {
     ttf: TTF<T>,
     direction: HierarchyDirection,
@@ -113,7 +117,8 @@ impl<T> HierarchyEdge<T> {
 
 /// Structure representing a graph with a hierarchy of nodes.
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
-#[serde(bound = "T: TTFNum")]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,
@@ -149,9 +154,9 @@ impl<T> HierarchyOverlay<T> {
         &'a self,
     ) -> EdgeFiltered<
         &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(EdgeReference<'a, HierarchyEdge<T>>) -> bool,
+        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
     > {
-        EdgeFiltered::from_fn(&self.graph, |e: EdgeReference<'a, HierarchyEdge<T>>| {
+        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
             e.weight().direction == HierarchyDirection::Upward
         })
     }
@@ -162,9 +167,9 @@ impl<T> HierarchyOverlay<T> {
         &'a self,
     ) -> EdgeFiltered<
         &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(EdgeReference<'a, HierarchyEdge<T>>) -> bool,
+        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
     > {
-        EdgeFiltered::from_fn(&self.graph, |e: EdgeReference<'a, HierarchyEdge<T>>| {
+        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
             e.weight().direction == HierarchyDirection::Downward
         })
     }
@@ -325,7 +330,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     {
         alloc.reset();
         candidate_map.reset();
-        let zero = T::zero();
+        let zero = T::ZERO;
         let query =
             BidirectionalPointToPointQuery::new(source, target, departure_time, [zero, zero]);
         let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
@@ -600,6 +605,16 @@ pub struct SearchSpaces<T> {
 }
 
 impl<T> SearchSpaces<T> {
+    /// Returns `true` if the given node has a forward search space.
+    pub fn has_forward_search_space(&self, node: &NodeIndex) -> bool {
+        self.forward.contains_key(node)
+    }
+
+    /// Returns `true` if the given node has a backward search space.
+    pub fn has_backward_search_space(&self, node: &NodeIndex) -> bool {
+        self.backward.contains_key(node)
+    }
+
     /// Returns a reference to the search spaces of the given node (in forward direction), if it
     /// exits.
     pub fn get_forward_search_space(&self, node: &NodeIndex) -> Option<&SearchSpace<T>> {

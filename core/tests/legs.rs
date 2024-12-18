@@ -3,33 +3,29 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Integration test for trip chaining.
 use hashbrown::HashSet;
-use metropolis_core::agent::{agent_index, Agent};
-use metropolis_core::learning::LearningModel;
 use metropolis_core::mode::trip::event::RoadEvent;
 use metropolis_core::mode::trip::results::{
     LegResults, LegTypeResults, RoadLegResults, TripResults,
 };
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::{mode_index, Mode, ModeResults};
+use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
 use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
-use metropolis_core::network::road_network::{
-    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
-};
-use metropolis_core::network::Network;
+use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
+use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
+use metropolis_core::population::{agent_index, Agent};
 use metropolis_core::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
 use metropolis_core::schedule_utility::ScheduleUtility;
 use metropolis_core::simulation::results::AgentResult;
-use metropolis_core::simulation::Simulation;
 use metropolis_core::travel_utility::{PolynomialFunction, TravelUtility};
-use metropolis_core::units::{
-    Flow, Interval, Lanes, Length, Speed, Time, Utility, ValueOfTime, PCE,
-};
-use num_traits::Float;
+use metropolis_core::units::*;
+use num_traits::{ConstOne, ConstZero};
 use ttf::{PwlTTF, TTF};
 
-fn get_simulation() -> Simulation<f64> {
+fn init_simulation() {
     // Create a network with 4 nodes and 2 edges.
     // Edge 0: 0 -> 1 (free-flow tt: 1).
     // Edge 1: 2 -> 3 (free-flow tt: 2).
@@ -39,12 +35,12 @@ fn get_simulation() -> Simulation<f64> {
             1,
             RoadEdge::new(
                 0,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
@@ -53,29 +49,29 @@ fn get_simulation() -> Simulation<f64> {
             3,
             RoadEdge::new(
                 1,
-                Speed(1.0),
-                Length(2.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(2.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow::infinity(),
-                Time(0.),
+                None,
+                NonNegativeSeconds::ZERO,
                 true,
             ),
         ),
     ];
     let v0 = Vehicle::new(
         1,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         HashSet::new(),
         HashSet::new(),
     );
     let v1 = Vehicle::new(
         2,
-        Length(1.0),
-        PCE(1.0),
-        SpeedFunction::Multiplicator(0.5),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
+        SpeedFunction::Multiplicator(PositiveNum::try_from(0.5).unwrap()),
         HashSet::new(),
         HashSet::new(),
     );
@@ -87,41 +83,55 @@ fn get_simulation() -> Simulation<f64> {
     let leg0 = Leg::new(
         1,
         LegType::Road(RoadLeg::new(0, 1, 1)),
-        Time(2.0),
+        NonNegativeSeconds::try_from(2.0).unwrap(),
         TravelUtility::Polynomial(PolynomialFunction {
-            a: 1.0,
-            b: -1.0,
-            c: 1.0,
+            a: Utility::try_from(1.0).unwrap(),
+            b: ValueOfTime::try_from(-1.0).unwrap(),
+            c: ValueOfTime::try_from(1.0).unwrap(),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(Time(5.0), Time(6.0), ValueOfTime(0.5), ValueOfTime(2.0))
-                .unwrap(),
+            AlphaBetaGammaModel::new(
+                NonNegativeSeconds::try_from(5.0).unwrap(),
+                NonNegativeSeconds::try_from(6.0).unwrap(),
+                ValueOfTime::try_from(0.5).unwrap(),
+                ValueOfTime::try_from(2.0).unwrap(),
+            )
+            .unwrap(),
         ),
     );
     let leg1 = Leg::new(
         2,
         LegType::Virtual(TTF::Piecewise(PwlTTF::from_values(
-            vec![Time(0.), Time(10.), Time(5.)],
-            Time(0.),
-            Time(10.),
+            vec![
+                AnySeconds::try_from(0.).unwrap(),
+                AnySeconds::try_from(10.).unwrap(),
+                AnySeconds::try_from(5.).unwrap(),
+            ],
+            AnySeconds::try_from(0.).unwrap(),
+            AnySeconds::try_from(10.).unwrap(),
         ))),
-        Time(1.0),
+        NonNegativeSeconds::try_from(1.0).unwrap(),
         TravelUtility::Polynomial(PolynomialFunction {
-            b: -1.0,
+            b: ValueOfTime::try_from(-1.0).unwrap(),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(Time(10.0), Time(10.0), ValueOfTime(0.1), ValueOfTime(0.2))
-                .unwrap(),
+            AlphaBetaGammaModel::new(
+                NonNegativeSeconds::try_from(10.0).unwrap(),
+                NonNegativeSeconds::try_from(10.0).unwrap(),
+                ValueOfTime::try_from(0.1).unwrap(),
+                ValueOfTime::try_from(0.2).unwrap(),
+            )
+            .unwrap(),
         ),
     );
     let leg2 = Leg::new(
         3,
         LegType::Road(RoadLeg::new(2, 3, 2)),
-        Time(1.0),
+        NonNegativeSeconds::try_from(1.0).unwrap(),
         TravelUtility::Polynomial(PolynomialFunction {
-            a: 5.0,
+            a: Utility::try_from(5.0).unwrap(),
             ..Default::default()
         }),
         ScheduleUtility::None,
@@ -130,70 +140,67 @@ fn get_simulation() -> Simulation<f64> {
     let leg3 = Leg::new(
         4,
         LegType::Road(RoadLeg::new(2, 2, 2)),
-        Time(0.0),
+        NonNegativeSeconds::try_from(0.0).unwrap(),
         TravelUtility::default(),
         ScheduleUtility::None,
     );
     let trip = TravelingMode::new(
         1,
         vec![leg0, leg1, leg2, leg3],
-        Time(3.0),
-        DepartureTimeModel::Constant(Time(0.)),
+        NonNegativeSeconds::try_from(3.0).unwrap(),
+        DepartureTimeModel::Constant(NonNegativeSeconds::ZERO),
         TravelUtility::Polynomial(PolynomialFunction {
-            c: -2.0,
+            c: ValueOfTime::try_from(-2.0).unwrap(),
             ..Default::default()
         }),
         ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(Time(1.0), Time(1.0), ValueOfTime(2.0), ValueOfTime(2.0))
-                .unwrap(),
+            AlphaBetaGammaModel::new(
+                NonNegativeSeconds::try_from(1.0).unwrap(),
+                NonNegativeSeconds::try_from(1.0).unwrap(),
+                ValueOfTime::try_from(2.0).unwrap(),
+                ValueOfTime::try_from(2.0).unwrap(),
+            )
+            .unwrap(),
         ),
         ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(Time(15.0), Time(15.0), ValueOfTime(2.0), ValueOfTime(2.0))
-                .unwrap(),
+            AlphaBetaGammaModel::new(
+                NonNegativeSeconds::try_from(15.0).unwrap(),
+                NonNegativeSeconds::try_from(15.0).unwrap(),
+                ValueOfTime::try_from(2.0).unwrap(),
+                ValueOfTime::try_from(2.0).unwrap(),
+            )
+            .unwrap(),
         ),
     );
     let agent = Agent::new(0, vec![Mode::Trip(trip)], None);
     agents.push(agent);
 
     let parameters = Parameters {
-        input_files: Default::default(),
-        output_directory: Default::default(),
-        period: Interval([Time(0.0), Time(50.0)]),
-        learning_model: LearningModel::Exponential(0.0),
+        period: Interval::try_from([0.0, 50.0]).unwrap(),
         road_network: Some(RoadNetworkParameters {
-            contraction: Default::default(),
-            recording_interval: Time(1.0),
-            approximation_bound: Time(0.0),
-            max_pending_duration: Time(f64::INFINITY),
             spillback: false,
-            backward_wave_speed: None,
-            constrain_inflow: true,
-            algorithm_type: Default::default(),
+            ..Default::default()
         }),
-        init_iteration_counter: 1,
         max_iterations: 1,
-        update_ratio: 1.0,
-        random_seed: None,
-        nb_threads: 0,
-        saving_format: Default::default(),
-        only_compute_decisions: false,
+        ..Default::default()
     };
 
-    Simulation::new(agents, network, parameters)
+    metropolis_core::parameters::init(parameters).unwrap();
+    metropolis_core::population::init(agents).unwrap();
+    metropolis_core::network::init(network).unwrap();
 }
 
 #[test]
 fn legs_test() {
-    let simulation = get_simulation();
-    let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation.get_network().get_free_flow_weights(
-        simulation.get_parameters().period,
-        simulation.get_parameters().road_network.as_ref(),
-        &preprocess_data.network,
+    init_simulation();
+    let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
+    let rn_weights = metropolis_core::network::road_network::free_flow_weights(
+        &preprocess_data.network.get_road_network().unwrap(),
     );
-    let results = simulation
-        .run_iteration(weights, None, None, 1, &preprocess_data)
-        .unwrap();
+    let weights = NetworkWeights::new(Some(rn_weights));
+    let results =
+        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
+            .unwrap();
     let agent_results = &results.iteration_results.agent_results()[agent_index(0)];
 
     // Departure time from origin: 0.
@@ -223,97 +230,97 @@ fn legs_test() {
     // Total utility = -250.9.
     let leg0_results = LegResults {
         id: 1,
-        departure_time: Time(3.0),
-        arrival_time: Time(4.0),
-        travel_utility: Utility(1.0),
-        schedule_utility: Utility(-0.5),
+        departure_time: NonNegativeSeconds::try_from(3.0).unwrap(),
+        arrival_time: NonNegativeSeconds::try_from(4.0).unwrap(),
+        travel_utility: Utility::try_from(1.0).unwrap(),
+        schedule_utility: Utility::try_from(-0.5).unwrap(),
         departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
                 edge: 0,
-                entry_time: Time(3.0),
+                entry_time: NonNegativeSeconds::try_from(3.0).unwrap(),
             }],
-            road_time: Time(1.0),
-            in_bottleneck_time: Time(0.0),
-            out_bottleneck_time: Time(0.0),
-            route_free_flow_travel_time: Time(1.0),
-            global_free_flow_travel_time: Time(1.0),
-            length: Length(1.0),
+            road_time: NonNegativeSeconds::try_from(1.0).unwrap(),
+            in_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            out_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            route_free_flow_travel_time: NonNegativeSeconds::try_from(1.0).unwrap(),
+            global_free_flow_travel_time: NonNegativeSeconds::try_from(1.0).unwrap(),
+            length: NonNegativeMeters::try_from(1.0).unwrap(),
             length_diff: None,
-            pre_exp_departure_time: Time(3.0),
-            pre_exp_arrival_time: Time(4.0),
-            exp_arrival_time: Time(4.0),
+            pre_exp_departure_time: NonNegativeSeconds::try_from(3.0).unwrap(),
+            pre_exp_arrival_time: NonNegativeSeconds::try_from(4.0).unwrap(),
+            exp_arrival_time: NonNegativeSeconds::try_from(4.0).unwrap(),
         }),
     };
     let leg1_results = LegResults {
         id: 2,
-        departure_time: Time(6.0),
-        arrival_time: Time(12.0),
-        travel_utility: Utility(-6.0),
-        schedule_utility: Utility(-0.4),
+        departure_time: NonNegativeSeconds::try_from(6.0).unwrap(),
+        arrival_time: NonNegativeSeconds::try_from(12.0).unwrap(),
+        travel_utility: Utility::try_from(-6.0).unwrap(),
+        schedule_utility: Utility::try_from(-0.4).unwrap(),
         departure_time_shift: None,
         class: LegTypeResults::Virtual,
     };
     let leg2_results = LegResults {
         id: 3,
-        departure_time: Time(13.0),
-        arrival_time: Time(17.0),
-        travel_utility: Utility(5.0),
-        schedule_utility: Utility(0.0),
+        departure_time: NonNegativeSeconds::try_from(13.0).unwrap(),
+        arrival_time: NonNegativeSeconds::try_from(17.0).unwrap(),
+        travel_utility: Utility::try_from(5.0).unwrap(),
+        schedule_utility: Utility::try_from(0.0).unwrap(),
         departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
                 edge: 1,
-                entry_time: Time(13.0),
+                entry_time: NonNegativeSeconds::try_from(13.0).unwrap(),
             }],
-            road_time: Time(4.0),
-            in_bottleneck_time: Time(0.0),
-            out_bottleneck_time: Time(0.0),
-            route_free_flow_travel_time: Time(4.0),
-            global_free_flow_travel_time: Time(4.0),
-            length: Length(2.0),
+            road_time: NonNegativeSeconds::try_from(4.0).unwrap(),
+            in_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            out_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            route_free_flow_travel_time: NonNegativeSeconds::try_from(4.0).unwrap(),
+            global_free_flow_travel_time: NonNegativeSeconds::try_from(4.0).unwrap(),
+            length: NonNegativeMeters::try_from(2.0).unwrap(),
             length_diff: None,
-            pre_exp_departure_time: Time(13.0),
-            pre_exp_arrival_time: Time(17.0),
-            exp_arrival_time: Time(17.0),
+            pre_exp_departure_time: NonNegativeSeconds::try_from(13.0).unwrap(),
+            pre_exp_arrival_time: NonNegativeSeconds::try_from(17.0).unwrap(),
+            exp_arrival_time: NonNegativeSeconds::try_from(17.0).unwrap(),
         }),
     };
     let leg3_results = LegResults {
         id: 4,
-        departure_time: Time(18.0),
-        arrival_time: Time(18.0),
-        travel_utility: Utility(0.0),
-        schedule_utility: Utility(0.0),
+        departure_time: NonNegativeSeconds::try_from(18.0).unwrap(),
+        arrival_time: NonNegativeSeconds::try_from(18.0).unwrap(),
+        travel_utility: Utility::try_from(0.0).unwrap(),
+        schedule_utility: Utility::try_from(0.0).unwrap(),
         departure_time_shift: None,
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![],
-            road_time: Time(0.0),
-            in_bottleneck_time: Time(0.0),
-            out_bottleneck_time: Time(0.0),
-            route_free_flow_travel_time: Time(0.0),
-            global_free_flow_travel_time: Time(0.0),
-            length: Length(0.0),
+            road_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            in_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            out_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            route_free_flow_travel_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            global_free_flow_travel_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            length: NonNegativeMeters::try_from(0.0).unwrap(),
             length_diff: None,
-            pre_exp_departure_time: Time(18.0),
-            pre_exp_arrival_time: Time(18.0),
-            exp_arrival_time: Time(18.0),
+            pre_exp_departure_time: NonNegativeSeconds::try_from(18.0).unwrap(),
+            pre_exp_arrival_time: NonNegativeSeconds::try_from(18.0).unwrap(),
+            exp_arrival_time: NonNegativeSeconds::try_from(18.0).unwrap(),
         }),
     };
     let expected_agent_results = AgentResult::new(
         0,
         1,
         mode_index(0),
-        Utility(-250.9),
+        Utility::try_from(-250.9).unwrap(),
         ModeResults::Trip(TripResults {
             legs: vec![leg0_results, leg1_results, leg2_results, leg3_results],
-            departure_time: Time(0.0),
-            arrival_time: Time(18.0),
-            total_travel_time: Time(11.0),
-            utility: Utility(-250.9),
-            expected_utility: Utility(-250.9),
+            departure_time: NonNegativeSeconds::try_from(0.0).unwrap(),
+            arrival_time: NonNegativeSeconds::try_from(18.0).unwrap(),
+            total_travel_time: NonNegativeSeconds::try_from(11.0).unwrap(),
+            utility: Utility::try_from(-250.9).unwrap(),
+            expected_utility: Utility::try_from(-250.9).unwrap(),
             virtual_only: false,
             departure_time_shift: None,
         }),

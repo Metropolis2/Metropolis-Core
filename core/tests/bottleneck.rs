@@ -3,25 +3,24 @@
 // Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
+//! Integration test for bottleneck congestion.
 use hashbrown::HashSet;
-use metropolis_core::agent::Agent;
-use metropolis_core::learning::LearningModel;
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::Mode;
+use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
 use metropolis_core::network::road_network::preprocess::unique_vehicle_index;
 use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
-use metropolis_core::network::road_network::{
-    RoadEdge, RoadNetwork, RoadNetworkParameters, SpeedDensityFunction,
-};
-use metropolis_core::network::Network;
+use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
+use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
+use metropolis_core::population::Agent;
 use metropolis_core::schedule_utility::ScheduleUtility;
-use metropolis_core::simulation::Simulation;
 use metropolis_core::travel_utility::TravelUtility;
-use metropolis_core::units::{Flow, Interval, Lanes, Length, Speed, Time, PCE};
+use metropolis_core::units::*;
+use num_traits::{ConstOne, ConstZero};
 use ttf::TTF;
 
-fn get_simulation(overtaking: bool) -> Simulation<f64> {
+fn init_simulation(overtaking: bool) {
     // Create agents with fixed departure times.
     let departure_times = vec![0., 3., 4., 5., 10., 21.];
     let mut agents = Vec::with_capacity(departure_times.len());
@@ -29,15 +28,15 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
         let leg = Leg::new(
             1,
             LegType::Road(RoadLeg::new(0, 2, 1)),
-            Time::default(),
+            NonNegativeSeconds::ZERO,
             TravelUtility::default(),
             ScheduleUtility::None,
         );
         let trip = TravelingMode::new(
             1,
             vec![leg],
-            Time::default(),
-            DepartureTimeModel::Constant(Time(dt)),
+            NonNegativeSeconds::ZERO,
+            DepartureTimeModel::Constant(NonNegativeSeconds::try_from(dt).unwrap()),
             TravelUtility::default(),
             ScheduleUtility::None,
             ScheduleUtility::None,
@@ -55,12 +54,12 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
             1,
             RoadEdge::new(
                 0,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.5),
-                Time(0.),
+                Some(Flow::try_from(0.5).unwrap()),
+                NonNegativeSeconds::ZERO,
                 overtaking,
             ),
         ),
@@ -69,20 +68,20 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
             2,
             RoadEdge::new(
                 1,
-                Speed(1.0),
-                Length(1.0),
-                Lanes(1.0),
+                MetersPerSecond::try_from(1.0).unwrap(),
+                NonNegativeMeters::try_from(1.0).unwrap(),
+                Lanes::try_from(1.0).unwrap(),
                 SpeedDensityFunction::FreeFlow,
-                Flow(0.25),
-                Time(0.),
+                Some(Flow::try_from(0.25).unwrap()),
+                NonNegativeSeconds::ZERO,
                 overtaking,
             ),
         ),
     ];
     let vehicle = Vehicle::new(
         1,
-        Length(1.0),
-        PCE(1.0),
+        NonNegativeMeters::try_from(1.0).unwrap(),
+        PCE::ONE,
         SpeedFunction::Base,
         HashSet::new(),
         HashSet::new(),
@@ -91,44 +90,32 @@ fn get_simulation(overtaking: bool) -> Simulation<f64> {
     let network = Network::new(Some(road_network));
 
     let parameters = Parameters {
-        input_files: Default::default(),
-        output_directory: Default::default(),
-        period: Interval([Time(0.0), Time(50.0)]),
-        learning_model: LearningModel::Exponential(0.0),
+        period: Interval::try_from([0.0, 50.0]).unwrap(),
         road_network: Some(RoadNetworkParameters {
-            contraction: Default::default(),
-            recording_interval: Time(1.0),
-            approximation_bound: Time(0.0),
-            max_pending_duration: Time(f64::INFINITY),
             spillback: false,
-            backward_wave_speed: None,
-            constrain_inflow: true,
-            algorithm_type: Default::default(),
+            ..Default::default()
         }),
-        init_iteration_counter: 1,
         max_iterations: 1,
-        update_ratio: 1.0,
-        random_seed: None,
-        nb_threads: 0,
-        saving_format: Default::default(),
-        only_compute_decisions: false,
+        ..Default::default()
     };
 
-    Simulation::new(agents, network, parameters)
+    let _ = metropolis_core::parameters::init(parameters);
+    let _ = metropolis_core::population::init(agents);
+    metropolis_core::network::replace(network);
 }
 
 #[test]
-fn bottleneck_no_overtaking_test() {
-    let simulation = get_simulation(false);
-    let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation.get_network().get_free_flow_weights(
-        simulation.get_parameters().period,
-        simulation.get_parameters().road_network.as_ref(),
-        &preprocess_data.network,
+fn bottleneck_test() {
+    // OVERTAKING = FALSE
+    init_simulation(false);
+    let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
+    let rn_weights = metropolis_core::network::road_network::free_flow_weights(
+        &preprocess_data.network.get_road_network().unwrap(),
     );
-    let results = simulation
-        .run_iteration(weights, None, None, 1, &preprocess_data)
-        .unwrap();
+    let weights = NetworkWeights::new(Some(rn_weights));
+    let results =
+        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
+            .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
     // Departure times: 0, 3, 4, 5, 10, 21.
@@ -145,7 +132,12 @@ fn bottleneck_no_overtaking_test() {
     let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
-        assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            ta,
+            NonNegativeSeconds::try_from(exp_ta).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_in_bottleneck_times = vec![0., 1., 3., 4., 2., 0.];
@@ -158,7 +150,12 @@ fn bottleneck_no_overtaking_test() {
             .as_road()
             .unwrap()
             .in_bottleneck_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
@@ -168,7 +165,12 @@ fn bottleneck_no_overtaking_test() {
             .as_road()
             .unwrap()
             .road_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_out_bottleneck_times = vec![0., 0., 1., 3., 4., 0.];
@@ -181,7 +183,12 @@ fn bottleneck_no_overtaking_test() {
             .as_road()
             .unwrap()
             .out_bottleneck_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let weights = results.iteration_results.new_exp_weights.clone();
@@ -193,23 +200,23 @@ fn bottleneck_no_overtaking_test() {
     };
     assert_eq!(
         ttf.period(),
-        (Time(0.), Time(50.)),
+        (
+            AnySeconds::try_from(0.).unwrap(),
+            AnySeconds::try_from(50.).unwrap()
+        ),
         "The period of the TTF should be equal to the period of the simulation"
     );
-}
 
-#[test]
-fn bottleneck_overtaking_test() {
-    let simulation = get_simulation(true);
-    let preprocess_data = simulation.preprocess().unwrap();
-    let weights = simulation.get_network().get_free_flow_weights(
-        simulation.get_parameters().period,
-        simulation.get_parameters().road_network.as_ref(),
-        &preprocess_data.network,
+    // OVERTAKING = TRUE
+    init_simulation(true);
+    let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
+    let rn_weights = metropolis_core::network::road_network::free_flow_weights(
+        &preprocess_data.network.get_road_network().unwrap(),
     );
-    let results = simulation
-        .run_iteration(weights, None, None, 1, &preprocess_data)
-        .unwrap();
+    let weights = NetworkWeights::new(Some(rn_weights));
+    let results =
+        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
+            .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
     // Departure times: 0, 3, 4, 5, 10, 21.
@@ -226,7 +233,12 @@ fn bottleneck_overtaking_test() {
     let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
-        assert_eq!(ta, Time(exp_ta), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            ta,
+            NonNegativeSeconds::try_from(exp_ta).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_in_bottleneck_times = vec![0., 1., 4., 7., 6., 0.];
@@ -239,7 +251,12 @@ fn bottleneck_overtaking_test() {
             .as_road()
             .unwrap()
             .in_bottleneck_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
@@ -249,7 +266,12 @@ fn bottleneck_overtaking_test() {
             .as_road()
             .unwrap()
             .road_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let expected_out_bottleneck_times = vec![0., 0., 0., 0., 0., 0.];
@@ -262,7 +284,12 @@ fn bottleneck_overtaking_test() {
             .as_road()
             .unwrap()
             .out_bottleneck_time;
-        assert_eq!(t, Time(exp_t), "Agent result: {:?}", agent_res);
+        assert_eq!(
+            t,
+            NonNegativeSeconds::try_from(exp_t).unwrap(),
+            "Agent result: {:?}",
+            agent_res
+        );
     }
 
     let weights = results.iteration_results.new_exp_weights.clone();
@@ -274,7 +301,10 @@ fn bottleneck_overtaking_test() {
     };
     assert_eq!(
         ttf.period(),
-        (Time(0.), Time(50.)),
+        (
+            AnySeconds::try_from(0.).unwrap(),
+            AnySeconds::try_from(50.).unwrap()
+        ),
         "The period of the TTF should be equal to the period of the simulation"
     );
 }

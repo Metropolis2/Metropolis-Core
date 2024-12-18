@@ -27,7 +27,7 @@ pub fn initialize_logging<W: std::io::Write + Send + 'static>(
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
-        WriteLogger::new(LevelFilter::Info, Config::default(), log_file),
+        WriteLogger::new(LevelFilter::Debug, Config::default(), log_file),
     ];
     if let Some(writer) = maybe_writer {
         loggers.push(WriteLogger::new(

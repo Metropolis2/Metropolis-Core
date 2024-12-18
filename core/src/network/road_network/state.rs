@@ -11,17 +11,17 @@ use either::Either;
 use enum_as_inner::EnumAsInner;
 use hashbrown::HashMap;
 use log::warn;
-use num_traits::{Float, ToPrimitive, Zero};
+use num_traits::{ConstZero, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
-use ttf::{PwlXYF, TTFNum, TTF, XYF};
+use ttf::{PwlXYF, TTF, XYF};
 
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{RoadEdge, RoadNetwork, RoadNetworkParameters, RoadNetworkPreprocessingData};
-use crate::agent::AgentIndex;
+use super::{RoadEdge, RoadNetworkPreprocessingData};
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
-use crate::units::{Flow, Interval, Length, NoUnit, Speed, Time, PCE};
+use crate::population::AgentIndex;
+use crate::units::*;
 
 const MAX_WARNINGS: usize = 20;
 
@@ -31,36 +31,39 @@ struct RoadNodeState {}
 
 /// Struct representing the current state of the running part of a [RoadEdge].
 #[derive(Clone, Debug)]
-struct RoadSegment<T> {
+struct RoadSegment {
     /// Total length of the vehicles currently on the segment.
-    occupied_length: Length<T>,
+    occupied_length: NonNegativeMeters,
     /// History of the length of vehicles on the segment.
-    length_history: LengthXYFBuilder<T>,
+    length_history: LengthXYFBuilder,
 }
 
-impl<T: TTFNum> RoadSegment<T> {
-    fn new(period: Interval<T>, interval: Time<T>) -> Self {
-        let length_history = LengthXYFBuilder::new(period, interval);
+impl RoadSegment {
+    fn new() -> Self {
+        let length_history = LengthXYFBuilder::new();
         RoadSegment {
-            occupied_length: Length::zero(),
+            occupied_length: NonNegativeMeters::ZERO,
             length_history,
         }
     }
 
     /// Records the entry of a new vehicle on the segment.
-    fn enters(&mut self, vehicle: &Vehicle<T>, current_time: Time<T>) {
+    fn enters(&mut self, vehicle_headway: NonNegativeMeters, current_time: NonNegativeSeconds) {
         // Record the occupied length when the vehicle entered.
         self.length_history.push(current_time, self.occupied_length);
-        self.occupied_length += vehicle.get_headway();
+        self.occupied_length += vehicle_headway;
     }
 
     /// Records the exit of a vehicle from the segment.
-    fn exits(&mut self, vehicle_headway: Length<T>) {
-        self.occupied_length -= vehicle_headway;
+    fn exits(&mut self, vehicle_headway: NonNegativeMeters) {
+        // The result of this operation is guaranteed to be non-negative because we only substract
+        // vehicle headways that were previously added.
+        self.occupied_length =
+            NonNegativeMeters::try_from(self.occupied_length - vehicle_headway).unwrap();
     }
 
-    /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated Length.
-    fn into_simulated_length_function(self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
+    /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated length.
+    fn into_simulated_length_function(self) -> XYF<AnySeconds, AnyMeters, AnyNum> {
         self.length_history.finish()
     }
 }
@@ -93,68 +96,63 @@ enum BottleneckPosition {
 }
 
 #[derive(Clone, Debug)]
-struct SimulatedFunctions<T> {
-    entry: TTF<Time<T>>,
-    exit: TTF<Time<T>>,
-    road: XYF<Time<T>, Length<T>, NoUnit<T>>,
+struct SimulatedFunctions {
+    entry: TTF<AnySeconds>,
+    exit: TTF<AnySeconds>,
+    road: XYF<AnySeconds, AnyMeters, AnyNum>,
 }
 
 /// Next event to execute for a queued vehicle, time at which the vehicle entered the queue and
 /// edge it is coming from (if any).
 #[derive(Clone, Debug)]
-struct QueuedVehicle<T> {
-    event: VehicleEvent<T>,
-    vehicle_pce: PCE<T>,
-    entry_time: Time<T>,
+struct QueuedVehicle {
+    event: VehicleEvent,
+    vehicle_pce: PCE,
+    entry_time: NonNegativeSeconds,
 }
 
 /// Queue of vehicles.
-type VehicleQueue<T> = VecDeque<QueuedVehicle<T>>;
+type VehicleQueue = VecDeque<QueuedVehicle>;
 
 /// State of the congestion at the entry of the edge, that can result from the entry bottleneck or
 /// from the edge being full.
 #[derive(Clone, Debug)]
-struct EdgeEntryState<T> {
+struct EdgeEntryState {
     /// Current length available for vehicles on the edge, i.e., total length of the edge minus the
     /// total headway length of vehicles currently on the edge.
     /// Or `None` if spillback is disabled.
-    available_length: Option<Length<T>>,
+    available_length: Option<AnyMeters>,
     /// Effective flow of the edge.
     /// Or `None` if the flow is infinite.
-    effective_flow: Option<Flow<T>>,
+    effective_flow: Option<Flow>,
     /// Indicates the status of the edge entry (open, closed or pending).
     status: EdgeEntryStatus,
     /// Queue of vehicles currently waiting to enter the edge.
-    queue: VehicleQueue<T>,
+    queue: VehicleQueue,
     /// Waiting time PwlTTF function.
-    waiting_time_history: WaitXYFBuilder<T>,
+    waiting_time_history: WaitXYFBuilder,
 }
 
-impl<T: TTFNum> EdgeEntryState<T> {
+impl EdgeEntryState {
     /// Initializes a new [EdgeEntryState] for a given edge.
-    fn new(
-        edge: &RoadEdge<T>,
-        period: Interval<T>,
-        interval: Time<T>,
-        spillback_enabled: bool,
-        inflow_enabled: bool,
-    ) -> Option<Self> {
-        let available_length = if spillback_enabled {
-            Some(edge.total_length())
+    fn new(edge: &RoadEdge) -> Option<Self> {
+        let available_length = if super::parameters::spillback() {
+            Some(edge.total_length().into())
         } else {
             None
         };
-        let effective_flow = if inflow_enabled && edge.get_effective_flow().is_finite() {
-            Some(edge.get_effective_flow())
-        } else {
-            None
-        };
+        let effective_flow =
+            if super::parameters::constrain_inflow() && edge.get_effective_flow().is_some() {
+                Some(edge.get_effective_flow().unwrap())
+            } else {
+                None
+            };
         Some(Self {
             available_length,
             effective_flow,
             status: EdgeEntryStatus::Open,
             queue: VehicleQueue::new(),
-            waiting_time_history: WaitXYFBuilder::new(period, interval),
+            waiting_time_history: WaitXYFBuilder::new(),
         })
     }
 
@@ -168,31 +166,31 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// the edge can handle.
     fn is_full(&self) -> bool {
         self.available_length
-            .map(|l| l.is_sign_negative())
+            .map(|l| l.is_negative())
             .unwrap_or(false)
     }
 
     /// Reduces the available length of the edge by the given amount.
-    fn reduce_available_length(&mut self, length: Length<T>) {
+    fn reduce_available_length(&mut self, length: NonNegativeMeters) {
         if let Some(available_length) = self.available_length.as_mut() {
-            *available_length -= length;
+            *available_length -= length.into();
         }
     }
 
     /// Increases the available length of the edge by the given amount.
-    fn increase_available_length(&mut self, length: Length<T>) {
+    fn increase_available_length(&mut self, length: NonNegativeMeters) {
         if let Some(available_length) = self.available_length.as_mut() {
-            *available_length += length;
+            *available_length += length.into();
         }
     }
 
     /// Returns the closing time of the bottleneck when the given vehicle crosses it.
     ///
     /// Returns zero if there is no bottleneck.
-    fn get_closing_time(&self, vehicle: &Vehicle<T>) -> Time<T> {
+    fn get_closing_time(&self, vehicle_pce: PCE) -> NonNegativeSeconds {
         self.effective_flow
-            .map(|f| vehicle.get_pce() / f)
-            .unwrap_or(Time::zero())
+            .map(|f| vehicle_pce / f)
+            .unwrap_or(NonNegativeSeconds::ZERO)
     }
 
     /// A vehicle is reaching the edge entry.
@@ -208,10 +206,10 @@ impl<T: TTFNum> EdgeEntryState<T> {
     ///   `None` if the pending vehicle is not currently on an edge).
     fn vehicle_reaches_entry(
         &mut self,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
+        current_time: NonNegativeSeconds,
+        vehicle_pce: PCE,
+        next_event: VehicleEvent,
+    ) -> Option<Either<VehicleEvent, AgentIndex>> {
         match (self.is_open(), self.is_full()) {
             (true, false) => {
                 // Free to go.
@@ -230,7 +228,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 self.status = EdgeEntryStatus::Full;
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
-                    vehicle_pce: vehicle.get_pce(),
+                    vehicle_pce,
                     entry_time: current_time,
                 });
                 Some(Either::Right(agent_id))
@@ -239,7 +237,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
                 // Edge is closed.
                 self.queue.push_back(QueuedVehicle {
                     event: next_event,
-                    vehicle_pce: vehicle.get_pce(),
+                    vehicle_pce,
                     entry_time: current_time,
                 });
                 None
@@ -250,17 +248,22 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// A vehicle has successfully entered the edge.
     ///
     /// Returns the closing time of the bottleneck.
-    fn vehicle_enters(&mut self, vehicle: &Vehicle<T>, is_phantom: bool) -> Time<T> {
+    fn vehicle_enters(
+        &mut self,
+        vehicle_pce: PCE,
+        vehicle_headway: NonNegativeMeters,
+        is_phantom: bool,
+    ) -> NonNegativeSeconds {
         debug_assert_ne!(self.status, EdgeEntryStatus::Open);
         let vehicle_headway = if is_phantom {
             // The vehicle has been phantomed, the available length is not reduced.
-            Length::zero()
+            NonNegativeMeters::ZERO
         } else {
-            vehicle.get_headway()
+            vehicle_headway
         };
         self.reduce_available_length(vehicle_headway);
         self.status = EdgeEntryStatus::Closed;
-        self.get_closing_time(vehicle)
+        self.get_closing_time(vehicle_pce)
     }
 
     /// The edge entry re-opens.
@@ -274,8 +277,8 @@ impl<T: TTFNum> EdgeEntryState<T> {
     ///   `Full`, returns `Some(Right)` with the index of the agent of the pending vehicle.
     fn try_open_entry(
         &mut self,
-        current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
+        current_time: NonNegativeSeconds,
+    ) -> Option<Either<VehicleEvent, AgentIndex>> {
         if let Some(queued_vehicle) = self.queue.pop_front() {
             if self.is_full() {
                 // The edge is full, put the vehicle back in the queue (at the front).
@@ -299,7 +302,7 @@ impl<T: TTFNum> EdgeEntryState<T> {
     }
 
     /// Forces the release of the next pending vehicle.
-    fn force_release(&mut self, current_time: Time<T>) -> VehicleEvent<T> {
+    fn force_release(&mut self, current_time: NonNegativeSeconds) -> VehicleEvent {
         self.release_next_queued_vehicle(current_time, true)
     }
 
@@ -312,9 +315,9 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// still full.
     fn vehicle_exits(
         &mut self,
-        current_time: Time<T>,
-        vehicle_headway: Length<T>,
-    ) -> Option<VehicleEvent<T>> {
+        current_time: NonNegativeSeconds,
+        vehicle_headway: NonNegativeMeters,
+    ) -> Option<VehicleEvent> {
         self.increase_available_length(vehicle_headway);
         if self.status == EdgeEntryStatus::Full && !self.is_full() {
             // The edge was full but it is not anymore.
@@ -329,9 +332,9 @@ impl<T: TTFNum> EdgeEntryState<T> {
     /// Releases the next vehicle in the queue and returns its next event.
     fn release_next_queued_vehicle(
         &mut self,
-        current_time: Time<T>,
+        current_time: NonNegativeSeconds,
         phantom: bool,
-    ) -> VehicleEvent<T> {
+    ) -> VehicleEvent {
         let queued_vehicle = self.queue.pop_front().expect("No vehicle to release");
         self.status = EdgeEntryStatus::Closed;
         self.record(queued_vehicle.entry_time, current_time);
@@ -344,12 +347,12 @@ impl<T: TTFNum> EdgeEntryState<T> {
     }
 
     /// Records the entry and exit of a vehicle from the edge's entry at a given time.
-    fn record(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
+    fn record(&mut self, entry_time: NonNegativeSeconds, exit_time: NonNegativeSeconds) {
         self.waiting_time_history.push(entry_time, exit_time);
     }
 
     /// Consumes the [EdgeEntryState] and returns a [TTF] with the simulated waiting time.
-    fn into_simulated_ttf(self) -> TTF<Time<T>> {
+    fn into_simulated_ttf(self) -> TTF<AnySeconds> {
         let mut ttf = self.waiting_time_history.finish();
         ttf.ensure_fifo();
         ttf
@@ -358,25 +361,25 @@ impl<T: TTFNum> EdgeEntryState<T> {
 
 /// State of the congestion at the exit of the edge.
 #[derive(Clone, Debug)]
-struct EdgeExitState<T> {
+struct EdgeExitState {
     /// Effective flow of the edge.
     /// Or `None` if the flow is infinite.
-    effective_flow: Option<Flow<T>>,
+    effective_flow: Option<Flow>,
     /// Indicates the status of the edge exit (open or closed).
     status: EdgeExitStatus,
     /// Queue of vehicles currently waiting to exit the edge.
-    queue: VehicleQueue<T>,
+    queue: VehicleQueue,
     /// Waiting time PwlTTF function.
-    waiting_time_history: WaitXYFBuilder<T>,
+    waiting_time_history: WaitXYFBuilder,
     /// Is overtaking allowed at the edge exit?
     overtaking_allowed: bool,
 }
 
-impl<T: TTFNum> EdgeExitState<T> {
+impl EdgeExitState {
     /// Initializes a new [EdgeExitState] for a given edge.
-    fn new(edge: &RoadEdge<T>, period: Interval<T>, interval: Time<T>) -> Self {
-        let effective_flow = if edge.get_effective_flow().is_finite() {
-            Some(edge.get_effective_flow())
+    fn new(edge: &RoadEdge) -> Self {
+        let effective_flow = if edge.get_effective_flow().is_some() {
+            Some(edge.get_effective_flow().unwrap())
         } else {
             None
         };
@@ -384,7 +387,7 @@ impl<T: TTFNum> EdgeExitState<T> {
             effective_flow,
             status: EdgeExitStatus::Open,
             queue: VehicleQueue::new(),
-            waiting_time_history: WaitXYFBuilder::new(period, interval),
+            waiting_time_history: WaitXYFBuilder::new(),
             overtaking_allowed: edge.overtaking_is_allowed(),
         }
     }
@@ -395,10 +398,10 @@ impl<T: TTFNum> EdgeExitState<T> {
     }
 
     /// Returns the closing time of the bottleneck given the PCE of the vehicle which crosses it.
-    fn get_closing_time(&self, vehicle_pce: PCE<T>) -> Time<T> {
+    fn get_closing_time(&self, vehicle_pce: PCE) -> NonNegativeSeconds {
         self.effective_flow
             .map(|f| vehicle_pce / f)
-            .unwrap_or(Time::zero())
+            .unwrap_or(NonNegativeSeconds::ZERO)
     }
 
     /// A vehicle is reaching the end of the edge.
@@ -410,10 +413,10 @@ impl<T: TTFNum> EdgeExitState<T> {
     /// bottleneck.
     fn vehicle_reaches_exit(
         &mut self,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
+        current_time: NonNegativeSeconds,
+        vehicle_pce: PCE,
+        next_event: VehicleEvent,
+    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
         if self.is_open() {
             debug_assert!(self.queue.is_empty());
             // Record the null waiting time.
@@ -421,14 +424,14 @@ impl<T: TTFNum> EdgeExitState<T> {
             // Close the edge exit.
             self.status = EdgeExitStatus::Closed;
             let closing_time = if self.overtaking_allowed {
-                if self.get_closing_time(vehicle.get_pce()).is_zero() {
+                if self.get_closing_time(vehicle_pce).is_zero() {
                     // The bottleneck does not close.
                     self.status = EdgeExitStatus::Open;
                     None
                 } else {
                     // Return the closing time of the bottleneck so that an event is created to
                     // re-open it.
-                    Some(self.get_closing_time(vehicle.get_pce()))
+                    Some(self.get_closing_time(vehicle_pce))
                 }
             } else {
                 // The edge exit will re-open again when the vehicle will have successfully exited
@@ -440,7 +443,7 @@ impl<T: TTFNum> EdgeExitState<T> {
             // Bottleneck is closed.
             self.queue.push_back(QueuedVehicle {
                 event: next_event,
-                vehicle_pce: vehicle.get_pce(),
+                vehicle_pce,
                 entry_time: current_time,
             });
             None
@@ -450,14 +453,14 @@ impl<T: TTFNum> EdgeExitState<T> {
     /// A vehicle has successfully exited the edge.
     ///
     /// Returns the closing time of the bottleneck.
-    fn vehicle_exits(&mut self, vehicle: &Vehicle<T>) -> Option<Time<T>> {
+    fn vehicle_exits(&mut self, vehicle_pce: PCE) -> Option<NonNegativeSeconds> {
         if self.overtaking_allowed {
             // The bottleneck was already closed for this vehicle when it crossed the bottleneck.
             None
         } else {
             debug_assert_eq!(self.status, EdgeExitStatus::Closed);
             self.status = EdgeExitStatus::Closed;
-            Some(self.get_closing_time(vehicle.get_pce()))
+            Some(self.get_closing_time(vehicle_pce))
         }
     }
 
@@ -468,8 +471,8 @@ impl<T: TTFNum> EdgeExitState<T> {
     /// Returns the closing time of the bottleneck, if it gets closed.
     fn open_bottleneck(
         &mut self,
-        current_time: Time<T>,
-    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
+        current_time: NonNegativeSeconds,
+    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
         debug_assert_eq!(self.status, EdgeExitStatus::Closed);
         if let Some(queued_vehicle) = self.queue.pop_front() {
             // A new vehicle is released.
@@ -494,12 +497,12 @@ impl<T: TTFNum> EdgeExitState<T> {
     }
 
     /// Records the entry and exit of a vehicle from the edge's exit at a given time.
-    fn record(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
+    fn record(&mut self, entry_time: NonNegativeSeconds, exit_time: NonNegativeSeconds) {
         self.waiting_time_history.push(entry_time, exit_time);
     }
 
     /// Consumes the [EdgeExitState] and returns a [TTF] with the simulated waiting time.
-    fn into_simulated_ttf(self) -> TTF<Time<T>> {
+    fn into_simulated_ttf(self) -> TTF<AnySeconds> {
         let mut ttf = self.waiting_time_history.finish();
         ttf.ensure_fifo();
         ttf
@@ -508,55 +511,43 @@ impl<T: TTFNum> EdgeExitState<T> {
 
 /// Struct that holds data on the current state of a [RoadEdge].
 #[derive(Clone, Debug)]
-struct RoadEdgeState<T> {
+struct RoadEdgeState {
     // TODO: Can we allow multiple RoadSegment on the same edge (e.g., a segment every 200m)?
     /// [RoadSegment] representing the road part of the edge.
-    road: RoadSegment<T>,
+    road: RoadSegment,
     /// [EdgeEntryState] representing the state of the edge entry.
     /// Or `None` if the edge has infinite flow and spillback is disabled.
-    entry: Option<EdgeEntryState<T>>,
+    entry: Option<EdgeEntryState>,
     // TODO: Make EdgeExitState optional when overtaking is allowed (and flow is infinite).
     /// [EdgeExitState] representing the state of the edge exit.
     /// Or `None` if the edge has infinite flow and spillback is disabled.
-    exit: Option<EdgeExitState<T>>,
-    /// Length of the RoadEdge (cached for optimization).
-    length: Length<T>,
+    exit: Option<EdgeExitState>,
+    /// Reference to the corresponding [RoadEdge].
+    reference: RoadEdge,
 }
 
-impl<T: TTFNum> RoadEdgeState<T> {
+impl RoadEdgeState {
     /// Creates a new RoadEdgeState.
-    fn new(
-        reference: &RoadEdge<T>,
-        recording_period: Interval<T>,
-        recording_interval: Time<T>,
-        spillback_enabled: bool,
-        inflow_enabled: bool,
-    ) -> Self {
-        let entry = EdgeEntryState::new(
-            reference,
-            recording_period,
-            recording_interval,
-            spillback_enabled,
-            inflow_enabled,
-        );
-        let exit = EdgeExitState::new(reference, recording_period, recording_interval);
+    fn new(reference: &RoadEdge) -> Self {
+        let entry = EdgeEntryState::new(reference);
+        let exit = EdgeExitState::new(reference);
         RoadEdgeState {
-            road: RoadSegment::new(recording_period, recording_interval),
+            road: RoadSegment::new(),
             entry,
             exit: Some(exit),
-            length: reference.length(),
+            reference: reference.clone(),
         }
     }
 
     /// A vehicle is reaching the edge entry.
     fn vehicle_reaches_entry(
         &mut self,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
+        current_time: NonNegativeSeconds,
+        vehicle_pce: PCE,
+        next_event: VehicleEvent,
+    ) -> Option<Either<VehicleEvent, AgentIndex>> {
         if let Some(entry) = self.entry.as_mut() {
-            entry.vehicle_reaches_entry(current_time, vehicle, next_event)
+            entry.vehicle_reaches_entry(current_time, vehicle_pce, next_event)
         } else {
             // Infinite flow + spillback is disabled: the vehicles can freely cross.
             Some(Either::Left(next_event))
@@ -573,12 +564,12 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// The next event of the vehicle will be triggered as soon as it can enter.
     fn vehicle_reaches_exit(
         &mut self,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
+        current_time: NonNegativeSeconds,
+        vehicle_pce: PCE,
+        next_event: VehicleEvent,
+    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
         if let Some(exit) = self.exit.as_mut() {
-            exit.vehicle_reaches_exit(current_time, vehicle, next_event)
+            exit.vehicle_reaches_exit(current_time, vehicle_pce, next_event)
         } else {
             // Infinite flow + spillback is disabled: the vehicles can freely cross.
             // The bottleneck does not close.
@@ -592,34 +583,33 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// the edge entry.
     fn enters(
         &mut self,
-        vehicle: &Vehicle<T>,
-        current_time: Time<T>,
-        edge: &RoadEdge<T>,
+        vehicle: &'static Vehicle,
+        current_time: NonNegativeSeconds,
         is_phantom: bool,
-    ) -> (Time<T>, Time<T>) {
+    ) -> (NonNegativeSeconds, NonNegativeSeconds) {
         // Notify the EdgeEntryState that a vehicle is entering and gets the closing time of the
         // bottleneck.
         let closing_time = self
             .entry
             .as_mut()
-            .map(|entry| entry.vehicle_enters(vehicle, is_phantom))
-            .unwrap_or(Time::zero());
-        let travel_time = self.enters_road_segment(vehicle, current_time, edge);
+            .map(|entry| entry.vehicle_enters(vehicle.pce, vehicle.headway, is_phantom))
+            .unwrap_or(NonNegativeSeconds::ZERO);
+        let travel_time = self.enters_road_segment(vehicle, current_time);
         (travel_time, closing_time)
     }
 
     /// The entry bottleneck of the edge is re-opening.
     fn open_entry_bottleneck(
         &mut self,
-        current_time: Time<T>,
-    ) -> Option<Either<VehicleEvent<T>, AgentIndex>> {
+        current_time: NonNegativeSeconds,
+    ) -> Option<Either<VehicleEvent, AgentIndex>> {
         self.entry
             .as_mut()
             .and_then(|entry| entry.try_open_entry(current_time))
     }
 
     /// Forces the release of the next vehicle pending at the edge entry.
-    fn force_release(&mut self, current_time: Time<T>) -> VehicleEvent<T> {
+    fn force_release(&mut self, current_time: NonNegativeSeconds) -> VehicleEvent {
         self.entry
             .as_mut()
             .expect("Cannot force vehicle release when there is no edge entry")
@@ -633,8 +623,8 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// Returns the closing time of the bottleneck (if it gets closed).
     fn open_exit_bottleneck(
         &mut self,
-        current_time: Time<T>,
-    ) -> Option<(VehicleEvent<T>, Option<Time<T>>)> {
+        current_time: NonNegativeSeconds,
+    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
         self.exit
             .as_mut()
             .and_then(|exit| exit.open_bottleneck(current_time))
@@ -643,20 +633,20 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// A vehicle can successfully exit the edge's exit bottleneck.
     ///
     /// Returns the closing time of the exit bottleneck of the edge (if it gets closed).
-    fn vehicle_exits_bottleneck(&mut self, vehicle: &Vehicle<T>) -> Option<Time<T>> {
+    fn vehicle_exits_bottleneck(&mut self, vehicle_pce: PCE) -> Option<NonNegativeSeconds> {
         self.exit
             .as_mut()
-            .and_then(|exit| exit.vehicle_exits(vehicle))
+            .and_then(|exit| exit.vehicle_exits(vehicle_pce))
     }
 
     /// A vehicle has been fully released from the edge, i.e., the hole it generated when leaving
     /// has reached the beginning of the edge.
     fn vehicle_is_released(
         &mut self,
-        current_time: Time<T>,
-        vehicle_headway: Length<T>,
+        current_time: NonNegativeSeconds,
+        vehicle_headway: NonNegativeMeters,
         was_phantom: bool,
-    ) -> Option<VehicleEvent<T>> {
+    ) -> Option<VehicleEvent> {
         let released_vehicle_event = if was_phantom {
             // The vehicle was a phantom so we do not increase the available length on the edge.
             None
@@ -675,27 +665,37 @@ impl<T: TTFNum> RoadEdgeState<T> {
     /// up to the Bottleneck.
     fn enters_road_segment(
         &mut self,
-        vehicle: &Vehicle<T>,
-        current_time: Time<T>,
-        edge: &RoadEdge<T>,
-    ) -> Time<T> {
+        vehicle: &'static Vehicle,
+        current_time: NonNegativeSeconds,
+    ) -> NonNegativeSeconds {
         // The travel time needs to be computed before the vehicle enters so that it does not
         // generate its own congestion.
-        let tt = edge.get_travel_time(self.road.occupied_length, vehicle);
-        self.road.enters(vehicle, current_time);
+        let tt = self.get_travel_time(vehicle);
+        self.road.enters(vehicle.headway, current_time);
         tt
     }
 
-    fn into_simulated_functions(self) -> SimulatedFunctions<T> {
+    fn get_travel_time(&self, vehicle: &'static Vehicle) -> NonNegativeSeconds {
+        let vehicle_base_speed = vehicle.get_speed(self.reference.base_speed);
+        let actual_speed = self.reference.speed_density.get_speed(
+            vehicle_base_speed,
+            self.road.occupied_length,
+            self.reference.total_length(),
+        );
+        let variable_tt = self.reference.length() / actual_speed;
+        variable_tt + self.reference.constant_travel_time
+    }
+
+    fn into_simulated_functions(self) -> SimulatedFunctions {
         SimulatedFunctions {
             entry: self
                 .entry
                 .map(|entry| entry.into_simulated_ttf())
-                .unwrap_or(TTF::Constant(Time::zero())),
+                .unwrap_or(TTF::Constant(AnySeconds::ZERO)),
             exit: self
                 .exit
                 .map(|exit| exit.into_simulated_ttf())
-                .unwrap_or(TTF::Constant(Time::zero())),
+                .unwrap_or(TTF::Constant(AnySeconds::ZERO)),
             road: self.road.into_simulated_length_function(),
         }
     }
@@ -703,81 +703,73 @@ impl<T: TTFNum> RoadEdgeState<T> {
 
 /// Struct that represents the state of a [RoadNetwork] at a given time.
 #[derive(Clone, Debug)]
-pub struct RoadNetworkState<T> {
-    graph: DiGraph<RoadNodeState, RoadEdgeState<T>>,
+pub(crate) struct RoadNetworkState {
+    graph: DiGraph<RoadNodeState, RoadEdgeState>,
     /// Map to find the current edge of all pending agents.
     pending_edges: HashMap<AgentIndex, EdgeIndex>,
     /// Maximum amout of time a vehicle is allowed to be pending.
-    max_pending_duration: Time<T>,
+    max_pending_duration: NonNegativeSeconds,
     /// Speed at which the holes liberated by a vehicle leaving an edge is traveling backward.
     ///
     /// `None` if the holes propagate backward instantaneously.
-    backward_wave_speed: Option<Speed<T>>,
+    backward_wave_speed: Option<MetersPerSecond>,
     /// Record the number of warnings sent to the user.
     warnings: usize,
 }
 
-impl<T: TTFNum> RoadNetworkState<T> {
-    /// Create an empty [RoadNetworkState] from a [RoadNetwork].
-    pub fn from_network(
-        network: &RoadNetwork<T>,
-        recording_period: Interval<T>,
-        parameters: &RoadNetworkParameters<T>,
-    ) -> Self {
-        let graph = network.get_graph().map(
+impl RoadNetworkState {
+    /// Create an empty [RoadNetworkState].
+    pub(crate) fn init() -> Self {
+        let graph = super::graph().map(
             |_node_id, _n| RoadNodeState {},
-            |_edge_id, e| {
-                RoadEdgeState::new(
-                    e,
-                    recording_period,
-                    parameters.recording_interval,
-                    parameters.spillback,
-                    parameters.constrain_inflow,
-                )
-            },
+            |_edge_id, e| RoadEdgeState::new(e),
         );
         RoadNetworkState {
             graph,
             pending_edges: HashMap::new(),
-            max_pending_duration: parameters.max_pending_duration,
+            max_pending_duration: super::parameters::max_pending_duration(),
             warnings: 0,
-            backward_wave_speed: parameters.backward_wave_speed,
+            backward_wave_speed: super::parameters::backward_wave_speed(),
         }
     }
 
     /// Return a [RoadNetworkWeights] (i.e., travel times) from the observations recorded in the
     /// [RoadNetworkState].
-    pub fn into_weights(
+    pub(crate) fn into_weights(
         self,
-        network: &RoadNetwork<T>,
-        period: Interval<T>,
-        parameters: &RoadNetworkParameters<T>,
-        preprocess_data: &RoadNetworkPreprocessingData<T>,
-    ) -> RoadNetworkWeights<T> {
+        preprocess_data: &RoadNetworkPreprocessingData,
+    ) -> RoadNetworkWeights {
         let mut weights = RoadNetworkWeights::with_capacity(
-            period,
-            parameters.recording_interval,
             &preprocess_data.unique_vehicles,
             self.graph.edge_count(),
         );
         let (_, edge_states) = self.graph.into_nodes_edges();
-        let edge_simulated_functions: Vec<SimulatedFunctions<T>> = edge_states
+        let edge_simulated_functions: Vec<SimulatedFunctions> = edge_states
             .into_iter()
             .map(|e| e.weight.into_simulated_functions())
             .collect();
         for (uvehicle_id, vehicle) in preprocess_data
             .unique_vehicles
-            .iter_uniques(&network.vehicles)
+            .iter_uniques(super::vehicles())
         {
-            let edge_refs_iter = network.graph.edge_references();
+            let edge_refs_iter = super::graph().edge_references();
             let vehicle_weights = &mut weights[uvehicle_id];
             for (funcs, edge_ref) in edge_simulated_functions.iter().zip(edge_refs_iter) {
                 if vehicle.can_access(edge_ref.weight().id) {
                     let road_ttf = match &funcs.road {
                         XYF::Piecewise(road_pwl_length) => {
-                            let road_pwl_ttf = road_pwl_length
-                                .map(|l| edge_ref.weight().get_travel_time(l, vehicle));
-                            if road_pwl_ttf.is_practically_cst(parameters.approximation_bound) {
+                            let road_pwl_ttf =
+                                road_pwl_length.map(|l| {
+                                    // The uncheck is safe because we ensured that the occupied
+                                    // length cannot be negative.
+                                    AnySeconds::from(edge_ref.weight().get_travel_time(
+                                        l.assume_non_negative_unchecked(),
+                                        vehicle,
+                                    ))
+                                });
+                            if road_pwl_ttf.is_practically_cst(AnySeconds::from(
+                                super::parameters::approximation_bound(),
+                            )) {
                                 TTF::Constant(road_pwl_ttf.y_at_index(0))
                             } else {
                                 let mut road_ttf = road_pwl_ttf.to_ttf();
@@ -785,9 +777,11 @@ impl<T: TTFNum> RoadNetworkState<T> {
                                 TTF::Piecewise(road_ttf)
                             }
                         }
-                        XYF::Constant(l) => {
-                            TTF::Constant(edge_ref.weight().get_travel_time(*l, vehicle))
-                        }
+                        XYF::Constant(l) => TTF::Constant(AnySeconds::from(
+                            edge_ref
+                                .weight()
+                                .get_travel_time(l.assume_non_negative_unchecked(), vehicle),
+                        )),
                     };
                     let mut ttf = funcs.entry.link(&road_ttf);
                     ttf.ensure_fifo();
@@ -807,16 +801,16 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Returns the next event to execute for this vehicle, if it can be executed immediately.
     /// Otherwise, returns `None` and the next event will be executed later.
-    pub fn try_enter_edge(
+    pub(crate) fn try_enter_edge(
         &mut self,
         edge_index: EdgeIndex,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-        event_queue: &mut EventQueue<T>,
-    ) -> Option<VehicleEvent<T>> {
+        current_time: NonNegativeSeconds,
+        vehicle: &'static Vehicle,
+        next_event: VehicleEvent,
+        event_queue: &mut EventQueue,
+    ) -> Option<VehicleEvent> {
         let edge = &mut self.graph[edge_index];
-        match edge.vehicle_reaches_entry(current_time, vehicle, next_event) {
+        match edge.vehicle_reaches_entry(current_time, vehicle.pce, next_event) {
             Some(Either::Left(event)) => {
                 // Next event can be executed immediately.
                 Some(event)
@@ -844,20 +838,19 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Returns the next event to execute for this vehicle, if it can be executed immediately.
     /// Otherwise, returns `None` and the next event will be executed later.
-    pub fn try_exit_edge(
+    pub(crate) fn try_exit_edge(
         &mut self,
         edge_index: EdgeIndex,
-        current_time: Time<T>,
-        vehicle: &Vehicle<T>,
-        next_event: VehicleEvent<T>,
-        event_queue: &mut EventQueue<T>,
-    ) -> Option<VehicleEvent<T>> {
+        current_time: NonNegativeSeconds,
+        vehicle: &'static Vehicle,
+        next_event: VehicleEvent,
+        event_queue: &mut EventQueue,
+    ) -> Option<VehicleEvent> {
         let edge = &mut self.graph[edge_index];
         if let Some((next_event, closing_time_opt)) =
-            edge.vehicle_reaches_exit(current_time, vehicle, next_event)
+            edge.vehicle_reaches_exit(current_time, vehicle.pce, next_event)
         {
             if let Some(closing_time) = closing_time_opt {
-                debug_assert!(closing_time.is_sign_positive());
                 event_queue.push(Box::new(BottleneckEvent {
                     at_time: current_time + closing_time,
                     edge_index,
@@ -879,26 +872,24 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// Events to trigger the bottleneck re-opening at the edge entry and at the exit of the
     /// previous edge (if any) might be pushed to the event queue.
-    #[allow(clippy::too_many_arguments)]
-    pub fn enters_edge<'sim: 'event, 'event>(
+    #[expect(clippy::too_many_arguments)]
+    pub(crate) fn enters_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
         from: Option<EdgeIndex>,
-        current_time: Time<T>,
-        vehicle: &'sim Vehicle<T>,
+        current_time: NonNegativeSeconds,
+        vehicle: &'static Vehicle,
         agent_id: AgentIndex,
         is_phantom: bool,
         was_phantom: bool,
-        event_input: &'event mut EventInput<'sim, T>,
-        event_alloc: &'event mut EventAlloc<T>,
-        event_queue: &'event mut EventQueue<T>,
-    ) -> Result<Time<T>> {
-        let edge = &event_input.network.get_road_network().unwrap().graph[edge_index];
+        event_input: &'event mut EventInput<'sim>,
+        event_alloc: &'event mut EventAlloc,
+        event_queue: &'event mut EventQueue,
+    ) -> Result<NonNegativeSeconds> {
         let edge_state = &mut self.graph[edge_index];
         // The agent is no longer pending.
         self.pending_edges.remove(&agent_id);
-        let (travel_time, closing_time) =
-            edge_state.enters(vehicle, current_time, edge, is_phantom);
+        let (travel_time, closing_time) = edge_state.enters(vehicle, current_time, is_phantom);
         if closing_time.is_zero() {
             // The edge's entry bottleneck can be open immediately.
             match edge_state.open_entry_bottleneck(current_time) {
@@ -923,7 +914,6 @@ impl<T: TTFNum> RoadNetworkState<T> {
             }
         } else {
             // Push an event to open the edge's entry bottleneck later.
-            debug_assert!(closing_time.is_sign_positive());
             event_queue.push(Box::new(BottleneckEvent {
                 at_time: current_time + closing_time,
                 edge_index,
@@ -952,21 +942,21 @@ impl<T: TTFNum> RoadNetworkState<T> {
     ///
     /// If the edge has a limited bottleneck flow, an event will be triggered later to re-open the
     /// edge's exit bottleneck.
-    #[allow(clippy::too_many_arguments)]
-    pub fn release_from_edge<'sim: 'event, 'event>(
+    #[expect(clippy::too_many_arguments)]
+    pub(crate) fn release_from_edge<'sim: 'event, 'event>(
         &mut self,
         edge_index: EdgeIndex,
-        current_time: Time<T>,
-        vehicle: &'sim Vehicle<T>,
+        current_time: NonNegativeSeconds,
+        vehicle: &'static Vehicle,
         was_phantom: bool,
-        event_input: &'event mut EventInput<'sim, T>,
-        event_alloc: &'event mut EventAlloc<T>,
-        event_queue: &'event mut EventQueue<T>,
+        event_input: &'event mut EventInput<'sim>,
+        event_alloc: &'event mut EventAlloc,
+        event_queue: &'event mut EventQueue,
     ) -> Result<()> {
         let edge = &mut self.graph[edge_index];
-        let edge_length = edge.length;
+        let edge_length = edge.reference.length;
         // Make the vehicle cross its previous edge's exit bottleneck.
-        let closing_time_opt = edge.vehicle_exits_bottleneck(vehicle);
+        let closing_time_opt = edge.vehicle_exits_bottleneck(vehicle.pce);
         if let Some(closing_time) = closing_time_opt {
             if closing_time.is_zero() {
                 // The edge's exit bottleneck can be open immediately.
@@ -980,7 +970,6 @@ impl<T: TTFNum> RoadNetworkState<T> {
                 }
             } else {
                 // Push an event to open the edge's exit bottleneck later.
-                debug_assert!(closing_time.is_sign_positive());
                 event_queue.push(Box::new(BottleneckEvent {
                     at_time: current_time + closing_time,
                     edge_index,
@@ -991,14 +980,14 @@ impl<T: TTFNum> RoadNetworkState<T> {
         let mut release_event = Box::new(ReleaseVehicleEvent {
             at_time: current_time,
             edge_index,
-            vehicle_headway: vehicle.get_headway(),
+            vehicle_headway: vehicle.headway,
             was_phantom,
         });
         if let Some(speed) = self.backward_wave_speed {
             // Time delay after which the length liberated by the vehicle can be released from the
             // previous edge.
             let release_delay = edge_length / speed;
-            debug_assert!(release_delay > Time::zero());
+            debug_assert!(release_delay > NonNegativeSeconds::ZERO);
             release_event.at_time += release_delay;
             // Push an event to release the vehicle later.
             event_queue.push(release_event);
@@ -1012,22 +1001,22 @@ impl<T: TTFNum> RoadNetworkState<T> {
 
 /// Event used to force the release of a vehicle pending to enter a link.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForceVehicleRelease<T> {
+pub(crate) struct ForceVehicleRelease {
     /// Time at which the vehicle must be released.
-    at_time: Time<T>,
+    at_time: NonNegativeSeconds,
     /// Id of the agent the vehicle belongs to.
     agent: AgentIndex,
     /// Id of the edge the vehicle is pending on.
     edge: EdgeIndex,
 }
 
-impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
+impl Event for ForceVehicleRelease {
     fn execute<'sim: 'event, 'event>(
         self: Box<Self>,
-        input: &'event mut EventInput<'sim, T>,
-        road_network_state: &'event mut RoadNetworkState<T>,
-        alloc: &'event mut EventAlloc<T>,
-        events: &'event mut EventQueue<T>,
+        input: &'event mut EventInput<'sim>,
+        road_network_state: &'event mut RoadNetworkState,
+        alloc: &'event mut EventAlloc,
+        events: &'event mut EventQueue,
     ) -> Result<bool> {
         if road_network_state.pending_edges.get(&self.agent) != Some(&self.edge) {
             // The agent is no longer pending on the edge.
@@ -1054,7 +1043,7 @@ impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
         }
         event.execute(input, road_network_state, alloc, events)
     }
-    fn get_time(&self) -> Time<T> {
+    fn get_time(&self) -> NonNegativeSeconds {
         self.at_time
     }
 }
@@ -1062,25 +1051,25 @@ impl<T: TTFNum> Event<T> for ForceVehicleRelease<T> {
 /// Event representing a vehicle being fully released from an edge (after the backward wave
 /// propagation elapsed).
 #[derive(Clone, Debug, PartialEq)]
-pub struct ReleaseVehicleEvent<T> {
+pub(crate) struct ReleaseVehicleEvent {
     /// Time at which the vehicle is released.
-    at_time: Time<T>,
+    at_time: NonNegativeSeconds,
     /// Id of the edge where the vehicle was located.
     edge_index: EdgeIndex,
     /// Length of the vehicle being released.
-    vehicle_headway: Length<T>,
+    vehicle_headway: NonNegativeMeters,
     /// `true` if the vehicle was a phantom, i.e., it did not take space on the edge for spillback
     /// (but it did for road-segment density).
     was_phantom: bool,
 }
 
-impl<T: TTFNum> Event<T> for ReleaseVehicleEvent<T> {
+impl Event for ReleaseVehicleEvent {
     fn execute<'sim: 'event, 'event>(
         self: Box<Self>,
-        input: &'event mut EventInput<'sim, T>,
-        road_network_state: &'event mut RoadNetworkState<T>,
-        alloc: &'event mut EventAlloc<T>,
-        events: &'event mut EventQueue<T>,
+        input: &'event mut EventInput<'sim>,
+        road_network_state: &'event mut RoadNetworkState,
+        alloc: &'event mut EventAlloc,
+        events: &'event mut EventQueue,
     ) -> Result<bool> {
         let edge_state = &mut road_network_state.graph[self.edge_index];
         // Removes the vehicle from its previous edge and release any pending vehicle.
@@ -1092,29 +1081,29 @@ impl<T: TTFNum> Event<T> for ReleaseVehicleEvent<T> {
         }
         Ok(false)
     }
-    fn get_time(&self) -> Time<T> {
+    fn get_time(&self) -> NonNegativeSeconds {
         self.at_time
     }
 }
 
 /// Event representing the opening of a Bottleneck.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BottleneckEvent<T> {
+pub(crate) struct BottleneckEvent {
     /// Time at which the Bottleneck opens.
-    at_time: Time<T>,
+    at_time: NonNegativeSeconds,
     /// Id of the edge where the Bottleneck is located.
     edge_index: EdgeIndex,
     /// Position of the bottleneck (entry or exit of the edge).
     position: BottleneckPosition,
 }
 
-impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
+impl Event for BottleneckEvent {
     fn execute<'sim: 'event, 'event>(
         self: Box<Self>,
-        input: &'event mut EventInput<'sim, T>,
-        road_network_state: &'event mut RoadNetworkState<T>,
-        alloc: &'event mut EventAlloc<T>,
-        events: &'event mut EventQueue<T>,
+        input: &'event mut EventInput<'sim>,
+        road_network_state: &'event mut RoadNetworkState,
+        alloc: &'event mut EventAlloc,
+        events: &'event mut EventQueue,
     ) -> Result<bool> {
         let edge_state = &mut road_network_state.graph[self.edge_index];
         match self.position {
@@ -1164,7 +1153,6 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
                                 events,
                             )? || is_arrived);
                         } else {
-                            debug_assert!(closing_time.is_sign_positive());
                             // Push the bottleneck event to the queue.
                             events.push(bottleneck_event);
                             return Ok(is_arrived);
@@ -1175,43 +1163,42 @@ impl<T: TTFNum> Event<T> for BottleneckEvent<T> {
         }
         Ok(false)
     }
-    fn get_time(&self) -> Time<T> {
+    fn get_time(&self) -> NonNegativeSeconds {
         self.at_time
     }
 }
 
 #[derive(Clone, Debug)]
-struct WaitXYFBuilder<T> {
-    points: Vec<Time<T>>,
-    start_x: Time<T>,
-    end_x: Time<T>,
-    interval_x: Time<T>,
+struct WaitXYFBuilder {
+    points: Vec<NonNegativeSeconds>,
+    start_x: NonNegativeSeconds,
+    end_x: NonNegativeSeconds,
+    interval_x: PositiveSeconds,
     /// Middle of the current interval.
-    threshold: Time<T>,
+    threshold: NonNegativeSeconds,
     /// Total waiting time and weight for the previous interval.
-    prev_interval: (T, T),
+    prev_interval: (NonNegativeSeconds, NonNegativeNum),
     /// Total waiting time and weight for the next interval.
-    next_interval: (T, T),
+    next_interval: (NonNegativeSeconds, NonNegativeNum),
 }
 
-impl<T> WaitXYFBuilder<T>
-where
-    T: TTFNum,
-{
-    fn new(period: Interval<T>, interval_x: Time<T>) -> Self {
-        let n = (period.length() / interval_x).trunc().to_usize().unwrap() + 1;
+impl WaitXYFBuilder {
+    fn new() -> Self {
+        let period = crate::parameters::period();
+        let interval_x = super::parameters::recording_interval();
+        let n = (period.length() / interval_x).to_usize_unchecked() + 1;
         WaitXYFBuilder {
             points: Vec::with_capacity(n),
             start_x: period.start(),
             end_x: period.end(),
             interval_x,
-            threshold: period.start() + interval_x,
-            prev_interval: (T::zero(), T::zero()),
-            next_interval: (T::zero(), T::zero()),
+            threshold: (period.start() + interval_x).into(),
+            prev_interval: (NonNegativeSeconds::ZERO, NonNegativeNum::ZERO),
+            next_interval: (NonNegativeSeconds::ZERO, NonNegativeNum::ZERO),
         }
     }
 
-    fn push(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
+    fn push(&mut self, entry_time: NonNegativeSeconds, exit_time: NonNegativeSeconds) {
         debug_assert!(entry_time >= self.start_x);
         if entry_time > self.end_x {
             // Skip.
@@ -1223,29 +1210,30 @@ where
         self.add_record(entry_time, exit_time);
     }
 
-    fn add_record(&mut self, entry_time: Time<T>, exit_time: Time<T>) {
+    fn add_record(&mut self, entry_time: NonNegativeSeconds, exit_time: NonNegativeSeconds) {
         debug_assert!(entry_time <= self.threshold);
-        let waiting_time = exit_time - entry_time;
+        debug_assert!(entry_time <= exit_time);
+        let waiting_time = (exit_time - entry_time).assume_non_negative_unchecked();
         // The waiting time is distributed to the two closest intervals, proportionally to the
         // distance to the interval midpoint.
-        let alpha = (self.threshold.0 - entry_time.0) / self.interval_x.0;
-        self.prev_interval.0 += alpha * waiting_time.0;
+        let alpha = ((self.threshold - entry_time) / self.interval_x).assume_zero_one_unchecked();
+        self.prev_interval.0 += waiting_time * alpha;
         self.prev_interval.1 += alpha;
-        self.next_interval.0 += (T::one() - alpha) * waiting_time.0;
-        self.next_interval.1 += T::one() - alpha;
+        self.next_interval.0 += waiting_time * alpha.one_minus();
+        self.next_interval.1 += alpha.one_minus();
     }
 
-    fn finish_interval(&mut self, entry_time: Time<T>) {
+    fn finish_interval(&mut self, entry_time: NonNegativeSeconds) {
         debug_assert!(self.threshold < entry_time);
         let y = if self.prev_interval.1.is_zero() {
             // No entry at this interval.
-            Time::zero()
+            NonNegativeSeconds::ZERO
         } else {
-            Time(self.prev_interval.0 / self.prev_interval.1)
+            self.prev_interval.0 / self.prev_interval.1.assume_positive_unchecked()
         };
         self.points.push(y);
         self.prev_interval = self.next_interval;
-        self.next_interval = (T::zero(), T::zero());
+        self.next_interval = (NonNegativeSeconds::ZERO, NonNegativeNum::ZERO);
         // Switch to next interval.
         self.threshold += self.interval_x;
         // Go recursive (multiple intervals can end at the same time).
@@ -1254,65 +1242,60 @@ where
         }
     }
 
-    fn finish(mut self) -> TTF<Time<T>> {
+    fn finish(mut self) -> TTF<AnySeconds> {
         // Finish the last intervals.
         // We force the threshold to go to end_x + 2 * interval_x so that the last interval is
         // added (the prev interval is at this point end_x + interval_x and the next one is end_x +
         // 2 * interval_x).
-        self.finish_interval(self.end_x + self.interval_x + self.interval_x);
+        self.finish_interval((self.end_x + self.interval_x + self.interval_x).into());
         debug_assert_eq!(
-            ((self.end_x - self.start_x) / self.interval_x)
-                .trunc()
-                .to_usize()
-                .unwrap()
-                + 1,
+            ((self.end_x - self.start_x) / self.interval_x).to_usize_unchecked() + 1,
             self.points.len()
         );
         if self.points.iter().all(|&y| y == self.points[0]) {
             // All `y` values are identical.
-            XYF::Constant(self.points[0])
+            XYF::Constant(AnySeconds::from(self.points[0]))
         } else {
             XYF::Piecewise(PwlXYF::from_values(
-                self.points,
-                self.start_x,
-                self.interval_x,
+                self.points.into_iter().map(AnySeconds::from).collect(),
+                AnySeconds::from(self.start_x),
+                AnySeconds::from(self.interval_x),
             ))
         }
     }
 }
 
 #[derive(Clone, Debug)]
-struct LengthXYFBuilder<T> {
-    points: Vec<Length<T>>,
-    start_x: Time<T>,
-    end_x: Time<T>,
-    interval_x: Time<T>,
+struct LengthXYFBuilder {
+    points: Vec<NonNegativeMeters>,
+    start_x: NonNegativeSeconds,
+    end_x: NonNegativeSeconds,
+    interval_x: PositiveSeconds,
     /// Middle of the current interval.
-    threshold: Time<T>,
-    /// Total waiting time and weight for the previous interval.
-    prev_interval: (T, T),
-    /// Total waiting time and weight for the next interval.
-    next_interval: (T, T),
+    threshold: NonNegativeSeconds,
+    /// Total length and weight for the previous interval.
+    prev_interval: (NonNegativeMeters, NonNegativeNum),
+    /// Total length and weight for the next interval.
+    next_interval: (NonNegativeMeters, NonNegativeNum),
 }
 
-impl<T> LengthXYFBuilder<T>
-where
-    T: TTFNum,
-{
-    fn new(period: Interval<T>, interval_x: Time<T>) -> Self {
-        let n = (period.length() / interval_x).trunc().to_usize().unwrap() + 1;
+impl LengthXYFBuilder {
+    fn new() -> Self {
+        let period = crate::parameters::period();
+        let interval_x = super::parameters::recording_interval();
+        let n = (period.length() / interval_x).to_usize_unchecked() + 1;
         LengthXYFBuilder {
             points: Vec::with_capacity(n),
             start_x: period.start(),
             end_x: period.end(),
             interval_x,
-            threshold: period.start() + interval_x,
-            prev_interval: (T::zero(), T::zero()),
-            next_interval: (T::zero(), T::zero()),
+            threshold: (period.start() + interval_x).into(),
+            prev_interval: (NonNegativeMeters::ZERO, NonNegativeNum::ZERO),
+            next_interval: (NonNegativeMeters::ZERO, NonNegativeNum::ZERO),
         }
     }
 
-    fn push(&mut self, entry_time: Time<T>, length: Length<T>) {
+    fn push(&mut self, entry_time: NonNegativeSeconds, length: NonNegativeMeters) {
         debug_assert!(entry_time >= self.start_x);
         if entry_time > self.end_x {
             // Skip.
@@ -1324,28 +1307,28 @@ where
         self.add_record(entry_time, length);
     }
 
-    fn add_record(&mut self, entry_time: Time<T>, length: Length<T>) {
+    fn add_record(&mut self, entry_time: NonNegativeSeconds, length: NonNegativeMeters) {
         debug_assert!(entry_time <= self.threshold);
         // The value is distributed to the two closest intervals, proportionally to the
         // distance to the interval midpoint.
-        let alpha = (self.threshold.0 - entry_time.0) / self.interval_x.0;
-        self.prev_interval.0 += alpha * length.0;
+        let alpha = ((self.threshold - entry_time) / self.interval_x).assume_zero_one_unchecked();
+        self.prev_interval.0 += length * alpha;
         self.prev_interval.1 += alpha;
-        self.next_interval.0 += (T::one() - alpha) * length.0;
-        self.next_interval.1 += T::one() - alpha;
+        self.next_interval.0 += length * alpha.one_minus();
+        self.next_interval.1 += alpha.one_minus();
     }
 
-    fn finish_interval(&mut self, entry_time: Time<T>) {
+    fn finish_interval(&mut self, entry_time: NonNegativeSeconds) {
         debug_assert!(self.threshold < entry_time);
         let y = if self.prev_interval.1.is_zero() {
             // No entry at this interval.
-            Length::zero()
+            NonNegativeMeters::ZERO
         } else {
-            Length(self.prev_interval.0 / self.prev_interval.1)
+            self.prev_interval.0 / self.prev_interval.1.assume_positive_unchecked()
         };
         self.points.push(y);
         self.prev_interval = self.next_interval;
-        self.next_interval = (T::zero(), T::zero());
+        self.next_interval = (NonNegativeMeters::ZERO, NonNegativeNum::ZERO);
         // Switch to next interval.
         self.threshold += self.interval_x;
         // Go recursive (multiple intervals can end at the same time).
@@ -1354,28 +1337,24 @@ where
         }
     }
 
-    fn finish(mut self) -> XYF<Time<T>, Length<T>, NoUnit<T>> {
+    fn finish(mut self) -> XYF<AnySeconds, AnyMeters, AnyNum> {
         // Finish the last intervals.
         // We force the threshold to go to end_x + 2 * interval_x so that the last interval is
         // added (the prev interval is at this point end_x + interval_x and the next one is end_x +
         // 2 * interval_x).
-        self.finish_interval(self.end_x + self.interval_x + self.interval_x);
+        self.finish_interval((self.end_x + self.interval_x + self.interval_x).into());
         debug_assert_eq!(
-            ((self.end_x - self.start_x) / self.interval_x)
-                .trunc()
-                .to_usize()
-                .unwrap()
-                + 1,
+            ((self.end_x - self.start_x) / self.interval_x).to_usize_unchecked() + 1,
             self.points.len()
         );
         if self.points.iter().all(|&y| y == self.points[0]) {
             // All `y` values are identical.
-            XYF::Constant(self.points[0])
+            XYF::Constant(AnyMeters::from(self.points[0]))
         } else {
             XYF::Piecewise(PwlXYF::from_values(
-                self.points,
-                self.start_x,
-                self.interval_x,
+                self.points.into_iter().map(AnyMeters::from).collect(),
+                AnySeconds::from(self.start_x),
+                AnySeconds::from(self.interval_x),
             ))
         }
     }

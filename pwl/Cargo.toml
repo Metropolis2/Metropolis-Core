@@ -12,7 +12,8 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 either = "1.6"
-itertools = "0.12"
+enum-as-inner = "0.6"
+itertools = "0.13"
 num-traits = "0.2"
 serde = "1.0"
 
