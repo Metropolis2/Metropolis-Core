@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0-7] - 2024-12-21
+
+### Fixed
+
+- [DEV] Revert to tauri `1.x` to fix installer issues on Windows.
+
 ## [1.0.0-6] - 2024-12-17
 
 ### Fixed
@@ -512,7 +518,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-6...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-7...HEAD
+[1.0.0-7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-7
 [1.0.0-6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-6
 [1.0.0-5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-5
 [1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4

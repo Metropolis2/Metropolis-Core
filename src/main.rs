@@ -28,7 +28,6 @@ async fn run_routing(path: String, window: Window) {
 #[expect(clippy::disallowed_types)]
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![run_simulation, run_routing])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
