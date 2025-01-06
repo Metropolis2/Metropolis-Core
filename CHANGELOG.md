@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.0.0] - 2025-01-06
+
+First stable release of METROPOLIS2!
+
 ## [1.0.0-7] - 2024-12-21
 
 ### Fixed
@@ -518,7 +522,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-7...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0
 [1.0.0-7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-7
 [1.0.0-6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-6
 [1.0.0-5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-5
