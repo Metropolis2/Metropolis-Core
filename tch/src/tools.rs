@@ -349,8 +349,10 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     // Set the working directory to the directory of the `parameters.json` file so that the input
     // paths can be interpreted as being relative to this file.
     if let Some(parent_dir) = path.parent() {
-        env::set_current_dir(parent_dir)
-            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+        if parent_dir.to_str().map(|s| !s.is_empty()).unwrap_or(true) {
+            env::set_current_dir(parent_dir)
+                .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+        }
     }
 
     info!("Reading graph");
