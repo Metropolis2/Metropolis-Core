@@ -17,7 +17,7 @@ use crate::units::*;
 /// - Equal to `-beta * (t_star_low - t)` if `t` is smaller than the lower t*.
 /// - Equal to `-gamma * (t - t_star_high)` if `t` is larger than the higher t*.
 #[derive(Clone, Debug)]
-pub struct AlphaBetaGammaModel {
+pub struct LinearPenaltiesModel {
     /// The earliest desired arrival (or departure) time.
     pub(crate) t_star_low: NonNegativeSeconds,
     /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
@@ -28,21 +28,21 @@ pub struct AlphaBetaGammaModel {
     pub(crate) gamma: ValueOfTime,
 }
 
-impl AlphaBetaGammaModel {
-    /// Creates a new AlphaBetaGammaModel.
+impl LinearPenaltiesModel {
+    /// Creates a new LinearPenaltiesModel.
     pub fn new(
         t_star_low: NonNegativeSeconds,
         t_star_high: NonNegativeSeconds,
         beta: ValueOfTime,
         gamma: ValueOfTime,
-    ) -> Result<AlphaBetaGammaModel> {
-        let model = UncheckedAlphaBetaGammaModel {
+    ) -> Result<LinearPenaltiesModel> {
+        let model = UncheckedLinearPenaltiesModel {
             t_star_low,
             t_star_high,
             beta,
             gamma,
         };
-        AlphaBetaGammaModel::try_from(model)
+        LinearPenaltiesModel::try_from(model)
     }
 
     pub(crate) fn from_values(
@@ -100,9 +100,9 @@ impl AlphaBetaGammaModel {
     }
 }
 
-/// [AlphaBetaGammaModel] before validation, for deserialization.
+/// [LinearPenaltiesModel] before validation, for deserialization.
 #[derive(Clone, Debug)]
-pub struct UncheckedAlphaBetaGammaModel {
+pub struct UncheckedLinearPenaltiesModel {
     /// The earliest desired arrival (or departure) time.
     t_star_low: NonNegativeSeconds,
     /// The latest desired arrival (or departure) time (must not be smaller than `t_star_low`).
@@ -113,15 +113,15 @@ pub struct UncheckedAlphaBetaGammaModel {
     gamma: ValueOfTime,
 }
 
-impl TryFrom<UncheckedAlphaBetaGammaModel> for AlphaBetaGammaModel {
+impl TryFrom<UncheckedLinearPenaltiesModel> for LinearPenaltiesModel {
     type Error = anyhow::Error;
-    fn try_from(value: UncheckedAlphaBetaGammaModel) -> Result<Self> {
+    fn try_from(value: UncheckedLinearPenaltiesModel) -> Result<Self> {
         if value.t_star_high < value.t_star_low {
             return Err(anyhow!(
                 "Value of t* high cannot be smaller than value of t* low"
             ));
         }
-        Ok(AlphaBetaGammaModel {
+        Ok(LinearPenaltiesModel {
             t_star_low: value.t_star_low,
             t_star_high: value.t_star_high,
             beta: value.beta,
@@ -134,8 +134,8 @@ impl TryFrom<UncheckedAlphaBetaGammaModel> for AlphaBetaGammaModel {
 mod tests {
     use super::*;
 
-    fn get_model() -> AlphaBetaGammaModel {
-        AlphaBetaGammaModel {
+    fn get_model() -> LinearPenaltiesModel {
+        LinearPenaltiesModel {
             t_star_low: NonNegativeSeconds::new_unchecked(10.),
             t_star_high: NonNegativeSeconds::new_unchecked(20.),
             beta: ValueOfTime::new_unchecked(5.),
@@ -145,14 +145,14 @@ mod tests {
 
     #[test]
     fn new_model_test() {
-        let model = AlphaBetaGammaModel::new(
+        let model = LinearPenaltiesModel::new(
             NonNegativeSeconds::new_unchecked(10.),
             NonNegativeSeconds::new_unchecked(20.),
             ValueOfTime::new_unchecked(5.),
             ValueOfTime::new_unchecked(5.),
         );
         assert!(model.is_ok());
-        let model = AlphaBetaGammaModel::new(
+        let model = LinearPenaltiesModel::new(
             NonNegativeSeconds::new_unchecked(20.),
             NonNegativeSeconds::new_unchecked(10.),
             ValueOfTime::new_unchecked(5.),
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn iter_breakpoints_test() {
-        let model = AlphaBetaGammaModel {
+        let model = LinearPenaltiesModel {
             t_star_low: NonNegativeSeconds::new_unchecked(10.),
             t_star_high: NonNegativeSeconds::new_unchecked(20.),
             beta: ValueOfTime::new_unchecked(5.),
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(iter.next(), Some(NonNegativeSeconds::new_unchecked(20.)));
         assert_eq!(iter.next(), None);
 
-        let model = AlphaBetaGammaModel {
+        let model = LinearPenaltiesModel {
             t_star_low: NonNegativeSeconds::new_unchecked(10.),
             t_star_high: NonNegativeSeconds::new_unchecked(10.),
             beta: ValueOfTime::new_unchecked(5.),

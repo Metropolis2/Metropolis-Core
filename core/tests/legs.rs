@@ -17,7 +17,7 @@ use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensity
 use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
 use metropolis_core::population::{agent_index, Agent};
-use metropolis_core::schedule_utility::alpha_beta_gamma::AlphaBetaGammaModel;
+use metropolis_core::schedule_utility::alpha_beta_gamma::LinearPenaltiesModel;
 use metropolis_core::schedule_utility::ScheduleUtility;
 use metropolis_core::simulation::results::AgentResult;
 use metropolis_core::travel_utility::{PolynomialFunction, TravelUtility};
@@ -90,8 +90,8 @@ fn init_simulation() {
             c: ValueOfTime::try_from(1.0).unwrap(),
             ..Default::default()
         }),
-        ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(
+        ScheduleUtility::LinearPenalties(
+            LinearPenaltiesModel::new(
                 NonNegativeSeconds::try_from(5.0).unwrap(),
                 NonNegativeSeconds::try_from(6.0).unwrap(),
                 ValueOfTime::try_from(0.5).unwrap(),
@@ -116,8 +116,8 @@ fn init_simulation() {
             b: ValueOfTime::try_from(-1.0).unwrap(),
             ..Default::default()
         }),
-        ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(
+        ScheduleUtility::LinearPenalties(
+            LinearPenaltiesModel::new(
                 NonNegativeSeconds::try_from(10.0).unwrap(),
                 NonNegativeSeconds::try_from(10.0).unwrap(),
                 ValueOfTime::try_from(0.1).unwrap(),
@@ -153,8 +153,8 @@ fn init_simulation() {
             c: ValueOfTime::try_from(-2.0).unwrap(),
             ..Default::default()
         }),
-        ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(
+        ScheduleUtility::LinearPenalties(
+            LinearPenaltiesModel::new(
                 NonNegativeSeconds::try_from(1.0).unwrap(),
                 NonNegativeSeconds::try_from(1.0).unwrap(),
                 ValueOfTime::try_from(2.0).unwrap(),
@@ -162,8 +162,8 @@ fn init_simulation() {
             )
             .unwrap(),
         ),
-        ScheduleUtility::AlphaBetaGamma(
-            AlphaBetaGammaModel::new(
+        ScheduleUtility::LinearPenalties(
+            LinearPenaltiesModel::new(
                 NonNegativeSeconds::try_from(15.0).unwrap(),
                 NonNegativeSeconds::try_from(15.0).unwrap(),
                 ValueOfTime::try_from(2.0).unwrap(),

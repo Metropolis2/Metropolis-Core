@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [INPUT] The `AlphaBetaGamma` schedule utility type is deprecated. Use `Linear` instead.
+
 ## [1.0.0] - 2025-01-06
 
 First stable release of METROPOLIS2!
