@@ -174,8 +174,8 @@ edge_ttfs = pl.DataFrame(
     }
 )
 
-# === Unnested Parquet format ===
-directory = os.path.join(OUTPUT_DIR, "unnested_parquet")
+# === Parquet format ===
+directory = os.path.join(OUTPUT_DIR, "parquet")
 if not os.path.isdir(directory):
     os.makedirs(directory)
 agents.write_parquet(os.path.join(directory, "agents.parquet"), use_pyarrow=True)
@@ -183,106 +183,6 @@ alts.write_parquet(os.path.join(directory, "alts.parquet"), use_pyarrow=True)
 trips.write_parquet(os.path.join(directory, "trips.parquet"), use_pyarrow=True)
 edges.write_parquet(os.path.join(directory, "edges.parquet"), use_pyarrow=True)
 vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"), use_pyarrow=True)
-edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"), use_pyarrow=True)
-parameters["input_files"] = {
-    "agents": "agents.parquet",
-    "alternatives": "alts.parquet",
-    "trips": "trips.parquet",
-    "edges": "edges.parquet",
-    "vehicle_types": "vehicles.parquet",
-    "road_network_conditions": "edge_ttfs.parquet",
-}
-parameters["output_directory"] = "output"
-parameters["saving_format"] = "Parquet"
-with open(os.path.join(directory, "parameters.json"), "w") as f:
-    json.dump(parameters, f, indent=2)
-
-# === Nested Parquet format ===
-alt_choice_schema = get_struct_schema("alt_choice", ("type", "u", "mu", "constants"))
-nested_agents = agents.select(
-    "agent_id",
-    pl.struct(**alt_choice_schema).alias("alt_choice"),
-)
-
-dt_choice_schema = get_struct_schema(
-    "dt_choice", ("type", "departure_time", "period", "interval", "offset")
-)
-dt_choice_model_schema = get_struct_schema("dt_choice.model", ("type", "u", "mu", "constants"))
-total_travel_utility_schema = get_struct_schema(
-    "total_travel_utility", ("one", "two", "three", "four")
-)
-origin_utility_schema = get_struct_schema(
-    "origin_utility", ("type", "tstar", "beta", "gamma", "delta")
-)
-destination_utility_schema = get_struct_schema(
-    "destination_utility", ("type", "tstar", "beta", "gamma", "delta")
-)
-nested_alts = alts.select(
-    "agent_id",
-    "alt_id",
-    "origin_delay",
-    pl.struct(**dt_choice_schema, model=pl.struct(**dt_choice_model_schema)).alias("dt_choice"),
-    "constant_utility",
-    pl.struct(**total_travel_utility_schema).alias("total_travel_utility"),
-    pl.struct(**origin_utility_schema).alias("origin_utility"),
-    pl.struct(**destination_utility_schema).alias("destination_utility"),
-    "pre_compute_route",
-)
-
-class_schema = get_struct_schema(
-    "class", ("type", "origin", "destination", "vehicle", "route", "travel_time")
-)
-travel_utility_schema = get_struct_schema("travel_utility", ("one", "two", "three", "four"))
-schedule_utility_schema = get_struct_schema(
-    "schedule_utility", ("type", "tstar", "beta", "gamma", "delta")
-)
-nested_trips = trips.select(
-    "agent_id",
-    "alt_id",
-    "trip_id",
-    pl.struct(**class_schema).alias("class"),
-    "stopping_time",
-    "constant_utility",
-    pl.struct(**travel_utility_schema).alias("travel_utility"),
-    pl.struct(**schedule_utility_schema).alias("schedule_utility"),
-)
-
-speed_density_schema = get_struct_schema(
-    "speed_density", ("type", "capacity", "min_density", "jam_density", "jam_speed", "beta")
-)
-nested_edges = edges.select(
-    "edge_id",
-    "source",
-    "target",
-    "speed",
-    "length",
-    "lanes",
-    pl.struct(**speed_density_schema).alias("speed_density"),
-    "bottleneck_flow",
-    "constant_travel_time",
-    "overtaking",
-)
-
-speed_function_schema = get_struct_schema(
-    "speed_function", ("type", "upper_bound", "coef", "x", "y")
-)
-nested_vehicles = vehicles.select(
-    "vehicle_id",
-    "headway",
-    "pce",
-    pl.struct(**speed_function_schema).alias("speed_function"),
-    "allowed_edges",
-    "restricted_edges",
-)
-
-directory = os.path.join(OUTPUT_DIR, "parquet")
-if not os.path.isdir(directory):
-    os.makedirs(directory)
-nested_agents.write_parquet(os.path.join(directory, "agents.parquet"), use_pyarrow=True)
-nested_alts.write_parquet(os.path.join(directory, "alts.parquet"), use_pyarrow=True)
-nested_trips.write_parquet(os.path.join(directory, "trips.parquet"), use_pyarrow=True)
-nested_edges.write_parquet(os.path.join(directory, "edges.parquet"), use_pyarrow=True)
-nested_vehicles.write_parquet(os.path.join(directory, "vehicles.parquet"), use_pyarrow=True)
 edge_ttfs.write_parquet(os.path.join(directory, "edge_ttfs.parquet"), use_pyarrow=True)
 parameters["input_files"] = {
     "agents": "agents.parquet",

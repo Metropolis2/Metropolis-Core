@@ -16,6 +16,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] Error messages where not shown if occuring before the loggers were initialized.
 
+### Removed
+
+- [USER] Remove the nested parquet example.
+
 ## [1.0.0] - 2025-01-06
 
 First stable release of METROPOLIS2!
