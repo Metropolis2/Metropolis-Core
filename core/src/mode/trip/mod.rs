@@ -84,6 +84,7 @@ impl Leg {
         class_travel_time: Option<f64>,
         stopping_time: Option<f64>,
         constant_utility: Option<f64>,
+        alpha: Option<f64>,
         travel_utility_one: Option<f64>,
         travel_utility_two: Option<f64>,
         travel_utility_three: Option<f64>,
@@ -128,6 +129,7 @@ impl Leg {
         };
         let travel_utility = TravelUtility::from_values(
             constant_utility,
+            alpha,
             travel_utility_one,
             travel_utility_two,
             travel_utility_three,
@@ -406,6 +408,7 @@ impl TravelingMode {
         dt_choice_model_mu: Option<f64>,
         dt_choice_model_constants: Option<Vec<f64>>,
         constant_utility: Option<f64>,
+        alpha: Option<f64>,
         total_travel_utility_one: Option<f64>,
         total_travel_utility_two: Option<f64>,
         total_travel_utility_three: Option<f64>,
@@ -426,6 +429,7 @@ impl TravelingMode {
         debug_assert!(!legs.is_empty());
         let total_travel_utility = TravelUtility::from_values(
             constant_utility,
+            alpha,
             total_travel_utility_one,
             total_travel_utility_two,
             total_travel_utility_three,

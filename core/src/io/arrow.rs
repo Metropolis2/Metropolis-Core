@@ -247,7 +247,7 @@ macro_rules! get_list_values {
 type LegMap = HashMap<(usize, usize), Vec<Leg>>;
 type AltMap = HashMap<usize, Vec<Mode>>;
 
-const TRIP_COLUMNS: [&str; 20] = [
+const TRIP_COLUMNS: [&str; 21] = [
     "agent_id",
     "alt_id",
     "trip_id",
@@ -259,6 +259,7 @@ const TRIP_COLUMNS: [&str; 20] = [
     "class.travel_time",
     "stopping_time",
     "constant_utility",
+    "alpha",
     "travel_utility.one",
     "travel_utility.two",
     "travel_utility.three",
@@ -285,6 +286,7 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     let class_travel_time_values = get_column!(["class", "travel_time"] in struct_array as f64);
     let stopping_time_values = get_column!(["stopping_time"] in struct_array as f64);
     let constant_utility_values = get_column!(["constant_utility"] in struct_array as f64);
+    let alpha_values = get_column!(["alpha"] in struct_array as f64);
     let travel_utility_one_values = get_column!(["travel_utility", "one"] in struct_array as f64);
     let travel_utility_two_values = get_column!(["travel_utility", "two"] in struct_array as f64);
     let travel_utility_three_values =
@@ -315,6 +317,7 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
         let class_travel_time = get_value!(class_travel_time_values[i]);
         let stopping_time = get_value!(stopping_time_values[i]);
         let constant_utility = get_value!(constant_utility_values[i]);
+        let alpha = get_value!(alpha_values[i]);
         let travel_utility_one = get_value!(travel_utility_one_values[i]);
         let travel_utility_two = get_value!(travel_utility_two_values[i]);
         let travel_utility_three = get_value!(travel_utility_three_values[i]);
@@ -343,6 +346,7 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
             class_travel_time,
             stopping_time,
             constant_utility,
+            alpha,
             travel_utility_one,
             travel_utility_two,
             travel_utility_three,
@@ -369,7 +373,7 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     Ok(trips)
 }
 
-const ALTERNATIVE_COLUMNS: [&str; 28] = [
+const ALTERNATIVE_COLUMNS: [&str; 29] = [
     "agent_id",
     "alt_id",
     "origin_delay",
@@ -383,6 +387,7 @@ const ALTERNATIVE_COLUMNS: [&str; 28] = [
     "dt_choice.model.mu",
     "dt_choice.model.constants",
     "constant_utility",
+    "alpha",
     "total_travel_utility.one",
     "total_travel_utility.two",
     "total_travel_utility.three",
@@ -422,6 +427,7 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
     let dt_choice_model_constants_values =
         get_column!(["dt_choice", "model", "constants"] in struct_array as List of f64);
     let constant_utility_values = get_column!(["constant_utility"] in struct_array as f64);
+    let alpha_values = get_column!(["alpha"] in struct_array as f64);
     let total_travel_utility_one_values =
         get_column!(["total_travel_utility", "one"] in struct_array as f64);
     let total_travel_utility_two_values =
@@ -467,6 +473,7 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
         let dt_choice_model_constants =
             get_list_values!(dt_choice_model_constants_values[i] as f64);
         let constant_utility = get_value!(constant_utility_values[i]);
+        let alpha = get_value!(alpha_values[i]);
         let total_travel_utility_one = get_value!(total_travel_utility_one_values[i]);
         let total_travel_utility_two = get_value!(total_travel_utility_two_values[i]);
         let total_travel_utility_three = get_value!(total_travel_utility_three_values[i]);
@@ -502,6 +509,7 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
             dt_choice_model_mu,
             dt_choice_model_constants,
             constant_utility,
+            alpha,
             total_travel_utility_one,
             total_travel_utility_two,
             total_travel_utility_three,

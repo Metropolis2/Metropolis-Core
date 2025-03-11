@@ -31,16 +31,22 @@ impl Default for TravelUtility {
 impl TravelUtility {
     pub(crate) fn from_values(
         constant_utility: Option<f64>,
+        alpha: Option<f64>,
         one: Option<f64>,
         two: Option<f64>,
         three: Option<f64>,
         four: Option<f64>,
     ) -> Result<Self> {
+        let one = ValueOfTime::try_from(one.unwrap_or_default())
+            .context("Value `one` does not satisfy the constraints")?;
+        let alpha = ValueOfTime::try_from(alpha.unwrap_or_default())
+            .context("Value `alpha` does not satisfy the constraints")?;
         Ok(Self::Polynomial(PolynomialFunction {
             a: Utility::try_from(constant_utility.unwrap_or_default())
                 .context("Value `constant_utility` does not satisfy the constraints")?,
-            b: ValueOfTime::try_from(one.unwrap_or_default())
-                .context("Value `one` does not satisfy the constraints")?,
+            // The order 1 coefficient can be specified through either `travel_utility.one` (utility
+            // per second) or `alpha` (cost per second = minus utility per second).
+            b: one - alpha,
             c: ValueOfTime::try_from(two.unwrap_or_default())
                 .context("Value `two` does not satisfy the constraints")?,
             d: ValueOfTime::try_from(three.unwrap_or_default())

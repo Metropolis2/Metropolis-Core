@@ -8,6 +8,12 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] The `alpha` parameter can be used to specify the value of time at the alternative or trip
+  level (it has the same effect as the `travel_utility.one` or `total_travel_utility.one` variables,
+  with an opposite sign).
+
 ### Changed
 
 - [INPUT] The `AlphaBetaGamma` schedule utility type is deprecated. Use `Linear` instead.
