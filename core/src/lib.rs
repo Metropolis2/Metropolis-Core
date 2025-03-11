@@ -27,16 +27,22 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 // Dependencies only used in the bins.
 use clap as _;
-use log::error;
+use log::{error, log_enabled};
 
 /// Deserializes a simulation, runs it and stores the results to a given output directory.
 ///
 /// This function takes as argument the path to the `parameters.json` file.
 pub fn run_simulation(path: &Path) -> Result<()> {
     let res = run_simulation_imp(path, None::<std::io::Empty>);
-    if let Err(ref err) = res {
-        error!("{err:?}");
-        Err(anyhow!("Failed to run simulation"))
+    if let Err(err) = res {
+        if log_enabled!(log::Level::Error) {
+            // Use the `error` macro so that the error is logged to all the loggers.
+            error!("{err:?}");
+            Ok(())
+        } else {
+            // Return the error so that it is printed to console or GUI.
+            Err(anyhow!(err))
+        }
     } else {
         Ok(())
     }
@@ -51,9 +57,15 @@ pub fn run_simulation_with_writer<W: std::io::Write + Send + 'static>(
     writer: W,
 ) -> Result<()> {
     let res = run_simulation_imp(path, Some(writer));
-    if let Err(ref err) = res {
-        error!("{err:?}");
-        Err(anyhow!("Failed to run simulation"))
+    if let Err(err) = res {
+        if log_enabled!(log::Level::Error) {
+            // Use the `error` macro so that the error is logged to all the loggers.
+            error!("{err:?}");
+            Ok(())
+        } else {
+            // Return the error so that it is printed to console or GUI.
+            Err(anyhow!(err))
+        }
     } else {
         Ok(())
     }
