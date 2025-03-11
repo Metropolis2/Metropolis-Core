@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     let p: PathBuf = [wd, "examples/data/parquet/parameters.json"]
         .iter()
         .collect();
-    run_simulation(&p).context("Failed to run simulaton from Parquet input")
+    run_simulation(&p).context("Failed to run simulation from Parquet input")
 }
 
 #[test]
