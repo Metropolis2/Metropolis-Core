@@ -53,13 +53,17 @@ fn build_report(results: &SimulationResults) -> Result<ReportResults> {
         road_departure_times.sort_unstable();
         road_arrival_times.sort_unstable();
 
-        let departure_time_histogram =
-            get_histogram(road_departure_times, crate::parameters::period());
-        let arrival_time_histogram = get_histogram(road_arrival_times, crate::parameters::period());
-
-        let last_iteration = IterationStatistics {
-            departure_time_histogram,
-            arrival_time_histogram,
+        let last_iteration = if road_departure_times.is_empty() {
+            IterationStatistics::default()
+        } else {
+            let departure_time_histogram =
+                get_histogram(road_departure_times, crate::parameters::period());
+            let arrival_time_histogram =
+                get_histogram(road_arrival_times, crate::parameters::period());
+            IterationStatistics {
+                departure_time_histogram,
+                arrival_time_histogram,
+            }
         };
         Ok(ReportResults {
             iterations: results.iterations.clone(),
@@ -70,14 +74,14 @@ fn build_report(results: &SimulationResults) -> Result<ReportResults> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Histogram {
     bars: Vec<usize>,
     period: Interval,
 }
 
 /// Statistics computed from the [SimulationResults].
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct IterationStatistics {
     departure_time_histogram: Histogram,
     arrival_time_histogram: Histogram,

@@ -447,40 +447,43 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
 fn check_validity() -> Result<()> {
     // Check the validity of the simulation parameters.
     crate::parameters::check_validity()?;
-    // Check that all road trips' origins and destinations are part of the road network.
-    let origins: HashSet<_> = crate::population::all_road_trips_origins();
-    let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
-    let road_network_nodes: HashSet<_> =
-        crate::network::road_network::iter_original_node_ids().collect();
-    let invalid_origins: HashSet<_> = origins.difference(&road_network_nodes).collect();
-    if !invalid_origins.is_empty() {
-        let invalid_origins_as_vec: Vec<_> = invalid_origins
-            .into_iter()
-            .map(|n| format!("{}", n))
-            .collect();
-        let invalid_ids = if invalid_origins_as_vec.len() > 10 {
-            format!("{}, ...", invalid_origins_as_vec[..10].join(", "))
-        } else {
-            invalid_origins_as_vec.join(", ")
-        };
-        let msg =
+    if crate::network::has_road_network() {
+        // Check that all road trips' origins and destinations are part of the road network.
+        let origins: HashSet<_> = crate::population::all_road_trips_origins();
+        let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
+        let road_network_nodes: HashSet<_> =
+            crate::network::road_network::iter_original_node_ids().collect();
+        let invalid_origins: HashSet<_> = origins.difference(&road_network_nodes).collect();
+        if !invalid_origins.is_empty() {
+            let invalid_origins_as_vec: Vec<_> = invalid_origins
+                .into_iter()
+                .map(|n| format!("{}", n))
+                .collect();
+            let invalid_ids = if invalid_origins_as_vec.len() > 10 {
+                format!("{}, ...", invalid_origins_as_vec[..10].join(", "))
+            } else {
+                invalid_origins_as_vec.join(", ")
+            };
+            let msg =
             "The following node ids are used as trip origin but are not part of the road network";
-        bail!("{msg}: {invalid_ids}");
-    }
-    let invalid_destinations: HashSet<_> = destinations.difference(&road_network_nodes).collect();
-    if !invalid_destinations.is_empty() {
-        let invalid_destinations_as_vec: Vec<_> = invalid_destinations
-            .into_iter()
-            .map(|n| format!("{}", n))
-            .collect();
-        let invalid_ids = if invalid_destinations_as_vec.len() > 10 {
-            format!("{}, ...", invalid_destinations_as_vec[..10].join(", "))
-        } else {
-            invalid_destinations_as_vec.join(", ")
-        };
-        let msg = "The following node ids are used as trip destination \
+            bail!("{msg}: {invalid_ids}");
+        }
+        let invalid_destinations: HashSet<_> =
+            destinations.difference(&road_network_nodes).collect();
+        if !invalid_destinations.is_empty() {
+            let invalid_destinations_as_vec: Vec<_> = invalid_destinations
+                .into_iter()
+                .map(|n| format!("{}", n))
+                .collect();
+            let invalid_ids = if invalid_destinations_as_vec.len() > 10 {
+                format!("{}, ...", invalid_destinations_as_vec[..10].join(", "))
+            } else {
+                invalid_destinations_as_vec.join(", ")
+            };
+            let msg = "The following node ids are used as trip destination \
                    but are not part of the road network";
-        bail!("{msg}: {invalid_ids}");
+            bail!("{msg}: {invalid_ids}");
+        }
     }
     Ok(())
 }
