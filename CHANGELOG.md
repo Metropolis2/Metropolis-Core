@@ -23,6 +23,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Error messages where not shown if occuring before the loggers were initialized.
 - [USER] Fix a bug when running `routing_cli` from the same directory where the parameters JSON file
   is located.
+- [INPUT] Road-network parameter `max_pending_duration` is now optional when `spillback` is
+  disabled, as could be expected.
 
 ### Removed
 

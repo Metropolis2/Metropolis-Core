@@ -4,8 +4,10 @@
 // https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
 
 //! Parameters related to the road network.
+use anyhow::{bail, Result};
 use num_traits::ConstZero;
 use serde_derive::Deserialize;
+
 use tch::ContractionParameters;
 
 use crate::units::*;
@@ -71,6 +73,7 @@ pub struct RoadNetworkParameters {
     /// By default, the holes propagate instantaneously.
     pub backward_wave_speed: Option<MetersPerSecond>,
     /// Maximum amount of time a vehicle can be pending to enter the next edge.
+    #[serde(default)]
     pub max_pending_duration: NonNegativeSeconds,
     /// If `true` (default), the inflow of vehicles entering an edge is limiting by the edge's flow
     /// capacity.
@@ -98,6 +101,18 @@ impl Default for RoadNetworkParameters {
             constrain_inflow: true,
             algorithm_type: AlgorithmType::Best,
         }
+    }
+}
+
+impl RoadNetworkParameters {
+    pub(crate) fn check_validity(&self) -> Result<()> {
+        if self.spillback && !self.max_pending_duration.is_positive() {
+            bail!(
+                "The parameter `max_pending_duration` must be set to a positive value when \
+                spillback is enabled."
+            );
+        }
+        Ok(())
     }
 }
 

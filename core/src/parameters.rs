@@ -202,3 +202,13 @@ impl Default for Parameters {
         }
     }
 }
+
+pub(crate) fn check_validity() -> Result<()> {
+    if crate::network::has_road_network() && !has_road_network_parameters() {
+        bail!("The road-network parameters are mandatory when a road-network is used.");
+    }
+    if has_road_network_parameters() {
+        road_network().check_validity()?;
+    }
+    Ok(())
+}

@@ -445,9 +445,8 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
 /// Performs some validity checks that can only be done when all the simulation input has been
 /// imported.
 fn check_validity() -> Result<()> {
-    if crate::network::has_road_network() && !crate::parameters::has_road_network_parameters() {
-        bail!("The road-network parameters are mandatory when a road-network is used.");
-    }
+    // Check the validity of the simulation parameters.
+    crate::parameters::check_validity()?;
     // Check that all road trips' origins and destinations are part of the road network.
     let origins: HashSet<_> = crate::population::all_road_trips_origins();
     let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
