@@ -7,6 +7,8 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+#[cfg(feature = "expire")]
+use chrono::{Local, NaiveDate};
 use clap::Parser;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -25,6 +27,20 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    check_expiry_date();
     let args = Args::parse();
     metropolis_core::run_simulation(&args.parameters)
 }
+
+#[cfg(feature = "expire")]
+fn check_expiry_date() {
+    let expiration_date = NaiveDate::from_ymd_opt(2025, 12, 31).unwrap();
+    let today = Local::now().date_naive();
+    if today > expiration_date {
+        eprintln!("This program has expired. Please contact the developer.");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "expire"))]
+fn check_expiry_date() {}

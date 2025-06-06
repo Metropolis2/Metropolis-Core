@@ -77,7 +77,7 @@ pub fn append_parquet<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Re
             .finish()
             .with_context(|| format!("Cannot read file `{filename:?}`"))?;
         debug_assert_eq!(
-            df.schema(),
+            **df.schema(),
             D::schema(),
             "Invalid parquet schema for file `{filename:?}`"
         );

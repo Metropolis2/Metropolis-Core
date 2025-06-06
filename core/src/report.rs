@@ -115,7 +115,7 @@ fn get_histogram(values: Vec<NonNegativeSeconds>, min_period: Interval) -> Histo
     }
     bars.push(values.len() - n);
     if bars.len() < NB_BINS {
-        bars.extend(std::iter::repeat(0).take(NB_BINS - bars.len()));
+        bars.extend(std::iter::repeat_n(0, NB_BINS - bars.len()));
     }
     Histogram { bars, period }
 }

@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+#[cfg(feature = "expire")]
+use chrono::{Local, NaiveDate};
 use clap::Parser;
 use tch::tools::run_queries;
 
@@ -20,6 +22,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    check_expiry_date();
     let args = Args::parse();
     compute_travel_times(&args.parameters)
 }
@@ -27,3 +30,16 @@ fn main() -> Result<()> {
 fn compute_travel_times(path: &Path) -> Result<()> {
     run_queries(path)
 }
+
+#[cfg(feature = "expire")]
+fn check_expiry_date() {
+    let expiration_date = NaiveDate::from_ymd_opt(2025, 12, 31).unwrap();
+    let today = Local::now().date_naive();
+    if today > expiration_date {
+        eprintln!("This program has expired. Please contact the developer.");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "expire"))]
+fn check_expiry_date() {}

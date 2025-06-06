@@ -46,6 +46,7 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 }
 
 /// Mode of transportation available to an agent.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, EnumAsInner)]
 pub enum Mode {
     /// An activity (e.g., staying home, traveling) that always provide the same utility level.
