@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "Metropolis2GUI",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "tauri": {
     "allowlist": {
@@ -19,7 +19,7 @@
     },
     "windows": [
       {
-        "title": "METROPOLIS2 GUI - 1.0.0",
+        "title": "METROPOLIS2 GUI - 1.1.0",
         "width": 700,
         "height": 900
       }
@@ -31,10 +31,7 @@
       "active": true,
       "targets": "all",
       "identifier": "com.metropolis2.metropolis2gui",
-      "icon": [
-        "icons/32x32.png",
-        "icons/icon.ico"
-      ]
+      "icon": ["icons/32x32.png", "icons/icon.ico"]
     }
   }
 }

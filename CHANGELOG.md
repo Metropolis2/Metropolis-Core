@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-06-06
+
 ### Added
 
 - [INPUT] The `alpha` parameter can be used to specify the value of time at the alternative or trip
@@ -22,7 +24,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] Road-network parameter `max_pending_duration` is now optional when `spillback` is
   disabled, as could be expected.
-- [USER] Error messages where not shown if occuring before the loggers were initialized.
+- [USER] Error messages where not shown if occurring before the loggers were initialized.
 - [USER] Fix a bug when running `routing_cli` from the same directory where the parameters JSON file
   is located.
 - [USER] Fix bugs when running a simulation without a road network.
@@ -192,7 +194,7 @@ First stable release of METROPOLIS2!
 
 ### Fixed
 
-- [USER] A crash occuring for road legs with same origin as destination is fixed.
+- [USER] A crash occurring for road legs with same origin as destination is fixed.
 
 ## [0.6.0] - 2023-10-24
 
@@ -248,7 +250,7 @@ First stable release of METROPOLIS2!
   This is a breaking change.
 - [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
 - [USER] Compute the expected arrival time more accurately.
-- [USER] When a vehicle is forced to be released on the next edge, it does not use any additionnal
+- [USER] When a vehicle is forced to be released on the next edge, it does not use any additional
   length so that the edge will not stay full for too long.
 
 ### Fixed
@@ -283,7 +285,7 @@ First stable release of METROPOLIS2!
   vehicles are forced to enter the next edge in case of spillback.
 - [INPUT] Add edge parameter `overtaking` to allow vehicles to overtake each other at the edge's
   exit bottleneck.
-- [INPUT] Add road-network parameter `algorithm_type` to choose the algoritm used for
+- [INPUT] Add road-network parameter `algorithm_type` to choose the algorithm used for
   origin-destination profile queries (TCH or Intersect). Default is to let the simulator guess the
   best algorithm.
 - [INPUT] Network weights can be read directly from the output `weight_results.json.zst` (no need to
@@ -436,7 +438,7 @@ First stable release of METROPOLIS2!
 - [INPUT] Parameters `schedule_utility` for an Agent is removed. The schedule utility is now
   specified at the mode-level.
 - [Input] The parameter `desired_arrival` for `AlphaBetaGammaModel` is removed. The schedule utility
-  is now explicitely specified for either the origin or destination (or intermediary stop) making
+  is now explicitly specified for either the origin or destination (or intermediary stop) making
   this parameter useless.
 - [DEV] The `PreDayResult` struct is removed (everything is stored directly in `AgentResult` and
   `ModeResults` now).
@@ -545,7 +547,8 @@ First stable release of METROPOLIS2!
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0...HEAD
+[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.1.0...HEAD
+[1.0.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.1.0
 [1.0.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0
 [1.0.0-7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-7
 [1.0.0-6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-6
