@@ -47,9 +47,9 @@ interpretation.
 This example simulation makes use of all the possible input values so it is a great way to test if
 the simulator is running properly.
 
-In the `examples/data/` directory, there are three subdirectories corresponding to three different
-input formats for the same simulation (CSV, Parquet or Parquet with unnested structs).
+In the `examples/data/` directory, there are two subdirectories corresponding to the two different
+input formats (CSV and Parquet).
 
 The Python script `examples/generate_input.py` is used to generate the example simulation in the
-three different formats.
+two different formats.
 Feel free to use it as a an example to create your own input files.
