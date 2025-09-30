@@ -700,7 +700,7 @@ pub(crate) fn read_agents(batch: RecordBatch, mut alternatives: AltMap) -> Resul
     Ok(agents)
 }
 
-const EDGE_COLUMNS: [&str; 15] = [
+const EDGE_COLUMNS: [&str; 17] = [
     "edge_id",
     "source",
     "target",
@@ -714,6 +714,8 @@ const EDGE_COLUMNS: [&str; 15] = [
     "speed_density.jam_speed",
     "speed_density.beta",
     "bottleneck_flow",
+    "bottleneck_flows",
+    "bottleneck_times",
     "constant_travel_time",
     "overtaking",
 ];
@@ -742,6 +744,8 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId
         get_column!(["speed_density", "jam_speed"] in struct_array as f64);
     let speed_density_beta_values = get_column!(["speed_density", "beta"] in struct_array as f64);
     let bottleneck_flow_values = get_column!(["bottleneck_flow"] in struct_array as f64);
+    let bottleneck_flows_values = get_column!(["bottleneck_flows"] in struct_array as List of f64);
+    let bottleneck_times_values = get_column!(["bottleneck_times"] in struct_array as List of f64);
     let constant_travel_time_values = get_column!(["constant_travel_time"] in struct_array as f64);
     let overtaking_values = get_column!(["overtaking"] in struct_array as bool);
     let n = struct_array.len();
@@ -761,6 +765,8 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId
         let speed_density_jam_speed = get_value!(speed_density_jam_speed_values[i]);
         let speed_density_beta = get_value!(speed_density_beta_values[i]);
         let bottleneck_flow = get_value!(bottleneck_flow_values[i]);
+        let bottleneck_flows = get_list_values!(bottleneck_flows_values[i] as f64);
+        let bottleneck_times = get_list_values!(bottleneck_times_values[i] as f64);
         let constant_travel_time = get_value!(constant_travel_time_values[i]);
         let overtaking = get_value!(overtaking_values[i]);
         let edge_id = edge_id.ok_or_else(|| anyhow!("Value `edge_id` is mandatory"))?;
@@ -778,6 +784,8 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId
             speed_density_jam_speed,
             speed_density_beta,
             bottleneck_flow,
+            bottleneck_flows,
+            bottleneck_times,
             constant_travel_time,
             overtaking,
         )

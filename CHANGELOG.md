@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] Allow edges to have time-varying bottleneck flows with `bottleneck_flows` and
+  `bottleneck_times` variables.
+
 ### Changed
 
 - [INPUT] Arbitrary ids can be used for all input values (negative integers, strings).
