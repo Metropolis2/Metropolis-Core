@@ -13,7 +13,6 @@ use ttf::{PwlTTF, TTF};
 
 use super::{
     preprocess::{UniqueVehicleIndex, UniqueVehicles},
-    vehicle::OriginalVehicleId,
     OriginalEdgeId,
 };
 use crate::units::*;
@@ -23,7 +22,7 @@ use crate::units::*;
 #[derive(Clone, Debug, PartialEq)]
 pub struct VehicleWeights {
     /// Original id of the vehicle for which the weights are valid.
-    pub(crate) vehicle_ids: Vec<OriginalVehicleId>,
+    pub(crate) vehicle_ids: Vec<MetroId>,
     /// Weights.
     pub(crate) weights: HashMap<OriginalEdgeId, TTF<AnySeconds>>,
 }
@@ -37,7 +36,7 @@ impl VehicleWeights {
         &mut self.weights
     }
 
-    pub(crate) fn vehicle_ids(&self) -> &[OriginalVehicleId] {
+    pub(crate) fn vehicle_ids(&self) -> &[MetroId] {
         self.vehicle_ids.as_slice()
     }
 
@@ -117,7 +116,7 @@ type XYVec = Vec<(NonNegativeSeconds, NonNegativeSeconds)>;
 impl RoadNetworkWeights {
     pub(crate) fn from_values(
         values: Vec<(
-            OriginalVehicleId,
+            MetroId,
             OriginalEdgeId,
             NonNegativeSeconds,
             NonNegativeSeconds,
@@ -125,7 +124,7 @@ impl RoadNetworkWeights {
         unique_vehicles: &UniqueVehicles,
     ) -> Result<Self> {
         // Collect all the values in a map (vid, eid) -> (td, tt).
-        let mut global_map: HashMap<(OriginalVehicleId, OriginalEdgeId), XYVec> = HashMap::new();
+        let mut global_map: HashMap<(MetroId, OriginalEdgeId), XYVec> = HashMap::new();
         for (vid, eid, x, y) in values {
             global_map
                 .entry((vid, eid))
@@ -398,26 +397,27 @@ mod tests {
 
     #[test]
     fn average_test() {
+        let id = MetroId::Integer(0);
         let w0 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(10.)))]
+                vehicle_ids: vec![id],
+                weights: [(id, TTF::Constant(AnySeconds::new_unchecked(10.)))]
                     .into_iter()
                     .collect(),
             }],
         };
         let w1 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(20.)))]
+                vehicle_ids: vec![id],
+                weights: [(id, TTF::Constant(AnySeconds::new_unchecked(20.)))]
                     .into_iter()
                     .collect(),
             }],
         };
         // Result = 0.2 * 10 + 0.8 * 20 = 2 + 16 = 18.
         let w2 = vec![VehicleWeights {
-            vehicle_ids: vec![0],
-            weights: [(0, TTF::Constant(AnySeconds::new_unchecked(18.)))]
+            vehicle_ids: vec![id],
+            weights: [(id, TTF::Constant(AnySeconds::new_unchecked(18.)))]
                 .into_iter()
                 .collect(),
         }];
@@ -426,27 +426,28 @@ mod tests {
 
     #[test]
     fn genetic_average_test() {
+        let id = MetroId::Integer(0);
         let w0 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(2.)))]
+                vehicle_ids: vec![id],
+                weights: [(id, TTF::Constant(AnySeconds::new_unchecked(2.)))]
                     .into_iter()
                     .collect(),
             }],
         };
         let w1 = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                vehicle_ids: vec![0],
-                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(3.)))]
+                vehicle_ids: vec![id],
+                weights: [(id, TTF::Constant(AnySeconds::new_unchecked(3.)))]
                     .into_iter()
                     .collect(),
             }],
         };
         // Result = (2^3 * 3^2)^(1/5) = 72^(1/5).
         let w2 = vec![VehicleWeights {
-            vehicle_ids: vec![0],
+            vehicle_ids: vec![id],
             weights: [(
-                0,
+                id,
                 TTF::Constant(AnySeconds::new_unchecked(72.0f64.powf(0.2))),
             )]
             .into_iter()

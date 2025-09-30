@@ -19,7 +19,7 @@ use crate::network::road_network::RoadNetworkWeights;
 use crate::network::{NetworkSkim, NetworkWeights};
 use crate::parameters::SavingFormat;
 use crate::population::{agent_index, AgentIndex};
-use crate::units::{Distribution, NonNegativeSeconds, Utility};
+use crate::units::{Distribution, MetroId, NonNegativeSeconds, Utility};
 
 /// Struct to store the results of a [Simulation](super::Simulation).
 #[derive(Clone, Debug, Default)]
@@ -200,9 +200,9 @@ impl RunningTimes {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentResult {
     /// Id of the agent.
-    pub(crate) id: usize,
+    pub(crate) id: MetroId,
     /// Id of the chosen mode.
-    pub(crate) mode_id: usize,
+    pub(crate) mode_id: MetroId,
     /// Index of the chosen mode.
     pub(crate) mode_index: ModeIndex,
     /// Expected utility from the trip.
@@ -215,9 +215,9 @@ pub struct AgentResult {
 
 impl AgentResult {
     /// Creates a new AgentResult.
-    pub const fn new(
-        id: usize,
-        mode_id: usize,
+    pub fn new(
+        id: MetroId,
+        mode_id: MetroId,
         mode: ModeIndex,
         expected_utility: Utility,
         mode_results: ModeResults,
@@ -243,7 +243,7 @@ impl AgentResult {
     pub fn reset(&self) -> Self {
         Self {
             id: self.id,
-            mode_id: 0,
+            mode_id: MetroId::Integer(0),
             mode_index: ModeIndex::new(0),
             expected_utility: self.expected_utility,
             mode_results: self.mode_results.reset(),
@@ -346,9 +346,9 @@ impl DerefMut for AgentResults {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreDayAgentResult {
     /// Id of the agent.
-    pub(crate) id: usize,
+    pub(crate) id: MetroId,
     /// Id of the chosen mode.
-    pub(crate) mode_id: usize,
+    pub(crate) mode_id: MetroId,
     /// Index of the chosen mode.
     pub(crate) mode_index: ModeIndex,
     /// Expected utility from the trip.

@@ -18,7 +18,7 @@ use crate::network::road_network::RoadNetworkWeights;
 use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::population::AgentIndex;
 use crate::progress_bar::MetroProgressBar;
-use crate::units::{Distribution, NonNegativeSeconds, Utility};
+use crate::units::{Distribution, MetroId, NonNegativeSeconds, Utility};
 
 pub mod trip;
 
@@ -50,14 +50,14 @@ pub const fn mode_index(x: usize) -> ModeIndex {
 #[derive(Clone, Debug, EnumAsInner)]
 pub enum Mode {
     /// An activity (e.g., staying home, traveling) that always provide the same utility level.
-    Constant((usize, Utility)),
+    Constant((MetroId, Utility)),
     /// A trip consisting in a sequence of legs (either on the road or virtual).
     Trip(TravelingMode),
 }
 
 impl Mode {
     /// Returns the id of the mode.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> MetroId {
         match self {
             Self::Constant((id, _)) => *id,
             Self::Trip(mode) => mode.id,
@@ -80,7 +80,7 @@ impl Mode {
     /// Returns an error if some values are invalid.
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
-        id: usize,
+        id: MetroId,
         origin_delay: Option<f64>,
         dt_choice_type: Option<&str>,
         dt_choice_departure_time: Option<f64>,

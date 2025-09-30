@@ -41,7 +41,7 @@ fn init_simulation(overtaking: bool) {
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
+        let agent = Agent::new(i as i64, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 
@@ -50,8 +50,8 @@ fn init_simulation(overtaking: bool) {
     // Travel time is 1 second free-flow.
     let edges = vec![
         (
-            0,
-            1,
+            MetroId::Integer(0),
+            MetroId::Integer(1),
             RoadEdge::new(
                 0,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -64,8 +64,8 @@ fn init_simulation(overtaking: bool) {
             ),
         ),
         (
-            1,
-            2,
+            MetroId::Integer(1),
+            MetroId::Integer(2),
             RoadEdge::new(
                 1,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -194,7 +194,7 @@ fn bottleneck_test() {
     let weights = results.iteration_results.new_exp_weights.clone();
     let weights = weights.road_network().unwrap();
     let uid = unique_vehicle_index(0);
-    let edge_weight = &weights[(uid, 0)];
+    let edge_weight = &weights[(uid, MetroId::Integer(0))];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
     };
@@ -295,7 +295,7 @@ fn bottleneck_test() {
     let weights = results.iteration_results.new_exp_weights.clone();
     let weights = weights.road_network().unwrap();
     let uid = unique_vehicle_index(0);
-    let edge_weight = &weights[(uid, 0)];
+    let edge_weight = &weights[(uid, MetroId::Integer(0))];
     let TTF::Piecewise(ttf) = edge_weight else {
         panic!("TTF should be piecewise");
     };

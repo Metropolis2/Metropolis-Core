@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [INPUT] Arbitrary ids can be used for all input values (negative integers, strings).
+
 ## [1.1.0] - 2025-06-06
 
 ### Added

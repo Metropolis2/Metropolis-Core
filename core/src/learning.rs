@@ -104,12 +104,13 @@ mod tests {
     use crate::network::road_network::RoadNetworkWeights;
 
     fn get_weigths(v: f64) -> NetworkWeights {
+        let id = MetroId::Integer(0);
         let rn = RoadNetworkWeights {
             weights: vec![VehicleWeights {
-                weights: [(0, TTF::Constant(AnySeconds::new_unchecked(v)))]
+                weights: [(id, TTF::Constant(AnySeconds::new_unchecked(v)))]
                     .into_iter()
                     .collect(),
-                vehicle_ids: vec![0],
+                vehicle_ids: vec![id],
             }],
         };
         NetworkWeights::new(Some(rn))
@@ -196,6 +197,7 @@ mod tests {
     #[test]
     fn exponential_learning_test() {
         let uid = unique_vehicle_index(0);
+        let id = MetroId::Integer(0);
         let w1 = get_weigths(10.);
         let w2 = get_weigths(20.);
         let w3 = get_weigths(30.);
@@ -205,7 +207,7 @@ mod tests {
             get_weigths(20.).road_network().unwrap().weights
         );
         let x2 = model.learn(&w1, &w2, 1);
-        if let TTF::Constant(v) = x2.road_network().unwrap()[(uid, 0)] {
+        if let TTF::Constant(v) = x2.road_network().unwrap()[(uid, id)] {
             let expected = (20. + 0.8 * 10.) * 0.2 / (1. - 0.8f64.powi(2));
             assert!(
                 (Into::<f64>::into(v) - expected).abs() < 1e-4,
@@ -217,7 +219,7 @@ mod tests {
             panic!("Invalid road network weight: {:?}", x2.road_network());
         }
         let x3 = model.learn(&x2, &w3, 2);
-        if let TTF::Constant(v) = x3.road_network().unwrap()[(uid, 0)] {
+        if let TTF::Constant(v) = x3.road_network().unwrap()[(uid, id)] {
             let expected = (30. + 0.8 * 20. + 0.8f64.powi(2) * 10.) * 0.2 / (1. - 0.8f64.powi(3));
             assert!(
                 (Into::<f64>::into(v) - expected).abs() < 1e-4,

@@ -19,7 +19,7 @@ use crate::network::{NetworkSkim, NetworkWeights};
 use crate::progress_bar::MetroProgressBar;
 use crate::simulation::results::AgentResult;
 use crate::simulation::PreprocessingData;
-use crate::units::Utility;
+use crate::units::{MetroId, Utility};
 
 static AGENTS: OnceLock<Vec<Agent>> = OnceLock::new();
 
@@ -97,7 +97,7 @@ pub(crate) fn all_road_trips_destinations() -> HashSet<OriginalNodeId> {
 #[derive(Clone, Debug)]
 pub struct Agent {
     /// Id used when writing the results of the agents.
-    pub id: usize,
+    pub id: MetroId,
     /// Modes accessible to the agent.
     pub(crate) modes: Vec<Mode>,
     /// Choice model used for mode choice.
@@ -108,9 +108,9 @@ pub struct Agent {
 
 impl Agent {
     /// Creates a new agent with the specified modes, mode-choice model and schedule utility.
-    pub fn new(id: usize, modes: Vec<Mode>, mode_choice: Option<ChoiceModel<Utility>>) -> Self {
+    pub fn new(id: i64, modes: Vec<Mode>, mode_choice: Option<ChoiceModel<Utility>>) -> Self {
         Agent {
-            id,
+            id: MetroId::from(id),
             modes,
             mode_choice,
         }
@@ -127,7 +127,7 @@ impl Agent {
     ///
     /// Returns an error if some values are invalid.
     pub(crate) fn from_values(
-        id: usize,
+        id: MetroId,
         alt_choice_type: Option<&str>,
         alt_choice_u: Option<f64>,
         alt_choice_mu: Option<f64>,
@@ -279,7 +279,10 @@ mod tests {
     use crate::units::MetroPositiveNum;
 
     fn get_agent() -> Agent {
-        let modes = vec![Mode::Constant((0, Utility::new_unchecked(10.)))];
+        let modes = vec![Mode::Constant((
+            MetroId::Integer(0),
+            Utility::new_unchecked(10.),
+        ))];
         let choice_model = ChoiceModel::Deterministic(DeterministicChoiceModel::new(0.0));
         Agent::new(1, modes, Some(choice_model))
     }
@@ -334,9 +337,10 @@ mod tests {
             result
         );
 
-        agent
-            .modes
-            .push(Mode::Constant((1, Utility::new_unchecked(15.))));
+        agent.modes.push(Mode::Constant((
+            MetroId::Integer(1),
+            Utility::new_unchecked(15.),
+        )));
         let result = agent
             .make_pre_day_choice(
                 &Default::default(),

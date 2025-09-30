@@ -25,10 +25,14 @@ fn init_simulation() {
     // Edge 1: 0 -> 2 (tt = 2).
     // Edge 2: 1 -> 3 (tt = 1).
     // Edge 3: 2 -> 3 (tt = 1).
+    let id0 = MetroId::Integer(0);
+    let id1 = MetroId::Integer(1);
+    let id2 = MetroId::Integer(2);
+    let id3 = MetroId::Integer(3);
     let edges = vec![
         (
-            0,
-            1,
+            id0,
+            id1,
             RoadEdge::new(
                 0,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -41,8 +45,8 @@ fn init_simulation() {
             ),
         ),
         (
-            0,
-            2,
+            id0,
+            id2,
             RoadEdge::new(
                 1,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -55,8 +59,8 @@ fn init_simulation() {
             ),
         ),
         (
-            1,
-            3,
+            id1,
+            id3,
             RoadEdge::new(
                 2,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -69,8 +73,8 @@ fn init_simulation() {
             ),
         ),
         (
-            2,
-            3,
+            id2,
+            id3,
             RoadEdge::new(
                 3,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -98,7 +102,7 @@ fn init_simulation() {
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        [0, 1, 3].into_iter().collect(),
+        [id0, id1, id3].into_iter().collect(),
         HashSet::new(),
     );
     let v2 = Vehicle::new(
@@ -107,7 +111,7 @@ fn init_simulation() {
         PCE::ONE,
         SpeedFunction::Base,
         HashSet::new(),
-        [2].into_iter().collect(),
+        [id2].into_iter().collect(),
     );
     // For vehicle type `v3`, only route 0 -> 2 -> 3 is feasible according to allowed edges but
     // only route 0 -> 1 -> 3 is feasible according to restricted edges.
@@ -118,8 +122,8 @@ fn init_simulation() {
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        [0, 1, 3].into_iter().collect(),
-        [1].into_iter().collect(),
+        [id0, id1, id3].into_iter().collect(),
+        [id1].into_iter().collect(),
     );
     let road_network = RoadNetwork::from_edges(edges, vec![v0, v1, v2, v3]);
     let network = Network::new(Some(road_network));
@@ -156,7 +160,7 @@ fn init_simulation() {
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i as usize, vec![Mode::Trip(trip)], None);
+        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 

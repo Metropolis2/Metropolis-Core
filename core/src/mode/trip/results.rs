@@ -187,7 +187,7 @@ impl From<LegTypeResults> for PreDayLegTypeResults {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegResults {
     /// Id of the leg.
-    pub id: usize,
+    pub id: MetroId,
     /// Departure time of the leg.
     pub departure_time: NonNegativeSeconds,
     /// Arrival time of the leg (before the stopping time).
@@ -234,7 +234,7 @@ impl LegResults {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreDayLegResults {
     /// Id of the leg.
-    pub id: usize,
+    pub id: MetroId,
     /// Results specific to the leg's class (road, virtual).
     pub class: PreDayLegTypeResults,
 }

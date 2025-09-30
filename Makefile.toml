@@ -17,22 +17,22 @@ CARGO_MAKE_CRATE_CURRENT_WORKSPACE_MEMBER = ""
 
 [tasks.dev-test-flow]
 dependencies = [
-    "format-flow",
-    "format-toml-conditioned-flow",
-    "pre-build",
-    "clippy-flow",
-    "build",
-    "post-build",
-    "test-flow",
-    "test-examples",
+  "format-flow",
+  "format-toml-conditioned-flow",
+  "pre-build",
+  "clippy-flow",
+  "build",
+  "post-build",
+  "test-flow",
+  "test-examples",
 ]
 
 [tasks.test]
 args = [
-    "test",
-    "--workspace",
-    "@@remove-empty(CARGO_MAKE_CARGO_VERBOSE_FLAGS)",
-    "@@split(CARGO_MAKE_CARGO_BUILD_TEST_FLAGS, )",
+  "test",
+  "--workspace",
+  "@@remove-empty(CARGO_MAKE_CARGO_VERBOSE_FLAGS)",
+  "@@split(CARGO_MAKE_CARGO_BUILD_TEST_FLAGS, )",
 ]
 
 [tasks.setup-release-build-env-vars]
@@ -40,23 +40,23 @@ env.CARGO_MAKE_BINARY_RELEASE_ENV_INSTALL_MUSL = false
 
 [tasks.build-release-for-target]
 args = [
-    "build",
-    "--release",
-    "--workspace",
-    "--target",
-    "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
+  "build",
+  "--release",
+  "--workspace",
+  "--target",
+  "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
 ]
 
 [tasks.build-release-for-target-expire]
 extend = "build-release-for-target"
 args = [
-    "build",
-    "--release",
-    "--workspace",
-    "--target",
-    "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
-    "--features",
-    "expire",
+  "build",
+  "--release",
+  "--workspace",
+  "--target",
+  "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
+  "--features",
+  "expire",
 ]
 
 [tasks.book-flow]
@@ -69,15 +69,15 @@ args = ["build", "book/", "--dest-dir", "book/book"]
 
 [tasks.zip-release-ci-flow]
 dependencies = [
-    "print-env-flow",
-    "clean",
-    "setup-release-build-env",
-    "build-release-for-target",
-    # "docs-flow",
-    # "book-flow",
-    "zip-release-binary-for-target-noexpire",
-    "build-release-for-target-expire",
-    "zip-release-binary-for-target-expire",
+  "print-env-flow",
+  "clean",
+  "setup-release-build-env",
+  "build-release-for-target",
+  # "docs-flow",
+  # "book-flow",
+  "zip-release-binary-for-target-noexpire",
+  "build-release-for-target-expire",
+  "zip-release-binary-for-target-expire",
 ]
 
 [tasks.zip-release-binary-for-target-noexpire]
@@ -91,12 +91,12 @@ run_task = "zip-release-binary-for-target"
 [tasks.zip-release-binary-for-target]
 description = "Zips up the release binary, docs, README, CHANGELOG, and license(s)"
 condition = { env_set = [
-    "CARGO_MAKE_RELEASE_FLOW_TARGET",
-    "CARGO_MAKE_PROJECT_NAME",
-    "CARGO_MAKE_PROJECT_VERSION",
-    "CARGO_MAKE_BINARY_EXECUTABLE_NAMES",
+  "CARGO_MAKE_RELEASE_FLOW_TARGET",
+  "CARGO_MAKE_PROJECT_NAME",
+  "CARGO_MAKE_PROJECT_VERSION",
+  "CARGO_MAKE_BINARY_EXECUTABLE_NAMES",
 ], env_true = [
-    "CARGO_MAKE_CI",
+  "CARGO_MAKE_CI",
 ] }
 env.TARGET_RELEASE_DIRECTORY = "target/${CARGO_MAKE_RELEASE_FLOW_TARGET}/release"
 script = '''
@@ -149,29 +149,29 @@ args = ["test", "--workspace", "--examples"]
 
 [tasks.build-flow]
 dependencies = [
-    "init-build-flow",
-    "pre-clean",
-    "delete-lock",
-    "clean-apidocs",
-    "clean",
-    "post-clean",
-    "format-flow",
-    "format-toml-conditioned-flow",
-    "pre-build",
-    "check-format-ci-flow",
-    "clippy-flow",
-    "build",
-    "post-build",
-    "test-flow",
-    "test-examples",
-    "bench-ci-flow",
-    "pre-verify-project",
-    "verify-project",
-    "post-verify-project",
-    "pre-audit",
-    "audit",
-    "post-audit",
-    "outdated-flow",
-    "docs-flow",
-    "end-build-flow",
+  "init-build-flow",
+  "pre-clean",
+  "delete-lock",
+  "clean-apidocs",
+  "clean",
+  "post-clean",
+  "format-flow",
+  "format-toml-conditioned-flow",
+  "pre-build",
+  "check-format-ci-flow",
+  "clippy-flow",
+  "build",
+  "post-build",
+  "test-flow",
+  "test-examples",
+  "bench-ci-flow",
+  "pre-verify-project",
+  "verify-project",
+  "post-verify-project",
+  "pre-audit",
+  "audit",
+  "post-audit",
+  "outdated-flow",
+  "docs-flow",
+  "end-build-flow",
 ]

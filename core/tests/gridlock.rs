@@ -45,16 +45,20 @@ fn init_simulation() {
             ScheduleUtility::None,
             ScheduleUtility::None,
         );
-        let agent = Agent::new(i, vec![Mode::Trip(trip)], None);
+        let agent = Agent::new(i as i64, vec![Mode::Trip(trip)], None);
         agents.push(agent);
     }
 
     // Create a road network with 4 edges, with infinite capacities, free-flow travel time of 5
     // seconds and length of 5 meters.
+    let id0 = MetroId::Integer(0);
+    let id1 = MetroId::Integer(1);
+    let id2 = MetroId::Integer(2);
+    let id3 = MetroId::Integer(3);
     let edges = vec![
         (
-            0,
-            1,
+            id0,
+            id1,
             RoadEdge::new(
                 0,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -67,8 +71,8 @@ fn init_simulation() {
             ),
         ),
         (
-            1,
-            2,
+            id1,
+            id2,
             RoadEdge::new(
                 1,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -81,8 +85,8 @@ fn init_simulation() {
             ),
         ),
         (
-            2,
-            3,
+            id2,
+            id3,
             RoadEdge::new(
                 2,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -95,8 +99,8 @@ fn init_simulation() {
             ),
         ),
         (
-            3,
-            0,
+            id3,
+            id0,
             RoadEdge::new(
                 3,
                 MetersPerSecond::try_from(1.0).unwrap(),

@@ -41,7 +41,7 @@ parameters = {
 
 agents = pl.DataFrame(
     {
-        "agent_id": [0, 1, 2],
+        "agent_id": ["Alice", "Bob", "Charlie"],
         "alt_choice.type": ["Deterministic", "Deterministic", "Logit"],
         "alt_choice.u": [0.3, 0.6, 0.5],
         "alt_choice.mu": [None, None, 1.0],
@@ -51,8 +51,8 @@ agents = pl.DataFrame(
 
 alts = pl.DataFrame(
     {
-        "agent_id": [0, 1, 1, 1, 2],
-        "alt_id": [0, 0, 1, 2, 0],
+        "agent_id": ["Alice", "Bob", "Bob", "Bob", "Charlie"],
+        "alt_id": ["car_driver", "car_driver", "public_transit", "walking", "car_driver"],
         "origin_delay": [None, 30.0, 0.0, None, None],
         "dt_choice.type": ["Constant", "Continuous", "Continuous", "Continuous", "Discrete"],
         "dt_choice.departure_time": [8.0 * 3600, None, None, None, None],
@@ -86,13 +86,13 @@ alts = pl.DataFrame(
 
 trips = pl.DataFrame(
     {
-        "agent_id": [1, 1, 1, 2, 2],
-        "alt_id": [0, 1, 2, 0, 0],
-        "trip_id": [0, 1, 2, 3, 4],
+        "agent_id": ["Bob", "Bob", "Bob", "Charlie", "Charlie"],
+        "alt_id": ["car_driver", "public_transit", "walking", "car_driver", "car_driver"],
+        "trip_id": ["-1", "0", "1", "start", "end"],
         "class.type": ["Road", "Virtual", "Virtual", "Road", "Road"],
         "class.origin": [1, None, None, 1, 3],
         "class.destination": [4, None, None, 3, 4],
-        "class.vehicle": [1, None, None, 2, 3],
+        "class.vehicle": ["car", None, None, "truck", "motorcycle"],
         "class.route": [[1, 2, 3], None, None, None, None],
         "class.travel_time": [None, 5.0 * 60.0, 7.0 * 60.0, None, None],
         "stopping_time": [None, None, None, 5.0 * 60.0, None],
@@ -132,7 +132,7 @@ edges = pl.DataFrame(
 
 vehicles = pl.DataFrame(
     {
-        "vehicle_id": [1, 2, 3, 4],
+        "vehicle_id": ["car", "truck", "motorcycle", "restricted_car"],
         "headway": [8.0, 24.0, 0.0, 8.0],
         "pce": [None, 3.0, 0.1, 1.0],
         "speed_function.type": [None, "UpperBound", "Multiplicator", "Piecewise"],
@@ -169,7 +169,7 @@ tts = (
 )
 edge_ttfs = pl.DataFrame(
     {
-        "vehicle_id": [2] * n * 3,
+        "vehicle_id": ["truck"] * n * 3,
         "edge_id": [1] * n + [2] * n + [3] * n,
         "departure_time": ttf_intervals * 3,
         "travel_time": tts,

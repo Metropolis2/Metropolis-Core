@@ -11,9 +11,6 @@ use num_traits::ConstZero;
 use super::OriginalEdgeId;
 use crate::units::*;
 
-/// Identifier of the vehicles as given by the user.
-pub(crate) type OriginalVehicleId = u64;
-
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SpeedFunction {
@@ -138,7 +135,7 @@ impl SpeedFunction {
 #[derive(Clone, Debug)]
 pub struct Vehicle {
     /// Identifier of the vehicle.
-    pub(crate) id: OriginalVehicleId,
+    pub(crate) id: MetroId,
     /// Headway length of the vehicle, used to compute vehicle density on the edges.
     pub(crate) headway: NonNegativeMeters,
     /// Passenger car equivalent of the vehicle, used to compute bottleneck flow.
@@ -156,7 +153,7 @@ pub struct Vehicle {
 impl Vehicle {
     /// Creates a new vehicle with a given headway, [PCE] and [SpeedFunction].
     pub const fn new(
-        id: OriginalVehicleId,
+        id: i64,
         headway: NonNegativeMeters,
         pce: PCE,
         speed_function: SpeedFunction,
@@ -164,7 +161,7 @@ impl Vehicle {
         restricted_edges: HashSet<OriginalEdgeId>,
     ) -> Self {
         Vehicle {
-            id,
+            id: MetroId::Integer(id),
             headway,
             pce,
             speed_function,
@@ -188,7 +185,7 @@ impl Vehicle {
 impl Vehicle {
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
-        id: OriginalVehicleId,
+        id: MetroId,
         headway: Option<f64>,
         pce: Option<f64>,
         speed_function_type: Option<&str>,
@@ -196,9 +193,9 @@ impl Vehicle {
         speed_function_coef: Option<f64>,
         speed_function_x: Option<Vec<f64>>,
         speed_function_y: Option<Vec<f64>>,
-        allowed_edges: Option<Vec<u64>>,
-        restricted_edges: Option<Vec<u64>>,
-        edge_ids: &HashSet<u64>,
+        allowed_edges: Option<Vec<OriginalEdgeId>>,
+        restricted_edges: Option<Vec<OriginalEdgeId>>,
+        edge_ids: &HashSet<OriginalEdgeId>,
     ) -> Result<Self> {
         let headway = NonNegativeMeters::try_from(
             headway.ok_or_else(|| anyhow!("Value `headway` is mandatory"))?,
@@ -217,11 +214,12 @@ impl Vehicle {
             speed_function_y,
         )
         .context("Failed to create speed function")?;
-        let allowed_edges: HashSet<u64> = allowed_edges.unwrap_or_default().into_iter().collect();
+        let allowed_edges: HashSet<OriginalEdgeId> =
+            allowed_edges.unwrap_or_default().into_iter().collect();
         if allowed_edges.difference(edge_ids).next().is_some() {
             bail!("The values in `allowed_edges` must be valid edge ids");
         }
-        let restricted_edges: HashSet<u64> =
+        let restricted_edges: HashSet<OriginalEdgeId> =
             restricted_edges.unwrap_or_default().into_iter().collect();
         if restricted_edges.difference(edge_ids).next().is_some() {
             bail!("The values in `restricted_edges` must be valid edge ids");

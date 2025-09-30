@@ -12,10 +12,10 @@ use num_traits::ConstZero;
 use rayon::prelude::*;
 
 use super::skim::EAAllocation;
-use super::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
+use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{AnySeconds, OriginalNodeId};
 use crate::mode::Mode;
-use crate::units::NonNegativeSeconds;
+use crate::units::{MetroId, NonNegativeSeconds};
 
 // Threshold used to consider a node as a popular origin or destination (see
 // [ODPairsStruct::popular_origins_and_destinations]).
@@ -46,9 +46,9 @@ pub const fn unique_vehicle_index(x: usize) -> UniqueVehicleIndex {
 #[derive(Clone, Debug)]
 pub(crate) struct UniqueVehicles {
     /// Index in the road network's vehicle list of the reference unique vehicles.
-    list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)>,
+    list: Vec<(VehicleIndex, Vec<MetroId>)>,
     /// Map each original vehicle id to the index of their reference unique vehicle.
-    vehicle_map: HashMap<OriginalVehicleId, UniqueVehicleIndex>,
+    vehicle_map: HashMap<MetroId, UniqueVehicleIndex>,
 }
 
 impl UniqueVehicles {
@@ -59,7 +59,7 @@ impl UniqueVehicles {
     }
 
     fn init_inner(vehicles: &[Vehicle]) -> Self {
-        let mut list: Vec<(VehicleIndex, Vec<OriginalVehicleId>)> = Vec::new();
+        let mut list: Vec<(VehicleIndex, Vec<MetroId>)> = Vec::new();
         let mut vehicle_map = HashMap::with_capacity(vehicles.len());
         for (vehicle_idx, vehicle) in vehicles.iter().enumerate() {
             if let Some(uid) = list
@@ -94,17 +94,17 @@ impl UniqueVehicles {
             .map(|(i, (v_id, _))| (unique_vehicle_index(i), &vehicles[v_id.index()]))
     }
 
-    /// Iterates over the [OriginalVehicleId] in each unique vehicle category.
-    pub(crate) fn iter_original_ids(&self) -> impl Iterator<Item = &[OriginalVehicleId]> {
+    /// Iterates over the [MetroId] in each unique vehicle category.
+    pub(crate) fn iter_original_ids(&self) -> impl Iterator<Item = &[MetroId]> {
         self.list
             .iter()
             .map(|(_, vehicle_ids)| vehicle_ids.as_slice())
     }
 }
 
-impl Index<OriginalVehicleId> for UniqueVehicles {
+impl Index<MetroId> for UniqueVehicles {
     type Output = UniqueVehicleIndex;
-    fn index(&self, id: OriginalVehicleId) -> &Self::Output {
+    fn index(&self, id: MetroId) -> &Self::Output {
         &self.vehicle_map[&id]
     }
 }
@@ -128,10 +128,10 @@ impl RoadNetworkPreprocessingData {
         self.unique_vehicles.len()
     }
 
-    /// Returns the [UniqueVehicleIndex] corresponding to the given [OriginalVehicleId].
+    /// Returns the [UniqueVehicleIndex] corresponding to the given [MetroId].
     ///
-    /// *Panics* if the given [OriginalVehicleId] is not in the [RoadNetworkPreprocessingData].
-    pub fn get_unique_vehicle_index(&self, id: OriginalVehicleId) -> UniqueVehicleIndex {
+    /// *Panics* if the given [MetroId] is not in the [RoadNetworkPreprocessingData].
+    pub fn get_unique_vehicle_index(&self, id: MetroId) -> UniqueVehicleIndex {
         self.unique_vehicles.vehicle_map[&id]
     }
 
@@ -474,6 +474,9 @@ mod tests {
 
     #[test]
     fn preprocess_vehicles_test() {
+        let id1 = MetroId::Integer(1);
+        let id2 = MetroId::Integer(2);
+        let id3 = MetroId::Integer(3);
         // Create three vehicles.
         // - Vehicles 0 and 1 are identical except for Length and PCE.
         // - Vehicles 0 and 2 are identical except for allowed / restricted edges.
@@ -497,7 +500,7 @@ mod tests {
             PCE::new_unchecked(1.0),
             speed_function.clone(),
             HashSet::new(),
-            [2].into_iter().collect(),
+            [id2].into_iter().collect(),
         );
         let v1 = Vehicle::new(
             2,
@@ -505,24 +508,27 @@ mod tests {
             PCE::new_unchecked(3.0),
             speed_function.clone(),
             HashSet::new(),
-            [2].into_iter().collect(),
+            [id2].into_iter().collect(),
         );
         let v2 = Vehicle::new(
             3,
             NonNegativeMeters::new_unchecked(10.0),
             PCE::new_unchecked(1.0),
             speed_function,
-            [0, 1].into_iter().collect(),
+            [id1, id1].into_iter().collect(),
             HashSet::new(),
         );
         let vehicles = vec![v0, v1, v2];
         let results = UniqueVehicles::init_inner(&vehicles);
         assert_eq!(
             results.list,
-            vec![(vehicle_index(0), vec![1, 2]), (vehicle_index(2), vec![3])]
+            vec![
+                (vehicle_index(0), vec![id1, id2]),
+                (vehicle_index(2), vec![id3])
+            ]
         );
-        assert_eq!(results.vehicle_map[&1], unique_vehicle_index(0));
-        assert_eq!(results.vehicle_map[&2], unique_vehicle_index(0));
-        assert_eq!(results.vehicle_map[&3], unique_vehicle_index(1));
+        assert_eq!(results.vehicle_map[&id1], unique_vehicle_index(0));
+        assert_eq!(results.vehicle_map[&id2], unique_vehicle_index(0));
+        assert_eq!(results.vehicle_map[&id3], unique_vehicle_index(1));
     }
 }

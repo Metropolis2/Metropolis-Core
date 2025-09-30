@@ -31,8 +31,8 @@ fn init_simulation() {
     // Edge 1: 2 -> 3 (free-flow tt: 2).
     let edges = vec![
         (
-            0,
-            1,
+            MetroId::Integer(0),
+            MetroId::Integer(1),
             RoadEdge::new(
                 0,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -45,8 +45,8 @@ fn init_simulation() {
             ),
         ),
         (
-            2,
-            3,
+            MetroId::Integer(2),
+            MetroId::Integer(3),
             RoadEdge::new(
                 1,
                 MetersPerSecond::try_from(1.0).unwrap(),
@@ -229,7 +229,7 @@ fn legs_test() {
     //
     // Total utility = -250.9.
     let leg0_results = LegResults {
-        id: 1,
+        id: MetroId::Integer(1),
         departure_time: NonNegativeSeconds::try_from(3.0).unwrap(),
         arrival_time: NonNegativeSeconds::try_from(4.0).unwrap(),
         travel_utility: Utility::try_from(1.0).unwrap(),
@@ -238,7 +238,7 @@ fn legs_test() {
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
-                edge: 0,
+                edge: MetroId::Integer(0),
                 entry_time: NonNegativeSeconds::try_from(3.0).unwrap(),
             }],
             road_time: NonNegativeSeconds::try_from(1.0).unwrap(),
@@ -254,7 +254,7 @@ fn legs_test() {
         }),
     };
     let leg1_results = LegResults {
-        id: 2,
+        id: MetroId::Integer(2),
         departure_time: NonNegativeSeconds::try_from(6.0).unwrap(),
         arrival_time: NonNegativeSeconds::try_from(12.0).unwrap(),
         travel_utility: Utility::try_from(-6.0).unwrap(),
@@ -263,7 +263,7 @@ fn legs_test() {
         class: LegTypeResults::Virtual,
     };
     let leg2_results = LegResults {
-        id: 3,
+        id: MetroId::Integer(3),
         departure_time: NonNegativeSeconds::try_from(13.0).unwrap(),
         arrival_time: NonNegativeSeconds::try_from(17.0).unwrap(),
         travel_utility: Utility::try_from(5.0).unwrap(),
@@ -272,7 +272,7 @@ fn legs_test() {
         class: LegTypeResults::Road(RoadLegResults {
             expected_route: None,
             route: vec![RoadEvent {
-                edge: 1,
+                edge: MetroId::Integer(1),
                 entry_time: NonNegativeSeconds::try_from(13.0).unwrap(),
             }],
             road_time: NonNegativeSeconds::try_from(4.0).unwrap(),
@@ -288,7 +288,7 @@ fn legs_test() {
         }),
     };
     let leg3_results = LegResults {
-        id: 4,
+        id: MetroId::Integer(4),
         departure_time: NonNegativeSeconds::try_from(18.0).unwrap(),
         arrival_time: NonNegativeSeconds::try_from(18.0).unwrap(),
         travel_utility: Utility::try_from(0.0).unwrap(),
@@ -310,8 +310,8 @@ fn legs_test() {
         }),
     };
     let expected_agent_results = AgentResult::new(
-        0,
-        1,
+        MetroId::Integer(0),
+        MetroId::Integer(1),
         mode_index(0),
         Utility::try_from(-250.9).unwrap(),
         ModeResults::Trip(TripResults {

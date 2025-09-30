@@ -21,7 +21,6 @@ use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
 use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
-use crate::network::road_network::vehicle::OriginalVehicleId;
 use crate::network::road_network::{
     OriginalEdgeId, OriginalNodeId, RoadNetworkPreprocessingData, RoadNetworkWeights,
 };
@@ -40,7 +39,7 @@ const NB_INTERVALS: usize = 1500;
 #[derive(Clone, Debug)]
 pub struct Leg {
     /// Id used when writing the results of the leg.
-    pub(crate) id: usize,
+    pub(crate) id: MetroId,
     /// Type of the leg (road or virtual).
     pub(crate) class: LegType,
     /// Time spent at the stopping point of the leg, before starting the next leg (if any).
@@ -55,14 +54,14 @@ pub struct Leg {
 impl Leg {
     /// Creates a new [Leg].
     pub fn new(
-        id: usize,
+        id: i64,
         class: LegType,
         stopping_time: NonNegativeSeconds,
         travel_utility: TravelUtility,
         schedule_utility: ScheduleUtility,
     ) -> Self {
         Self {
-            id,
+            id: MetroId::from(id),
             class,
             stopping_time,
             travel_utility,
@@ -75,12 +74,12 @@ impl Leg {
     /// Returns an error if some values are invalid.
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
-        id: usize,
+        id: MetroId,
         class_type: Option<&str>,
-        class_origin: Option<u64>,
-        class_destination: Option<u64>,
-        class_vehicle: Option<u64>,
-        class_route: Option<Vec<u64>>,
+        class_origin: Option<OriginalNodeId>,
+        class_destination: Option<OriginalNodeId>,
+        class_vehicle: Option<MetroId>,
+        class_route: Option<Vec<OriginalEdgeId>>,
         class_travel_time: Option<f64>,
         stopping_time: Option<f64>,
         constant_utility: Option<f64>,
@@ -239,7 +238,7 @@ pub struct RoadLeg {
     /// Destination node of the leg.
     pub(crate) destination: OriginalNodeId,
     /// Vehicle used for the leg.
-    pub(crate) vehicle: OriginalVehicleId,
+    pub(crate) vehicle: MetroId,
     /// Route to be followed by the vehicle to connect `origin` to `destination`.
     ///
     /// If `None`, the fastest route is chosen.
@@ -248,15 +247,11 @@ pub struct RoadLeg {
 
 impl RoadLeg {
     /// Creates a new [RoadLeg].
-    pub fn new(
-        origin: OriginalNodeId,
-        destination: OriginalNodeId,
-        vehicle: OriginalVehicleId,
-    ) -> Self {
+    pub fn new(origin: i64, destination: i64, vehicle: i64) -> Self {
         Self {
-            origin,
-            destination,
-            vehicle,
+            origin: MetroId::Integer(origin),
+            destination: MetroId::Integer(destination),
+            vehicle: MetroId::Integer(vehicle),
             route: None,
         }
     }
@@ -299,7 +294,7 @@ impl RoadLeg {
 #[derive(Clone, Debug)]
 pub struct TravelingMode {
     /// Id of the mode, used in the output.
-    pub(crate) id: usize,
+    pub(crate) id: MetroId,
     /// The legs of the trips.
     ///
     /// The full trip consists realizing this legs one after the other.
@@ -326,7 +321,7 @@ pub struct TravelingMode {
 impl TravelingMode {
     /// Creates a new [TravelingMode].
     pub fn new(
-        id: usize,
+        id: i64,
         legs: Vec<Leg>,
         origin_delay: NonNegativeSeconds,
         departure_time_model: DepartureTimeModel,
@@ -335,7 +330,7 @@ impl TravelingMode {
         destination_schedule_utility: ScheduleUtility,
     ) -> Self {
         Self {
-            id,
+            id: MetroId::from(id),
             legs,
             origin_delay,
             departure_time_model,
@@ -396,7 +391,7 @@ impl TravelingMode {
     /// Returns an error if some values are invalid.
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(
-        id: usize,
+        id: MetroId,
         origin_delay: Option<f64>,
         dt_choice_type: Option<&str>,
         dt_choice_departure_time: Option<f64>,

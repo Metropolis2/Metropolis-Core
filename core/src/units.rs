@@ -23,11 +23,69 @@ use std::iter;
 use std::ops::*;
 
 use anyhow::{bail, Result};
+use arrayvec::ArrayString;
+use enum_as_inner::EnumAsInner;
 use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
 const MARGIN: f64 = 1e-8;
+
+/// Representation of an Identifier that can be either integer or string.
+#[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
+pub enum MetroId {
+    /// Id represented as an unsigned integer.
+    Unsigned(u64),
+    /// Id represented as an integer.
+    Integer(i64),
+    /// Id represented as String (16 bytes max).
+    Arbitrary(ArrayString<16>),
+}
+
+impl Default for MetroId {
+    fn default() -> Self {
+        Self::Unsigned(0)
+    }
+}
+
+impl From<u64> for MetroId {
+    fn from(value: u64) -> Self {
+        Self::Unsigned(value)
+    }
+}
+
+impl From<i64> for MetroId {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl TryFrom<&str> for MetroId {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> Result<Self> {
+        let mut arraystr = ArrayString::new();
+        arraystr.push_str(value);
+        Ok(Self::Arbitrary(arraystr))
+    }
+}
+
+impl fmt::Display for MetroId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsigned(i) => {
+                write!(f, "{}", i)
+            }
+            Self::Integer(i) => {
+                write!(f, "{}", i)
+            }
+            Self::Arbitrary(s) => {
+                write!(f, "{}", s)
+            }
+        }
+    }
+}
+
+impl Eq for MetroId {}
 
 pub(crate) trait MetroPositiveNum:
     Sized

@@ -11,7 +11,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, BooleanBuilder, Float64Array,
-    Float64Builder, ListArray, StringArray, StructArray, UInt64Array, UInt64Builder,
+    Float64Builder, Int64Array, Int64Builder, ListArray, StringArray, StringBuilder, StructArray,
+    UInt64Array, UInt64Builder,
 };
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::datatypes::{DataType, Field, FieldRef, Schema};
@@ -24,7 +25,7 @@ use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
 use crate::mode::trip::Leg;
 use crate::mode::{Mode, ModeResults, PreDayModeResults};
 use crate::network::road_network::preprocess::UniqueVehicles;
-use crate::network::road_network::vehicle::{OriginalVehicleId, Vehicle};
+use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::{OriginalEdgeId, RoadEdge, RoadNetwork, RoadNetworkWeights};
 use crate::network::NetworkWeights;
 use crate::population::Agent;
@@ -166,6 +167,69 @@ macro_rules! get_column {
     };
 }
 
+enum IdArray {
+    Unsigned(UInt64Array),
+    Integer(Int64Array),
+    Arbitrary(StringArray),
+}
+
+/// Macro to get a column by name from an array and cast it to u64 or i64 if possible and Utf8
+/// otherwise.
+macro_rules! get_id_column {
+    ([$($name:literal),+] in $array:ident) => {
+        {
+            let column = get_column(&$array, &[$($name),+])
+                .unwrap_or_else(|| new_null_array(&DataType::UInt64, $array.len()));
+            let uint_column_res = cast_column(&column, &DataType::UInt64, &[$($name),+]);
+            if let Ok(uint_column) = uint_column_res {
+                    IdArray::Unsigned(uint_column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+            } else {
+                let int_column_res = cast_column(&column, &DataType::Int64, &[$($name),+]);
+                if let Ok(int_column) = int_column_res {
+                    IdArray::Integer(int_column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
+                } else {
+                    let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
+                    IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())
+                }
+            }
+        }
+    };
+}
+
+enum IdListArray {
+    /// ListArray filled with UInt64 values.
+    Unsigned(ListArray),
+    /// ListArray filled with Int64 values.
+    Integer(ListArray),
+    /// ListArray filled with Utf8 values.
+    Arbitrary(ListArray),
+}
+
+/// Macro to get a column by name from an array and cast it to list of MetroId.
+macro_rules! get_id_list_column {
+    ([$($name:literal),+] in $array:ident) => {
+        {
+            let u64listdtype = DataType::new_list(DataType::UInt64, false);
+            let column = get_column(&$array, &[$($name),+])
+                .unwrap_or_else(|| new_null_array(&u64listdtype, $array.len()));
+            let uint_column_res = cast_column(&column, &u64listdtype, &[$($name),+]);
+            if let Ok(uint_column) = uint_column_res {
+                IdListArray::Unsigned(uint_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+            } else {
+                let i64listdtype = DataType::new_list(DataType::Int64, false);
+                let int_column_res = cast_column(&column, &i64listdtype, &[$($name),+]);
+                if let Ok(int_column) = int_column_res {
+                    IdListArray::Integer(int_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                } else {
+                    let strlistdtype = DataType::new_list(DataType::Utf8, false);
+                    let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
+                    IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                }
+            }
+        }
+    };
+}
+
 macro_rules! type_to_dtype {
     (u64) => {
         DataType::UInt64
@@ -244,8 +308,66 @@ macro_rules! get_list_values {
     };
 }
 
-type LegMap = HashMap<(usize, usize), Vec<Leg>>;
-type AltMap = HashMap<usize, Vec<Mode>>;
+/// Macro to get a MetroId value at a given position from an array, or `None` if the value is
+/// `null`.
+macro_rules! get_id_value {
+    ($array:ident[$i:ident]) => {
+        match &$array {
+            IdArray::Unsigned(uint_array) => get_value!(uint_array[$i]).map(MetroId::from),
+            IdArray::Integer(int_array) => get_value!(int_array[$i]).map(MetroId::from),
+            IdArray::Arbitrary(str_array) => get_value!(str_array[$i])
+                .map(MetroId::try_from)
+                .transpose()?,
+        }
+    };
+}
+
+/// Macro to get a MetroId Vec at a given position from a list array, or `None` if the value is
+/// `null`.
+macro_rules! get_id_list_values {
+    ($array:ident[$i:ident]) => {
+        match &$array {
+            IdListArray::Unsigned(list_array) => {
+                if list_array.is_null($i) {
+                    None
+                } else {
+                    let list = list_array.value($i);
+                    let list = list.as_any().downcast_ref::<UInt64Array>().unwrap();
+                    let values: Option<Vec<MetroId>> =
+                        list.iter().map(|v| v.map(MetroId::from)).collect();
+                    values
+                }
+            }
+            IdListArray::Integer(list_array) => {
+                if list_array.is_null($i) {
+                    None
+                } else {
+                    let list = list_array.value($i);
+                    let list = list.as_any().downcast_ref::<Int64Array>().unwrap();
+                    let values: Option<Vec<MetroId>> =
+                        list.iter().map(|v| v.map(MetroId::from)).collect();
+                    values
+                }
+            }
+            IdListArray::Arbitrary(list_array) => {
+                if list_array.is_null($i) {
+                    None
+                } else {
+                    let list = list_array.value($i);
+                    let list = list.as_any().downcast_ref::<StringArray>().unwrap();
+                    let values: Option<Vec<MetroId>> = list
+                        .iter()
+                        .map(|v| v.map(MetroId::try_from).transpose())
+                        .collect::<Result<_>>()?;
+                    values
+                }
+            }
+        }
+    };
+}
+
+type LegMap = HashMap<(MetroId, MetroId), Vec<Leg>>;
+type AltMap = HashMap<MetroId, Vec<Mode>>;
 
 const TRIP_COLUMNS: [&str; 21] = [
     "agent_id",
@@ -275,14 +397,14 @@ const TRIP_COLUMNS: [&str; 21] = [
 pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &TRIP_COLUMNS);
-    let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
-    let alt_id_values = get_column!(["alt_id"] in struct_array as u64);
-    let trip_id_values = get_column!(["trip_id"] in struct_array as u64);
+    let agent_id_values = get_id_column!(["agent_id"] in struct_array);
+    let alt_id_values = get_id_column!(["alt_id"] in struct_array);
+    let trip_id_values = get_id_column!(["trip_id"] in struct_array);
     let class_type_values = get_column!(["class", "type"] in struct_array as str);
-    let class_origin_values = get_column!(["class", "origin"] in struct_array as u64);
-    let class_destination_values = get_column!(["class", "destination"] in struct_array as u64);
-    let class_vehicle_values = get_column!(["class", "vehicle"] in struct_array as u64);
-    let class_route_values = get_column!(["class", "route"] in struct_array as List of u64);
+    let class_origin_values = get_id_column!(["class", "origin"] in struct_array);
+    let class_destination_values = get_id_column!(["class", "destination"] in struct_array);
+    let class_vehicle_values = get_id_column!(["class", "vehicle"] in struct_array);
+    let class_route_values = get_id_list_column!(["class", "route"] in struct_array);
     let class_travel_time_values = get_column!(["class", "travel_time"] in struct_array as f64);
     let stopping_time_values = get_column!(["stopping_time"] in struct_array as f64);
     let constant_utility_values = get_column!(["constant_utility"] in struct_array as f64);
@@ -306,14 +428,14 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     let mut trips: LegMap = HashMap::with_capacity(n);
     let mut unique_tuples = HashSet::with_capacity(n);
     for i in 0..n {
-        let agent_id = get_value!(agent_id_values[i]);
-        let alt_id = get_value!(alt_id_values[i]);
-        let trip_id = get_value!(trip_id_values[i]);
+        let agent_id = get_id_value!(agent_id_values[i]);
+        let alt_id = get_id_value!(alt_id_values[i]);
+        let trip_id = get_id_value!(trip_id_values[i]);
         let class_type = get_value!(class_type_values[i]);
-        let class_origin = get_value!(class_origin_values[i]);
-        let class_destination = get_value!(class_destination_values[i]);
-        let class_vehicle = get_value!(class_vehicle_values[i]);
-        let class_route = get_list_values!(class_route_values[i] as u64);
+        let class_origin = get_id_value!(class_origin_values[i]);
+        let class_destination = get_id_value!(class_destination_values[i]);
+        let class_vehicle = get_id_value!(class_vehicle_values[i]);
+        let class_route = get_id_list_values!(class_route_values[i]);
         let class_travel_time = get_value!(class_travel_time_values[i]);
         let stopping_time = get_value!(stopping_time_values[i]);
         let constant_utility = get_value!(constant_utility_values[i]);
@@ -327,15 +449,9 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
         let schedule_utility_beta = get_value!(schedule_utility_beta_values[i]);
         let schedule_utility_gamma = get_value!(schedule_utility_gamma_values[i]);
         let schedule_utility_delta = get_value!(schedule_utility_delta_values[i]);
-        let agent_id = agent_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
-        let alt_id = alt_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `alt_id` is mandatory"))?;
-        let trip_id = trip_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `trip_id` is mandatory"))?;
+        let agent_id = agent_id.ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
+        let alt_id = alt_id.ok_or_else(|| anyhow!("Value `alt_id` is mandatory"))?;
+        let trip_id = trip_id.ok_or_else(|| anyhow!("Value `trip_id` is mandatory"))?;
         let trip = Leg::from_values(
             trip_id,
             class_type,
@@ -409,8 +525,8 @@ const ALTERNATIVE_COLUMNS: [&str; 29] = [
 pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result<AltMap> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &ALTERNATIVE_COLUMNS);
-    let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
-    let alt_id_values = get_column!(["alt_id"] in struct_array as u64);
+    let agent_id_values = get_id_column!(["agent_id"] in struct_array);
+    let alt_id_values = get_id_column!(["alt_id"] in struct_array);
     let origin_delay_values = get_column!(["origin_delay"] in struct_array as f64);
     let dt_choice_type_values = get_column!(["dt_choice", "type"] in struct_array as str);
     let dt_choice_departure_time_values =
@@ -459,8 +575,8 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
     let mut alternatives: AltMap = HashMap::with_capacity(n);
     let mut unique_pairs = HashSet::with_capacity(n);
     for i in 0..n {
-        let agent_id = get_value!(agent_id_values[i]);
-        let alt_id = get_value!(alt_id_values[i]);
+        let agent_id = get_id_value!(agent_id_values[i]);
+        let alt_id = get_id_value!(alt_id_values[i]);
         let origin_delay = get_value!(origin_delay_values[i]);
         let dt_choice_type = get_value!(dt_choice_type_values[i]);
         let dt_choice_departure_time = get_value!(dt_choice_departure_time_values[i]);
@@ -489,12 +605,8 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
         let destination_utility_gamma = get_value!(destination_utility_gamma_values[i]);
         let destination_utility_delta = get_value!(destination_utility_delta_values[i]);
         let pre_compute_route = get_value!(pre_compute_route_values[i]);
-        let agent_id = agent_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
-        let alt_id = alt_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `alt_id` is mandatory"))?;
+        let agent_id = agent_id.ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
+        let alt_id = alt_id.ok_or_else(|| anyhow!("Value `alt_id` is mandatory"))?;
         let legs = trips.remove(&(agent_id, alt_id));
         let alt = Mode::from_values(
             alt_id,
@@ -553,7 +665,7 @@ const AGENT_COLUMNS: [&str; 5] = [
 pub(crate) fn read_agents(batch: RecordBatch, mut alternatives: AltMap) -> Result<Vec<Agent>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &AGENT_COLUMNS);
-    let agent_id_values = get_column!(["agent_id"] in struct_array as u64);
+    let agent_id_values = get_id_column!(["agent_id"] in struct_array);
     let alt_choice_type_values = get_column!(["alt_choice", "type"] in struct_array as str);
     let alt_choice_u_values = get_column!(["alt_choice", "u"] in struct_array as f64);
     let alt_choice_mu_values = get_column!(["alt_choice", "mu"] in struct_array as f64);
@@ -563,14 +675,12 @@ pub(crate) fn read_agents(batch: RecordBatch, mut alternatives: AltMap) -> Resul
     let mut agents = Vec::with_capacity(n);
     let mut unique_agent_ids = HashSet::with_capacity(n);
     for i in 0..n {
-        let agent_id = get_value!(agent_id_values[i]);
+        let agent_id = get_id_value!(agent_id_values[i]);
         let alt_choice_type = get_value!(alt_choice_type_values[i]);
         let alt_choice_u = get_value!(alt_choice_u_values[i]);
         let alt_choice_mu = get_value!(alt_choice_mu_values[i]);
         let alt_choice_constants = get_list_values!(alt_choice_constants_values[i] as f64);
-        let agent_id = agent_id
-            .map(|id| id as usize)
-            .ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
+        let agent_id = agent_id.ok_or_else(|| anyhow!("Value `agent_id` is mandatory"))?;
         if !unique_agent_ids.insert(agent_id) {
             // agent_id value was already inserted.
             bail!("Found duplicate `agent_id`: {agent_id}",);
@@ -608,16 +718,16 @@ const EDGE_COLUMNS: [&str; 15] = [
     "overtaking",
 ];
 
-type EdgeVec = Vec<(u64, u64, RoadEdge)>;
+type EdgeVec = Vec<(OriginalEdgeId, OriginalEdgeId, RoadEdge)>;
 
 /// Reads an arrow `RecordBatch` with edges data and returns a `Vec` of `RoadEdge` and a `HashSet`
 /// of unique edge ids.
-pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<u64>)> {
+pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &EDGE_COLUMNS);
-    let edge_id_values = get_column!(["edge_id"] in struct_array as u64);
-    let source_values = get_column!(["source"] in struct_array as u64);
-    let target_values = get_column!(["target"] in struct_array as u64);
+    let edge_id_values = get_id_column!(["edge_id"] in struct_array);
+    let source_values = get_id_column!(["source"] in struct_array);
+    let target_values = get_id_column!(["target"] in struct_array);
     let speed_values = get_column!(["speed"] in struct_array as f64);
     let length_values = get_column!(["length"] in struct_array as f64);
     let lanes_values = get_column!(["lanes"] in struct_array as f64);
@@ -638,9 +748,9 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<u64>)> 
     let mut edges = Vec::with_capacity(n);
     let mut unique_ids = HashSet::with_capacity(n);
     for i in 0..n {
-        let edge_id = get_value!(edge_id_values[i]);
-        let source = get_value!(source_values[i]);
-        let target = get_value!(target_values[i]);
+        let edge_id = get_id_value!(edge_id_values[i]);
+        let source = get_id_value!(source_values[i]);
+        let target = get_id_value!(target_values[i]);
         let speed = get_value!(speed_values[i]);
         let length = get_value!(length_values[i]);
         let lanes = get_value!(lanes_values[i]);
@@ -694,10 +804,13 @@ const VEHICLE_COLUMNS: [&str; 10] = [
 ];
 
 /// Reads an arrow `RecordBatch` with vehicles data and returns a `Vec` of `Vehicle`.
-pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Result<Vec<Vehicle>> {
+pub(crate) fn read_vehicles(
+    batch: RecordBatch,
+    edge_ids: HashSet<MetroId>,
+) -> Result<Vec<Vehicle>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &VEHICLE_COLUMNS);
-    let vehicle_id_values = get_column!(["vehicle_id"] in struct_array as u64);
+    let vehicle_id_values = get_id_column!(["vehicle_id"] in struct_array);
     let headway_values = get_column!(["headway"] in struct_array as f64);
     let pce_values = get_column!(["pce"] in struct_array as f64);
     let speed_function_type_values = get_column!(["speed_function", "type"] in struct_array as str);
@@ -708,13 +821,13 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
         get_column!(["speed_function", "x"] in struct_array as List of f64);
     let speed_function_y_values =
         get_column!(["speed_function", "y"] in struct_array as List of f64);
-    let allowed_edges_values = get_column!(["allowed_edges"] in struct_array as List of u64);
-    let restricted_edges_values = get_column!(["restricted_edges"] in struct_array as List of u64);
+    let allowed_edges_values = get_id_list_column!(["allowed_edges"] in struct_array);
+    let restricted_edges_values = get_id_list_column!(["restricted_edges"] in struct_array);
     let n = struct_array.len();
     let mut vehicles = Vec::with_capacity(n);
     let mut unique_ids = HashSet::with_capacity(n);
     for i in 0..n {
-        let vehicle_id = get_value!(vehicle_id_values[i]);
+        let vehicle_id = get_id_value!(vehicle_id_values[i]);
         let headway = get_value!(headway_values[i]);
         let pce = get_value!(pce_values[i]);
         let speed_function_type = get_value!(speed_function_type_values[i]);
@@ -722,8 +835,8 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
         let speed_function_coef = get_value!(speed_function_coef_values[i]);
         let speed_function_x = get_list_values!(speed_function_x_values[i] as f64);
         let speed_function_y = get_list_values!(speed_function_y_values[i] as f64);
-        let allowed_edges = get_list_values!(allowed_edges_values[i] as u64);
-        let restricted_edges = get_list_values!(restricted_edges_values[i] as u64);
+        let allowed_edges = get_id_list_values!(allowed_edges_values[i]);
+        let restricted_edges = get_id_list_values!(restricted_edges_values[i]);
         let vehicle_id = vehicle_id.ok_or_else(|| anyhow!("Value `vehicle_id` is mandatory"))?;
         let vehicle = Vehicle::from_values(
             vehicle_id,
@@ -750,7 +863,7 @@ pub(crate) fn read_vehicles(batch: RecordBatch, edge_ids: HashSet<u64>) -> Resul
 const RN_WEIGHTS_COLUMNS: [&str; 4] = ["vehicle_id", "edge_id", "departure_time", "travel_time"];
 
 type RnWeightsVec = Vec<(
-    OriginalVehicleId,
+    MetroId,
     OriginalEdgeId,
     NonNegativeSeconds,
     NonNegativeSeconds,
@@ -760,15 +873,15 @@ type RnWeightsVec = Vec<(
 pub(crate) fn read_rn_weights(batch: RecordBatch) -> Result<RnWeightsVec> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &RN_WEIGHTS_COLUMNS);
-    let vehicle_id_values = get_column!(["vehicle_id"] in struct_array as u64);
-    let edge_id_values = get_column!(["edge_id"] in struct_array as u64);
+    let vehicle_id_values = get_id_column!(["vehicle_id"] in struct_array);
+    let edge_id_values = get_id_column!(["edge_id"] in struct_array);
     let departure_time_values = get_column!(["departure_time"] in struct_array as f64);
     let travel_time_values = get_column!(["travel_time"] in struct_array as f64);
     let n = struct_array.len();
     let mut weights = Vec::with_capacity(n);
     for i in 0..n {
-        let vehicle_id = get_value!(vehicle_id_values[i]);
-        let edge_id = get_value!(edge_id_values[i]);
+        let vehicle_id = get_id_value!(vehicle_id_values[i]);
+        let edge_id = get_id_value!(edge_id_values[i]);
         let departure_time = get_value!(departure_time_values[i]);
         let travel_time = get_value!(travel_time_values[i]);
         let vehicle_id = vehicle_id.ok_or_else(|| anyhow!("Value `vehicle_id` is mandatory"))?;
@@ -816,10 +929,69 @@ fn check_unused_column(field: &FieldRef, columns: &HashSet<&str>, mut prefix: Ve
 }
 
 #[derive(Debug, Default)]
+enum IdBuilder {
+    #[default]
+    Uninitiated,
+    Unsigned(UInt64Builder),
+    Integer(Int64Builder),
+    Arbitrary(StringBuilder),
+}
+
+impl IdBuilder {
+    fn as_unsigned(&mut self) {
+        *self = Self::Unsigned(Default::default())
+    }
+
+    fn as_integer(&mut self) {
+        *self = Self::Integer(Default::default())
+    }
+
+    fn as_arbitrary(&mut self) {
+        *self = Self::Arbitrary(Default::default())
+    }
+
+    fn append_value(&mut self, v: MetroId) {
+        // Only when the first value is appended (the first time this function is called), can we
+        // know the dtype of the ids (uint, int or str).
+        if matches!(self, Self::Uninitiated) {
+            match v {
+                MetroId::Unsigned(_) => self.as_unsigned(),
+                MetroId::Integer(_) => self.as_integer(),
+                MetroId::Arbitrary(_) => self.as_arbitrary(),
+            }
+        }
+        match self {
+            Self::Unsigned(builder) => builder.append_value(v.into_unsigned().unwrap()),
+            Self::Integer(builder) => builder.append_value(v.into_integer().unwrap()),
+            Self::Arbitrary(builder) => builder.append_value(v.into_arbitrary().unwrap()),
+            Self::Uninitiated => unreachable!(),
+        }
+    }
+
+    fn finish(&mut self) -> ArrayRef {
+        match self {
+            Self::Unsigned(builder) => Arc::new(builder.finish()),
+            Self::Integer(builder) => Arc::new(builder.finish()),
+            Self::Arbitrary(builder) => Arc::new(builder.finish()),
+            Self::Uninitiated => unreachable!(),
+        }
+    }
+
+    fn dtype(&self) -> DataType {
+        match self {
+            Self::Unsigned(_) => DataType::UInt64,
+            Self::Integer(_) => DataType::Int64,
+            Self::Arbitrary(_) => DataType::Utf8,
+            Self::Uninitiated => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 struct AgentResultsBuilder {
     // Values at the agent level.
-    id: UInt64Builder,
-    mode_id: UInt64Builder,
+    id: IdBuilder,
+    selected_alt_id: IdBuilder,
     expected_utility: Float64Builder,
     shifted_mode: BooleanBuilder,
     departure_time: Float64Builder,
@@ -831,8 +1003,8 @@ struct AgentResultsBuilder {
     nb_road_legs: UInt64Builder,
     nb_virtual_legs: UInt64Builder,
     // Values at the leg level.
-    leg_agent_id: UInt64Builder,
-    leg_id: UInt64Builder,
+    leg_agent_id: IdBuilder,
+    leg_id: IdBuilder,
     leg_index: UInt64Builder,
     leg_departure_time: Float64Builder,
     leg_arrival_time: Float64Builder,
@@ -851,18 +1023,18 @@ struct AgentResultsBuilder {
     leg_exp_arrival_time: Float64Builder,
     leg_nb_edges: UInt64Builder,
     // Values at the route level.
-    route_agent_id: UInt64Builder,
-    route_leg_id: UInt64Builder,
+    route_agent_id: IdBuilder,
+    route_leg_id: IdBuilder,
     route_leg_index: UInt64Builder,
-    route_edge_id: UInt64Builder,
+    route_edge_id: IdBuilder,
     route_entry_time: Float64Builder,
     route_exit_time: Float64Builder,
 }
 
 impl AgentResultsBuilder {
     fn append(&mut self, agent_result: &AgentResult) {
-        self.id.append_value(agent_result.id as u64);
-        self.mode_id.append_value(agent_result.mode_id as u64);
+        self.id.append_value(agent_result.id);
+        self.selected_alt_id.append_value(agent_result.mode_id);
         self.expected_utility
             .append_value(Into::<f64>::into(agent_result.expected_utility));
         self.shifted_mode.append_value(agent_result.shifted_mode);
@@ -886,8 +1058,8 @@ impl AgentResultsBuilder {
                 let mut nb_road_legs = 0;
                 let mut nb_virtual_legs = 0;
                 for (i, leg) in trip.legs.iter().enumerate() {
-                    self.leg_agent_id.append_value(agent_result.id as u64);
-                    self.leg_id.append_value(leg.id as u64);
+                    self.leg_agent_id.append_value(agent_result.id);
+                    self.leg_id.append_value(leg.id);
                     self.leg_index.append_value(i as u64);
                     self.leg_departure_time
                         .append_value(Into::<f64>::into(leg.departure_time));
@@ -932,8 +1104,8 @@ impl AgentResultsBuilder {
                         for window in road_leg.route.windows(2) {
                             let event = &window[0];
                             let next_event = &window[1];
-                            self.route_agent_id.append_value(agent_result.id as u64);
-                            self.route_leg_id.append_value(leg.id as u64);
+                            self.route_agent_id.append_value(agent_result.id);
+                            self.route_leg_id.append_value(leg.id);
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(event.edge);
                             self.route_entry_time
@@ -943,8 +1115,8 @@ impl AgentResultsBuilder {
                         }
                         // The last event is not added by the previous for loop.
                         if let Some(last_event) = road_leg.route.last() {
-                            self.route_agent_id.append_value(agent_result.id as u64);
-                            self.route_leg_id.append_value(leg.id as u64);
+                            self.route_agent_id.append_value(agent_result.id);
+                            self.route_leg_id.append_value(leg.id);
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(last_event.edge);
                             self.route_entry_time
@@ -986,8 +1158,8 @@ impl AgentResultsBuilder {
 
     fn finish(&mut self) -> Result<[Option<RecordBatch>; 3]> {
         let agent_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("selected_alt_id", DataType::UInt64, false),
+            Field::new("agent_id", self.id.dtype(), false),
+            Field::new("selected_alt_id", self.selected_alt_id.dtype(), false),
             Field::new("expected_utility", DataType::Float64, false),
             Field::new("shifted_alt", DataType::Boolean, false),
             Field::new("departure_time", DataType::Float64, true),
@@ -1003,7 +1175,7 @@ impl AgentResultsBuilder {
             Arc::new(agent_schema),
             vec![
                 Arc::new(self.id.finish()),
-                Arc::new(self.mode_id.finish()),
+                Arc::new(self.selected_alt_id.finish()),
                 Arc::new(self.expected_utility.finish()),
                 Arc::new(self.shifted_mode.finish()),
                 Arc::new(self.departure_time.finish()),
@@ -1017,8 +1189,8 @@ impl AgentResultsBuilder {
             ],
         )?;
         let leg_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("agent_id", self.leg_agent_id.dtype(), false),
+            Field::new("trip_id", self.leg_id.dtype(), false),
             Field::new("trip_index", DataType::UInt64, false),
             Field::new("departure_time", DataType::Float64, false),
             Field::new("arrival_time", DataType::Float64, false),
@@ -1062,10 +1234,10 @@ impl AgentResultsBuilder {
             ],
         )?;
         let route_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("agent_id", self.route_agent_id.dtype(), false),
+            Field::new("trip_id", self.route_leg_id.dtype(), false),
             Field::new("trip_index", DataType::UInt64, false),
-            Field::new("edge_id", DataType::UInt64, false),
+            Field::new("edge_id", self.route_edge_id.dtype(), false),
             Field::new("entry_time", DataType::Float64, false),
             Field::new("exit_time", DataType::Float64, false),
         ]);
@@ -1113,16 +1285,16 @@ impl ToArrow<3> for AgentResults {
 #[derive(Debug, Default)]
 struct PreDayAgentResultsBuilder {
     // Values at the agent level.
-    id: UInt64Builder,
-    mode_id: UInt64Builder,
+    id: IdBuilder,
+    selected_alt_id: IdBuilder,
     expected_utility: Float64Builder,
     departure_time: Float64Builder,
     mode_expected_utility: Float64Builder,
     nb_road_legs: UInt64Builder,
     nb_virtual_legs: UInt64Builder,
     // Values at the leg level.
-    leg_agent_id: UInt64Builder,
-    leg_id: UInt64Builder,
+    leg_agent_id: IdBuilder,
+    leg_id: IdBuilder,
     leg_index: UInt64Builder,
     leg_route_free_flow_travel_time: Float64Builder,
     leg_global_free_flow_travel_time: Float64Builder,
@@ -1131,18 +1303,18 @@ struct PreDayAgentResultsBuilder {
     leg_pre_exp_arrival_time: Float64Builder,
     leg_nb_edges: UInt64Builder,
     // Values at the route level.
-    route_agent_id: UInt64Builder,
-    route_leg_id: UInt64Builder,
+    route_agent_id: IdBuilder,
+    route_leg_id: IdBuilder,
     route_leg_index: UInt64Builder,
-    route_edge_id: UInt64Builder,
+    route_edge_id: IdBuilder,
     route_entry_time: Float64Builder,
     route_exit_time: Float64Builder,
 }
 
 impl PreDayAgentResultsBuilder {
     fn append(&mut self, agent_result: &PreDayAgentResult) {
-        self.id.append_value(agent_result.id as u64);
-        self.mode_id.append_value(agent_result.mode_id as u64);
+        self.id.append_value(agent_result.id);
+        self.selected_alt_id.append_value(agent_result.mode_id);
         self.expected_utility
             .append_value(Into::<f64>::into(agent_result.expected_utility));
         match &agent_result.mode_results {
@@ -1154,8 +1326,8 @@ impl PreDayAgentResultsBuilder {
                 let mut nb_road_legs = 0;
                 let mut nb_virtual_legs = 0;
                 for (i, leg) in trip.legs.iter().enumerate() {
-                    self.leg_agent_id.append_value(agent_result.id as u64);
-                    self.leg_id.append_value(leg.id as u64);
+                    self.leg_agent_id.append_value(agent_result.id);
+                    self.leg_id.append_value(leg.id);
                     self.leg_index.append_value(i as u64);
                     if let PreDayLegTypeResults::Road(road_leg) = &leg.class {
                         nb_road_legs += 1;
@@ -1173,8 +1345,8 @@ impl PreDayAgentResultsBuilder {
                         for window in road_leg.route.windows(2) {
                             let event = &window[0];
                             let next_event = &window[1];
-                            self.route_agent_id.append_value(agent_result.id as u64);
-                            self.route_leg_id.append_value(leg.id as u64);
+                            self.route_agent_id.append_value(agent_result.id);
+                            self.route_leg_id.append_value(leg.id);
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(event.edge);
                             self.route_entry_time
@@ -1184,8 +1356,8 @@ impl PreDayAgentResultsBuilder {
                         }
                         // The last event is not added by the previous for loop.
                         if let Some(last_event) = road_leg.route.last() {
-                            self.route_agent_id.append_value(agent_result.id as u64);
-                            self.route_leg_id.append_value(leg.id as u64);
+                            self.route_agent_id.append_value(agent_result.id);
+                            self.route_leg_id.append_value(leg.id);
                             self.route_leg_index.append_value(i as u64);
                             self.route_edge_id.append_value(last_event.edge);
                             self.route_entry_time
@@ -1218,8 +1390,8 @@ impl PreDayAgentResultsBuilder {
 
     fn finish(&mut self) -> Result<[Option<RecordBatch>; 3]> {
         let agent_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("selected_alt_id", DataType::UInt64, false),
+            Field::new("agent_id", self.id.dtype(), false),
+            Field::new("selected_alt_id", self.selected_alt_id.dtype(), false),
             Field::new("expected_utility", DataType::Float64, false),
             Field::new("departure_time", DataType::Float64, true),
             Field::new("alt_expected_utility", DataType::Float64, true),
@@ -1230,7 +1402,7 @@ impl PreDayAgentResultsBuilder {
             Arc::new(agent_schema),
             vec![
                 Arc::new(self.id.finish()),
-                Arc::new(self.mode_id.finish()),
+                Arc::new(self.selected_alt_id.finish()),
                 Arc::new(self.expected_utility.finish()),
                 Arc::new(self.departure_time.finish()),
                 Arc::new(self.mode_expected_utility.finish()),
@@ -1239,8 +1411,8 @@ impl PreDayAgentResultsBuilder {
             ],
         )?;
         let leg_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("agent_id", self.leg_agent_id.dtype(), false),
+            Field::new("trip_id", self.leg_id.dtype(), false),
             Field::new("trip_index", DataType::UInt64, false),
             Field::new("route_free_flow_travel_time", DataType::Float64, true),
             Field::new("global_free_flow_travel_time", DataType::Float64, true),
@@ -1264,10 +1436,10 @@ impl PreDayAgentResultsBuilder {
             ],
         )?;
         let route_schema = Schema::new(vec![
-            Field::new("agent_id", DataType::UInt64, false),
-            Field::new("trip_id", DataType::UInt64, false),
+            Field::new("agent_id", self.route_agent_id.dtype(), false),
+            Field::new("trip_id", self.route_leg_id.dtype(), false),
             Field::new("trip_index", DataType::UInt64, false),
-            Field::new("edge_id", DataType::UInt64, false),
+            Field::new("edge_id", self.route_edge_id.dtype(), false),
             Field::new("entry_time", DataType::Float64, false),
             Field::new("exit_time", DataType::Float64, false),
         ]);
@@ -1316,8 +1488,8 @@ impl ToArrow<3> for PreDayAgentResults {
 struct RoadNetworkWeightsBuilder {
     period: Interval,
     interval: PositiveSeconds,
-    vehicle_id: UInt64Builder,
-    edge_id: UInt64Builder,
+    vehicle_id: IdBuilder,
+    edge_id: IdBuilder,
     departure_time: Float64Builder,
     travel_time: Float64Builder,
 }
@@ -1336,7 +1508,7 @@ impl RoadNetworkWeightsBuilder {
 }
 
 impl RoadNetworkWeightsBuilder {
-    fn append(&mut self, vehicle_id: OriginalVehicleId, edge_id: u64, ttf: &TTF<AnySeconds>) {
+    fn append(&mut self, vehicle_id: MetroId, edge_id: MetroId, ttf: &TTF<AnySeconds>) {
         let xs_iter = std::iter::successors(Some(self.period.start()), |&t| {
             Some(t + NonNegativeSeconds::from(self.interval))
         })
@@ -1351,8 +1523,8 @@ impl RoadNetworkWeightsBuilder {
 
     fn finish(&mut self) -> Result<[Option<RecordBatch>; 1]> {
         let schema = Schema::new(vec![
-            Field::new("vehicle_id", DataType::UInt64, false),
-            Field::new("edge_id", DataType::UInt64, false),
+            Field::new("vehicle_id", self.vehicle_id.dtype(), false),
+            Field::new("edge_id", self.edge_id.dtype(), false),
             Field::new("departure_time", DataType::Float64, false),
             Field::new("travel_time", DataType::Float64, true),
         ]);

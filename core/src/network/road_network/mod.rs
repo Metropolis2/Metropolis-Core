@@ -28,7 +28,7 @@ use self::preprocess::{ODPairsStruct, UniqueVehicles};
 use self::skim::RoadNetworkSkim;
 pub(crate) use self::skim::RoadNetworkSkims;
 pub(crate) use self::state::RoadNetworkState;
-use self::vehicle::{vehicle_index, OriginalVehicleId, Vehicle, VehicleIndex};
+use self::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 pub(crate) use self::weights::RoadNetworkWeights;
 use crate::network::road_network::preprocess::unique_vehicle_index;
 use crate::units::*;
@@ -131,7 +131,7 @@ pub(crate) fn free_flow_travel_time_of_edge(
 /// vehicle.
 pub(crate) fn route_free_flow_travel_time(
     route: impl Iterator<Item = EdgeIndex>,
-    vehicle_id: OriginalVehicleId,
+    vehicle_id: MetroId,
 ) -> NonNegativeSeconds {
     let vehicle = vehicle_with_id(vehicle_id);
     route
@@ -183,21 +183,21 @@ fn vehicles() -> &'static [Vehicle] {
     &read_global().vehicles
 }
 
-fn vehicle_map() -> &'static HashMap<OriginalVehicleId, VehicleIndex> {
+fn vehicle_map() -> &'static HashMap<MetroId, VehicleIndex> {
     &read_global().vehicle_map
 }
 
-/// Returns the [VehicleIndex] corresponding to the given [OriginalVehicleId].
+/// Returns the [VehicleIndex] corresponding to the given [MetroId].
 ///
-/// **Panics** if there is no vehicle with the corresponding [OriginalVehicleId].
-fn vehicle_index_of(vehicle_id: OriginalVehicleId) -> VehicleIndex {
+/// **Panics** if there is no vehicle with the corresponding [MetroId].
+fn vehicle_index_of(vehicle_id: MetroId) -> VehicleIndex {
     vehicle_map()[&vehicle_id]
 }
 
-/// Returns a reference to the [Vehicle] corresponding to the given [OriginalVehicleId].
+/// Returns a reference to the [Vehicle] corresponding to the given [MetroId].
 ///
-/// **Panics** if there is no vehicle with the corresponding [OriginalVehicleId].
-pub(crate) fn vehicle_with_id(vehicle_id: OriginalVehicleId) -> &'static Vehicle {
+/// **Panics** if there is no vehicle with the corresponding [MetroId].
+pub(crate) fn vehicle_with_id(vehicle_id: MetroId) -> &'static Vehicle {
     let vehicle_idx = vehicle_index_of(vehicle_id).index();
     let vehicle = &vehicles()[vehicle_idx];
     debug_assert_eq!(vehicle.id, vehicle_id);
@@ -205,9 +205,9 @@ pub(crate) fn vehicle_with_id(vehicle_id: OriginalVehicleId) -> &'static Vehicle
 }
 
 /// Identifier of the node as given by the user.
-pub(crate) type OriginalNodeId = u64;
+pub(crate) type OriginalNodeId = MetroId;
 /// Identifier of the edge as given by the user.
-pub(crate) type OriginalEdgeId = u64;
+pub(crate) type OriginalEdgeId = MetroId;
 
 /// A node of a road network.
 #[derive(Clone, Copy, Debug, Default)]
@@ -411,7 +411,7 @@ impl RoadEdge {
     /// Creates a new RoadEdge.
     #[expect(clippy::too_many_arguments)]
     pub const fn new(
-        id: OriginalEdgeId,
+        id: i64,
         base_speed: MetersPerSecond,
         length: NonNegativeMeters,
         lanes: Lanes,
@@ -421,7 +421,7 @@ impl RoadEdge {
         overtaking: bool,
     ) -> Self {
         RoadEdge {
-            id,
+            id: MetroId::Integer(id),
             base_speed,
             length,
             lanes,
@@ -616,7 +616,7 @@ impl Deref for RoadGraph {
 pub struct RoadNetwork {
     graph: RoadGraph,
     vehicles: Vec<Vehicle>,
-    vehicle_map: HashMap<OriginalVehicleId, VehicleIndex>,
+    vehicle_map: HashMap<MetroId, VehicleIndex>,
 }
 
 impl RoadNetwork {
@@ -755,9 +755,9 @@ fn free_flow_weights_inner(unique_vehicles: &UniqueVehicles) -> RoadNetworkWeigh
     weights_vec
 }
 
-impl Index<OriginalVehicleId> for RoadNetwork {
+impl Index<MetroId> for RoadNetwork {
     type Output = Vehicle;
-    fn index(&self, id: OriginalVehicleId) -> &Self::Output {
+    fn index(&self, id: MetroId) -> &Self::Output {
         vehicle_with_id(id)
     }
 }
@@ -784,7 +784,7 @@ mod tests {
     #[test]
     fn get_travel_time_test() {
         let mut edge = RoadEdge {
-            id: 1,
+            id: MetroId::Integer(1),
             base_speed: MetersPerSecond::new_unchecked(25.), // 50 km/h
             length: NonNegativeMeters::new_unchecked(1000.), // 1 km
             lanes: Lanes::new_unchecked(2.0),
@@ -908,8 +908,8 @@ mod tests {
         // Edge 0 (0 -> 1) is forbidden.
         let edges = vec![
             (
-                0,
-                1,
+                MetroId::Integer(0),
+                MetroId::Integer(1),
                 RoadEdge::new(
                     0,
                     MetersPerSecond::new_unchecked(1.0),
@@ -922,8 +922,8 @@ mod tests {
                 ),
             ),
             (
-                1,
-                2,
+                MetroId::Integer(1),
+                MetroId::Integer(2),
                 RoadEdge::new(
                     1,
                     MetersPerSecond::new_unchecked(1.0),
@@ -942,17 +942,24 @@ mod tests {
             PCE::new_unchecked(1.0),
             SpeedFunction::Base,
             HashSet::new(),
-            [0].into_iter().collect(),
+            [MetroId::Integer(0)].into_iter().collect(),
         );
         let road_network = RoadNetwork::from_edges(edges, vec![vehicle.clone()]);
         init(road_network).unwrap();
         let weights = free_flow_weights_inner(&UniqueVehicles::init());
-        debug_assert!(weights.get(unique_vehicle_index(0), 0).is_none());
-        let all_od_pairs = vec![ODPairsStruct::from_vec(vec![(1, 2, true)])];
+        debug_assert!(weights
+            .get(unique_vehicle_index(0), MetroId::Integer(0))
+            .is_none());
+        let all_od_pairs = vec![ODPairsStruct::from_vec(vec![(
+            MetroId::Integer(1),
+            MetroId::Integer(2),
+            true,
+        )])];
         let skims = compute_skims_inner(&weights, &all_od_pairs).unwrap();
         let skim = skims[unique_vehicle_index(0)].as_ref().unwrap();
         assert_eq!(
-            skim.profile_query(1, 2).unwrap(),
+            skim.profile_query(MetroId::Integer(1), MetroId::Integer(2))
+                .unwrap(),
             Some(&TTF::Constant(AnySeconds::new_unchecked(1.0)))
         );
     }

@@ -69,7 +69,7 @@ impl MetroProgressBar {
     pub fn inc(&self) {
         let mut current = self.current.lock().unwrap();
         *current += 1;
-        if *current % UPDATE == 0 {
+        if current.is_multiple_of(UPDATE) {
             self.bp.inc(UPDATE);
         }
     }
