@@ -48,18 +48,19 @@
     <li>
       <a href="#about-the-project">About The Project</a>
       <ul>
+        <li><a href="#citation">Citation</a></li>
         <li><a href="#built-with">Built With</a></li>
+        <li><a href="#semver">Semver</a></li>
       </ul>
     </li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
+        <li><a href="#pre-built-binaries">Pre-Built Binaries</a></li>
+        <li><a href="#compiling-from-source">Compiling From Source</a></li>
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -77,6 +78,16 @@
 METROPOLIS2 is a dynamic multi-modal agent-based transport simulator.
 
 <!-- TODO add graph of project structure -->
+
+### Citation
+
+If you use this project in your research, please cite it as follows:
+
+de Palma, A. & Javaudin, L. (2025). _METROPOLIS2_. [https://metropolis2.org](https://metropolis2.org)
+
+Javaudin, L., & de Palma, A. (2024). _METROPOLIS2: Bridging theory and simulation in agent-based transport modeling._ Technical report, THEMA (THéorie Economique, Modélisation et Applications).
+
+_Refer to [CITATION.cff](CITATION.cff) and [CITATION.bib](CITATION.bib) for details._
 
 ### Built With
 
@@ -96,6 +107,15 @@ and some awesome Rust crates, including:
 - [petgraph](https://crates.io/crates/petgraph) for graphs
 - [rayon](https://crates.io/crates/rayon) for parallelization
 
+### Semver
+
+Metropolis-Core is following [Semantic Versioning 2.0](https://semver.org/).
+
+Each new version is given a number MAJOR.MINOR.PATCH.
+An increase of the MAJOR number indicates backward incompatibilities with previous versions.
+An increase of the MINOR number indicates new features, that are backward-compatible.
+An increase of the PATCH number indicates bug fixes.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
@@ -103,7 +123,7 @@ and some awesome Rust crates, including:
 <!-- GETTING STARTED -->
 ## Getting Started
 
-### Pre-built binaries
+### Pre-Built Binaries
 
 1. Go to the [Releases Tab](https://github.com/Metropolis2/Metropolis-Core/releases)
    and download the Zip file corresponding to your operating system
@@ -112,7 +132,7 @@ and some awesome Rust crates, including:
 3. The `metropolis cli` executable (or `metropolis_cli.exe` for Windows)
    is available in the `execs` directory. You can move it to any location or your choice.
 
-### Compiling from source
+### Compiling From Source
 
 1. Install Rust, either using the official
    [rustup installer](https://rust-lang.org/tools/install/)
@@ -171,17 +191,6 @@ _For more details, please refer to the [Documentation](https://docs.metropolis2.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
-<!-- CITATION -->
-## Citation
-
-If you use this project in your research, please cite it as follows:
-
-de Palma, A. & Javaudin, L. (2025). _METROPOLIS2_. [https://metropolis2.org](https://metropolis2.org)
-
-Javaudin, L., & de Palma, A. (2024). _METROPOLIS2: Bridging theory and simulation in agent-based transport modeling._ Technical report, THEMA (THéorie Economique, Modélisation et Applications).
-
-_Refer to [CITATION.cff](CITATION.cff) and [CITATION.bib](CITATION.bib) for details._
-
 
 <!-- CONTRIBUTING -->
 ## Contributing
@@ -199,17 +208,6 @@ If your suggestion is accepted, you can then create a Pull Request:
 
 _For more details, please read [CONTRIBUTING.md](CONTRIBUTING.md)
 and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)._
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-## Semver
-
-Metropolis-Core is following [Semantic Versioning 2.0](https://semver.org/).
-
-Each new version is given a number MAJOR.MINOR.PATCH.
-An increase of the MAJOR number indicates backward incompatibilities with previous versions.
-An increase of the MINOR number indicates new features, that are backward-compatible.
-An increase of the PATCH number indicates bug fixes.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
