@@ -27,14 +27,14 @@ jobs:
   release:
     name: Create a GitHub Release
     runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create-release.outputs.id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Create release
-        id: create-release
-        uses: ncipollo/release-action@v1
+      - name: Create release from Changelog
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: CHANGELOG.md
   build:
     needs: release
     name: Publish for ${{ matrix.os }}
@@ -45,15 +45,14 @@ jobs:
         include:
           - os: ubuntu-latest
             binary_target: x86_64-unknown-linux-musl
+            os_name: linux
           - os: windows-latest
             binary_target: x86_64-pc-windows-msvc
+            os_name: windows
           - os: macos-latest
             binary_target: x86_64-apple-darwin
+            os_name: macos
     steps:
-      - name: Setup node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - name: Install MUSL tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y musl-tools
@@ -71,22 +70,18 @@ jobs:
       - name: Install cargo tools
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-make, mdbook
+          tool: cargo-make
       - name: Build Binary
         uses: actions-rs/cargo@v1
         with:
           command: make
-          args: --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} zip-release-ci-flow
+          args: |
+            --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }}
+            --env CARGO_MAKE_RELEASE_TARGET_NAME=${{ matrix.os_name }}
+            zip-release-ci-flow
       - name: Upload Binaries
         uses: svenstaro/upload-release-action@v2
         with:
           file: "*.zip"
           overwrite: true
           file_glob: true
-      - uses: tauri-apps/tauri-action@v0
-        if: ${{ matrix.os != 'ubuntu-latest' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          releaseId: ${{ needs.release.outputs.release_id }}
-          args: --target ${{ matrix.binary_target }}

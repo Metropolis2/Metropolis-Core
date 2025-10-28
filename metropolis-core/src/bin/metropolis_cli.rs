@@ -14,10 +14,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#[cfg(feature = "tauri")]
-fn main() {
-    tauri_build::build()
+//! Binary to run a Metropolis-Core simulation from a set of input files.
+use std::path::PathBuf;
+
+use anyhow::Result;
+use clap::Parser;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+/// Metropolis-Core: the Rust-based core of the METROPOLIS2 simulator.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the JSON file with the parameters
+    #[arg(required = true)]
+    parameters: PathBuf,
 }
 
-#[cfg(not(feature = "tauri"))]
-fn main() {}
+fn main() -> Result<()> {
+    let args = Args::parse();
+    metropolis_core::run_simulation(&args.parameters)
+}

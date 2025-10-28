@@ -170,7 +170,7 @@ you first need to create the simulation input which
 consists of a JSON file and multiple Parquet or CSV files.
 
 Example input files are provided in the
-[`examples/data/`](https://github.com/Metropolis2/Metropolis-Core/tree/main/core/examples/data)
+[`examples/data/`](https://github.com/Metropolis2/Metropolis-Core/tree/main/metropolis-core/examples/data)
 directory, in CSV and Parquet version.
 This files represent a simulation with no meaningful interpretation.
 It makes use of all the possible input values so it is a great way to test if the simulator is

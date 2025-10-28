@@ -15,9 +15,6 @@ keywords = [
 categories = ["algorithms"]
 publish = false
 
-[features]
-expire = ["chrono"]
-
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
