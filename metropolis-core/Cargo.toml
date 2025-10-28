@@ -34,7 +34,7 @@ clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.6"
 hashbrown = { version = "0.15", features = ["rayon"] }
-indicatif = "0.17"
+indicatif = "0.18"
 itertools = "0.14"
 log = "0.4"
 num-traits = "0.2"
