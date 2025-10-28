@@ -1,510 +1,780 @@
 <!doctype html>
 <html lang="en">
-	<head>
-		<!-- Required meta tags -->
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <head>
+        <!-- Required meta tags -->
+        <meta charset="utf-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, shrink-to-fit=no"
+        />
 
-		<!-- Bootstrap CSS -->
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+        <!-- Bootstrap CSS -->
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css"
+            integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+            crossorigin="anonymous"
+        />
 
-		<style>
-.table-sticky-head {
-	overflow: auto;
-	height: 600px;
-}
+        <style>
+            .table-sticky-head {
+                overflow: auto;
+                height: 600px;
+            }
 
-.table-sticky-head tr.first th {
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	box-shadow: inset 1px 1px #000, 0 1px #000;
-}
+            .table-sticky-head tr.first th {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                box-shadow:
+                    inset 1px 1px #000,
+                    0 1px #000;
+            }
 
-.table-sticky-head tr.second th {
-	position: sticky;
-	z-index: 1;
-	box-shadow: inset 1px 1px #000, 0 1px #000;
-}
-		</style>
+            .table-sticky-head tr.second th {
+                position: sticky;
+                z-index: 1;
+                box-shadow:
+                    inset 1px 1px #000,
+                    0 1px #000;
+            }
+        </style>
 
-		<title>METROPOLIS2 Simulation Report</title>
-	</head>
-	<body>
-		<h1>METROPOLIS2 Simulation Report</h1>
+        <title>Metropolis-Core Simulation Report</title>
+    </head>
+    <body>
+        <h1>Metropolis-Core Simulation Report</h1>
 
-		<h2>Convergence</h2>
+        <h2>Convergence</h2>
 
-		<div class="table-responsive table-sticky-head">
-			<table class="table table-striped table-bordered table-hover table-sm">
-				<thead class="thead-light">
-					<tr class="first">
-						<th scope="col" rowspan="2" class="text-center">Iteration</th>
-						<th scope="col" rowspan="2" class="text-center">Agent-level expected utility</th>
-						<th scope="col" colspan="2" class="text-center">No-trip alternatives</th>
-						<th scope="col" colspan="8" class="text-center">Alternative-level</th>
-						<th scope="col" colspan="22" class="text-center">Road-trips level</th>
-						<th scope="col" colspan="10" class="text-center">Virtual-trip level</th>
-						<th scope="col" colspan="2" class="text-center">Road Network</th>
-					</tr>
-					<tr class="second">
-						<!-- CONSTANT UTILITY -->
-						<th scope="col" class="text-center">#</th>
-						<th scope="col" class="text-center">Mean utility</th>
-						<!-- TRIPS -->
-						<th scope="col" class="text-center">#</th>
-						<th scope="col" class="text-center">Mean departure time</th>
-						<th scope="col" class="text-center">Mean arrival time</th>
-						<th scope="col" class="text-center">Mean travel time</th>
-						<th scope="col" class="text-center">Mean utility</th>
-						<th scope="col" class="text-center">Mean expected utility</th>
-						<th scope="col" class="text-center">Mean departure-time shift</th>
-						<th scope="col" class="text-center">Departure time RMSE</th>
-						<!-- ROAD LEGS -->
-						<th scope="col" class="text-center"># Trips</th>
-						<th scope="col" class="text-center"># Alternatives (1+ road trip)</th>
-						<th scope="col" class="text-center"># Alternatives (only road trips)</th>
-						<th scope="col" class="text-center">Mean # road trips</th>
-						<th scope="col" class="text-center">Mean departure time</th>
-						<th scope="col" class="text-center">Mean arrival time</th>
-						<th scope="col" class="text-center">Mean road time</th>
-						<th scope="col" class="text-center">Mean in-bottleneck time</th>
-						<th scope="col" class="text-center">Mean out-bottleneck time</th>
-						<th scope="col" class="text-center">Mean travel time</th>
-						<th scope="col" class="text-center">Mean route free-flow travel time</th>
-						<th scope="col" class="text-center">Mean global free-flow travel time</th>
-						<th scope="col" class="text-center">Mean route congestion</th>
-						<th scope="col" class="text-center">Mean global congestion</th>
-						<th scope="col" class="text-center">Mean route length (m)</th>
-						<th scope="col" class="text-center">Mean edge count</th>
-						<th scope="col" class="text-center">Mean utility</th>
-						<th scope="col" class="text-center">Mean expected travel time</th>
-						<th scope="col" class="text-center">Mean expected travel time difference (rel.)</th>
-						<th scope="col" class="text-center">Mean expected travel time difference (abs.)</th>
-						<th scope="col" class="text-center">Expected travel time difference RMSE</th>
-						<th scope="col" class="text-center">Mean length difference (m)</th>
-						<!-- VIRTUAL LEGS -->
-						<th scope="col" class="text-center"># Trips</th>
-						<th scope="col" class="text-center"># Alternatives (1+ virtual trip)</th>
-						<th scope="col" class="text-center"># Alternatives (only virtual trips)</th>
-						<th scope="col" class="text-center">Mean # virtual trips</th>
-						<th scope="col" class="text-center">Mean departure time</th>
-						<th scope="col" class="text-center">Mean arrival time</th>
-						<th scope="col" class="text-center">Mean travel time</th>
-						<th scope="col" class="text-center">Mean global free-flow travel time</th>
-						<th scope="col" class="text-center">Mean global congestion</th>
-						<th scope="col" class="text-center">Mean utility</th>
-						<!-- ROAD NETWORK -->
-						<th scope="col" class="text-center">Simulated road-network conditions RMSE</th>
-						<th scope="col" class="text-center">Expected road-network conditions RMSE</th>
-					</tr>
-				</thead>
-				<tbody>
-					{% for it in iterations %}
-					<tr>
-						<td scope="row" class="text-center">{{ it.iteration_counter }}</td>
-						<td class="text-center">{{ "{:.4}"|format(f64::from(it.surplus.mean())) }}</td>
-						{% match it.mode_results.constant %}
-							{% when Some with (constant) %}
-								<td class="text-center">{{ constant.count }}</td>
-								<td class="text-center">{{ "{:.4}"|format(f64::from(constant.utility.mean())) }}</td>
-							{% when None %}
-								<td class="text-center">0</td>
-								<td class="text-center">N/A</td>
-						{% endmatch %}
-						{% match it.mode_results.trip_modes %}
-							{% when Some with (trip_results) %}
-								<!-- TRIPS -->
-								<td class="text-center">{{ trip_results.count }}</td>
-								<td class="text-center">{{ "{}"|format(trip_results.departure_time.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(trip_results.arrival_time.mean()) }}</td>
-								<td class="text-center">{{ "{}"|format(trip_results.travel_time.mean()) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.utility.mean())) }}</td>
-								<td class="text-center">{{ "{:.4}"|format(f64::from(trip_results.expected_utility.mean())) }}</td>
-								{% match trip_results.dep_time_shift %}
-									{% when Some with (distr) %}
-									<td class="text-center">{{ "{}"|format(distr.mean()) }}</td>
-									{% when None %}
-									<td class="text-center">N/A</td>
-								{% endmatch %}
-								{% match trip_results.dep_time_rmse %}
-									{% when Some with (value) %}
-									<td class="text-center">{{ "{}"|format(value) }}</td>
-									{% when None %}
-									<td class="text-center">N/A</td>
-								{% endmatch %}
-								<!-- ROAD LEGS -->
-								{% match trip_results.road_leg %}
-									{% when Some with (rlr) %}
-									<td class="text-center">{{ rlr.count }}</td>
-									<td class="text-center">{{ rlr.mode_count_one }}</td>
-									<td class="text-center">{{ rlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.count_distribution.mean())) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.departure_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.arrival_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.road_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.in_bottleneck_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.out_bottleneck_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.route_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.route_congestion.mean())) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.global_congestion.mean())) }}</td>
-									<td class="text-center">{{ "{:.0}"|format(f64::from(rlr.length.mean())) }}</td>
-									<td class="text-center">{{ "{:.2}"|format(f64::from(rlr.edge_count.mean())) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.utility.mean())) }}</td>
-									<td class="text-center">{{ "{:}"|format(rlr.exp_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(rlr.exp_travel_time_rel_diff.mean())) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_abs_diff.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(rlr.exp_travel_time_diff_rmse) }}</td>
-									{% match rlr.length_diff %}
-										{% when Some with (distr) %}
-										<td class="text-center">{{ "{:.2}"|format(f64::from(distr.mean())) }}</td>
-										{% when None %}
-										<td class="text-center">N/A</td>
-									{% endmatch %}
-									{% when None %}
-									{% for _ in 0..22 %}
-									<td class="text-center">N/A</td>
-									{% endfor %}
-								{% endmatch %}
-								<!-- VIRTUAL LEGS -->
-								{% match trip_results.virtual_leg %}
-									{% when Some with (vlr) %}
-									<td class="text-center">{{ vlr.count }}</td>
-									<td class="text-center">{{ vlr.mode_count_one }}</td>
-									<td class="text-center">{{ vlr.mode_count_all }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.count_distribution.mean())) }}</td>
-									<td class="text-center">{{ "{}"|format(vlr.departure_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(vlr.arrival_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(vlr.travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{}"|format(vlr.global_free_flow_travel_time.mean()) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.global_congestion.mean())) }}</td>
-									<td class="text-center">{{ "{:.4}"|format(f64::from(vlr.utility.mean())) }}</td>
-									{% when None %}
-									{% for _ in 0..10 %}
-									<td class="text-center">N/A</td>
-									{% endfor %}
-								{% endmatch %}
-							{% when None %}
-								<td class="text-center">0</td>
-								{% for _ in 0..39 %}
-								<td class="text-center">N/A</td>
-								{% endfor %}
-						{% endmatch %}
-						{% match it.sim_road_network_weights_rmse %}
-							{% when Some with (value) %}
-							<td class="text-center">{{ "{}"|format(value) }}</td>
-							{% when None %}
-							<td class="text-center">N/A</td>
-						{% endmatch %}
-						{% match it.exp_road_network_weights_rmse %}
-							{% when Some with (value) %}
-							<td class="text-center">{{ "{}"|format(value) }}</td>
-							{% when None %}
-							<td class="text-center">N/A</td>
-						{% endmatch %}
-					</tr>
-					{% endfor %}
-				</tbody>
-			</table>
-		</div>
+        <div class="table-responsive table-sticky-head">
+            <table
+                class="table table-striped table-bordered table-hover table-sm"
+            >
+                <thead class="thead-light">
+                    <tr class="first">
+                        <th scope="col" rowspan="2" class="text-center">
+                            Iteration
+                        </th>
+                        <th scope="col" rowspan="2" class="text-center">
+                            Agent-level expected utility
+                        </th>
+                        <th scope="col" colspan="2" class="text-center">
+                            No-trip alternatives
+                        </th>
+                        <th scope="col" colspan="8" class="text-center">
+                            Alternative-level
+                        </th>
+                        <th scope="col" colspan="22" class="text-center">
+                            Road-trips level
+                        </th>
+                        <th scope="col" colspan="10" class="text-center">
+                            Virtual-trip level
+                        </th>
+                        <th scope="col" colspan="2" class="text-center">
+                            Road Network
+                        </th>
+                    </tr>
+                    <tr class="second">
+                        <!-- CONSTANT UTILITY -->
+                        <th scope="col" class="text-center">#</th>
+                        <th scope="col" class="text-center">Mean utility</th>
+                        <!-- TRIPS -->
+                        <th scope="col" class="text-center">#</th>
+                        <th scope="col" class="text-center">
+                            Mean departure time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean arrival time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean travel time
+                        </th>
+                        <th scope="col" class="text-center">Mean utility</th>
+                        <th scope="col" class="text-center">
+                            Mean expected utility
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean departure-time shift
+                        </th>
+                        <th scope="col" class="text-center">
+                            Departure time RMSE
+                        </th>
+                        <!-- ROAD LEGS -->
+                        <th scope="col" class="text-center"># Trips</th>
+                        <th scope="col" class="text-center">
+                            # Alternatives (1+ road trip)
+                        </th>
+                        <th scope="col" class="text-center">
+                            # Alternatives (only road trips)
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean # road trips
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean departure time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean arrival time
+                        </th>
+                        <th scope="col" class="text-center">Mean road time</th>
+                        <th scope="col" class="text-center">
+                            Mean in-bottleneck time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean out-bottleneck time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean route free-flow travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean global free-flow travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean route congestion
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean global congestion
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean route length (m)
+                        </th>
+                        <th scope="col" class="text-center">Mean edge count</th>
+                        <th scope="col" class="text-center">Mean utility</th>
+                        <th scope="col" class="text-center">
+                            Mean expected travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean expected travel time difference (rel.)
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean expected travel time difference (abs.)
+                        </th>
+                        <th scope="col" class="text-center">
+                            Expected travel time difference RMSE
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean length difference (m)
+                        </th>
+                        <!-- VIRTUAL LEGS -->
+                        <th scope="col" class="text-center"># Trips</th>
+                        <th scope="col" class="text-center">
+                            # Alternatives (1+ virtual trip)
+                        </th>
+                        <th scope="col" class="text-center">
+                            # Alternatives (only virtual trips)
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean # virtual trips
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean departure time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean arrival time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean global free-flow travel time
+                        </th>
+                        <th scope="col" class="text-center">
+                            Mean global congestion
+                        </th>
+                        <th scope="col" class="text-center">Mean utility</th>
+                        <!-- ROAD NETWORK -->
+                        <th scope="col" class="text-center">
+                            Simulated road-network conditions RMSE
+                        </th>
+                        <th scope="col" class="text-center">
+                            Expected road-network conditions RMSE
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in iterations %}
+                    <tr>
+                        <td scope="row" class="text-center">
+                            {{ it.iteration_counter }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:.4}"|format(f64::from(it.surplus.mean())) }}
+                        </td>
+                        {% match it.mode_results.constant %} {% when Some with
+                        (constant) %}
+                        <td class="text-center">{{ constant.count }}</td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(constant.utility.mean()))
+                            }}
+                        </td>
+                        {% when None %}
+                        <td class="text-center">0</td>
+                        <td class="text-center">N/A</td>
+                        {% endmatch %} {% match it.mode_results.trip_modes %} {%
+                        when Some with (trip_results) %}
+                        <!-- TRIPS -->
+                        <td class="text-center">{{ trip_results.count }}</td>
+                        <td class="text-center">
+                            {{ "{}"|format(trip_results.departure_time.mean())
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(trip_results.arrival_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(trip_results.travel_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(trip_results.utility.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(trip_results.expected_utility.mean()))
+                            }}
+                        </td>
+                        {% match trip_results.dep_time_shift %} {% when Some
+                        with (distr) %}
+                        <td class="text-center">
+                            {{ "{}"|format(distr.mean()) }}
+                        </td>
+                        {% when None %}
+                        <td class="text-center">N/A</td>
+                        {% endmatch %} {% match trip_results.dep_time_rmse %} {%
+                        when Some with (value) %}
+                        <td class="text-center">{{ "{}"|format(value) }}</td>
+                        {% when None %}
+                        <td class="text-center">N/A</td>
+                        {% endmatch %}
+                        <!-- ROAD LEGS -->
+                        {% match trip_results.road_leg %} {% when Some with
+                        (rlr) %}
+                        <td class="text-center">{{ rlr.count }}</td>
+                        <td class="text-center">{{ rlr.mode_count_one }}</td>
+                        <td class="text-center">{{ rlr.mode_count_all }}</td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(rlr.count_distribution.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.departure_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.arrival_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.road_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.in_bottleneck_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.out_bottleneck_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.travel_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{}"|format(rlr.route_free_flow_travel_time.mean())
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{}"|format(rlr.global_free_flow_travel_time.mean())
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(rlr.route_congestion.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(rlr.global_congestion.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:.0}"|format(f64::from(rlr.length.mean())) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:.2}"|format(f64::from(rlr.edge_count.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:.4}"|format(f64::from(rlr.utility.mean())) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:}"|format(rlr.exp_travel_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(rlr.exp_travel_time_rel_diff.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.exp_travel_time_abs_diff.mean())
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(rlr.exp_travel_time_diff_rmse) }}
+                        </td>
+                        {% match rlr.length_diff %} {% when Some with (distr) %}
+                        <td class="text-center">
+                            {{ "{:.2}"|format(f64::from(distr.mean())) }}
+                        </td>
+                        {% when None %}
+                        <td class="text-center">N/A</td>
+                        {% endmatch %} {% when None %} {% for _ in 0..22 %}
+                        <td class="text-center">N/A</td>
+                        {% endfor %} {% endmatch %}
+                        <!-- VIRTUAL LEGS -->
+                        {% match trip_results.virtual_leg %} {% when Some with
+                        (vlr) %}
+                        <td class="text-center">{{ vlr.count }}</td>
+                        <td class="text-center">{{ vlr.mode_count_one }}</td>
+                        <td class="text-center">{{ vlr.mode_count_all }}</td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(vlr.count_distribution.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(vlr.departure_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(vlr.arrival_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{}"|format(vlr.travel_time.mean()) }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{}"|format(vlr.global_free_flow_travel_time.mean())
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{
+                            "{:.4}"|format(f64::from(vlr.global_congestion.mean()))
+                            }}
+                        </td>
+                        <td class="text-center">
+                            {{ "{:.4}"|format(f64::from(vlr.utility.mean())) }}
+                        </td>
+                        {% when None %} {% for _ in 0..10 %}
+                        <td class="text-center">N/A</td>
+                        {% endfor %} {% endmatch %} {% when None %}
+                        <td class="text-center">0</td>
+                        {% for _ in 0..39 %}
+                        <td class="text-center">N/A</td>
+                        {% endfor %} {% endmatch %} {% match
+                        it.sim_road_network_weights_rmse %} {% when Some with
+                        (value) %}
+                        <td class="text-center">{{ "{}"|format(value) }}</td>
+                        {% when None %}
+                        <td class="text-center">N/A</td>
+                        {% endmatch %} {% match it.exp_road_network_weights_rmse
+                        %} {% when Some with (value) %}
+                        <td class="text-center">{{ "{}"|format(value) }}</td>
+                        {% when None %}
+                        <td class="text-center">N/A</td>
+                        {% endmatch %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
-		<ul class="nav nav-tabs">
-			<li class="nav-item">
-				<a class="nav-link active" id="surplus-tab" data-toggle="tab" href="#surplus" role="tab">Agent Expected Utility (Surplus)</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="mean_departure_time-tab" data-toggle="tab" href="#mean_departure_time" role="tab">Mean Departure Time</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="dt_rmse-tab" data-toggle="tab" href="#dt_rmse" role="tab">Departure Time RMSE</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="travel_time-tab" data-toggle="tab" href="#travel_time" role="tab">Mean Travel Time</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="expect_rmse-tab" data-toggle="tab" href="#expect_rmse" role="tab">Expected Travel Time Diff RMSE</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="sim_rn_cond_rmse-tab" data-toggle="tab" href="#sim_rn_cond_rmse" role="tab">Simulated Road Network Conditions RMSE</a>
-			</li>
-			<li class="nav-item">
-				<a class="nav-link" id="exp_rn_cond_rmse-tab" data-toggle="tab" href="#exp_rn_cond_rmse" role="tab">Expected Road Network Conditions RMSE</a>
-			</li>
-		</ul>
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a
+                    class="nav-link active"
+                    id="surplus-tab"
+                    data-toggle="tab"
+                    href="#surplus"
+                    role="tab"
+                    >Agent Expected Utility (Surplus)</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="mean_departure_time-tab"
+                    data-toggle="tab"
+                    href="#mean_departure_time"
+                    role="tab"
+                    >Mean Departure Time</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="dt_rmse-tab"
+                    data-toggle="tab"
+                    href="#dt_rmse"
+                    role="tab"
+                    >Departure Time RMSE</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="travel_time-tab"
+                    data-toggle="tab"
+                    href="#travel_time"
+                    role="tab"
+                    >Mean Travel Time</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="expect_rmse-tab"
+                    data-toggle="tab"
+                    href="#expect_rmse"
+                    role="tab"
+                    >Expected Travel Time Diff RMSE</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="sim_rn_cond_rmse-tab"
+                    data-toggle="tab"
+                    href="#sim_rn_cond_rmse"
+                    role="tab"
+                    >Simulated Road Network Conditions RMSE</a
+                >
+            </li>
+            <li class="nav-item">
+                <a
+                    class="nav-link"
+                    id="exp_rn_cond_rmse-tab"
+                    data-toggle="tab"
+                    href="#exp_rn_cond_rmse"
+                    role="tab"
+                    >Expected Road Network Conditions RMSE</a
+                >
+            </li>
+        </ul>
 
-		<div class="tab-content" id="convergenceCharts">
-			<div class="tab-pane fade show active" id="surplus" role="tabpanel">
-				<div id="surplusChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="mean_departure_time" role="tabpanel">
-				<div id="meanDepartureTimeChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="dt_rmse" role="tabpanel">
-				<div id="dtRmseChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="travel_time" role="tabpanel">
-				<div id="travelTimeChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="expect_rmse" role="tabpanel">
-				<div id="expectRmseChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="sim_rn_cond_rmse" role="tabpanel">
-				<div id="simRnCondRmseChart" style="height: 600px; width: 1000px"></div>
-			</div>
-			<div class="tab-pane fade" id="exp_rn_cond_rmse" role="tabpanel">
-				<div id="expRnCondRmseChart" style="height: 600px; width: 1000px"></div>
-			</div>
-		</div>
+        <div class="tab-content" id="convergenceCharts">
+            <div class="tab-pane fade show active" id="surplus" role="tabpanel">
+                <div
+                    id="surplusChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="mean_departure_time" role="tabpanel">
+                <div
+                    id="meanDepartureTimeChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="dt_rmse" role="tabpanel">
+                <div
+                    id="dtRmseChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="travel_time" role="tabpanel">
+                <div
+                    id="travelTimeChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="expect_rmse" role="tabpanel">
+                <div
+                    id="expectRmseChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="sim_rn_cond_rmse" role="tabpanel">
+                <div
+                    id="simRnCondRmseChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+            <div class="tab-pane fade" id="exp_rn_cond_rmse" role="tabpanel">
+                <div
+                    id="expRnCondRmseChart"
+                    style="height: 600px; width: 1000px"
+                ></div>
+            </div>
+        </div>
 
-		<h2>Last Iteration</h2>
+        <h2>Last Iteration</h2>
 
-		<div id="roadDepartureTimeHist" style="height: 600px; width: 1000px"></div>
+        <div
+            id="roadDepartureTimeHist"
+            style="height: 600px; width: 1000px"
+        ></div>
 
-		<div id="roadArrivalTimeHist" style="height: 600px; width: 1000px"></div>
+        <div
+            id="roadArrivalTimeHist"
+            style="height: 600px; width: 1000px"
+        ></div>
 
-		<script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
-		<script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-		<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
-		<script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
+        <script
+            src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+            integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+            crossorigin="anonymous"
+        ></script>
+        <script
+            src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"
+            integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+            crossorigin="anonymous"
+        ></script>
+        <script
+            src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
+            integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+            crossorigin="anonymous"
+        ></script>
+        <script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
 
-		<script>
-			function secondsToString(seconds) {
-				var date = new Date(0);
-				date.setSeconds(seconds);
-				var isoString = date.toISOString();
-				return isoString;
-			}
+        <script>
+            function secondsToString(seconds) {
+            	var date = new Date(0);
+            	date.setSeconds(seconds);
+            	var isoString = date.toISOString();
+            	return isoString;
+            }
 
-			const iters = [
-				{% for it in iterations %}
-				{{ it.iteration_counter }},
-				{% endfor %}
-			];
-			const surplus = [
-				{% for it in iterations %}
-				{{ f64::from(it.surplus.mean()) }},
-				{% endfor %}
-			];
-			const mean_departure_time = [
-				{% for it in iterations %}
-				{% match it.mode_results.trip_modes %}
-				{% when Some with (trip_results) %}
-				secondsToString({{ f64::from(trip_results.departure_time.mean()) }}),
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
-			const dt_rmse = [
-				{% for it in iterations %}
-				{% match it.mode_results.trip_modes %}
-				{% when Some with (trip_results) %}
-				{% match trip_results.dep_time_rmse %}
-				{% when Some with (value) %}
-				secondsToString({{ f64::from(value.clone()) }}),
-				{% when None %}
-				"",
-				{% endmatch %}
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
-			const travel_time = [
-				{% for it in iterations %}
-				{% match it.mode_results.trip_modes %}
-				{% when Some with (trip_results) %}
-				secondsToString({{ f64::from(trip_results.travel_time.mean()) }}),
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
-			const expect_rmse = [
-				{% for it in iterations %}
-				{% match it.mode_results.trip_modes %}
-				{% when Some with (trip_results) %}
-				{% match trip_results.road_leg %}
-				{% when Some with (rlr) %}
-				secondsToString({{ f64::from(rlr.exp_travel_time_diff_rmse.clone()) }}),
-				{% when None %}
-				{% endmatch %}
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
-			const sim_rn_cond_rmse = [
-				{% for it in iterations %}
-				{% match it.sim_road_network_weights_rmse %}
-				{% when Some with (value) %}
-				secondsToString({{ f64::from(value.clone()) }}),
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
-			const exp_rn_cond_rmse = [
-				{% for it in iterations %}
-				{% match it.exp_road_network_weights_rmse %}
-				{% when Some with (value) %}
-				secondsToString({{ f64::from(value.clone()) }}),
-				{% when None %}
-				{% endmatch %}
-				{% endfor %}
-			];
+            const iters = [
+            	{% for it in iterations %}
+            	{{ it.iteration_counter }},
+            	{% endfor %}
+            ];
+            const surplus = [
+            	{% for it in iterations %}
+            	{{ f64::from(it.surplus.mean()) }},
+            	{% endfor %}
+            ];
+            const mean_departure_time = [
+            	{% for it in iterations %}
+            	{% match it.mode_results.trip_modes %}
+            	{% when Some with (trip_results) %}
+            	secondsToString({{ f64::from(trip_results.departure_time.mean()) }}),
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
+            const dt_rmse = [
+            	{% for it in iterations %}
+            	{% match it.mode_results.trip_modes %}
+            	{% when Some with (trip_results) %}
+            	{% match trip_results.dep_time_rmse %}
+            	{% when Some with (value) %}
+            	secondsToString({{ f64::from(value.clone()) }}),
+            	{% when None %}
+            	"",
+            	{% endmatch %}
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
+            const travel_time = [
+            	{% for it in iterations %}
+            	{% match it.mode_results.trip_modes %}
+            	{% when Some with (trip_results) %}
+            	secondsToString({{ f64::from(trip_results.travel_time.mean()) }}),
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
+            const expect_rmse = [
+            	{% for it in iterations %}
+            	{% match it.mode_results.trip_modes %}
+            	{% when Some with (trip_results) %}
+            	{% match trip_results.road_leg %}
+            	{% when Some with (rlr) %}
+            	secondsToString({{ f64::from(rlr.exp_travel_time_diff_rmse.clone()) }}),
+            	{% when None %}
+            	{% endmatch %}
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
+            const sim_rn_cond_rmse = [
+            	{% for it in iterations %}
+            	{% match it.sim_road_network_weights_rmse %}
+            	{% when Some with (value) %}
+            	secondsToString({{ f64::from(value.clone()) }}),
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
+            const exp_rn_cond_rmse = [
+            	{% for it in iterations %}
+            	{% match it.exp_road_network_weights_rmse %}
+            	{% when Some with (value) %}
+            	secondsToString({{ f64::from(value.clone()) }}),
+            	{% when None %}
+            	{% endmatch %}
+            	{% endfor %}
+            ];
 
-			function linspace(start, stop, num) {
-				const step = (stop - start) / (num - 1);
-				return Array.from({length: num}, (_, i) => secondsToString(start + step * i));
-			}
+            function linspace(start, stop, num) {
+            	const step = (stop - start) / (num - 1);
+            	return Array.from({length: num}, (_, i) => secondsToString(start + step * i));
+            }
 
-			const departure_time_bars = [
-				{% for i in last_iteration.departure_time_histogram.bars %}
-				{{ i }},
-				{% endfor %}
-			];
-			const dt_start = {{ f64::from(last_iteration.departure_time_histogram.period.start()) }};
-			const dt_end = {{ f64::from(last_iteration.departure_time_histogram.period.end()) }};
-			const dt_interval = (dt_end - dt_start) / departure_time_bars.length;
-			const road_departure_times = linspace(
-				dt_start + dt_interval / 2,
-				dt_end - dt_interval / 2,
-				departure_time_bars.length,
-			);
+            const departure_time_bars = [
+            	{% for i in last_iteration.departure_time_histogram.bars %}
+            	{{ i }},
+            	{% endfor %}
+            ];
+            const dt_start = {{ f64::from(last_iteration.departure_time_histogram.period.start()) }};
+            const dt_end = {{ f64::from(last_iteration.departure_time_histogram.period.end()) }};
+            const dt_interval = (dt_end - dt_start) / departure_time_bars.length;
+            const road_departure_times = linspace(
+            	dt_start + dt_interval / 2,
+            	dt_end - dt_interval / 2,
+            	departure_time_bars.length,
+            );
 
-			const arrival_time_bars = [
-				{% for i in last_iteration.arrival_time_histogram.bars %}
-				{{ i }},
-				{% endfor %}
-			];
-			const at_start = {{ f64::from(last_iteration.arrival_time_histogram.period.start()) }};
-			const at_end = {{ f64::from(last_iteration.arrival_time_histogram.period.end()) }};
-			const at_interval = (at_end - at_start) / arrival_time_bars.length;
-			const road_arrival_times = linspace(
-				at_start + at_interval / 2,
-				at_end - at_interval / 2,
-				arrival_time_bars.length,
-			);
+            const arrival_time_bars = [
+            	{% for i in last_iteration.arrival_time_histogram.bars %}
+            	{{ i }},
+            	{% endfor %}
+            ];
+            const at_start = {{ f64::from(last_iteration.arrival_time_histogram.period.start()) }};
+            const at_end = {{ f64::from(last_iteration.arrival_time_histogram.period.end()) }};
+            const at_interval = (at_end - at_start) / arrival_time_bars.length;
+            const road_arrival_times = linspace(
+            	at_start + at_interval / 2,
+            	at_end - at_interval / 2,
+            	arrival_time_bars.length,
+            );
 
-			$(document).ready(function() {
-							var firstHeight = $('.first').height();
-							$("thead tr.second th").css("top", firstHeight)
-						});
+            $(document).ready(function() {
+            				var firstHeight = $('.first').height();
+            				$("thead tr.second th").css("top", firstHeight)
+            			});
 
-			var surplus_trace = {
-							x: iters,
-							y: surplus,
-							type: 'scatter'
-						};
-			Plotly.newPlot('surplusChart', [surplus_trace]);
+            var surplus_trace = {
+            				x: iters,
+            				y: surplus,
+            				type: 'scatter'
+            			};
+            Plotly.newPlot('surplusChart', [surplus_trace]);
 
-			if (mean_departure_time.length > 0) {
-				var mean_departure_time_trace = {
-					x: iters,
-					y: mean_departure_time,
-					type: 'scatter'
-				};
-				var layout = {
-					yaxis: {
-						tickformat: "%H:%M:%S"
-					}
-				};
-				Plotly.newPlot('meanDepartureTimeChart', [mean_departure_time_trace], layout);
-			}
+            if (mean_departure_time.length > 0) {
+            	var mean_departure_time_trace = {
+            		x: iters,
+            		y: mean_departure_time,
+            		type: 'scatter'
+            	};
+            	var layout = {
+            		yaxis: {
+            			tickformat: "%H:%M:%S"
+            		}
+            	};
+            	Plotly.newPlot('meanDepartureTimeChart', [mean_departure_time_trace], layout);
+            }
 
-			if (dt_rmse.length > 0) {
-				var dt_rmse_trace = {
-								x: iters,
-								y: dt_rmse,
-								type: 'scatter'
-							};
-				var layout = {
-								yaxis: {
-												tickformat: "%H:%M:%S"
-											}
-							};
-				Plotly.newPlot('dtRmseChart', [dt_rmse_trace], layout);
-			}
+            if (dt_rmse.length > 0) {
+            	var dt_rmse_trace = {
+            					x: iters,
+            					y: dt_rmse,
+            					type: 'scatter'
+            				};
+            	var layout = {
+            					yaxis: {
+            									tickformat: "%H:%M:%S"
+            								}
+            				};
+            	Plotly.newPlot('dtRmseChart', [dt_rmse_trace], layout);
+            }
 
-			if (travel_time.length) {
-				var travel_time_trace = {
-					x: iters,
-					y: travel_time,
-					type: 'scatter'
-				};
-				var layout = {
-					yaxis: {
-						tickformat: "%H:%M:%S"
-					}
-				};
-				Plotly.newPlot('travelTimeChart', [travel_time_trace], layout);
-			}
+            if (travel_time.length) {
+            	var travel_time_trace = {
+            		x: iters,
+            		y: travel_time,
+            		type: 'scatter'
+            	};
+            	var layout = {
+            		yaxis: {
+            			tickformat: "%H:%M:%S"
+            		}
+            	};
+            	Plotly.newPlot('travelTimeChart', [travel_time_trace], layout);
+            }
 
-			if (expect_rmse.length > 0) {
-				var expect_rmse_trace = {
-								x: iters,
-								y: expect_rmse,
-								type: 'scatter'
-							};
-				var layout = {
-								yaxis: {
-												tickformat: "%H:%M:%S"
-											}
-							};
-				Plotly.newPlot('expectRmseChart', [expect_rmse_trace], layout);
-			}
+            if (expect_rmse.length > 0) {
+            	var expect_rmse_trace = {
+            					x: iters,
+            					y: expect_rmse,
+            					type: 'scatter'
+            				};
+            	var layout = {
+            					yaxis: {
+            									tickformat: "%H:%M:%S"
+            								}
+            				};
+            	Plotly.newPlot('expectRmseChart', [expect_rmse_trace], layout);
+            }
 
-			if (sim_rn_cond_rmse.length > 0) {
-				var sim_rn_cond_rmse_trace = {
-					x: iters,
-					y: sim_rn_cond_rmse,
-					type: 'scatter'
-				};
-				var layout = {
-					yaxis: {
-						tickformat: "%H:%M:%S"
-					}
-				};
-				Plotly.newPlot('simRnCondRmseChart', [sim_rn_cond_rmse_trace], layout);
-			}
+            if (sim_rn_cond_rmse.length > 0) {
+            	var sim_rn_cond_rmse_trace = {
+            		x: iters,
+            		y: sim_rn_cond_rmse,
+            		type: 'scatter'
+            	};
+            	var layout = {
+            		yaxis: {
+            			tickformat: "%H:%M:%S"
+            		}
+            	};
+            	Plotly.newPlot('simRnCondRmseChart', [sim_rn_cond_rmse_trace], layout);
+            }
 
-			if (exp_rn_cond_rmse.length > 0) {
-				var exp_rn_cond_rmse_trace = {
-					x: iters,
-					y: exp_rn_cond_rmse,
-					type: 'scatter'
-				};
-				var layout = {
-					yaxis: {
-						tickformat: "%H:%M:%S"
-					}
-				};
-				Plotly.newPlot('expRnCondRmseChart', [exp_rn_cond_rmse_trace], layout);
-			}
+            if (exp_rn_cond_rmse.length > 0) {
+            	var exp_rn_cond_rmse_trace = {
+            		x: iters,
+            		y: exp_rn_cond_rmse,
+            		type: 'scatter'
+            	};
+            	var layout = {
+            		yaxis: {
+            			tickformat: "%H:%M:%S"
+            		}
+            	};
+            	Plotly.newPlot('expRnCondRmseChart', [exp_rn_cond_rmse_trace], layout);
+            }
 
-			var road_departure_times_trace = {
-				x: road_departure_times,
-				y: departure_time_bars,
-				line_shape: "hvh",
-			};
-			var layout = {
-				title: "Departure times distribution",
-				xaxis: {
-					tickformat: "%H:%M:%S"
-				}
-			};
-			Plotly.newPlot('roadDepartureTimeHist', [road_departure_times_trace], layout);
+            var road_departure_times_trace = {
+            	x: road_departure_times,
+            	y: departure_time_bars,
+            	line_shape: "hvh",
+            };
+            var layout = {
+            	title: "Departure times distribution",
+            	xaxis: {
+            		tickformat: "%H:%M:%S"
+            	}
+            };
+            Plotly.newPlot('roadDepartureTimeHist', [road_departure_times_trace], layout);
 
-			var road_arrival_times_trace = {
-				x: road_arrival_times,
-				y: arrival_time_bars,
-				line_shape: "hvh",
-			};
-			var layout = {
-				title: "Arrival times distribution",
-				xaxis: {
-					tickformat: "%H:%M:%S"
-				}
-			};
-			Plotly.newPlot('roadArrivalTimeHist', [road_arrival_times_trace], layout);
-		</script>
-	</body>
+            var road_arrival_times_trace = {
+            	x: road_arrival_times,
+            	y: arrival_time_bars,
+            	line_shape: "hvh",
+            };
+            var layout = {
+            	title: "Arrival times distribution",
+            	xaxis: {
+            		tickformat: "%H:%M:%S"
+            	}
+            };
+            Plotly.newPlot('roadArrivalTimeHist', [road_arrival_times_trace], layout);
+        </script>
+    </body>
 </html>

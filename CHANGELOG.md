@@ -12,10 +12,13 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] Allow edges to have time-varying bottleneck flows with `bottleneck_flows` and
   `bottleneck_times` variables.
+- [DEV] Add GNU General Public License v3.
 
 ### Changed
 
 - [INPUT] Arbitrary ids can be used for all input values (negative integers, strings).
+- [DEV] Rename the repository from Metrolib to Metropolis-Core.
+- [DEV] Update README.md.
 
 ## [1.1.0] - 2025-06-06
 
@@ -556,35 +559,35 @@ First stable release of METROPOLIS2!
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.1.0...HEAD
-[1.0.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.1.0
-[1.0.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0
-[1.0.0-7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-7
-[1.0.0-6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-6
-[1.0.0-5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-5
-[1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4
-[1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
-[1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
-[1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
-[0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0
-[0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
-[0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
-[0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
-[0.5.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.1
-[0.5.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.0
-[0.4.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.3
-[0.4.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.2
-[0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
-[0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0
-[0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
-[0.3.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.0
-[0.2.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.1
-[0.2.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.0
-[0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7
-[0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
-[0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5
-[0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.4
-[0.1.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.3
-[0.1.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.2
-[0.1.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.1
-[0.1.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.0
+[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.1.0...HEAD
+[1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.1.0
+[1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0
+[1.0.0-7]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-7
+[1.0.0-6]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-6
+[1.0.0-5]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-5
+[1.0.0-4]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-4
+[1.0.0-rc.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.3
+[1.0.0-rc.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.2
+[1.0.0-rc.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.1
+[0.8.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.8.0
+[0.7.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.7.0
+[0.6.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.6.0
+[0.5.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.2
+[0.5.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.1
+[0.5.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.0
+[0.4.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.3
+[0.4.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.2
+[0.4.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.1
+[0.4.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.0
+[0.3.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.3.1
+[0.3.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.3.0
+[0.2.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.2.1
+[0.2.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.2.0
+[0.1.7]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.7
+[0.1.6]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.6
+[0.1.5]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.5
+[0.1.4]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.4
+[0.1.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.3
+[0.1.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.2
+[0.1.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.1
+[0.1.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.0

@@ -1,10 +1,26 @@
+# This file is part of Metropolis-Core.
+# Copyright © 2022, 2023, 2024, 2025 André de Palma, Lucas Javaudin
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 name: Publish
 permissions:
   contents: write
 on:
   push:
     tags:
-      - '[0-9]+.*'
+      - "[0-9]+.*"
 env:
   PKG_CONFIG_SYSROOT_DIR: /
 jobs:
@@ -14,11 +30,11 @@ jobs:
     outputs:
       release_id: ${{ steps.create-release.outputs.id }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Create release
-      id: create-release
-      uses: ncipollo/release-action@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create release
+        id: create-release
+        uses: ncipollo/release-action@v1
   build:
     needs: release
     name: Publish for ${{ matrix.os }}
@@ -34,43 +50,43 @@ jobs:
           - os: macos-latest
             binary_target: x86_64-apple-darwin
     steps:
-    - name: Setup node
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-    - name: Install MUSL tools
-      if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get install -y musl-tools
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ github.ref_name }}
-    - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: ${{ matrix.binary_target }}
-        profile: minimal
-        override: true
-    - name: Install cargo tools
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cargo-make, mdbook
-    - name: Build Binary
-      uses: actions-rs/cargo@v1
-      with:
-        command: make
-        args: --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} zip-release-ci-flow
-    - name: Upload Binaries
-      uses: svenstaro/upload-release-action@v2
-      with:
-        file: '*.zip'
-        overwrite: true
-        file_glob: true
-    - uses: tauri-apps/tauri-action@v0
-      if: ${{ matrix.os != 'ubuntu-latest' }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        releaseId: ${{ needs.release.outputs.release_id }}
-        args: --target ${{ matrix.binary_target }}
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install MUSL tools
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y musl-tools
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.binary_target }}
+          profile: minimal
+          override: true
+      - name: Install cargo tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make, mdbook
+      - name: Build Binary
+        uses: actions-rs/cargo@v1
+        with:
+          command: make
+          args: --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} zip-release-ci-flow
+      - name: Upload Binaries
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: "*.zip"
+          overwrite: true
+          file_glob: true
+      - uses: tauri-apps/tauri-action@v0
+        if: ${{ matrix.os != 'ubuntu-latest' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.release.outputs.release_id }}
+          args: --target ${{ matrix.binary_target }}

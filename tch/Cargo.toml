@@ -4,7 +4,7 @@ version = "0.2.3"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "Time-dependent contraction hierarchies"
-repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
+repository = "https://github.com/Metropolis2/Metropolis-Core"
 keywords = [
   "contraction-hierarchies",
   "routing",

@@ -1,9 +1,20 @@
-// Copyright 2022 Lucas Javaudin
+// This file is part of Metropolis-Core.
+// Copyright © 2022, 2023, 2024, 2025 André de Palma, Lucas Javaudin
 //
-// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
-// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Library for Metropolis: a dynamic multi-modal traffic-assignment simulator.
+//!  Metropolis-Core: the Rust-based core of the METROPOLIS2 simulator.
 #![doc(html_no_source)]
 
 pub mod event;
@@ -75,6 +86,16 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     path: &Path,
     writer: Option<W>,
 ) -> Result<()> {
+    println!(
+        "
+        Metropolis-Core v{}
+        Copyright (C) 2022-2025 André de Palma, Lucas Javaudin
+        This program comes with ABSOLUTELY NO WARRANTY.
+        This is free software, and you are welcome to redistribute it
+        under certain conditions; see `https://www.gnu.org/licenses/' for details.
+        ",
+        env!("CARGO_PKG_VERSION")
+    );
     // Read parameters.
     let params = io::json::get_parameters_from_json(path)?;
     parameters::init(params)?;
