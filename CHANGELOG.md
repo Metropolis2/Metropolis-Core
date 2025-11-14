@@ -20,6 +20,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] Rename the repository from Metrolib to Metropolis-Core.
 - [DEV] Update README.md.
 
+### Removed
+
+- [USER] Remove the Tauri GUI (not useful and hard to maintain).
+
 ## [1.1.0] - 2025-06-06
 
 ### Added
