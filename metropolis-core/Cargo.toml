@@ -40,7 +40,7 @@ log = "0.4"
 num-traits = "0.2"
 object-pool = "0.6"
 once_cell = "1.17"
-parquet = { version = "55.1", features = ["arrow", "json"] }
+parquet = { version = "57.0", features = ["arrow", "json"] }
 petgraph = { version = "0.8", default-features = false }
 polars = { version = "0.52.0", default-features = false, features = [
   "csv",
