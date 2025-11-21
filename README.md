@@ -262,8 +262,11 @@ Project Link: [https://github.com/Metropolis2/Metropolis-Core](https://github.co
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-METROPOLIS2 took inspiration from the METROPOLIS (first of the name) simulator by André de Palma,
-Fabrice Marchal and Yurii Nesterov.
+METROPOLIS2 takes its name and inspiration from the METROPOLIS simulator developed by André de
+Palma, Fabrice Marchal and Yurii Nesterov.
+
+de Palma, A., Marchal, F., & Nesterov, Y. (1997). METROPOLIS: Modular system for dynamic traffic
+simulation. _Transportation Research Record_, 1607(1), 178-184.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
