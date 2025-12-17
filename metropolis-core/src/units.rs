@@ -30,6 +30,7 @@
 //! in miles per second.
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::Hash;
 use std::iter;
 use std::ops::*;
 
@@ -43,16 +44,73 @@ use ttf::TTFNum;
 
 const MARGIN: f64 = 1e-8;
 
+#[derive(Archive, Rdeser, Rser)]
+#[rkyv(remote=ArrayString<16>)]
+#[rkyv(archived=ArchivedArrayString)]
+pub(crate) struct ArrayStringDef {
+    #[rkyv(getter = ArrayString::to_string)]
+    string: String,
+}
+
+// The two `impl` below are required because rkyv does not automatically implement Hash and Eq for
+// the Archived types.
+impl Hash for ArchivedArrayString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.string.hash(state);
+    }
+}
+
+impl PartialEq for ArchivedArrayString {
+    fn eq(&self, other: &Self) -> bool {
+        self.string == other.string
+    }
+}
+
+impl From<ArrayStringDef> for ArrayString<16> {
+    fn from(value: ArrayStringDef) -> Self {
+        let mut arraystr = ArrayString::new();
+        arraystr.push_str(&value.string);
+        arraystr
+    }
+}
+
 /// Representation of an Identifier that can be either integer or string.
-#[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
+#[derive(
+    Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize, Deserialize, Archive, Rdeser, Rser,
+)]
 pub enum MetroId {
     /// Id represented as an unsigned integer.
     Unsigned(u64),
     /// Id represented as an integer.
     Integer(i64),
     /// Id represented as String (16 bytes max).
-    Arbitrary(ArrayString<16>),
+    Arbitrary(#[rkyv(with=ArrayStringDef)] ArrayString<16>),
 }
+
+// The three `impl` below are required because rkyv does not automatically implement Hash and Eq for
+// the Archived types.
+impl Hash for ArchivedMetroId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Unsigned(i) => i.hash(state),
+            Self::Integer(i) => i.hash(state),
+            Self::Arbitrary(s) => s.hash(state),
+        }
+    }
+}
+
+impl PartialEq for ArchivedMetroId {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unsigned(self_i), Self::Unsigned(other_i)) => self_i == other_i,
+            (Self::Integer(self_i), Self::Integer(other_i)) => self_i == other_i,
+            (Self::Arbitrary(self_s), Self::Arbitrary(other_s)) => self_s == other_s,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ArchivedMetroId {}
 
 impl Default for MetroId {
     fn default() -> Self {

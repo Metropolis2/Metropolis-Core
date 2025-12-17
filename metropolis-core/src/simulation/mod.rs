@@ -426,12 +426,14 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
     // Pre-process the simulation.
     let filename = PathBuf::from("preprocess.rkyv");
     let preprocess_data = if filename.is_file() {
+        warn!("Reading preprocessing data from `preprocess.rkyv`");
         let mut bytes = Vec::new();
         std::fs::File::open(filename)?.read_to_end(&mut bytes)?;
         let archived = unsafe { rkyv::access_unchecked::<ArchivedPreprocessingData>(&bytes[..]) };
         deserialize::<PreprocessingData, Error>(archived)?
     } else {
         let data = preprocess()?;
+        warn!("Writing preprocessing data to `preprocess.rkyv`");
         let mut writer = std::fs::File::create(filename)?;
         let bytes = rkyv::to_bytes::<Error>(&data)?;
         writer.write_all(&bytes)?;
@@ -519,12 +521,14 @@ pub fn compute_and_store_choices() -> Result<()> {
     info!("Computing skims");
     let filename = PathBuf::from("skims.rkyv");
     let skims = if filename.is_file() {
+        warn!("Reading skims data from `skims.rkyv`");
         let mut bytes = Vec::new();
         std::fs::File::open(filename)?.read_to_end(&mut bytes)?;
         let archived = unsafe { rkyv::access_unchecked::<ArchivedNetworkSkim>(&bytes[..]) };
         deserialize::<NetworkSkim, Error>(archived)?
     } else {
         let skims = crate::network::compute_skims(&weights, &preprocess_data.network)?;
+        warn!("Writing skims data to `skims.rkyv`");
         let mut writer = std::fs::File::create(filename)?;
         let bytes = rkyv::to_bytes::<Error>(&skims)?;
         writer.write_all(&bytes)?;

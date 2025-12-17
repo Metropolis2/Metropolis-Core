@@ -557,8 +557,8 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
         }
 
         if parameters.output_overlay {
-            // TODO: Implement this with bincode (JSON is too complex to be used here).
-            unimplemented!()
+            crate::io::json::write_json(&overlay, &parameters.output_directory, "overlay")
+                .context("Cannot write overlay")?;
         }
 
         if parameters.algorithm == AlgorithmType::Intersect {

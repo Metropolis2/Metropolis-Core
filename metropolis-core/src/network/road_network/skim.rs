@@ -37,7 +37,7 @@ use crate::units::AnySeconds;
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
 /// [RoadNetwork](super::RoadNetwork).
 #[derive(Clone, Default, Debug, Serialize, Deserialize, Archive, Rdeser, Rser)]
-// #[serde(into = "SerializedRoadNetworkSkims")]
+#[serde(into = "SerializedRoadNetworkSkims")]
 pub struct RoadNetworkSkims(pub Vec<Option<RoadNetworkSkim>>);
 
 impl Index<UniqueVehicleIndex> for RoadNetworkSkims {
