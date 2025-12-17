@@ -1,4 +1,0 @@
-agent_id,alt_choice.type,alt_choice.u,alt_choice.mu
-0,Deterministic,0.3,
-1,Deterministic,0.6,
-2,Logit,0.5,1.0

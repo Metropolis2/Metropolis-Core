@@ -1,5 +1,5 @@
 target/
-core/examples/**/output/
+metropolis-core/examples/**/output/
 tch/examples/**/output/
 docs/
 releases/

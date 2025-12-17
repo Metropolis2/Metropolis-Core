@@ -4,8 +4,8 @@ CARGO_MAKE_DOCS_ROOT_FOLDER = "."
 CARGO_MAKE_CI = true
 CARGO_MAKE_CARGO_VERBOSE_FLAGS = ""
 CARGO_MAKE_CARGO_BUILD_TEST_FLAGS = ""
-CARGO_MAKE_PROJECT_NAME = "metropolis"
-CARGO_MAKE_PROJECT_VERSION = "1.0.0-4"
+CARGO_MAKE_PROJECT_NAME = "metropolis-core"
+CARGO_MAKE_PROJECT_VERSION = "1.1.0"
 CARGO_MAKE_BINARY_EXECUTABLE_NAMES = "metropolis_cli routing_cli"
 CARGO_MAKE_RUN_CHECK_FORMAT = true
 CARGO_MAKE_RUN_TOML_FORMAT = true
@@ -38,7 +38,7 @@ args = [
 [tasks.setup-release-build-env-vars]
 env.CARGO_MAKE_BINARY_RELEASE_ENV_INSTALL_MUSL = false
 
-[tasks.build-release-for-target-base]
+[tasks.build-release-for-target]
 args = [
   "build",
   "--release",
@@ -47,22 +47,12 @@ args = [
   "${CARGO_MAKE_RELEASE_FLOW_TARGET}",
 ]
 
-[tasks.book-flow]
-description = "Generate book."
-category = "Documentation"
-install_crate = false
-toolchain = "${CARGO_MAKE_RUST_DEFAULT_TOOLCHAIN}"
-command = "mdbook"
-args = ["build", "book/", "--dest-dir", "book/book"]
-
 [tasks.zip-release-ci-flow]
 dependencies = [
   "print-env-flow",
   "clean",
   "setup-release-build-env",
-  "build-release-for-binary-upload",
-  # "docs-flow",
-  # "book-flow",
+  "build-release-for-target",
   "zip-release-binary-for-target",
 ]
 
@@ -70,13 +60,14 @@ dependencies = [
 description = "Zips up the release binary, docs, README, CHANGELOG, and license(s)"
 condition = { env_set = [
   "CARGO_MAKE_RELEASE_FLOW_TARGET",
+  "CARGO_MAKE_RELEASE_TARGET_NAME",
   "CARGO_MAKE_PROJECT_NAME",
   "CARGO_MAKE_PROJECT_VERSION",
   "CARGO_MAKE_BINARY_EXECUTABLE_NAMES",
 ], env_true = [
   "CARGO_MAKE_CI",
 ] }
-env.OUTPUT_NAME = "${CARGO_MAKE_PROJECT_NAME}-v${CARGO_MAKE_PROJECT_VERSION}-${CARGO_MAKE_RELEASE_FLOW_TARGET}"
+env.OUTPUT_NAME = "${CARGO_MAKE_PROJECT_NAME}-v${CARGO_MAKE_PROJECT_VERSION}-${CARGO_MAKE_RELEASE_TARGET_NAME}"
 env.TARGET_RELEASE_DIRECTORY = "target/${CARGO_MAKE_RELEASE_FLOW_TARGET}/release"
 script = '''
 #!@duckscript
@@ -97,11 +88,9 @@ end
 cp ./README.md ${OUTPUT_NAME}/README.md
 cp ./CHANGELOG.md ${OUTPUT_NAME}/CHANGELOG.md
 glob_cp ./LICENSE* ${OUTPUT_NAME}/
-# cp ./docs/ ${OUTPUT_NAME}/
-# cp ./book/book/ ${OUTPUT_NAME}/
-cp ./core/examples/ ${OUTPUT_NAME}/
-mkdir ${OUTPUT_NAME}/routing_examples/
-cp ./tch/examples/generate_input.py ${OUTPUT_NAME}/routing_examples/
+cp ./metropolis-core/examples/ ${OUTPUT_NAME}/
+mkdir ${OUTPUT_NAME}/routing_examples
+cp ./tch/examples/generate_input.py ${OUTPUT_NAME}/routing_examples/generate_input.py
 cp ./tch/examples/data/ ${OUTPUT_NAME}/routing_examples/
 rm ${OUTPUT_NAME}/examples/csv_example.rs
 rm ${OUTPUT_NAME}/examples/parquet_example.rs

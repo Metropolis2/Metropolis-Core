@@ -1,7 +1,18 @@
-// Copyright 2022 Lucas Javaudin
+// This file is part of Metropolis-Core.
+// Copyright © 2022, 2023, 2024, 2025 André de Palma, Lucas Javaudin
 //
-// Licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
-// https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Structs and functions for the command-line tool.
 
@@ -346,8 +357,10 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     // Set the working directory to the directory of the `parameters.json` file so that the input
     // paths can be interpreted as being relative to this file.
     if let Some(parent_dir) = path.parent() {
-        env::set_current_dir(parent_dir)
-            .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+        if parent_dir.to_str().map(|s| !s.is_empty()).unwrap_or(true) {
+            env::set_current_dir(parent_dir)
+                .with_context(|| format!("Failed to set working directory to `{parent_dir:?}`"))?;
+        }
     }
 
     info!("Reading graph");

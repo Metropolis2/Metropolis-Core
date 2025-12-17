@@ -1,0 +1,45 @@
+---
+name: 💡 Feature Request
+title: "[feat] "
+description: Suggest an idea
+labels: "type: enhancement"
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: Describe the feature that you want
+      description: >
+        A clear description of the feature that could be added
+
+      placeholder: "I want Metropolis-Core to include..."
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: Explain why the feature is useful
+      description: >
+        Examples of applications that the new feature would allow
+
+      placeholder: "With this feature, I would be able to..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the way that feature could be implemented
+      description: A clear description of *how* the feature could be added
+      placeholder: "This is feasible by..."
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        A clear and concise description of any alternative solutions or features you've considered.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >
+        Add any other context about the feature request here.

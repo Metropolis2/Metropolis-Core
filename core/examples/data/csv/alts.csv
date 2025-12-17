@@ -1,6 +1,0 @@
-agent_id,alt_id,origin_delay,dt_choice.type,dt_choice.departure_time,dt_choice.interval,dt_choice.model.type,dt_choice.model.u,dt_choice.model.mu,dt_choice.offset,constant_utility,total_travel_utility.one,total_travel_utility.two,total_travel_utility.three,total_travel_utility.four,origin_utility.type,origin_utility.tstar,origin_utility.beta,origin_utility.gamma,origin_utility.delta,destination_utility.type,destination_utility.tstar,destination_utility.beta,destination_utility.gamma,destination_utility.delta,pre_compute_route
-0,0,,Constant,28800.0,,,,,,3.0,-0.002777777777777778,,,,,,,,,,,,,,
-1,0,30.0,Continuous,,,Logit,0.1,1.0,,-5.0,0.01,-0.01,0.01,-0.001,AlphaBetaGamma,25200.0,0.001388888888888889,0.001388888888888889,3600.0,,,,,,true
-1,1,0.0,Continuous,,,Logit,0.6,2.0,,0.0,0.0,,0.0,0.0,,,,,,,,,,,false
-1,2,,Continuous,,,Logit,0.3,0.5,,,,,,,,,,,,AlphaBetaGamma,32400.0,0.001388888888888889,0.004166666666666667,,
-2,0,,Discrete,,900.0,Deterministic,0.9,,-240.0,,,,,,,,,,,,,,,,

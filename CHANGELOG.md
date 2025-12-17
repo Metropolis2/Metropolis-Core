@@ -10,15 +10,89 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Added
 
-- [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
-  vehicle can travel.
+- [INPUT] Allow edges to have time-varying bottleneck flows with `bottleneck_flows` and
+  `bottleneck_times` variables.
+- [DEV] Add GNU General Public License v3.
 
 ### Changed
 
+- [INPUT] Arbitrary ids can be used for all input values (negative integers, strings).
+- [DEV] Rename the repository from Metrolib to Metropolis-Core.
+- [DEV] Update README.md.
+
+### Removed
+
+- [USER] Remove the Tauri GUI (not useful and hard to maintain).
+
+## [1.1.0] - 2025-06-06
+
+### Added
+
+- [INPUT] The `alpha` parameter can be used to specify the value of time at the alternative or trip
+  level (it has the same effect as the `travel_utility.one` or `total_travel_utility.one` variables,
+  with an opposite sign).
+
+### Changed
+
+- [INPUT] The `AlphaBetaGamma` schedule utility type is deprecated. Use `Linear` instead.
+
+### Fixed
+
+- [INPUT] Road-network parameter `max_pending_duration` is now optional when `spillback` is
+  disabled, as could be expected.
+- [USER] Error messages where not shown if occurring before the loggers were initialized.
+- [USER] Fix a bug when running `routing_cli` from the same directory where the parameters JSON file
+  is located.
+- [USER] Fix bugs when running a simulation without a road network.
+
+### Removed
+
+- [USER] Remove the nested parquet example.
+
+## [1.0.0] - 2025-01-06
+
+First stable release of METROPOLIS2!
+
+## [1.0.0-7] - 2024-12-21
+
+### Fixed
+
+- [DEV] Revert to tauri `1.x` to fix installer issues on Windows.
+
+## [1.0.0-6] - 2024-12-17
+
+### Fixed
+
+- [DEV] Fix duckscript bug in the release.
+- [DEV] Fix bug with Tauri on MacOS.
+
+## [1.0.0-5] - 2024-12-17
+
+### Added
+
+- [INPUT] The `"UpperBound"` speed-function type can be used to limit the maximum speed at which a
+  vehicle can travel.
+- [USER] The error messages are logged to the `log.txt` output file.
+
+### Changed
+
+- [USER] Improve the error message that is shown when some origin / destination nodes are not part
+  of the road network.
+- [INPUT] Default number of iterations (`max_iterations`) is 1 (it was 0).
+- [OUTPUT] Update the terminology for `running_times.json` output file.
+- [OUTPUT] Optimize file size of `report.html`.
+- [DEV] Use `jemalloc` as allocator for improved performances on Linux systems.
+- [DEV] Profile queries are not computed for origin-destination pairs with no departure-time choice.
 - [DEV] Road-network skims are not computed when they are not needed (e.g., when all trips have a
   route given as input).
-- [DEV] Do not compute search space for origin / destination nodes with few occurences. A TCH query
+- [DEV] Do not compute search space for origin / destination nodes with few occurrences. A TCH query
   is run instead of Intersect query in this case.
+
+### Fixed
+
+- [OUTPUT] Fix the computation for expected travel time difference RMSE.
+- [DEV] Fix a stack overflow that could happen when recursively running too many events.
+- [DEV] Various improvements and bug fixes.
 
 ## [1.0.0-4] - 2024-03-15
 
@@ -136,7 +210,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Fixed
 
-- [USER] A crash occuring for road legs with same origin as destination is fixed.
+- [USER] A crash occurring for road legs with same origin as destination is fixed.
 
 ## [0.6.0] - 2023-10-24
 
@@ -192,7 +266,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   This is a breaking change.
 - [USER] Remove loops in the route taken when they are detected, instead of just sending a warning.
 - [USER] Compute the expected arrival time more accurately.
-- [USER] When a vehicle is forced to be released on the next edge, it does not use any additionnal
+- [USER] When a vehicle is forced to be released on the next edge, it does not use any additional
   length so that the edge will not stay full for too long.
 
 ### Fixed
@@ -227,7 +301,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   vehicles are forced to enter the next edge in case of spillback.
 - [INPUT] Add edge parameter `overtaking` to allow vehicles to overtake each other at the edge's
   exit bottleneck.
-- [INPUT] Add road-network parameter `algorithm_type` to choose the algoritm used for
+- [INPUT] Add road-network parameter `algorithm_type` to choose the algorithm used for
   origin-destination profile queries (TCH or Intersect). Default is to let the simulator guess the
   best algorithm.
 - [INPUT] Network weights can be read directly from the output `weight_results.json.zst` (no need to
@@ -380,7 +454,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] Parameters `schedule_utility` for an Agent is removed. The schedule utility is now
   specified at the mode-level.
 - [Input] The parameter `desired_arrival` for `AlphaBetaGammaModel` is removed. The schedule utility
-  is now explicitely specified for either the origin or destination (or intermediary stop) making
+  is now explicitly specified for either the origin or destination (or intermediary stop) making
   this parameter useless.
 - [DEV] The `PreDayResult` struct is removed (everything is stored directly in `AgentResult` and
   `ModeResults` now).
@@ -489,30 +563,35 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/MetropolisTHEMA/Metrolib/compare/1.0.0-4...HEAD
-[1.0.0-4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-4
-[1.0.0-rc.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.3
-[1.0.0-rc.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.2
-[1.0.0-rc.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/1.0.0-rc.1
-[0.8.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.8.0
-[0.7.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.7.0
-[0.6.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.6.0
-[0.5.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.2
-[0.5.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.1
-[0.5.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.5.0
-[0.4.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.3
-[0.4.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.2
-[0.4.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.1
-[0.4.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.4.0
-[0.3.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.1
-[0.3.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.3.0
-[0.2.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.1
-[0.2.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.2.0
-[0.1.7]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.7
-[0.1.6]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.6
-[0.1.5]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.5
-[0.1.4]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.4
-[0.1.3]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.3
-[0.1.2]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.2
-[0.1.1]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.1
-[0.1.0]: https://github.com/MetropolisTHEMA/Metrolib/releases/tag/0.1.0
+[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.1.0...HEAD
+[1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.1.0
+[1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0
+[1.0.0-7]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-7
+[1.0.0-6]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-6
+[1.0.0-5]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-5
+[1.0.0-4]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-4
+[1.0.0-rc.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.3
+[1.0.0-rc.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.2
+[1.0.0-rc.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-rc.1
+[0.8.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.8.0
+[0.7.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.7.0
+[0.6.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.6.0
+[0.5.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.2
+[0.5.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.1
+[0.5.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.5.0
+[0.4.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.3
+[0.4.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.2
+[0.4.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.1
+[0.4.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.4.0
+[0.3.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.3.1
+[0.3.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.3.0
+[0.2.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.2.1
+[0.2.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.2.0
+[0.1.7]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.7
+[0.1.6]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.6
+[0.1.5]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.5
+[0.1.4]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.4
+[0.1.3]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.3
+[0.1.2]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.2
+[0.1.1]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.1
+[0.1.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/0.1.0

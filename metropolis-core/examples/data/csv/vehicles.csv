@@ -1,0 +1,5 @@
+vehicle_id,headway,pce,speed_function.type,speed_function.upper_bound,speed_function.coef
+car,8.0,,,,
+truck,24.0,3.0,UpperBound,25.0,
+motorcycle,0.0,0.1,Multiplicator,,0.8
+restricted_car,8.0,1.0,,,

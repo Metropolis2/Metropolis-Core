@@ -1,0 +1,4 @@
+agent_id,alt_choice.type,alt_choice.u,alt_choice.mu
+Alice,Deterministic,0.3,
+Bob,Deterministic,0.6,
+Charlie,Logit,0.5,1.0

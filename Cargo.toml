@@ -1,36 +1,6 @@
-[package]
-name = "metropolis"
-version = "1.0.0-4"
-authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
-edition = "2021"
-description = "METROPOLIS2: A mesoscopic transport simulator"
-repository = "https://git.lucasjavaudin.com/LucasJavaudin/metrolib"
-keywords = [
-  "transportation",
-  "simulation",
-  "traffic-assignment",
-  "public-transit",
-]
-categories = ["science", "simulation"]
-publish = false
-
 [workspace]
-
-[dependencies]
-tch = { path = "tch/" }
-metropolis-core = { path = "core/" }
-serde = "1.0"
-tauri = { version = "1.5", features = ["dialog-open"], optional = true }
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.6"
-
-[build-dependencies]
-tauri-build = { version = "1.5", features = [], optional = true }
-
-[features]
-gui = ["tauri", "tauri-build"]
-custom-protocol = ["gui", "tauri/custom-protocol"]
+resolver = "2"
+members = ["tch", "metropolis-core", "pwl", "choice"]
 
 [profile.dev.package."*"]
 debug = false

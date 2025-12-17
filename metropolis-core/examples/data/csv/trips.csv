@@ -1,0 +1,6 @@
+agent_id,alt_id,trip_id,class.type,class.origin,class.destination,class.vehicle,class.travel_time,stopping_time,constant_utility,alpha,travel_utility.one,travel_utility.two,travel_utility.three,travel_utility.four,schedule_utility.type,schedule_utility.tstar,schedule_utility.beta,schedule_utility.gamma,schedule_utility.delta
+Bob,car_driver,-1,Road,1,4,car,,,0.0,,0.0,0.0,0.0,0.0,,,,,
+Bob,public_transit,0,Virtual,,,,300.0,,,0.005,,,,,,,,,
+Bob,walking,1,Virtual,,,,420.0,,1.0,0.0,-0.0033333333333333335,,,,,,,,
+Charlie,car_driver,start,Road,1,3,truck,,300.0,-1.0,,-0.02,0.01,-0.005,0.01,Linear,28800.0,0.0008333333333333334,0.0008333333333333334,300.0
+Charlie,car_driver,end,Road,3,4,motorcycle,,,-2.0,,-0.02,0.01,-0.005,0.01,Linear,32400.0,,0.005555555555555556,600.0
