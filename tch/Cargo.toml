@@ -18,7 +18,7 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
-arrow = { version = "55.1", default-features = false, features = ["csv"] }
+arrow = { version = "57.1", default-features = false, features = ["csv"] }
 chrono = { version = "0.4", optional = true }
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
@@ -28,7 +28,7 @@ hashbrown = { version = "0.16", features = ["rayon", "serde"] }
 indicatif = "0.18"
 log = "0.4"
 num-traits = "0.2"
-parquet = { version = "55.1", features = ["arrow", "json"] }
+parquet = { version = "57.1", features = ["arrow", "json"] }
 petgraph = { version = "0.8", default-features = false, features = ["serde-1"] }
 priority-queue = "2.0"
 object-pool = "0.6"
