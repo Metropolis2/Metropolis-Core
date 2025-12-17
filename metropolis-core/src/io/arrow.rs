@@ -992,7 +992,9 @@ impl IdBuilder {
             Self::Unsigned(builder) => Arc::new(builder.finish()),
             Self::Integer(builder) => Arc::new(builder.finish()),
             Self::Arbitrary(builder) => Arc::new(builder.finish()),
-            Self::Uninitiated => unreachable!(),
+            // It can happen that no value where inserted into the builder.
+            // In this case, the dtype is UInt64 and an empty builder is returned.
+            Self::Uninitiated => Arc::new(UInt64Builder::default().finish()),
         }
     }
 
@@ -1001,7 +1003,9 @@ impl IdBuilder {
             Self::Unsigned(_) => DataType::UInt64,
             Self::Integer(_) => DataType::Int64,
             Self::Arbitrary(_) => DataType::Utf8,
-            Self::Uninitiated => unreachable!(),
+            // It can happen that no value where inserted into the builder.
+            // In this case, the dtype is fixed to UInt64.
+            Self::Uninitiated => DataType::UInt64,
         }
     }
 }
