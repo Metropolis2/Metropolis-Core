@@ -26,7 +26,7 @@ ttf = { path = "../pwl/" }
 tch = { path = "../tch/" }
 anyhow = "1.0"
 arrow = { version = "57.1", default-features = false, features = ["csv"] }
-askama = { version = "0.14", default-features = false, features = [
+askama = { version = "0.15", default-features = false, features = [
   "derive",
   "std",
 ] }
