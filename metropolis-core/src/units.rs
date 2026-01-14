@@ -74,6 +74,9 @@ impl From<i64> for MetroId {
 impl TryFrom<&str> for MetroId {
     type Error = anyhow::Error;
     fn try_from(value: &str) -> Result<Self> {
+        if value.len() > 16 {
+            bail!("Id with more than 16 characters: {value}");
+        }
         let mut arraystr = ArrayString::new();
         arraystr.push_str(value);
         Ok(Self::Arbitrary(arraystr))
