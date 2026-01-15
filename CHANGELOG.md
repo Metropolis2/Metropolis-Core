@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-01-15
+
 ### Added
 
 - [INPUT] Allow edges to have time-varying bottleneck flows with `bottleneck_flows` and
@@ -563,8 +565,9 @@ First stable release of METROPOLIS2!
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.1.0...HEAD
-[1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.1.0
+[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.2.0...HEAD
+[1.2.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.2.0
+[1.1.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.1.0
 [1.0.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0
 [1.0.0-7]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-7
 [1.0.0-6]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.0.0-6

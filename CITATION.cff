@@ -14,8 +14,7 @@ authors:
     family-names: Javaudin
     email: lucas@lucasjavaudin.com
     affiliation: >-
-      THEMA, CY Cergy Paris Université & LVMT, ENPC,
-      Institut Polytechnique de Paris, Univ Gustave Eiffel
+      LVMT, ENPC, Institut Polytechnique de Paris, Univ Gustave Eiffel
     orcid: 'https://orcid.org/0000-0002-6778-8037'
 repository-code: 'https://github.com/Metropolis2/Metropolis-Core'
 url: 'https://metropolis2.org'
@@ -29,5 +28,5 @@ keywords:
   - bottleneck
   - discrete-choice theory
 license: GPL-3.0-or-later
-version: 1.1.0
+version: 1.2.0
 date-released: '2025-06-06'

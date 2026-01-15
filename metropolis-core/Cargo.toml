@@ -1,6 +1,6 @@
 [package]
 name = "metropolis-core"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
 edition = "2021"
 description = "Metropolis-Core: the Rust-based core of the METROPOLIS2 simulator."
