@@ -28,10 +28,10 @@ use ttf::{PwlXYF, TTF, XYF};
 
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
-use super::{EdgeFlow, RoadEdge, RoadNetworkPreprocessingData};
+use super::{original_edge_id_of, EdgeFlow, RoadEdge, RoadNetworkPreprocessingData};
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::event::VehicleEvent;
-use crate::population::AgentIndex;
+use crate::population::{agent, AgentIndex};
 use crate::units::*;
 
 const MAX_WARNINGS: usize = 20;
@@ -1052,8 +1052,8 @@ impl Event for ForceVehicleRelease {
             input.progress_bar.suspend(|| {
                 warn!(
                     "Forcing the release of agent {} from edge {} at time {}",
-                    self.agent.index(),
-                    self.edge.index(),
+                    agent(self.agent.index()).id,
+                    original_edge_id_of(self.edge),
                     self.at_time
                 );
             });
