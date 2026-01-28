@@ -33,9 +33,9 @@
     <br />
     <a href="https://metropolis2.org">Website</a>
     &middot;
-    <a href="https://github.com/Metropolis2/Metropolis-Core/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/Metropolis2/Metropolis-Core/issues/new?labels=bug&template=bug_report.yml">Report Bug</a>
     &middot;
-    <a href="https://github.com/Metropolis2/Metropolis-Core/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/Metropolis2/Metropolis-Core/issues/new?labels=enhancement&template=feature_request.yml">Request Feature</a>
   </p>
 </div>
 
