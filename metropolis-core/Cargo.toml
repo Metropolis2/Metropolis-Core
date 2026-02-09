@@ -46,7 +46,7 @@ polars = { version = "0.52.0", default-features = false, features = [
   "csv",
   "parquet",
 ] }
-rand = "0.9"
+rand = "0.10"
 rand_xorshift = "0.4"
 rayon = "1.5"
 serde = "1.0"
