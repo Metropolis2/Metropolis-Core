@@ -30,21 +30,16 @@ pub mod alpha_beta_gamma;
 ///
 /// The schedule utility is the utility that an agent gets given his / her departure time from an
 /// origin or arrival time at a destination.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum ScheduleUtility {
     /// The schedule utility is always null.
+    #[default]
     None,
     /// The schedule utility is computed using the alpha-beta-gamma model.
     ///
     /// There is a penalty beta for leaving / arriving early and a penalty gamma for leaving /
     /// arriving late.
     LinearPenalties(LinearPenaltiesModel),
-}
-
-impl Default for ScheduleUtility {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl ScheduleUtility {

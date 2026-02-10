@@ -228,9 +228,10 @@ pub(crate) struct RoadNode {}
 ///
 /// A speed-density function gives the speed on an edge, as a function of the density of vehicle on
 /// this edge.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum SpeedDensityFunction {
     /// Vehicles always travel at free-flow speed.
+    #[default]
     FreeFlow,
     /// Vehicles travel at free-flow speed when flow is below edge capacity.
     /// Then, speed is inversely proportional to flow.
@@ -240,12 +241,6 @@ pub enum SpeedDensityFunction {
     Bottleneck(MetersPerSecond),
     /// A speed-density function with three regimes: free flow, congested and traffic jam.
     ThreeRegimes(ThreeRegimesSpeedDensityFunction),
-}
-
-impl Default for SpeedDensityFunction {
-    fn default() -> Self {
-        Self::FreeFlow
-    }
 }
 
 impl SpeedDensityFunction {

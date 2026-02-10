@@ -23,7 +23,7 @@ use crate::{network::NetworkWeights, units::*};
 /// A learning model that specifies how to compute the new value `x_{t+1}`, given the old value
 /// `x_t` and an update value `y`.
 /// value.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum LearningModel {
     /// Exponential learning model with adjustment for the initial weights.
@@ -39,18 +39,13 @@ pub enum LearningModel {
     /// `x_{t+1} = alpha * x_t + (1 - alpha) * y`.
     ExponentialUnadjusted(ZeroOneNum),
     /// Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
+    #[default]
     Linear,
     /// Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
     Genetic,
     /// Quadratic learning model: `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where
     /// `w = t^(1/2)`
     Quadratic,
-}
-
-impl Default for LearningModel {
-    fn default() -> Self {
-        Self::Linear
-    }
 }
 
 impl LearningModel {

@@ -23,9 +23,10 @@ use super::OriginalEdgeId;
 use crate::units::*;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum SpeedFunction {
     /// The identity function.
+    #[default]
     Base,
     /// The effective speed is bounded by a given value: `f(s) = max(s, ub)`.
     UpperBound(MetersPerSecond),
@@ -39,12 +40,6 @@ pub enum SpeedFunction {
     /// If the edge's base speed is out of bound (i.e., smaller than the smaller `x` value or
     /// larger than the largest `x` value), the base speed is used as the effective speed.
     Piecewise(Vec<[MetersPerSecond; 2]>),
-}
-
-impl Default for SpeedFunction {
-    fn default() -> Self {
-        Self::Base
-    }
 }
 
 impl SpeedFunction {

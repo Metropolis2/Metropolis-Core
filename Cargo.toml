@@ -34,3 +34,4 @@ unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+derive_ord_xor_partial_ord = { level = "allow", priority = 1 }
