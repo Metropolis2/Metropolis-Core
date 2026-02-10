@@ -398,7 +398,7 @@ pub(crate) fn compute_aggregate_results(
 fn get_update_vector(iteration_counter: u32) -> Vec<bool> {
     // To change the seed from one iteration to another, we add the iteration number to the
     // default seed.
-    let mut rng = crate::parameters::random_seed().map_or_else(XorShiftRng::from_os_rng, |seed| {
+    let mut rng = crate::parameters::random_seed().map_or_else(rand::make_rng, |seed| {
         XorShiftRng::seed_from_u64(seed + iteration_counter as u64)
     });
     let nb_agents = crate::population::nb_agents();
