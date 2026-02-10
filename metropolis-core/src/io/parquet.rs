@@ -101,7 +101,7 @@ pub fn append_parquet<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Re
     let mut file =
         File::create(&filename).with_context(|| format!("Cannot create file `{filename:?}`"))?;
     // This line is required to not end up with large filesize.
-    df.as_single_chunk_par();
+    df.align_chunks_par();
     ParquetWriter::new(&mut file)
         .finish(&mut df)
         .with_context(|| format!("Cannot write file `{filename:?}`"))?;

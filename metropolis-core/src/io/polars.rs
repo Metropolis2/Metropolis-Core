@@ -29,31 +29,31 @@ pub trait ToPolars {
 
 macro_rules! add_const {
     ($df:ident, $name:expr, $const:expr) => {
-        $df.with_column(Series::new(PlSmallStr::from_str($name), &[$const]))?;
+        $df.with_column(Column::new(PlSmallStr::from_str($name), &[$const]))?;
     };
 }
 
 macro_rules! add_null_const {
     ($df:ident, $name:expr, $type:expr) => {
-        $df.with_column(Series::full_null(PlSmallStr::from_str($name), 1, &$type))?;
+        $df.with_column(Series::full_null(PlSmallStr::from_str($name), 1, &$type).into())?;
     };
 }
 
 macro_rules! add_distr {
     ($df:ident, $name:expr, $var:expr) => {
-        $df.with_column(Series::new(
+        $df.with_column(Column::new(
             PlSmallStr::from_str(concat!($name, "_mean")),
             &[Into::<f64>::into($var.mean())],
         ))?;
-        $df.with_column(Series::new(
+        $df.with_column(Column::new(
             PlSmallStr::from_str(concat!($name, "_std")),
             &[Into::<f64>::into($var.std())],
         ))?;
-        $df.with_column(Series::new(
+        $df.with_column(Column::new(
             PlSmallStr::from_str(concat!($name, "_min")),
             &[Into::<f64>::into($var.min())],
         ))?;
-        $df.with_column(Series::new(
+        $df.with_column(Column::new(
             PlSmallStr::from_str(concat!($name, "_max")),
             &[Into::<f64>::into($var.max())],
         ))?;
@@ -62,26 +62,38 @@ macro_rules! add_distr {
 
 macro_rules! add_null_distr {
     ($df:ident, $name:expr) => {
-        $df.with_column(Series::full_null(
-            PlSmallStr::from_str(concat!($name, "_mean")),
-            1,
-            &DataType::Float64,
-        ))?;
-        $df.with_column(Series::full_null(
-            PlSmallStr::from_str(concat!($name, "_std")),
-            1,
-            &DataType::Float64,
-        ))?;
-        $df.with_column(Series::full_null(
-            PlSmallStr::from_str(concat!($name, "_min")),
-            1,
-            &DataType::Float64,
-        ))?;
-        $df.with_column(Series::full_null(
-            PlSmallStr::from_str(concat!($name, "_max")),
-            1,
-            &DataType::Float64,
-        ))?;
+        $df.with_column(
+            Series::full_null(
+                PlSmallStr::from_str(concat!($name, "_mean")),
+                1,
+                &DataType::Float64,
+            )
+            .into(),
+        )?;
+        $df.with_column(
+            Series::full_null(
+                PlSmallStr::from_str(concat!($name, "_std")),
+                1,
+                &DataType::Float64,
+            )
+            .into(),
+        )?;
+        $df.with_column(
+            Series::full_null(
+                PlSmallStr::from_str(concat!($name, "_min")),
+                1,
+                &DataType::Float64,
+            )
+            .into(),
+        )?;
+        $df.with_column(
+            Series::full_null(
+                PlSmallStr::from_str(concat!($name, "_max")),
+                1,
+                &DataType::Float64,
+            )
+            .into(),
+        )?;
     };
 }
 
@@ -160,7 +172,7 @@ macro_rules! add_cst_to_fields {
 
 impl ToPolars for AggregateResults {
     fn to_dataframe(self) -> Result<DataFrame> {
-        let mut df = DataFrame::new(vec![Column::new(
+        let mut df = DataFrame::new_infer_height(vec![Column::new(
             "iteration_counter".into(),
             &[self.iteration_counter],
         )])?;
