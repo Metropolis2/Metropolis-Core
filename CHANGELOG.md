@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [DEV] Update deprecated GitHub actions.
+
 ### Fixed
 
 - The warning message for forced releases now show the proper user id of the agent and edge (the
