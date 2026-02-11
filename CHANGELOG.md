@@ -14,8 +14,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Fixed
 
-- The warning message for forced releases now show the proper user id of the agent and edge (the
-  internal index was used instead).
+- [INPUT] The warning message for forced releases now show the proper user id of the agent and edge
+  (the internal index was used instead).
 
 ## [1.2.0] - 2026-01-15
 
