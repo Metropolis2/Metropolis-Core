@@ -67,10 +67,14 @@ impl RoadSegment {
 
     /// Records the exit of a vehicle from the segment.
     fn exits(&mut self, vehicle_headway: NonNegativeMeters) {
-        // The result of this operation is guaranteed to be non-negative because we only substract
+        // The result of this operation is guaranteed to be non-negative because we only subtract
         // vehicle headways that were previously added.
-        self.occupied_length =
-            NonNegativeMeters::try_from(self.occupied_length - vehicle_headway).unwrap();
+        // EDIT: Nope. Adding floats and subtracting them can produce something slightly smaller
+        // than zero.
+        self.occupied_length = NonNegativeMeters::try_from(
+            (self.occupied_length - vehicle_headway).max(AnyMeters::ZERO),
+        )
+        .unwrap();
     }
 
     /// Consumes the [RoadSegment] and returns a [PwlXYF] with the simulated length.
