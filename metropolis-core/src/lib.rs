@@ -49,7 +49,7 @@ pub fn run_simulation(path: &Path) -> Result<()> {
         if log_enabled!(log::Level::Error) {
             // Use the `error` macro so that the error is logged to all the loggers.
             error!("{err:?}");
-            Ok(())
+            std::process::exit(1)
         } else {
             // Return the error so that it is printed to console or GUI.
             Err(anyhow!(err))

@@ -17,6 +17,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] The warning message for forced releases now show the proper user id of the agent and edge
   (the internal index was used instead).
 - [USER] Fix a crash when a vehicle headway is not a round value.
+- [USER] Return error code 1 when the simulation failed (success code 0 was returned).
 
 ## [1.2.0] - 2026-01-15
 
