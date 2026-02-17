@@ -23,7 +23,7 @@ use serde_derive::Deserialize;
 
 use crate::learning::LearningModel;
 use crate::network::road_network::parameters::RoadNetworkParameters;
-use crate::units::Interval;
+use crate::units::{Interval, MetroPositiveNum, PositiveSeconds};
 
 static PARAMETERS: OnceLock<Parameters> = OnceLock::new();
 
@@ -64,6 +64,10 @@ pub(crate) fn max_iterations() -> u32 {
     read_global().max_iterations
 }
 
+pub(crate) fn departure_time_interval() -> PositiveSeconds {
+    read_global().departure_time_interval
+}
+
 pub(crate) fn has_road_network_parameters() -> bool {
     read_global().road_network.is_some()
 }
@@ -101,6 +105,10 @@ pub(crate) fn only_compute_decisions() -> bool {
 
 const fn default_iteration_counter() -> u32 {
     1
+}
+
+fn default_departure_time_interval() -> PositiveSeconds {
+    PositiveSeconds::new_unchecked(60.0)
 }
 
 const fn default_update_ratio() -> f64 {
@@ -168,6 +176,9 @@ pub struct Parameters {
     /// Maximum number of iterations to be run (on top of the `init_iteration_counter`).
     #[serde(default = "default_iteration_counter")]
     pub max_iterations: u32,
+    /// Time interval defining breakpoints of utility function for departure-time choice.
+    #[serde(default = "default_departure_time_interval")]
+    pub departure_time_interval: PositiveSeconds,
     /// Set of parameters for the road network.
     pub road_network: Option<RoadNetworkParameters>,
     /// Learning model used to update the values between two iterations.
@@ -205,6 +216,7 @@ impl Default for Parameters {
             max_iterations: 1,
             road_network: Some(Default::default()),
             learning_model: Default::default(),
+            departure_time_interval: PositiveSeconds::new_unchecked(60.0),
             update_ratio: 1.0,
             random_seed: None,
             nb_threads: 0,

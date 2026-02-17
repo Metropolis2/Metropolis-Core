@@ -49,6 +49,7 @@ parameters = {
     "learning_model": {"type": "Exponential", "value": 0.01},
     "init_iteration_counter": 1,
     "max_iterations": 2,
+    "departure_time_interval": 30.0,
     "update_ratio": 1.0,
     "random_seed": 19960813,
     "nb_threads": 24,

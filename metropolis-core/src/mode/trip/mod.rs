@@ -43,9 +43,6 @@ use crate::units::*;
 pub mod event;
 pub mod results;
 
-// TODO This should be a parameter of the simulation.
-const NB_INTERVALS: usize = 1500;
-
 /// A leg of a trip.
 #[derive(Clone, Debug)]
 pub struct Leg {
@@ -614,7 +611,7 @@ impl TravelingMode {
         leg_ttfs: &LegTTFs<'_>,
         period: Interval,
     ) -> PwlXYF<AnySeconds, Utility, AnyNum> {
-        let interval = period.length() / NB_INTERVALS;
+        let interval = crate::parameters::departure_time_interval();
         let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| {
             Some(*x + NonNegativeSeconds::from(interval))
         })
@@ -1019,7 +1016,7 @@ impl TravelingMode {
                 period: period_opt,
                 choice_model,
             } => {
-                let period = period_opt.unwrap_or(crate::parameters::period());
+                let period = period_opt.unwrap_or_else(crate::parameters::period);
                 let utilities = self.get_utility_function(&leg_ttfs, period);
                 let (time_callback, expected_utility) =
                     choice_model.get_choice(utilities).with_context(|| {

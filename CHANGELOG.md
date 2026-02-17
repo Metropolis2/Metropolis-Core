@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] Parameter `departure_time_interval` can be used to define how accurately utility functions
+  are computed for departure-time choice.
+
 ### Changed
 
 - [DEV] Update deprecated GitHub actions.
