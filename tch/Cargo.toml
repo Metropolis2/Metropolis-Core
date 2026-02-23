@@ -18,7 +18,7 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
-arrow = { version = "57.1", default-features = false, features = ["csv"] }
+arrow = { version = "58.0", default-features = false, features = ["csv"] }
 chrono = { version = "0.4", optional = true }
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
