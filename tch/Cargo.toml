@@ -18,11 +18,13 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
+arrayvec = { version = "0.7.6", features = ["serde"] }
 arrow = { version = "57.1", default-features = false, features = ["csv"] }
 chrono = { version = "0.4", optional = true }
 clap = { version = "4.0", features = ["derive"] }
 csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
+enum-as-inner = "0.7"
 fixedbitset = "0.5"
 hashbrown = { version = "0.16", features = ["rayon", "serde"] }
 indicatif = "0.18"

@@ -16,12 +16,14 @@
 
 //! Structs and functions for the command-line tool.
 
-use std::env;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use std::{env, fmt};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use arrayvec::ArrayString;
+use enum_as_inner::EnumAsInner;
 use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{info, log_enabled, warn, Level, LevelFilter};
@@ -136,11 +138,11 @@ pub struct Graph {
     /// Directed graph where edges' weights are travel-time functions.
     pub graph: DiGraph<(), TTF<f64>>,
     /// Mapping from original node id to simulation NodeIndex.
-    pub node_map: HashMap<u64, NodeIndex>,
+    pub node_map: HashMap<MetroId, NodeIndex>,
     /// Mapping from simulation NodeIndex to original node id.
-    pub reverse_node_map: HashMap<NodeIndex, u64>,
+    pub reverse_node_map: HashMap<NodeIndex, MetroId>,
     /// Mapping from simulation EdgeIndex to original edge id.
-    pub reverse_edge_map: HashMap<EdgeIndex, u64>,
+    pub reverse_edge_map: HashMap<EdgeIndex, MetroId>,
 }
 
 impl Graph {
@@ -156,12 +158,12 @@ impl Graph {
             .map(|e| e.source)
             .chain(raw_edges.iter().map(|e| e.target))
             .collect();
-        let node_map: HashMap<u64, NodeIndex> = node_set
+        let node_map: HashMap<MetroId, NodeIndex> = node_set
             .iter()
             .enumerate()
             .map(|(i, &original_id)| (original_id, node_index(i)))
             .collect();
-        let reverse_node_map: HashMap<NodeIndex, u64> = node_set
+        let reverse_node_map: HashMap<NodeIndex, MetroId> = node_set
             .into_iter()
             .enumerate()
             .map(|(i, original_id)| (node_index(i), original_id))
@@ -180,7 +182,7 @@ impl Graph {
     }
 
     /// Returns the NodeIndex of the node in the graph with the given original id.
-    pub fn get_node_id(&self, original_id: u64) -> NodeIndex {
+    pub fn get_node_id(&self, original_id: MetroId) -> NodeIndex {
         *self
             .node_map
             .get(&original_id)
@@ -188,7 +190,7 @@ impl Graph {
     }
 
     /// Returns the original id of the node in the graph with the given NodeIndex.
-    pub fn get_id_of_node(&self, id: NodeIndex) -> u64 {
+    pub fn get_id_of_node(&self, id: NodeIndex) -> MetroId {
         *self
             .reverse_node_map
             .get(&id)
@@ -209,36 +211,95 @@ impl DerefMut for Graph {
     }
 }
 
+/// Representation of an Identifier that can be either integer or string.
+#[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
+pub enum MetroId {
+    /// Id represented as an unsigned integer.
+    Unsigned(u64),
+    /// Id represented as an integer.
+    Integer(i64),
+    /// Id represented as String (16 bytes max).
+    Arbitrary(ArrayString<16>),
+}
+
+impl Default for MetroId {
+    fn default() -> Self {
+        Self::Unsigned(0)
+    }
+}
+
+impl From<u64> for MetroId {
+    fn from(value: u64) -> Self {
+        Self::Unsigned(value)
+    }
+}
+
+impl From<i64> for MetroId {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl TryFrom<&str> for MetroId {
+    type Error = anyhow::Error;
+    fn try_from(value: &str) -> Result<Self> {
+        if value.len() > 16 {
+            bail!("Id with more than 16 characters: {value}");
+        }
+        let mut arraystr = ArrayString::new();
+        arraystr.push_str(value);
+        Ok(Self::Arbitrary(arraystr))
+    }
+}
+
+impl fmt::Display for MetroId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsigned(i) => {
+                write!(f, "{}", i)
+            }
+            Self::Integer(i) => {
+                write!(f, "{}", i)
+            }
+            Self::Arbitrary(s) => {
+                write!(f, "{}", s)
+            }
+        }
+    }
+}
+
+impl Eq for MetroId {}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Edge {
-    pub(crate) edge_id: u64,
-    pub(crate) source: u64,
-    pub(crate) target: u64,
+    pub(crate) edge_id: MetroId,
+    pub(crate) source: MetroId,
+    pub(crate) target: MetroId,
     pub(crate) travel_time: TTF<f64>,
 }
 
 /// Point-to-point query (earliest-arrival or profile).
-#[derive(Copy, Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Default, Serialize)]
 pub struct Query {
     /// Index of the query.
-    pub id: u64,
+    pub id: MetroId,
     /// Index of the source node.
-    pub source: u64,
+    pub source: MetroId,
     /// Index of the target node.
-    pub target: u64,
+    pub target: MetroId,
     /// Departure time from source of the query (if not specified, the query is a profile query).
     #[serde(default)]
     pub departure_time: Option<f64>,
 }
 
 /// Result of a query.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
 pub enum QueryResult {
     /// Id, arrival time and route (for earliest-arrival queries).
-    EarliestArrival((u64, Option<f64>, Option<Vec<u64>>)),
+    EarliestArrival((MetroId, Option<f64>, Option<Vec<MetroId>>)),
     /// Id and travel-time function (for profile queries).
-    Profile((u64, Option<TTF<f64>>)),
+    Profile((MetroId, Option<TTF<f64>>)),
 }
 
 /// Secondary output on a set of queries.
@@ -373,7 +434,7 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     )
     .context("Failed to read graph")?;
 
-    let order: Option<HashMap<u64, usize>> =
+    let order: Option<HashMap<MetroId, usize>> =
         if let Some(filename) = parameters.input_files.input_order {
             info!("Reading node ordering");
             let order = crate::io::get_node_order_from_file(&filename)
@@ -541,7 +602,7 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
         };
 
         if parameters.output_order {
-            let order_map: HashMap<u64, usize> = overlay
+            let order_map: HashMap<MetroId, usize> = overlay
                 .get_order()
                 .iter()
                 .enumerate()

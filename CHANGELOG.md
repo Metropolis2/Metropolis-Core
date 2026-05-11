@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] In `routing_cli`, arbitrary ids can be used for all input values (negative integers,
+  strings).
+
 ## [1.3.0] - 2026-02-17
 
 ### Added
