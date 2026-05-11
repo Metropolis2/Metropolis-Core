@@ -191,17 +191,13 @@ macro_rules! get_id_column {
         {
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&DataType::UInt64, $array.len()));
-            let uint_column_res = cast_column(&column, &DataType::UInt64, &[$($name),+]);
-            if let Ok(uint_column) = uint_column_res {
-                    IdArray::Unsigned(uint_column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+            if column.data_type().is_unsigned_integer() {
+                IdArray::Unsigned(column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+            } else if column.data_type().is_integer() {
+                IdArray::Integer(column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
             } else {
-                let int_column_res = cast_column(&column, &DataType::Int64, &[$($name),+]);
-                if let Ok(int_column) = int_column_res {
-                    IdArray::Integer(int_column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
-                } else {
-                    let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
-                    IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())
-                }
+                let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
+                IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())
             }
         }
     };
@@ -223,18 +219,21 @@ macro_rules! get_id_list_column {
             let u64listdtype = DataType::new_list(DataType::UInt64, false);
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&u64listdtype, $array.len()));
-            let uint_column_res = cast_column(&column, &u64listdtype, &[$($name),+]);
-            if let Ok(uint_column) = uint_column_res {
-                IdListArray::Unsigned(uint_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
-            } else {
-                let i64listdtype = DataType::new_list(DataType::Int64, false);
-                let int_column_res = cast_column(&column, &i64listdtype, &[$($name),+]);
-                if let Ok(int_column) = int_column_res {
-                    IdListArray::Integer(int_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
-                } else {
-                    let strlistdtype = DataType::new_list(DataType::Utf8, false);
-                    let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
-                    IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+            match column.data_type() {
+                DataType::List(field) => {
+                    if field.data_type().is_unsigned_integer() {
+                        IdListArray::Unsigned(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                    } else if field.data_type().is_integer() {
+                        IdListArray::Integer(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                    } else {
+                        let strlistdtype = DataType::new_list(DataType::Utf8, false);
+                        let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
+                        IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                    }
+                }
+                _ => {
+                    let full_name = &[$($name),+].join(".");
+                    bail!("Not a List column: {full_name}");
                 }
             }
         }
@@ -326,9 +325,7 @@ macro_rules! get_id_value {
         match &$array {
             IdArray::Unsigned(uint_array) => get_value!(uint_array[$i]).map(MetroId::from),
             IdArray::Integer(int_array) => get_value!(int_array[$i]).map(MetroId::from),
-            IdArray::Arbitrary(str_array) => get_value!(str_array[$i])
-                .map(MetroId::try_from)
-                .transpose()?,
+            IdArray::Arbitrary(str_array) => get_value!(str_array[$i]).map(MetroId::from),
         }
     };
 }
@@ -366,10 +363,8 @@ macro_rules! get_id_list_values {
                 } else {
                     let list = list_array.value($i);
                     let list = list.as_any().downcast_ref::<StringArray>().unwrap();
-                    let values: Option<Vec<MetroId>> = list
-                        .iter()
-                        .map(|v| v.map(MetroId::try_from).transpose())
-                        .collect::<Result<_>>()?;
+                    let values: Option<Vec<MetroId>> =
+                        list.iter().map(|v| v.map(MetroId::from)).collect();
                     values
                 }
             }
@@ -982,7 +977,7 @@ impl IdBuilder {
         match self {
             Self::Unsigned(builder) => builder.append_value(v.into_unsigned().unwrap()),
             Self::Integer(builder) => builder.append_value(v.into_integer().unwrap()),
-            Self::Arbitrary(builder) => builder.append_value(v.into_arbitrary().unwrap()),
+            Self::Arbitrary(builder) => builder.append_value(v.resolve_arbitrary().unwrap()),
             Self::Uninitiated => unreachable!(),
         }
     }

@@ -13,6 +13,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] In `routing_cli`, arbitrary ids can be used for all input values (negative integers,
   strings).
 
+### Changed
+
+- [INPUT] Remove restriction on arbitrary ids' length.
+
 ## [1.3.0] - 2026-02-17
 
 ### Added
