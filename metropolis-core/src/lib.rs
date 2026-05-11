@@ -89,7 +89,7 @@ fn run_simulation_imp<W: std::io::Write + Send + 'static>(
     println!(
         "
         Metropolis-Core v{}
-        Copyright (C) 2022-2025 André de Palma, Lucas Javaudin
+        Copyright (C) 2022-2026 André de Palma, Lucas Javaudin
         This program comes with ABSOLUTELY NO WARRANTY.
         This is free software, and you are welcome to redistribute it
         under certain conditions; see `https://www.gnu.org/licenses/' for details.
