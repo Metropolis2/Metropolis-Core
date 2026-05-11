@@ -219,22 +219,24 @@ macro_rules! get_id_list_column {
             let u64listdtype = DataType::new_list(DataType::UInt64, false);
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&u64listdtype, $array.len()));
-            match column.data_type() {
-                DataType::List(field) => {
-                    if field.data_type().is_unsigned_integer() {
-                        IdListArray::Unsigned(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
-                    } else if field.data_type().is_integer() {
-                        IdListArray::Integer(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
-                    } else {
-                        let strlistdtype = DataType::new_list(DataType::Utf8, false);
-                        let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
-                        IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
-                    }
-                }
+            let inner_field = match column.data_type() {
+                DataType::List(field) => field,
+                DataType::ListView(field) => field,
+                DataType::LargeList(field) => field,
+                DataType::LargeListView(field) => field,
                 _ => {
                     let full_name = &[$($name),+].join(".");
                     bail!("Not a List column: {full_name}");
                 }
+            };
+            if inner_field.data_type().is_unsigned_integer() {
+                IdListArray::Unsigned(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+            } else if inner_field.data_type().is_integer() {
+                IdListArray::Integer(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+            } else {
+                let strlistdtype = DataType::new_list(DataType::Utf8, false);
+                let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
+                IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
             }
         }
     };
