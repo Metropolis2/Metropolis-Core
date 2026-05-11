@@ -30,7 +30,7 @@ use super::arrow::ToArrow;
 /// Writes data that can be converted to arrow format as a parquet file.
 pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
     let batches = D::to_arrow(data, false)?;
-    for (name, maybe_batch) in D::names().into_iter().zip(batches.into_iter()) {
+    for (name, maybe_batch) in D::names().into_iter().zip(batches) {
         if let Some(batch) = maybe_batch {
             let filename: PathBuf = [output_dir.to_str().unwrap(), &format!("{name}.parquet")]
                 .iter()

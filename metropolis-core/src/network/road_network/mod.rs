@@ -531,7 +531,7 @@ impl RoadEdge {
         } else if let (Some(times), Some(flows)) = (bottleneck_times, bottleneck_flows) {
             let values: Vec<_> = times
                 .into_iter()
-                .zip(flows.into_iter())
+                .zip(flows)
                 .map(|(t, f)| -> Result<(NonNegativeSeconds, Flow)> {
                     Ok((NonNegativeSeconds::try_from(t)?, Flow::try_from(f)?))
                 })

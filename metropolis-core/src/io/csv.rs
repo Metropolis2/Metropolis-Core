@@ -47,7 +47,7 @@ pub fn write_csv_with_prefix<D: ToArrow<J>, const J: usize>(
     prefix: &str,
 ) -> Result<()> {
     let batches = D::to_arrow(data)?;
-    for (name, maybe_batch) in D::names().into_iter().zip(batches.into_iter()) {
+    for (name, maybe_batch) in D::names().into_iter().zip(batches) {
         if let Some(batch) = maybe_batch {
             let filename: PathBuf = [output_dir.to_str().unwrap(), &format!("{prefix}{name}.csv")]
                 .iter()
