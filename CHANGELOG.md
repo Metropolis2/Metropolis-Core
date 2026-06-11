@@ -16,6 +16,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Changed
 
 - [INPUT] Remove restriction on arbitrary ids' length.
+- [USER] Switch to `FxHashSet` and `FxHashMap` when building the network to make the runs
+  deterministic.
 
 ## [1.3.0] - 2026-02-17
 

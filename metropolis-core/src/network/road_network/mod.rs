@@ -30,6 +30,7 @@ use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
 use num_traits::{ConstZero, Pow, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
+use rustc_hash::{FxHashMap, FxHashSet};
 use tch::HierarchyOverlay;
 use ttf::{TTFNum, TTF};
 
@@ -600,11 +601,11 @@ pub(crate) struct RoadGraph {
     /// Directed graph of [RoadNode]s and [RoadEdge]s.
     graph: DiGraph<RoadNode, RoadEdge>,
     /// Mapping from original node id to simulation NodeIndex.
-    node_map: HashMap<OriginalNodeId, NodeIndex>,
+    node_map: FxHashMap<OriginalNodeId, NodeIndex>,
     /// Mapping from original edge id to simulation EdgeIndex.
-    edge_map: HashMap<OriginalEdgeId, EdgeIndex>,
+    edge_map: FxHashMap<OriginalEdgeId, EdgeIndex>,
     /// Mapping from simulation EdgeIndex to original edge id.
-    rev_edge_map: HashMap<EdgeIndex, OriginalEdgeId>,
+    rev_edge_map: FxHashMap<EdgeIndex, OriginalEdgeId>,
 }
 
 impl RoadGraph {
@@ -621,13 +622,13 @@ impl RoadGraph {
         }
         // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
         // OriginalNodeIndex -> NodeIndex to re-index the nodes.
-        let nodes: HashSet<OriginalNodeId> = edges
+        let nodes: FxHashSet<OriginalNodeId> = edges
             .iter()
             .map(|(s, _, _)| s)
             .chain(edges.iter().map(|(_, t, _)| t))
             .copied()
             .collect();
-        let node_map: HashMap<OriginalNodeId, NodeIndex> = nodes
+        let node_map: FxHashMap<OriginalNodeId, NodeIndex> = nodes
             .into_iter()
             .enumerate()
             .map(|(i, id)| (id, node_index(i)))
@@ -636,13 +637,13 @@ impl RoadGraph {
             .into_iter()
             .map(|(s, t, e)| (node_map[&s], node_map[&t], e))
             .collect();
-        let edge_map: HashMap<_, _> = edges
+        let edge_map: FxHashMap<_, _> = edges
             .iter()
             .map(|(_, _, e)| e.id)
             .enumerate()
             .map(|(i, id)| (id, edge_index(i)))
             .collect();
-        let rev_edge_map: HashMap<_, _> = edges
+        let rev_edge_map: FxHashMap<_, _> = edges
             .iter()
             .map(|(_, _, e)| e.id)
             .enumerate()

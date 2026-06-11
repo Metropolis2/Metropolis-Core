@@ -24,6 +24,7 @@ use log::{log_enabled, Level};
 use object_pool::Pool;
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use serde::Serialize;
 use tch::{algo, DefaultTCHProfileAllocation};
 use tch::{DefaultEarliestArrivalAllocation, HierarchyOverlay, SearchSpaces};
@@ -53,7 +54,7 @@ pub struct RoadNetworkSkim {
     /// Hierarchy overlay of the road-network graph.
     hierarchy_overlay: HierarchyOverlay<AnySeconds>,
     /// Mapping from original node id to simulation NodeIndex.
-    node_map: HashMap<OriginalNodeId, NodeIndex>,
+    node_map: FxHashMap<OriginalNodeId, NodeIndex>,
     /// Travel time functions for each used OD pair.
     profile_query_cache: ODTravelTimeFunctions,
 }
@@ -62,7 +63,7 @@ impl RoadNetworkSkim {
     /// Creates a new RoadNetworkSkim.
     pub fn new(
         hierarchy_overlay: HierarchyOverlay<AnySeconds>,
-        node_map: HashMap<OriginalNodeId, NodeIndex>,
+        node_map: FxHashMap<OriginalNodeId, NodeIndex>,
     ) -> Self {
         RoadNetworkSkim {
             hierarchy_overlay,
