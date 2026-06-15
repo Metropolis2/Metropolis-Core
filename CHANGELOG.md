@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-15
+
 ### Added
 
 - [INPUT] In `routing_cli`, arbitrary ids can be used for all input values (negative integers,
@@ -594,7 +596,8 @@ First stable release of METROPOLIS2!
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.3.0...HEAD
+[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.4.0...HEAD
+[1.4.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.4.0
 [1.3.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.3.0
 [1.2.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.2.0
 [1.1.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.1.0
