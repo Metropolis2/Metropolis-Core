@@ -22,8 +22,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, BooleanBuilder, Float64Array,
-    Float64Builder, Int64Array, Int64Builder, ListArray, StringArray, StringBuilder, StructArray,
-    UInt64Array, UInt64Builder,
+    Float64Builder, Int64Array, Int64Builder, LargeListArray, ListArray, StringArray,
+    StringBuilder, StructArray, UInt64Array, UInt64Builder,
 };
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::datatypes::{DataType, Field, FieldRef, Schema};
@@ -205,18 +205,18 @@ macro_rules! get_id_column {
 
 enum IdListArray {
     /// ListArray filled with UInt64 values.
-    Unsigned(ListArray),
+    Unsigned(LargeListArray),
     /// ListArray filled with Int64 values.
-    Integer(ListArray),
+    Integer(LargeListArray),
     /// ListArray filled with Utf8 values.
-    Arbitrary(ListArray),
+    Arbitrary(LargeListArray),
 }
 
 /// Macro to get a column by name from an array and cast it to list of MetroId.
 macro_rules! get_id_list_column {
     ([$($name:literal),+] in $array:ident) => {
         {
-            let u64listdtype = DataType::new_list(DataType::UInt64, false);
+            let u64listdtype = DataType::new_large_list(DataType::UInt64, false);
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&u64listdtype, $array.len()));
             let inner_field = match column.data_type() {
@@ -230,13 +230,16 @@ macro_rules! get_id_list_column {
                 }
             };
             if inner_field.data_type().is_unsigned_integer() {
-                IdListArray::Unsigned(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                let u64_column = cast_column(&column, &u64listdtype, &[$($name),+])?;
+                IdListArray::Unsigned(LargeListArray::from(u64_column.into_data()))
             } else if inner_field.data_type().is_integer() {
-                IdListArray::Integer(column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                let i64listdtype = DataType::new_large_list(DataType::Int64, false);
+                let i64_column = cast_column(&column, &i64listdtype, &[$($name),+])?;
+                IdListArray::Integer(LargeListArray::from(i64_column.into_data()))
             } else {
-                let strlistdtype = DataType::new_list(DataType::Utf8, false);
+                let strlistdtype = DataType::new_large_list(DataType::Utf8, false);
                 let str_column = cast_column(&column, &strlistdtype, &[$($name),+])?;
-                IdListArray::Arbitrary(str_column.as_any().downcast_ref::<ListArray>().unwrap().clone())
+                IdListArray::Arbitrary(LargeListArray::from(str_column.into_data()))
             }
         }
     };
