@@ -25,7 +25,7 @@ choice = { path = "../choice/" }
 ttf = { path = "../pwl/" }
 tch = { path = "../tch/" }
 anyhow = "1.0"
-arrow = { version = "58.2", default-features = false, features = ["csv"] }
+arrow = { version = "59.0", default-features = false, features = ["csv"] }
 askama = { version = "0.16", default-features = false, features = [
   "derive",
   "std",
