@@ -8,6 +8,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Fixed
+
+- [INPUT] Read id columns of any integer type (u8, u16, u32, i8, i16, i32)
+
 ## [1.4.0] - 2026-06-15
 
 ### Added

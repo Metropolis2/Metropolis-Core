@@ -192,9 +192,11 @@ macro_rules! get_id_column {
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&DataType::UInt64, $array.len()));
             if column.data_type().is_unsigned_integer() {
-                IdArray::Unsigned(column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+                let u64_column = cast_column(&column, &DataType::UInt64, &[$($name),+])?;
+                IdArray::Unsigned(u64_column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
             } else if column.data_type().is_integer() {
-                IdArray::Integer(column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
+                let i64_column = cast_column(&column, &DataType::Int64, &[$($name),+])?;
+                IdArray::Integer(i64_column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
             } else {
                 let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
                 IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())

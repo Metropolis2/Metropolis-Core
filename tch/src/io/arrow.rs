@@ -208,17 +208,15 @@ macro_rules! get_id_column {
         {
             let column = get_column(&$array, &[$($name),+])
                 .unwrap_or_else(|| new_null_array(&DataType::UInt64, $array.len()));
-            let uint_column_res = cast_column(&column, &DataType::UInt64, &[$($name),+]);
-            if let Ok(uint_column) = uint_column_res {
-                    IdArray::Unsigned(uint_column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+            if column.data_type().is_unsigned_integer() {
+                let u64_column = cast_column(&column, &DataType::UInt64, &[$($name),+])?;
+                IdArray::Unsigned(u64_column.as_any().downcast_ref::<UInt64Array>().unwrap().clone())
+            } else if column.data_type().is_integer() {
+                let i64_column = cast_column(&column, &DataType::Int64, &[$($name),+])?;
+                IdArray::Integer(i64_column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
             } else {
-                let int_column_res = cast_column(&column, &DataType::Int64, &[$($name),+]);
-                if let Ok(int_column) = int_column_res {
-                    IdArray::Integer(int_column.as_any().downcast_ref::<Int64Array>().unwrap().clone())
-                } else {
-                    let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
-                    IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())
-                }
+                let str_column = cast_column(&column, &DataType::Utf8, &[$($name),+])?;
+                IdArray::Arbitrary(str_column.as_any().downcast_ref::<StringArray>().unwrap().clone())
             }
         }
     };
