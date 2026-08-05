@@ -158,6 +158,8 @@ An increase of the PATCH number indicates bug fixes.
 5. The `metropolis cli` executable (or `metropolis_cli.exe` for Windows)
    is now available in the `target/release/` directory.
 
+To build the `routing_cli` executable, run `cargo build --release -p tch`.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
