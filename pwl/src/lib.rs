@@ -294,8 +294,14 @@ impl<T: TTFNum> TTF<T> {
             (Self::Piecewise(f), &Self::Constant(c)) => pwl::analyze_relative_position_to_cst(f, c),
             (&Self::Constant(c), Self::Piecewise(g)) => {
                 let mut pos = pwl::analyze_relative_position_to_cst(g, c);
-                if let Either::Right(ref mut values) = pos {
-                    for (_x, ord) in values.iter_mut() {
+                // Reverse the ordering since we compare g to c and not c to g.
+                match &mut pos {
+                    Either::Right(values) => {
+                        for (_x, ord) in values.iter_mut() {
+                            *ord = ord.reverse();
+                        }
+                    }
+                    Either::Left(ord) => {
                         *ord = ord.reverse();
                     }
                 }
@@ -338,6 +344,7 @@ mod tests {
     fn analyze_relative_position_test() {
         let f = TTF::Constant(13.0);
         let g = TTF::Piecewise(PwlTTF::from_values(vec![10., 15., 40., 40.], 0., 30.));
+        let h = TTF::Constant(40.0);
 
         let res = f.analyze_relative_position(&g);
         let exp_res = Either::Right(vec![(0.0, Ordering::Greater), (18.0, Ordering::Less)]);
@@ -345,6 +352,14 @@ mod tests {
 
         let res = g.analyze_relative_position(&f);
         let exp_res = Either::Right(vec![(0.0, Ordering::Less), (18.0, Ordering::Greater)]);
+        assert_eq!(res, exp_res);
+
+        let res = h.analyze_relative_position(&g);
+        let exp_res = Either::Left(Ordering::Greater);
+        assert_eq!(res, exp_res);
+
+        let res = g.analyze_relative_position(&h);
+        let exp_res = Either::Left(Ordering::Less);
         assert_eq!(res, exp_res);
     }
 }

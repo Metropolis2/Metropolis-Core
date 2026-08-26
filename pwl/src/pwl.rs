@@ -17,7 +17,7 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-use anyhow::anyhow;
+use anyhow::bail;
 use either::Either;
 use itertools::Itertools;
 use serde::de::DeserializeOwned;
@@ -75,16 +75,19 @@ impl<X: TTFNum + DeserializeOwned, Y: TTFNum + DeserializeOwned, T> TryFrom<Dese
     type Error = anyhow::Error;
     fn try_from(value: DeserPwlXYF<X, Y>) -> Result<Self, Self::Error> {
         if value.start_x < X::ZERO {
-            return Err(anyhow!(
+            bail!(
                 "`start_x` value must be non-negative, got {:?}",
                 value.start_x
-            ));
+            );
         }
-        if value.interval_x < X::ZERO {
-            return Err(anyhow!(
-                "`interval_x` value must be non-negative, got {:?}",
+        if value.interval_x <= X::ZERO {
+            bail!(
+                "`interval_x` value must be positive, got {:?}",
                 value.interval_x
-            ));
+            );
+        }
+        if value.points.is_empty() {
+            bail!("Cannot create a `PwlXYF` from empty values");
         }
         // Deserialize `None` as infinity.
         let points: Vec<_> = value
@@ -313,8 +316,7 @@ where
         self.map(|y| y + c)
     }
 
-    /// Returns a new PwlXYF by applying a given function on the `y` values of the two input
-    /// PwlXYFs.
+    /// Returns a new PwlXYF by applying a given function on the `y` values of the input PwlXYF.
     #[must_use]
     pub fn map<F, W>(&self, func: F) -> PwlXYF<X, W, T>
     where
@@ -322,11 +324,24 @@ where
         W: TTFNum + Into<T> + From<T>,
     {
         debug_assert!(!self.is_empty());
-        let points = self.points.iter().map(|&y| func(y)).collect();
+
+        let mut points = Vec::with_capacity(self.points.len());
+        let mut min_max = MinMax::new();
+
+        for &y in self.points.iter() {
+            let new_y = func(y);
+            min_max.update(new_y);
+            points.push(new_y);
+        }
+
+        // The bounds are recomputed from the mapped values because `func` is not assumed to be
+        // monotone.
+        let (min, max) = min_max.into_min_max();
+
         PwlXYF {
             points,
-            min: func(self.min()),
-            max: func(self.max()),
+            min,
+            max,
             start_x: self.start_x,
             interval_x: self.interval_x,
             convert_type: self.convert_type,
@@ -349,6 +364,11 @@ where
     /// Creates a new PwlXYF from a Vec of `y` values.
     pub fn from_values(y: Vec<Y>, start_x: X, interval_x: X) -> Self {
         assert!(!y.is_empty(), "Cannot create a `PwlXYF` from empty values");
+        assert!(
+            interval_x > X::ZERO,
+            "Cannot create a `PwlXYF` with non-positive interval, got {:?}",
+            interval_x
+        );
         debug_assert!(y.iter().all(|v| !v.is_nan()));
         let (&min, &max) = y.iter().minmax().into_option().unwrap();
         PwlXYF {
@@ -567,7 +587,7 @@ pub(crate) fn squared_difference<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> T {
             // Case 1: the `f` segment intersects the `g` segment somewhere between `x0` and `x1`.
             // The two segments intersects at point `(x, y)`.
             let x = get_x_intersection(x0, f_y0, g_y0, x1, f_y1, g_y1);
-            let y = f_y1 + (f_y1 - f_y0) * (x - x0) / (x1 - x0);
+            let y = f_y0 + (f_y1 - f_y0) * (x - x0) / (x1 - x0);
             // There are two triangles:
             // - `(x0, f_y0), (x0, g_y0), (x, y)`,
             // - `(x, y) (x1, f_y1), (x1, g_y1)`.
@@ -840,6 +860,21 @@ pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn map_non_monotone_test() {
+        let f = PwlTTF::from_values(vec![1., 3., 2.], 0., 1.);
+        // A non-monotone function: the bounds of the mapped values are not the images of the
+        // bounds of the input values.
+        let g = f.map(|y: f64| (y - 3.).abs());
+        assert_eq!(g.points, vec![2., 0., 1.]);
+        assert_eq!(g.min(), 0.);
+        assert_eq!(g.max(), 2.);
+        // A decreasing function: the bounds are swapped.
+        let h = f.map(|y| -y);
+        assert_eq!(h.min(), -3.);
+        assert_eq!(h.max(), -1.);
+    }
 
     #[test]
     fn squared_difference_test() {
