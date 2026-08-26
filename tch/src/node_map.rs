@@ -98,10 +98,10 @@ where
         self[node.index()] = Some((node, value));
     }
     fn len(&self) -> usize {
-        self.len()
+        NodeMap::iter(self).count()
     }
     fn is_empty(&self) -> bool {
-        self.iter().next().is_some()
+        self.as_slice().iter().all(Option::is_none)
     }
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &'a V)> + 'a> {
         Box::new(self.as_slice().iter().filter_map(|opt| {
@@ -175,11 +175,7 @@ where
     }
     fn insert(&mut self, node: N, value: V) {
         if self.vec.len() <= node.index() {
-            self.vec
-                .resize_with(node.index() + 1 - self.vec.len(), MaybeUninit::uninit);
-            unsafe {
-                self.vec.set_len(node.index() + 1);
-            }
+            self.vec.resize_with(node.index() + 1, MaybeUninit::uninit);
         }
         if self.bs.len() <= node.index() {
             self.bs.grow(node.index() + 1);

@@ -210,7 +210,7 @@ where
                 if let Some((node, key)) = self.backward_search.pop_queue() {
                     // The source node is not stalled so to make sure that the pre-settly check is
                     // running on it.
-                    if query.sources().any(|s| s == node)
+                    if !query.sources().any(|s| s == node)
                         && ops.can_be_stalled(
                             node,
                             None,

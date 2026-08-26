@@ -147,7 +147,7 @@ pub struct Graph {
 
 impl Graph {
     /// Creates a new [Graph] from a Vec of [Edge].
-    pub(crate) fn from_edges(raw_edges: Vec<Edge>) -> Self {
+    pub(crate) fn from_edges(raw_edges: Vec<Edge>) -> Result<Self> {
         let reverse_edge_map = raw_edges
             .iter()
             .enumerate()
@@ -168,17 +168,20 @@ impl Graph {
             .enumerate()
             .map(|(i, original_id)| (node_index(i), original_id))
             .collect();
+        if raw_edges.iter().any(|e| e.source == e.target) {
+            bail!("Self-loop edges are not supported");
+        }
         let edges: Vec<_> = raw_edges
             .into_iter()
             .map(|e| (node_map[&e.source], node_map[&e.target], e.travel_time))
             .collect();
         let graph = DiGraph::from_edges(edges);
-        Self {
+        Ok(Self {
             graph,
             node_map,
             reverse_node_map,
             reverse_edge_map,
-        }
+        })
     }
 
     /// Returns the NodeIndex of the node in the graph with the given original id.

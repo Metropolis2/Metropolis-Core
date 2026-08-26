@@ -68,7 +68,7 @@ pub fn get_graph_from_files(edges_path: &Path, ttfs_path: Option<&Path>) -> Resu
             edge.travel_time = ttf
         }
     }
-    Ok(Graph::from_edges(edges))
+    Graph::from_edges(edges)
 }
 
 fn build_ttf(mut xy_vec: Vec<(f64, f64)>) -> Result<TTF<f64>> {
