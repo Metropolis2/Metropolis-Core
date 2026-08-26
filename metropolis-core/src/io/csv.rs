@@ -28,7 +28,7 @@ use arrow::{
     array::RecordBatch,
     csv::{reader::Format, ReaderBuilder, Writer},
 };
-use polars::prelude::*;
+use polars::prelude::{CsvReadOptions, CsvWriter, SerReader, SerWriter};
 
 use super::arrow::ToArrow;
 use super::polars::ToPolars;

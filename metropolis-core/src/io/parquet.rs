@@ -26,7 +26,7 @@ use arrow::array::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 use parquet::{arrow::arrow_reader::ParquetRecordBatchReaderBuilder, basic::Compression};
-use polars::prelude::*;
+use polars::prelude::{ParquetReader, ParquetWriter, SerReader};
 
 use super::arrow::ToArrow;
 use super::polars::ToPolars;
