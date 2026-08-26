@@ -92,7 +92,7 @@ where
             .map(|(_, v)| v)
     }
     fn insert(&mut self, node: N, value: V) {
-        if node.index() >= self.len() {
+        if node.index() >= Vec::len(self) {
             self.resize_with(node.index() + 1, Default::default);
         }
         self[node.index()] = Some((node, value));

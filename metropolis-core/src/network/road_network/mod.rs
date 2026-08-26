@@ -620,6 +620,9 @@ impl RoadGraph {
                 edges.len() - node_pairs.len()
             );
         }
+        if edges.iter().any(|(s, t, _)| s == t) {
+            panic!("Self-loop edges are not supported");
+        }
         // The nodes in the DiGraph need to be ordered from 0 to n-1 so we create a map
         // OriginalNodeIndex -> NodeIndex to re-index the nodes.
         let nodes: FxHashSet<OriginalNodeId> = edges
