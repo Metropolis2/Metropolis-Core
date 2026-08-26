@@ -67,7 +67,7 @@ jobs:
           target: ${{ matrix.binary_target }}
           override: true
       - name: Install cargo tools
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-make
       - name: Build Binary
