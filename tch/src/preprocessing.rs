@@ -734,9 +734,8 @@ impl<T: TTFNum> ContractionGraph<T> {
         alloc: &mut AllocatedDijkstraData<T>,
     ) -> bool {
         alloc.reset();
-        // Run a thin profile interval query from the source to the target, excluding the node to
-        // be contracted.
-        self.run_thin_profile_interval_query(from, to, None, alloc);
+        // Run a thin profile interval query from the source to the target.
+        self.run_thin_profile_interval_query(from, to, alloc);
         if let Some(interval) = alloc.interval_search.get_label(&to) {
             if interval[1] < edge_score.get_min() {
                 // No shortcut edge is needed.
@@ -776,22 +775,17 @@ impl<T: TTFNum> ContractionGraph<T> {
         }
     }
 
-    /// Runs a hop-limited thin profile interval search between `source` and `target`, excluding
-    /// the given node.
+    /// Runs a hop-limited thin profile interval search between `source` and `target`.
     fn run_thin_profile_interval_query(
         &self,
         source: NodeIndex,
         target: NodeIndex,
-        excluded_node: Option<NodeIndex>,
         alloc: &mut AllocatedDijkstraData<T>,
     ) {
-        let remaining_graph =
-            NodeFiltered::from_fn(&self.graph, |node_id| Some(node_id) != excluded_node);
         let mut ops = HopLimitedDijkstra::new(
-            ThinProfileIntervalDijkstra::new_forward(
-                &remaining_graph,
-                |edge: EdgeReference<'_, _>| &self.graph[edge.id()].ttf,
-            ),
+            ThinProfileIntervalDijkstra::new_forward(&self.graph, |edge: EdgeReference<'_, _>| {
+                &self.graph[edge.id()].ttf
+            }),
             self.parameters.thin_profile_interval_hop_limit,
         );
         let query = PointToPointQuery::from_default(source, target);

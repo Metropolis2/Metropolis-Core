@@ -298,7 +298,7 @@ where
         // At this point, we know that `0 <= index < n - 1`.
         // `share` is the coefficient of `y[index + 1]` in the linear interpolation and `1 - share`
         // is the coefficient of `y[index]`.
-        let share = i % X::ONE;
+        let share = i - X::from_usize(index).expect("Failed to convert index to a number");
         debug_assert!(share >= X::ZERO);
         debug_assert!(share < X::ONE);
         if share.is_zero() {
