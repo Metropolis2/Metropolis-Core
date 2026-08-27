@@ -186,7 +186,6 @@ struct AllocatedDijkstraData<T: PartialOrd> {
     interval_search: ThinProfileIntervalDijkstraSearch<T>,
     sample_search: SampleDijkstraSearch<T>,
     profile_search: ProfileDijkstraSearch<T>,
-    hop_map: HashMap<NodeIndex, u8>,
 }
 
 impl<T: PartialOrd> Default for AllocatedDijkstraData<T> {
@@ -197,7 +196,6 @@ impl<T: PartialOrd> Default for AllocatedDijkstraData<T> {
             sample_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
             // NOTE: No predecessor needed here.
             profile_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
-            hop_map: HashMap::new(),
         }
     }
 }
@@ -210,7 +208,6 @@ where
         self.interval_search.reset();
         self.sample_search.reset();
         self.profile_search.reset();
-        self.hop_map.clear();
     }
 }
 
