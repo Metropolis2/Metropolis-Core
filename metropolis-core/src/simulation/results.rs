@@ -27,7 +27,7 @@ use crate::io;
 use crate::mode::{AggregateModeResults, ModeIndex, ModeResults, PreDayModeResults};
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::RoadNetworkWeights;
-use crate::network::{NetworkSkim, NetworkWeights};
+use crate::network::NetworkWeights;
 use crate::parameters::SavingFormat;
 use crate::population::{agent_index, AgentIndex};
 use crate::units::{Distribution, MetroId, NonNegativeSeconds, Utility};
@@ -86,8 +86,6 @@ pub struct IterationResults {
     pub sim_weights: NetworkWeights,
     /// Expected weights of the network, after the learning model.
     pub new_exp_weights: NetworkWeights,
-    /// Skims of the network.
-    pub skims: NetworkSkim,
 }
 
 impl IterationResults {
@@ -97,7 +95,6 @@ impl IterationResults {
         exp_weights: NetworkWeights,
         sim_weights: NetworkWeights,
         new_exp_weights: NetworkWeights,
-        skims: NetworkSkim,
         previous_results_opt: Option<&AgentResults>,
     ) -> Self {
         if let Some(previous_agent_results) = previous_results_opt {
@@ -108,7 +105,6 @@ impl IterationResults {
             exp_weights,
             sim_weights,
             new_exp_weights,
-            skims,
         }
     }
 }
@@ -496,8 +492,6 @@ pub fn save_iteration_results(
             )?;
         }
     }
-    // Save skims results.
-    io::json::write_compressed_json(&iteration_results.skims, &output_dir, "skim_results")?;
     Ok(())
 }
 

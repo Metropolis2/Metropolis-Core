@@ -174,7 +174,6 @@ pub fn run_iteration(
         exp_weights,
         sim_weights,
         new_exp_weights,
-        skims,
         previous_results_opt.as_ref(),
     );
     let (aggregate_results, t5) = record_time(|| {
