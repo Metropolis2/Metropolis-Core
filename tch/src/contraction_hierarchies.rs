@@ -266,19 +266,25 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         Ok((unpacked_path.into_route(), current_time))
     }
 
-    /// Unpacks recusively an edge in a path, i.e., unpack shortcut edges until a original edge is
+    /// Unpacks recursively an edge in a path, i.e., unpack shortcut edges until a original edge is
     /// found.
     fn unpack_edge(
         &self,
         source: NodeIndex,
         target: NodeIndex,
         current_time: &mut T,
-        path: &mut NoLoopPath,
+        path: &mut NoLoopPath<T>,
     ) -> Result<()> {
+        // If the route already went through `source`, remove the loop and go back to the time at
+        // which `source` was first reached, *before* any time-dependent decision is taken below
+        // (in particular, before the pack entry is selected for a `PackedShortcut`).
+        if let Some(time) = path.rewind(source) {
+            *current_time = time;
+        }
         if let Some(edge) = self.graph.find_edge(source, target) {
             match &self.graph[edge].class {
                 &HierarchyEdgeClass::Original(id) => {
-                    path.push(id, source);
+                    path.push(id, source, *current_time);
                     *current_time = *current_time + self.graph[edge].ttf.eval(*current_time);
                 }
                 &HierarchyEdgeClass::ShortcutThrough(inter_node) => {
@@ -299,7 +305,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                             self.unpack_edge(inter_node, target, current_time, path)?;
                         }
                         Packed::OriginalEdge(id) => {
-                            path.push(id, source);
+                            path.push(id, source, *current_time);
                             *current_time =
                                 *current_time + self.graph[edge].ttf.eval(*current_time);
                         }
@@ -566,14 +572,15 @@ impl<T: TTFNum> HierarchyOverlay<T> {
 /// Structure to create a path of edges without any loop, i.e., the path never goes through the
 /// same node twice.
 #[derive(Clone, Debug)]
-struct NoLoopPath {
+struct NoLoopPath<T> {
     /// Path.
     route: Vec<EdgeIndex>,
-    /// Map of the nodes traversed and the position of their edge in the path.
-    traversed_nodes: HashMap<NodeIndex, usize>,
+    /// Map of the nodes traversed with the position of their edge in the path and the time at
+    /// which the node was reached.
+    traversed_nodes: HashMap<NodeIndex, (usize, T)>,
 }
 
-impl NoLoopPath {
+impl<T> NoLoopPath<T> {
     fn new() -> Self {
         Self {
             route: Vec::new(),
@@ -581,20 +588,35 @@ impl NoLoopPath {
         }
     }
 
-    fn push(&mut self, edge: EdgeIndex, source: NodeIndex) {
-        if let Some(pos) = self.traversed_nodes.get(&source) {
-            // The route already took an edge starting from `source`.
-            // `pos` is the position of the previously taken edge starting from `source` in
-            // `route`.
-            // We can remove the part of the route looping over `source`.
-            self.route.truncate(*pos);
-        }
-        self.traversed_nodes.insert(source, self.route.len());
-        self.route.push(edge);
-    }
-
     fn into_route(self) -> Vec<EdgeIndex> {
         self.route
+    }
+}
+
+impl<T: Copy> NoLoopPath<T> {
+    /// Removes the part of the route looping over `node`, if the route already took an edge
+    /// starting from `node`, and returns the time at which `node` was first reached.
+    ///
+    /// This must be called before any time-dependent decision is taken at `node`, so that the
+    /// decision is taken with the time of the first visit and not the time of the looping visit.
+    fn rewind(&mut self, node: NodeIndex) -> Option<T> {
+        // The route already took an edge starting from `node`.
+        // `pos` is the position of the previously taken edge starting from `node` in `route`.
+        let (pos, time) = self.traversed_nodes.get(&node).copied()?;
+        // We can remove the part of the route looping over `node`.
+        self.route.truncate(pos);
+        // We also need to invalidate all traversed nodes in the removed part.
+        self.traversed_nodes.retain(|_, (p, _)| *p < pos);
+        Some(time)
+    }
+
+    /// Appends `edge`, taken from `source` at time `current_time`, to the route.
+    ///
+    /// [NoLoopPath::rewind] must have been called on `source` first.
+    fn push(&mut self, edge: EdgeIndex, source: NodeIndex, current_time: T) {
+        self.traversed_nodes
+            .insert(source, (self.route.len(), current_time));
+        self.route.push(edge);
     }
 }
 
@@ -671,11 +693,17 @@ mod tests {
         let edges = vec![edge_index(0), edge_index(1), edge_index(2), edge_index(3)];
         let nodes = vec![node_index(0), node_index(1), node_index(2), node_index(1)];
         let mut p = NoLoopPath::new();
-        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
-            p.push(e, n);
+        let mut time = 0.0;
+        for (e, n) in edges.into_iter().zip(nodes) {
+            if let Some(t) = p.rewind(n) {
+                time = t;
+            }
+            p.push(e, n, time);
+            time += 1.0;
         }
         let exp_route = vec![edge_index(0), edge_index(3)];
         assert_eq!(p.into_route(), exp_route);
+        assert_eq!(time, 2.0);
 
         // 0---1---2---4
         //      \ /
@@ -697,11 +725,17 @@ mod tests {
             node_index(2),
         ];
         let mut p = NoLoopPath::new();
-        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
-            p.push(e, n);
+        let mut time = 0.0;
+        for (e, n) in edges.into_iter().zip(nodes) {
+            if let Some(t) = p.rewind(n) {
+                time = t;
+            }
+            p.push(e, n, time);
+            time += 1.0;
         }
         let exp_route = vec![edge_index(0), edge_index(1), edge_index(4)];
         assert_eq!(p.into_route(), exp_route);
+        assert_eq!(time, 3.0);
 
         //     4
         //     |
@@ -725,14 +759,19 @@ mod tests {
             node_index(1),
             node_index(4),
             node_index(1),
-            node_index(3),
         ];
         let mut p = NoLoopPath::new();
-        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
-            p.push(e, n);
+        let mut time = 0.0;
+        for (e, n) in edges.into_iter().zip(nodes) {
+            if let Some(t) = p.rewind(n) {
+                time = t;
+            }
+            p.push(e, n, time);
+            time += 1.0;
         }
         let exp_route = vec![edge_index(0), edge_index(5)];
         assert_eq!(p.into_route(), exp_route);
+        assert_eq!(time, 2.0);
 
         // 0--1--2--3--5
         //     \   /
@@ -759,10 +798,61 @@ mod tests {
             node_index(3),
         ];
         let mut p = NoLoopPath::new();
-        for (e, n) in edges.into_iter().zip(nodes.into_iter()) {
-            p.push(e, n);
+        let mut time = 0.0;
+        for (e, n) in edges.into_iter().zip(nodes) {
+            if let Some(t) = p.rewind(n) {
+                time = t;
+            }
+            p.push(e, n, time);
+            time += 1.0;
         }
         let exp_route = vec![edge_index(0), edge_index(1), edge_index(2), edge_index(5)];
         assert_eq!(p.into_route(), exp_route);
+        assert_eq!(time, 4.0);
+
+        // A second loop closing on a node whose earlier visit was inside the first
+        // (removed) loop: the stale entry must not truncate the valid path.
+        // 0-e0->1-e1->2-e2->3-e3->4-e4->1-e5->6-e6->7-e7->3-e8->
+        // The loop 1-2-3-4-1 is removed; node 3 is then reached again legitimately.
+        let edges = vec![
+            edge_index(0),
+            edge_index(1),
+            edge_index(2),
+            edge_index(3),
+            edge_index(4),
+            edge_index(5),
+            edge_index(6),
+            edge_index(7),
+            edge_index(8),
+        ];
+        let nodes = vec![
+            node_index(0),
+            node_index(1),
+            node_index(2),
+            node_index(3),
+            node_index(4),
+            node_index(1),
+            node_index(6),
+            node_index(7),
+            node_index(3),
+        ];
+        let mut p = NoLoopPath::new();
+        let mut time = 0.0;
+        for (e, n) in edges.into_iter().zip(nodes) {
+            if let Some(t) = p.rewind(n) {
+                time = t;
+            }
+            p.push(e, n, time);
+            time += 1.0;
+        }
+        let exp_route = vec![
+            edge_index(0),
+            edge_index(5),
+            edge_index(6),
+            edge_index(7),
+            edge_index(8),
+        ];
+        assert_eq!(p.into_route(), exp_route);
+        assert_eq!(time, 5.0);
     }
 }

@@ -477,7 +477,7 @@ where
         self.forw_ops.update_bound(earliest_ta);
         let dep_time = query
             .sources_with_labels()
-            .min_by(|t0, t1| t0.partial_cmp(t1).unwrap())
+            .min_by(|(_, t0), (_, t1)| t0.partial_cmp(t1).unwrap())
             .unwrap()
             .1;
         self.back_ops.update_bound(earliest_ta - dep_time);
@@ -887,7 +887,11 @@ where
             false
         } else if let Some(key) = back_key {
             let node_data = back_data.get(&node).unwrap();
-            if node_data.extra.map(|t| t < key).unwrap_or(false) {
+            if node_data
+                .extra
+                .map(|t| t + T::MARGIN < key)
+                .unwrap_or(false)
+            {
                 // The node is already stalled with a smaller value.
                 return true;
             }

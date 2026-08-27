@@ -39,7 +39,7 @@ pub trait MinPriorityQueue {
     fn peek(&self) -> Option<(&Self::Key, &Self::Value)>;
     /// Returns true if the priority queue is empty.
     fn is_empty(&self) -> bool {
-        self.peek().is_some()
+        self.peek().is_none()
     }
 }
 
