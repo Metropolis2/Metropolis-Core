@@ -61,6 +61,34 @@ impl VehicleWeights {
     pub(crate) fn complexity(&self) -> usize {
         self.weights.values().map(|w| w.complexity()).sum()
     }
+
+    /// Returns the sum of the squared differences between the [TTF] of `self` and the [TTF] of
+    /// `other`, together with the number of edges over which the sum was computed.
+    fn squared_difference(&self, other: &Self) -> (NonNegativeSeconds, usize) {
+        assert_eq!(self.len(), other.len(), "Incompatible RoadNetworkWeights.");
+        debug_assert_eq!(
+            self.vehicle_ids, other.vehicle_ids,
+            "The weights do not have the same vehicle ids"
+        );
+        let mut sum = NonNegativeSeconds::ZERO;
+        for (self_id, self_ttf) in self.weights.iter() {
+            if let Some(other_ttf) = other.weights.get(self_id) {
+                sum += self_ttf
+                    .squared_difference(other_ttf)
+                    .assume_non_negative_unchecked();
+            } else {
+                panic!("The weights do not have the same edge ids");
+            }
+        }
+        (sum, self.len())
+    }
+
+    /// Returns the root mean squared difference between `self` and `other`.
+    fn rmse(&self, other: &Self) -> NonNegativeSeconds {
+        let (sum, n) = self.squared_difference(other);
+        debug_assert!(n > 0);
+        (sum / PositiveNum::new_unchecked(n as f64)).sqrt()
+    }
 }
 
 /// Structure to store the travel-time functions of each edge of a
@@ -318,28 +346,23 @@ impl RoadNetworkWeights {
         let mut rmse = NonNegativeSeconds::ZERO;
         let mut n = 0;
         for (self_weights, other_weights) in self.iter().zip(other.iter()) {
-            assert_eq!(
-                self_weights.len(),
-                other_weights.len(),
-                "Incompatible RoadNetworkWeights."
-            );
-            debug_assert_eq!(
-                self_weights.vehicle_ids, other_weights.vehicle_ids,
-                "The weights do not have the same vehicle ids"
-            );
-            for (self_id, self_ttf) in self_weights.weights.iter() {
-                if let Some(other_ttf) = other_weights.weights.get(self_id) {
-                    rmse += self_ttf
-                        .squared_difference(other_ttf)
-                        .assume_non_negative_unchecked();
-                    n += 1;
-                } else {
-                    panic!("The weights do not have the same edge ids");
-                }
-            }
+            let (sum, count) = self_weights.squared_difference(other_weights);
+            rmse += sum;
+            n += count;
         }
         debug_assert!(n > 0);
         (rmse / PositiveNum::new_unchecked(n as f64)).sqrt()
+    }
+
+    /// Returns the root mean squared difference between `self` and `other`, for each unique
+    /// vehicle.
+    ///
+    /// The returned vector is indexed by [UniqueVehicleIndex].
+    pub(crate) fn rmse_per_vehicle(&self, other: &Self) -> Vec<NonNegativeSeconds> {
+        self.iter()
+            .zip(other.iter())
+            .map(|(self_weights, other_weights)| self_weights.rmse(other_weights))
+            .collect()
     }
 }
 

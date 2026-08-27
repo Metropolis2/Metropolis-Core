@@ -36,6 +36,7 @@ use crate::event::{EventAlloc, EventInput};
 use crate::io;
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
+use crate::network::road_network::node_order::NodeOrderCache;
 use crate::network::road_network::skim::EAAllocation;
 use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
 use crate::population::agent_index;
@@ -76,7 +77,7 @@ fn run_impl() -> Result<()> {
             .with_context(|| format!("Failed to remove file: `{filename:?}`"))?;
     }
 
-    let (preprocess_data, mut exp_weights) = initialize()?;
+    let (preprocess_data, mut exp_weights, mut node_orders) = initialize()?;
     let mut prev_agent_results = None;
     let mut prev_sim_weights = None;
     let mut iteration_counter: u32 = crate::parameters::init_iteration_counter();
@@ -90,6 +91,7 @@ fn run_impl() -> Result<()> {
             std::mem::take(&mut prev_agent_results),
             iteration_counter,
             &preprocess_data,
+            &mut node_orders,
         )?;
         info!("Saving aggregate results");
         results::save_aggregate_results(&iteration_output.aggregate_results)?;
@@ -112,6 +114,24 @@ fn run_impl() -> Result<()> {
             results::save_iteration_results(sim_results.last_iteration.as_ref().unwrap(), None)?;
             info!("Done");
             break;
+        }
+        // Record how much the expected travel times changed, so that the node order of the
+        // contraction hierarchies is re-computed once they drifted too much.
+        if let (Some(weights), Some(new_weights)) = (
+            iteration_output
+                .iteration_results
+                .exp_weights
+                .road_network(),
+            iteration_output
+                .iteration_results
+                .new_exp_weights
+                .road_network(),
+        ) {
+            node_orders.add_drift(
+                weights,
+                new_weights,
+                crate::network::road_network::parameters::node_order_reuse_threshold(),
+            );
         }
         (exp_weights, prev_sim_weights, prev_agent_results) = (
             iteration_output.iteration_results.new_exp_weights,
@@ -143,11 +163,13 @@ pub fn run_iteration(
     previous_results_opt: Option<AgentResults>,
     iteration_counter: u32,
     preprocess_data: &PreprocessingData,
+    node_orders: &mut NodeOrderCache,
 ) -> Result<IterationOutput> {
     let now = Instant::now();
     info!("Computing skims");
-    let (skims, t1) =
-        record_time(|| crate::network::compute_skims(&exp_weights, &preprocess_data.network))?;
+    let (skims, t1) = record_time(|| {
+        crate::network::compute_skims(&exp_weights, &preprocess_data.network, node_orders)
+    })?;
     info!("Running demand model");
     let (mut agent_results, t2) = record_time(|| {
         run_pre_day_model(
@@ -412,7 +434,7 @@ fn get_update_vector(iteration_counter: u32) -> Vec<bool> {
 }
 
 /// Initializes the simulation before running it.
-fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
+fn initialize() -> Result<(PreprocessingData, NetworkWeights, NodeOrderCache)> {
     // Initialize the global rayon thread pool.
     rayon::ThreadPoolBuilder::new()
         .num_threads(crate::parameters::nb_threads())
@@ -421,7 +443,10 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
     // Check that the simulation is valid.
     check_validity()?;
     // Pre-process the simulation.
-    let preprocess_data = preprocess()?;
+    let mut preprocess_data = preprocess()?;
+    // The pre-processing built a contraction hierarchy for the free-flow travel times; its node
+    // order can be re-used for the first iteration.
+    let mut node_orders = preprocess_data.network.take_node_orders();
     let rn_weights = if crate::network::has_road_network() {
         // Read the input road-network conditions or create free-flow conditions if no file is
         // given.
@@ -430,16 +455,22 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
                 .road_network_conditions
                 .as_ref()
             {
-                io::read_rn_weights(
-                    path,
-                    &preprocess_data
-                        .network
-                        .get_road_network()
-                        .unwrap()
-                        .unique_vehicles,
-                )
-                .unwrap()
+                let rn_preprocess_data = preprocess_data.network.get_road_network().unwrap();
+                let weights =
+                    io::read_rn_weights(path, &rn_preprocess_data.unique_vehicles).unwrap();
+                if !node_orders.is_empty() {
+                    // The cached node orders were computed for the free-flow travel times: record
+                    // how far the initial conditions are from them.
+                    node_orders.add_drift(
+                        &crate::network::road_network::free_flow_weights(rn_preprocess_data),
+                        &weights,
+                        crate::network::road_network::parameters::node_order_reuse_threshold(),
+                    );
+                }
+                weights
             } else {
+                // The initial conditions are the very free-flow travel times that the cached node
+                // orders were computed for, so there is no drift to record.
                 crate::network::road_network::free_flow_weights(
                     preprocess_data.network.get_road_network().unwrap(),
                 )
@@ -449,7 +480,7 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights)> {
         None
     };
     let weights = NetworkWeights::new(rn_weights);
-    Ok((preprocess_data, weights))
+    Ok((preprocess_data, weights, node_orders))
 }
 
 /// Performs some validity checks that can only be done when all the simulation input has been
@@ -500,9 +531,10 @@ fn check_validity() -> Result<()> {
 
 /// Computes the pre-day choices of the simulation.
 pub fn compute_and_store_choices() -> Result<()> {
-    let (preprocess_data, weights) = initialize()?;
+    let (preprocess_data, weights, mut node_orders) = initialize()?;
     info!("Computing skims");
-    let skims = crate::network::compute_skims(&weights, &preprocess_data.network)?;
+    let skims =
+        crate::network::compute_skims(&weights, &preprocess_data.network, &mut node_orders)?;
     info!("Running demand model");
     let bp = MetroProgressBar::new(crate::population::nb_agents());
     let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(

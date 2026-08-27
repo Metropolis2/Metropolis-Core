@@ -572,3 +572,95 @@ fn contraction_hierarchies_test() {
     ));
     assert_eq!(label, Some(ttf));
 }
+
+/// Checks that re-using a node order yields the same hierarchy as computing a new one, when some
+/// edges are inaccessible (i.e., their travel time is infinite).
+///
+/// This is the situation of `metropolis-core`, where the edges that a vehicle cannot access are
+/// given an infinite travel-time function instead of being removed from the graph.
+#[test]
+fn unreachable_edges_order_reuse_test() {
+    // Create a grid network with 6 ** 2 = 36 nodes.
+    let n = 6;
+    let graph = get_grid_network(n);
+
+    let cst_tt = TTF::Constant(1.0f64);
+    let inf_tt = TTF::Constant(f64::INFINITY);
+    // Make one edge out of three inaccessible.
+    let weight_fn = |edge_id: petgraph::graph::EdgeIndex| {
+        if edge_id.index() % 3 == 0 {
+            inf_tt.clone()
+        } else {
+            cst_tt.clone()
+        }
+    };
+
+    let parameters = ContractionParameters::default();
+
+    let ch = HierarchyOverlay::order(&graph, weight_fn, parameters.clone());
+    let order = ch.get_order().to_vec();
+
+    let ch2 = HierarchyOverlay::construct(
+        &graph,
+        weight_fn,
+        |node_id| order[node_id.index()],
+        parameters,
+    );
+
+    // Both hierarchies were built by contracting the nodes in the same order, on the same
+    // (filtered) graph, so they must be identical.
+    assert_eq!(ch.node_count(), ch2.node_count());
+    assert_eq!(ch.edge_count(), ch2.edge_count());
+    assert_eq!(ch.complexity(), ch2.complexity());
+    // NOTE: `ch2.get_order()` is not necessarily equal to `order`: the nodes contracted in the
+    // same batch are mutually non-adjacent, so they can be re-numbered among themselves without
+    // changing the resulting hierarchy.
+    assert_eq!(ch.get_order().len(), ch2.get_order().len());
+
+    // Both hierarchies must also answer the queries identically.
+    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut profile_interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+    let mut candidate_map = HashMap::new();
+
+    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut profile_interval_search2 = BidirectionalDijkstraSearch::new(forw_search, back_search);
+    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut profile_search2 = BidirectionalDijkstraSearch::new(forw_search, back_search);
+    let mut candidate_map2 = HashMap::new();
+
+    let mut nb_reachable = 0;
+    for n0 in 0..n * n {
+        for n1 in 0..n * n {
+            if n0 == n1 {
+                continue;
+            }
+            let ttf = ch.profile_query(
+                node_index(n0),
+                node_index(n1),
+                &mut profile_interval_search,
+                &mut profile_search,
+                &mut candidate_map,
+            );
+            let ttf2 = ch2.profile_query(
+                node_index(n0),
+                node_index(n1),
+                &mut profile_interval_search2,
+                &mut profile_search2,
+                &mut candidate_map2,
+            );
+            assert_eq!(ttf, ttf2, "Different results from {n0} to {n1}");
+            if let Some(ttf) = ttf {
+                assert!(ttf.get_max().is_finite());
+                nb_reachable += 1;
+            }
+        }
+    }
+    // Make sure that the test is not vacuous.
+    assert!(nb_reachable > 0);
+}

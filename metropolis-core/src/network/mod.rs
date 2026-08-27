@@ -16,6 +16,7 @@
 
 //! Description of the supply side of a simulation.
 use anyhow::Result;
+use road_network::node_order::NodeOrderCache;
 use road_network::{
     RoadNetwork, RoadNetworkPreprocessingData, RoadNetworkSkims, RoadNetworkState,
     RoadNetworkWeights,
@@ -88,11 +89,13 @@ pub fn blank_state() -> NetworkState {
 pub fn compute_skims(
     weights: &NetworkWeights,
     preprocess_data: &NetworkPreprocessingData,
+    node_orders: &mut NodeOrderCache,
 ) -> Result<NetworkSkim> {
     let rn_skims = if has_road_network() {
         Some(road_network::compute_skims(
             weights.road_network.as_ref().unwrap(),
             preprocess_data.road_network.as_ref().unwrap(),
+            node_orders,
         )?)
     } else {
         None
@@ -235,5 +238,13 @@ impl NetworkPreprocessingData {
     /// Return the [RoadNetworkPreprocessingData] of the [NetworkPreprocessingData].
     pub const fn get_road_network(&self) -> Option<&RoadNetworkPreprocessingData> {
         self.road_network.as_ref()
+    }
+
+    /// Returns the node orders computed during the pre-processing, leaving an empty cache behind.
+    pub(crate) fn take_node_orders(&mut self) -> NodeOrderCache {
+        self.road_network
+            .as_mut()
+            .map(RoadNetworkPreprocessingData::take_node_orders)
+            .unwrap_or_default()
     }
 }

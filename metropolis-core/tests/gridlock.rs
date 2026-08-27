@@ -161,9 +161,15 @@ fn gridlock_test() {
         &preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
-    let results =
-        metropolis_core::simulation::run_iteration(weights, None, None, 1, &preprocess_data)
-            .unwrap();
+    let results = metropolis_core::simulation::run_iteration(
+        weights,
+        None,
+        None,
+        1,
+        &preprocess_data,
+        &mut Default::default(),
+    )
+    .unwrap();
     let agent_results = results.iteration_results.agent_results();
 
     // Departure times: 0, 2, 1, 3.

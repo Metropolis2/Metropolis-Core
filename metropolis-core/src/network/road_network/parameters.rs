@@ -59,6 +59,10 @@ pub(crate) fn algorithm_type() -> AlgorithmType {
     read_global().algorithm_type
 }
 
+pub(crate) fn node_order_reuse_threshold() -> NonNegativeSeconds {
+    read_global().node_order_reuse_threshold
+}
+
 const fn default_is_true() -> bool {
     true
 }
@@ -98,6 +102,23 @@ pub struct RoadNetworkParameters {
     /// relatively small part of the total number of nodes in the graph.
     #[serde(default)]
     pub algorithm_type: AlgorithmType,
+    /// Maximum change in the expected edge travel-time functions, measured as an accumulated root
+    /// mean squared difference in seconds, that is tolerated before the node order of the
+    /// contraction hierarchy is re-computed.
+    ///
+    /// The node order computed at a previous iteration is re-used as long as the expected travel
+    /// times did not drift by more than this value, which skips the expensive node-ordering phase
+    /// of the contraction.
+    /// Larger values imply faster iterations but a possibly denser contraction hierarchy (and thus
+    /// slower queries).
+    ///
+    /// With the default value of zero, the node order is only re-used when the expected travel
+    /// times did not change at all, in which case re-computing it would yield the very same order.
+    /// This is notably the case for the first iteration whenever no road-network conditions file is
+    /// given, as the initial conditions are then the free-flow travel times for which a node order
+    /// was already computed during the pre-processing.
+    #[serde(default)]
+    pub node_order_reuse_threshold: NonNegativeSeconds,
 }
 
 impl Default for RoadNetworkParameters {
@@ -111,6 +132,7 @@ impl Default for RoadNetworkParameters {
             max_pending_duration: NonNegativeSeconds::ZERO,
             constrain_inflow: true,
             algorithm_type: AlgorithmType::Best,
+            node_order_reuse_threshold: NonNegativeSeconds::ZERO,
         }
     }
 }

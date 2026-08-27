@@ -201,6 +201,11 @@ impl<T: TTFNum> HierarchyOverlay<T> {
     ///
     /// The hierarchy of nodes is a function that returns, for each node, its order in the
     /// hierarchy (higher values imply an higher order).
+    /// It must be a *total* order, i.e., no two nodes can share the same value.
+    ///
+    /// The node order of the returned HierarchyOverlay is not necessarily equal to the given node
+    /// order: the nodes that are contracted simultaneously are mutually non-adjacent, so they can
+    /// be re-numbered among themselves without changing the resulting hierarchy.
     pub fn construct<N, E, F, G>(
         graph: &DiGraph<N, E>,
         mut edge_cost: F,
@@ -211,9 +216,19 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         F: FnMut(EdgeIndex) -> TTF<T>,
         G: Fn(NodeIndex) -> usize,
     {
-        let construct_graph = graph.map(
-            |node_id, _| ToContractNode::from_order(node_id, node_order(node_id)),
-            |edge_id, _| ToContractEdge::new_original(edge_cost(edge_id), edge_id),
+        // NOTE: The edges are filtered exactly like in [HierarchyOverlay::order] so that both
+        // functions contract the same graph. All the nodes are kept so that the node indices (and
+        // thus the values returned by `node_order`) remain valid.
+        let construct_graph = graph.filter_map(
+            |node_id, _| Some(ToContractNode::from_order(node_id, node_order(node_id))),
+            |edge_id, _| {
+                let c = edge_cost(edge_id);
+                if c.get_min().is_finite() {
+                    Some(ToContractEdge::new_original(c, edge_id))
+                } else {
+                    None
+                }
+            },
         );
         let contraction = ContractionGraph::new(construct_graph, parameters);
         contraction.construct()
@@ -233,7 +248,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             |edge_id, _| {
                 let c = edge_cost(edge_id);
                 if c.get_min().is_finite() {
-                    Some(ToContractEdge::new_original(edge_cost(edge_id), edge_id))
+                    Some(ToContractEdge::new_original(c, edge_id))
                 } else {
                     None
                 }

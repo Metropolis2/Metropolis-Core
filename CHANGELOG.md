@@ -8,6 +8,13 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] New road-network parameter `node_order_reuse_threshold` (in seconds, default: 0). The
+  node order of the contraction hierarchies computed at a previous iteration is re-used, as long as
+  the expected edge travel times did not drift by more than this value, which skips the expensive
+  node-ordering phase of the contraction.
+
 ### Changed
 
 - [USER] Switch to `FxHashSet` and `FxHashMap` when building the network in `routing_cli` to make
@@ -15,6 +22,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ### Fixed
 
+- [DEV] In `tch`, `HierarchyOverlay::construct` now discards the edges whose travel time is not
+  finite, like `HierarchyOverlay::order` already did, so that both functions contract the same
+  graph.
 - [INPUT] Read id columns of any integer type (u8, u16, u32, i8, i16, i32)
 - [OUTPUT] Sort output edge TTFs by edge id
 

@@ -22,6 +22,7 @@ use hashbrown::{HashMap, HashSet};
 use num_traits::ConstZero;
 use rayon::prelude::*;
 
+use super::node_order::NodeOrderCache;
 use super::skim::EAAllocation;
 use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{AnySeconds, OriginalNodeId};
@@ -131,6 +132,11 @@ pub struct RoadNetworkPreprocessingData {
     /// Vector with, for each unique vehicle, an [ODTravelTimes] instance representing the
     /// OD-pair level free-flow travel times.
     pub(crate) free_flow_travel_times: Vec<ODTravelTimes>,
+    /// Node orders of the contraction hierarchies that were built for the free-flow travel times.
+    ///
+    /// These orders are moved out by `simulation::initialize` to seed the node-order cache of the
+    /// simulation, so that the first iteration does not have to compute them again.
+    pub(crate) node_orders: NodeOrderCache,
 }
 
 impl RoadNetworkPreprocessingData {
@@ -181,12 +187,20 @@ impl RoadNetworkPreprocessingData {
     pub fn preprocess() -> Result<Self> {
         let unique_vehicles = UniqueVehicles::init();
         let od_pairs = init_od_pairs(&unique_vehicles)?;
-        let free_flow_travel_times = compute_free_flow_travel_times(&unique_vehicles, &od_pairs)?;
+        let (free_flow_travel_times, node_orders) =
+            compute_free_flow_travel_times(&unique_vehicles, &od_pairs)?;
         Ok(RoadNetworkPreprocessingData {
             unique_vehicles,
             od_pairs,
             free_flow_travel_times,
+            node_orders,
         })
+    }
+
+    /// Returns the node orders computed for the free-flow travel times, leaving an empty cache
+    /// behind.
+    pub(crate) fn take_node_orders(&mut self) -> NodeOrderCache {
+        std::mem::take(&mut self.node_orders)
     }
 }
 
@@ -417,12 +431,17 @@ type ODTravelTimes = HashMap<(OriginalNodeId, OriginalNodeId), NonNegativeSecond
 fn compute_free_flow_travel_times(
     unique_vehicles: &UniqueVehicles,
     od_pairs: &[ODPairsStruct],
-) -> Result<Vec<ODTravelTimes>> {
+) -> Result<(Vec<ODTravelTimes>, NodeOrderCache)> {
     let mut free_flow_travel_times = vec![ODTravelTimes::default(); unique_vehicles.len()];
     let free_flow_weights = super::free_flow_weights_inner(unique_vehicles);
-    let skims = super::compute_skims_inner(&free_flow_weights, od_pairs)?;
+    let mut node_orders = NodeOrderCache::default();
+    let skims = super::compute_skims_inner(&free_flow_weights, od_pairs, &mut node_orders)?;
     for (vehicle_index, vehicle_od_pairs) in od_pairs.iter().enumerate() {
         if let Some(vehicle_skims) = skims[unique_vehicle_index(vehicle_index)].as_ref() {
+            node_orders.store(
+                unique_vehicle_index(vehicle_index),
+                vehicle_skims.hierarchy(),
+            );
             let vehicle_ff_tts: ODTravelTimes = vehicle_od_pairs
                 .pairs
                 .par_iter()
@@ -473,7 +492,7 @@ fn compute_free_flow_travel_times(
             assert!(vehicle_od_pairs.is_empty());
         }
     }
-    Ok(free_flow_travel_times)
+    Ok((free_flow_travel_times, node_orders))
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! The part of the network dedicated to road vehicles.
+pub mod node_order;
 pub mod parameters;
 pub mod preprocess;
 pub(crate) mod skim;
@@ -34,6 +35,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use tch::HierarchyOverlay;
 use ttf::{TTFNum, TTF};
 
+use self::node_order::NodeOrderCache;
 use self::parameters::AlgorithmType;
 pub(crate) use self::preprocess::RoadNetworkPreprocessingData;
 use self::preprocess::{ODPairsStruct, UniqueVehicles};
@@ -713,13 +715,15 @@ pub(crate) fn blank_state() -> RoadNetworkState {
 pub(crate) fn compute_skims(
     weights: &RoadNetworkWeights,
     preprocess_data: &RoadNetworkPreprocessingData,
+    node_orders: &mut NodeOrderCache,
 ) -> Result<RoadNetworkSkims> {
-    compute_skims_inner(weights, &preprocess_data.od_pairs)
+    compute_skims_inner(weights, &preprocess_data.od_pairs, node_orders)
 }
 
 fn compute_skims_inner(
     weights: &RoadNetworkWeights,
     all_od_pairs: &[ODPairsStruct],
+    node_orders: &mut NodeOrderCache,
 ) -> Result<RoadNetworkSkims> {
     let mut skims = Vec::with_capacity(all_od_pairs.len());
     assert_eq!(
@@ -736,8 +740,6 @@ fn compute_skims_inner(
         }
         let nb_breakpoints = weights[uvehicle_id].complexity();
         debug!("Total number of breakpoints: {nb_breakpoints}");
-        // TODO: In some cases, it might be faster to re-use the same order from one iteration
-        // to another.
         let weight_fn = |edge_id| {
             let original_id = original_edge_id_of(edge_id);
             weights
@@ -745,8 +747,29 @@ fn compute_skims_inner(
                 .cloned()
                 .unwrap_or(TTF::Constant(AnySeconds::INFINITY))
         };
-        let hierarchy =
-            HierarchyOverlay::order(graph(), weight_fn, parameters::contraction().clone());
+        // The node order of a previous iteration is re-used whenever the expected travel times did
+        // not drift too much since it was computed (see [NodeOrderCache]).
+        let threshold = parameters::node_order_reuse_threshold();
+        let hierarchy = if let Some(cached_order) = node_orders.get(uvehicle_id, threshold) {
+            debug!(
+                "Re-using the node order (drift: {} s, reference complexity: {})",
+                f64::from(cached_order.drift()),
+                cached_order.reference_complexity()
+            );
+            let order = cached_order.order();
+            HierarchyOverlay::construct(
+                graph(),
+                weight_fn,
+                |node_id| order[node_id.index()],
+                parameters::contraction().clone(),
+            )
+        } else {
+            debug!("Computing a new node order");
+            let hierarchy =
+                HierarchyOverlay::order(graph(), weight_fn, parameters::contraction().clone());
+            node_orders.store(uvehicle_id, &hierarchy);
+            hierarchy
+        };
         debug!(
             "Number of edges in the Hierarchy Overlay: {}",
             hierarchy.edge_count()
@@ -960,6 +983,9 @@ mod tests {
     fn restricted_edges_test() {
         let rn_parameters = RoadNetworkParameters {
             recording_interval: PositiveSeconds::new_unchecked(1.0),
+            // Allow the node order to be re-used, so that both branches of `compute_skims_inner`
+            // are tested below.
+            node_order_reuse_threshold: NonNegativeSeconds::new_unchecked(1.0),
             ..Default::default()
         };
         let parameters = Parameters {
@@ -1020,12 +1046,64 @@ mod tests {
             MetroId::Integer(2),
             true,
         )])];
-        let skims = compute_skims_inner(&weights, &all_od_pairs).unwrap();
+        let mut node_orders = NodeOrderCache::default();
+        let threshold = parameters::node_order_reuse_threshold();
+        // No node order is cached yet, so a new one is computed and stored.
+        assert!(node_orders
+            .get(unique_vehicle_index(0), threshold)
+            .is_none());
+        let skims = compute_skims_inner(&weights, &all_od_pairs, &mut node_orders).unwrap();
         let skim = skims[unique_vehicle_index(0)].as_ref().unwrap();
         assert_eq!(
             skim.profile_query(MetroId::Integer(1), MetroId::Integer(2))
                 .unwrap(),
             Some(&TTF::Constant(AnySeconds::new_unchecked(1.0)))
         );
+        // The node order is now cached and has not drifted, so the second run re-uses it.
+        assert!(node_orders
+            .get(unique_vehicle_index(0), threshold)
+            .is_some());
+        let reused_skims = compute_skims_inner(&weights, &all_od_pairs, &mut node_orders).unwrap();
+        let reused_skim = reused_skims[unique_vehicle_index(0)].as_ref().unwrap();
+        assert_eq!(
+            reused_skim
+                .profile_query(MetroId::Integer(1), MetroId::Integer(2))
+                .unwrap(),
+            Some(&TTF::Constant(AnySeconds::new_unchecked(1.0)))
+        );
+        // The node order has not drifted at all, so it is re-used even with a threshold of zero:
+        // re-computing it would yield the very same order.
+        assert!(node_orders
+            .get(unique_vehicle_index(0), NonNegativeSeconds::ZERO)
+            .is_some());
+        // Identical expected travel times imply no drift, so the node order is still valid.
+        node_orders.add_drift(&weights, &weights, NonNegativeSeconds::ZERO);
+        assert!(node_orders
+            .get(unique_vehicle_index(0), NonNegativeSeconds::ZERO)
+            .is_some());
+        // Once the expected travel times drift, the node order is only re-used if the drift is
+        // below the threshold.
+        let mut drifted_weights = weights.clone();
+        for ttf in drifted_weights.weights[0].weights_mut().values_mut() {
+            *ttf = TTF::Constant(AnySeconds::new_unchecked(1.5));
+        }
+        let mut small_drift_orders = node_orders.clone();
+        small_drift_orders.add_drift(&weights, &drifted_weights, threshold);
+        assert!(small_drift_orders
+            .get(unique_vehicle_index(0), threshold)
+            .is_some());
+        assert!(small_drift_orders
+            .get(unique_vehicle_index(0), NonNegativeSeconds::ZERO)
+            .is_none());
+        // Once the expected travel times drifted more than the threshold, the node order is
+        // discarded and must be re-computed.
+        for ttf in drifted_weights.weights[0].weights_mut().values_mut() {
+            *ttf = TTF::Constant(AnySeconds::new_unchecked(100.0));
+        }
+        node_orders.add_drift(&weights, &drifted_weights, threshold);
+        assert!(node_orders.is_empty());
+        assert!(node_orders
+            .get(unique_vehicle_index(0), threshold)
+            .is_none());
     }
 }

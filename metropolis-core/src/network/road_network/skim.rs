@@ -72,6 +72,11 @@ impl RoadNetworkSkim {
         }
     }
 
+    /// Returns the [HierarchyOverlay] of the RoadNetworkSkim.
+    pub(crate) fn hierarchy(&self) -> &HierarchyOverlay<AnySeconds> {
+        &self.hierarchy_overlay
+    }
+
     /// Compute the forward and backward search spaces for a set of origins and destinations.
     /// This will speed-up the following profile queries from one of the origins to one of the
     /// destinations.
