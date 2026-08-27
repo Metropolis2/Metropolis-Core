@@ -11,6 +11,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 ### Fixed
 
 - [INPUT] Read id columns of any integer type (u8, u16, u32, i8, i16, i32)
+- [OUTPUT] Sort output edge TTFs by edge id
 
 ## [1.4.0] - 2026-06-15
 

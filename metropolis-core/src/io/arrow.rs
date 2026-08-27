@@ -1578,9 +1578,15 @@ impl ToArrow<1> for NetworkWeights {
                 crate::network::road_network::parameters::recording_interval(),
             );
             for vehicle_weights in rn_weights.iter() {
+                // NOTE: The weights are stored in a hash map, whose iteration order can vary from
+                // one run to another, so we sort them by edge index to get reproducible output.
+                let mut weights: Vec<_> = vehicle_weights.weights().iter().collect();
+                weights.sort_unstable_by_key(|(edge_id, _)| {
+                    crate::network::road_network::edge_index_of(**edge_id)
+                });
                 for vehicle_id in vehicle_weights.vehicle_ids() {
-                    for (edge_id, ttf) in vehicle_weights.weights().iter() {
-                        builder.append(*vehicle_id, *edge_id, ttf);
+                    for (edge_id, ttf) in weights.iter() {
+                        builder.append(*vehicle_id, **edge_id, ttf);
                     }
                 }
             }
