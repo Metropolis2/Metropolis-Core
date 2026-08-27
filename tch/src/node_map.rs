@@ -15,10 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::hash::Hash;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
 
-use fixedbitset::FixedBitSet;
 use petgraph::graph::IndexType;
 
 /// Trait to represent a data structure that can be used as a map of values for nodes.
@@ -111,92 +108,6 @@ where
                 None
             }
         }))
-    }
-}
-
-/// A map `N -> V` as a [Vec].
-#[derive(Debug)]
-pub struct VecMap<N, V> {
-    vec: Vec<MaybeUninit<V>>,
-    bs: FixedBitSet,
-    n: PhantomData<N>,
-}
-
-impl<N, V> Default for VecMap<N, V> {
-    fn default() -> Self {
-        let mut vec = Vec::with_capacity(200_000);
-        vec.fill_with(MaybeUninit::uninit);
-        VecMap {
-            vec,
-            bs: FixedBitSet::with_capacity(200_000),
-            n: PhantomData,
-        }
-    }
-}
-
-impl<N, V> VecMap<N, V> {
-    /// Creates a new empty VecMap.
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Creates a new empty VecMap with the given capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        VecMap {
-            vec: Vec::with_capacity(capacity),
-            bs: FixedBitSet::with_capacity(capacity),
-            n: PhantomData,
-        }
-    }
-}
-
-impl<N, V> NodeMap for VecMap<N, V>
-where
-    N: IndexType,
-{
-    type Node = N;
-    type Value = V;
-    fn reset(&mut self) {
-        self.bs.clear();
-    }
-    fn get_value(&self, node: &N) -> Option<&V> {
-        if self.bs.contains(node.index()) {
-            unsafe { Some(self.vec[node.index()].assume_init_ref()) }
-        } else {
-            None
-        }
-    }
-    fn get_mut_value(&mut self, node: &N) -> Option<&mut V> {
-        if self.bs.contains(node.index()) {
-            unsafe { Some(self.vec[node.index()].assume_init_mut()) }
-        } else {
-            None
-        }
-    }
-    fn insert(&mut self, node: N, value: V) {
-        if self.vec.len() <= node.index() {
-            self.vec.resize_with(node.index() + 1, MaybeUninit::uninit);
-        }
-        if self.bs.len() <= node.index() {
-            self.bs.grow(node.index() + 1);
-        }
-        self.vec[node.index()] = MaybeUninit::new(value);
-        self.bs.insert(node.index());
-    }
-    fn len(&self) -> usize {
-        self.bs.count_ones(..)
-    }
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (N, &'a V)> + 'a> {
-        unsafe {
-            Box::new(
-                self.bs
-                    .ones()
-                    .map(|i| (N::new(i), self.vec[i].assume_init_ref())),
-            )
-        }
     }
 }
 

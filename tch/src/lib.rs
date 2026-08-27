@@ -37,7 +37,6 @@ pub use bidirectional_search::BidirectionalDijkstraSearch;
 pub use contraction_hierarchies::{
     HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, SearchSpaces,
 };
-pub use node_map::VecMap;
 use petgraph::graph::NodeIndex;
 pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
