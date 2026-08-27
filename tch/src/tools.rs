@@ -35,6 +35,7 @@ use petgraph::{
     prelude::DiGraph,
 };
 use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSecondsWithFrac};
 use simplelog::{
@@ -138,11 +139,11 @@ pub struct Graph {
     /// Directed graph where edges' weights are travel-time functions.
     pub graph: DiGraph<(), TTF<f64>>,
     /// Mapping from original node id to simulation NodeIndex.
-    pub node_map: HashMap<MetroId, NodeIndex>,
+    pub node_map: FxHashMap<MetroId, NodeIndex>,
     /// Mapping from simulation NodeIndex to original node id.
-    pub reverse_node_map: HashMap<NodeIndex, MetroId>,
+    pub reverse_node_map: FxHashMap<NodeIndex, MetroId>,
     /// Mapping from simulation EdgeIndex to original edge id.
-    pub reverse_edge_map: HashMap<EdgeIndex, MetroId>,
+    pub reverse_edge_map: FxHashMap<EdgeIndex, MetroId>,
 }
 
 impl Graph {
@@ -153,17 +154,17 @@ impl Graph {
             .enumerate()
             .map(|(i, e)| (edge_index(i), e.edge_id))
             .collect();
-        let node_set: HashSet<_> = raw_edges
+        let node_set: FxHashSet<MetroId> = raw_edges
             .iter()
             .map(|e| e.source)
             .chain(raw_edges.iter().map(|e| e.target))
             .collect();
-        let node_map: HashMap<MetroId, NodeIndex> = node_set
+        let node_map: FxHashMap<MetroId, NodeIndex> = node_set
             .iter()
             .enumerate()
             .map(|(i, &original_id)| (original_id, node_index(i)))
             .collect();
-        let reverse_node_map: HashMap<NodeIndex, MetroId> = node_set
+        let reverse_node_map: FxHashMap<NodeIndex, MetroId> = node_set
             .into_iter()
             .enumerate()
             .map(|(i, original_id)| (node_index(i), original_id))

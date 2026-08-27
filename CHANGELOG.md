@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Changed
+
+- [USER] Switch to `FxHashSet` and `FxHashMap` when building the network in `routing_cli` to make
+  the runs deterministic.
+
 ### Fixed
 
 - [INPUT] Read id columns of any integer type (u8, u16, u32, i8, i16, i32)
