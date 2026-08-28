@@ -20,6 +20,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Switch to `FxHashSet` and `FxHashMap` when building the network in `routing_cli` to make
   the runs deterministic.
 - [DEV] Various optimizations.
+- [DEV] Remove polars dependency.
 
 ### Fixed
 

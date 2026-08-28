@@ -412,27 +412,19 @@ impl PreDayAgentResults {
     }
 }
 
-/// Stores [AggregateResults] in the given output directory.
+/// Stores the [AggregateResults] of all the iterations run so far in the output directory.
 ///
-/// The AggregateResults are stored in the file `iteration[counter].json`.
-pub(crate) fn save_aggregate_results(aggregate_results: &AggregateResults) -> Result<()> {
+/// The results are stored in the file `iteration_results.[ext]`, with one row per iteration.
+///
+/// The whole file is rewritten at each call so that it remains readable even if the simulation is
+/// interrupted before the last iteration.
+pub(crate) fn save_aggregate_results(sim_results: &SimulationResults) -> Result<()> {
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            io::parquet::append_parquet(
-                aggregate_results.clone(),
-                crate::parameters::output_directory(),
-                "iteration_results",
-            )?;
+            io::parquet::write_parquet(sim_results, crate::parameters::output_directory())
         }
-        SavingFormat::CSV => {
-            io::csv::append_csv(
-                aggregate_results.clone(),
-                crate::parameters::output_directory(),
-                "iteration_results",
-            )?;
-        }
+        SavingFormat::CSV => io::csv::write_csv(sim_results, crate::parameters::output_directory()),
     }
-    Ok(())
 }
 
 /// Stores [IterationResults] in the given output directory.

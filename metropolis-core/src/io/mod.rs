@@ -20,7 +20,6 @@ mod arrow;
 pub mod csv;
 pub mod json;
 pub mod parquet;
-mod polars;
 
 use std::path::Path;
 

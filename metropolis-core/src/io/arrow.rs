@@ -23,7 +23,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, BooleanBuilder, Float64Array,
     Float64Builder, Int64Array, Int64Builder, LargeListArray, ListArray, StringArray,
-    StringBuilder, StructArray, UInt64Array, UInt64Builder,
+    StringBuilder, StructArray, UInt32Builder, UInt64Array, UInt64Builder,
 };
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::datatypes::{DataType, Field, FieldRef, Schema};
@@ -41,7 +41,8 @@ use crate::network::road_network::{OriginalEdgeId, RoadEdge, RoadNetwork, RoadNe
 use crate::network::NetworkWeights;
 use crate::population::Agent;
 use crate::simulation::results::{
-    AgentResult, AgentResults, PreDayAgentResult, PreDayAgentResults,
+    AgentResult, AgentResults, AggregateResults, PreDayAgentResult, PreDayAgentResults,
+    SimulationResults,
 };
 use crate::units::*;
 
@@ -1597,5 +1598,250 @@ impl ToArrow<1> for NetworkWeights {
     }
     fn names() -> [&'static str; 1] {
         ["edge_ttfs"]
+    }
+}
+
+/// A typed arrow builder for one column of the `iteration_results` table.
+#[derive(Debug)]
+enum ColumnBuilder {
+    UInt32(UInt32Builder),
+    UInt64(UInt64Builder),
+    Float64(Float64Builder),
+}
+
+impl ColumnBuilder {
+    /// Returns the values appended so far as an arrow array.
+    fn finish(&mut self) -> ArrayRef {
+        match self {
+            Self::UInt32(builder) => Arc::new(builder.finish()),
+            Self::UInt64(builder) => Arc::new(builder.finish()),
+            Self::Float64(builder) => Arc::new(builder.finish()),
+        }
+    }
+}
+
+/// Builder of the `iteration_results` table, with one row per iteration.
+///
+/// The schema is not declared up-front: it is discovered while the first row is appended and the
+/// following rows must then push the exact same columns, in the same order (this is checked with
+/// debug assertions). This way, the column list only exists once, so the values and the schema
+/// cannot drift apart.
+#[derive(Debug, Default)]
+struct AggregateResultsBuilder {
+    /// Schema of the table, built while the first row is appended.
+    fields: Vec<FieldRef>,
+    /// One builder per column of the table.
+    columns: Vec<ColumnBuilder>,
+    /// Index of the column being pushed, reset at the beginning of each row.
+    cursor: usize,
+}
+
+/// Generates a `push_*` method appending an optional value to the next column of the current row.
+macro_rules! push_column {
+    ($name:ident, $ty:ty, $variant:ident, $dtype:expr) => {
+        fn $name(&mut self, name: &str, value: Option<$ty>) {
+            if self.cursor == self.fields.len() {
+                // First row: this column is discovered now.
+                self.fields.push(Arc::new(Field::new(name, $dtype, true)));
+                self.columns
+                    .push(ColumnBuilder::$variant(Default::default()));
+            }
+            debug_assert_eq!(
+                self.fields[self.cursor].name(),
+                name,
+                "Column `{name}` is not pushed at the same position in every row"
+            );
+            match &mut self.columns[self.cursor] {
+                ColumnBuilder::$variant(builder) => builder.append_option(value),
+                builder => unreachable!("Column `{name}` has unexpected builder {builder:?}"),
+            }
+            self.cursor += 1;
+        }
+    };
+}
+
+impl AggregateResultsBuilder {
+    push_column!(push_u32, u32, UInt32, DataType::UInt32);
+    push_column!(push_u64, u64, UInt64, DataType::UInt64);
+    push_column!(push_f64, f64, Float64, DataType::Float64);
+
+    /// Appends the four `_mean`, `_std`, `_min` and `_max` columns of a distribution.
+    ///
+    /// The four columns are null if the distribution is `None`.
+    fn push_distr<T: MetroNonNegativeNum + Into<f64>>(
+        &mut self,
+        name: &str,
+        distr: Option<&Distribution<T>>,
+    ) {
+        self.push_f64(&format!("{name}_mean"), distr.map(|d| d.mean().into()));
+        self.push_f64(&format!("{name}_std"), distr.map(|d| d.std().into()));
+        self.push_f64(&format!("{name}_min"), distr.map(|d| d.min().into()));
+        self.push_f64(&format!("{name}_max"), distr.map(|d| d.max().into()));
+    }
+
+    /// Appends the results of one iteration as a new row.
+    fn append(&mut self, results: &AggregateResults) {
+        self.cursor = 0;
+        self.push_u32("iteration_counter", Some(results.iteration_counter));
+        self.push_distr("surplus", Some(&results.surplus));
+
+        let trip = results.mode_results.trip_modes.as_ref();
+        self.push_u64("trip_alt_count", trip.map(|t| t.count as u64));
+        self.push_distr("alt_departure_time", trip.map(|t| &t.departure_time));
+        self.push_distr("alt_arrival_time", trip.map(|t| &t.arrival_time));
+        self.push_distr("alt_travel_time", trip.map(|t| &t.travel_time));
+        self.push_distr("alt_utility", trip.map(|t| &t.utility));
+        self.push_distr("alt_expected_utility", trip.map(|t| &t.expected_utility));
+        self.push_distr(
+            "alt_dep_time_shift",
+            trip.and_then(|t| t.dep_time_shift.as_ref()),
+        );
+        self.push_f64(
+            "alt_dep_time_rmse",
+            trip.and_then(|t| t.dep_time_rmse).map(Into::into),
+        );
+
+        let road = trip.and_then(|t| t.road_leg.as_ref());
+        self.push_u64("road_trip_count", road.map(|r| r.count as u64));
+        self.push_u64(
+            "nb_agents_at_least_one_road_trip",
+            road.map(|r| r.mode_count_one as u64),
+        );
+        self.push_u64(
+            "nb_agents_all_road_trips",
+            road.map(|r| r.mode_count_all as u64),
+        );
+        self.push_distr(
+            "road_trip_count_by_agent",
+            road.map(|r| &r.count_distribution),
+        );
+        self.push_distr("road_trip_departure_time", road.map(|r| &r.departure_time));
+        self.push_distr("road_trip_arrival_time", road.map(|r| &r.arrival_time));
+        self.push_distr("road_trip_road_time", road.map(|r| &r.road_time));
+        self.push_distr(
+            "road_trip_in_bottleneck_time",
+            road.map(|r| &r.in_bottleneck_time),
+        );
+        self.push_distr(
+            "road_trip_out_bottleneck_time",
+            road.map(|r| &r.out_bottleneck_time),
+        );
+        self.push_distr("road_trip_travel_time", road.map(|r| &r.travel_time));
+        self.push_distr(
+            "road_trip_route_free_flow_travel_time",
+            road.map(|r| &r.route_free_flow_travel_time),
+        );
+        self.push_distr(
+            "road_trip_global_free_flow_travel_time",
+            road.map(|r| &r.global_free_flow_travel_time),
+        );
+        self.push_distr(
+            "road_trip_route_congestion",
+            road.map(|r| &r.route_congestion),
+        );
+        self.push_distr(
+            "road_trip_global_congestion",
+            road.map(|r| &r.global_congestion),
+        );
+        self.push_distr("road_trip_length", road.map(|r| &r.length));
+        self.push_distr("road_trip_edge_count", road.map(|r| &r.edge_count));
+        self.push_distr("road_trip_utility", road.map(|r| &r.utility));
+        self.push_distr(
+            "road_trip_exp_travel_time",
+            road.map(|r| &r.exp_travel_time),
+        );
+        self.push_distr(
+            "road_trip_exp_travel_time_rel_diff",
+            road.map(|r| &r.exp_travel_time_rel_diff),
+        );
+        self.push_distr(
+            "road_trip_exp_travel_time_abs_diff",
+            road.map(|r| &r.exp_travel_time_abs_diff),
+        );
+        self.push_f64(
+            "road_trip_exp_travel_time_diff_rmse",
+            road.map(|r| r.exp_travel_time_diff_rmse.into()),
+        );
+        self.push_distr(
+            "road_trip_length_diff",
+            road.and_then(|r| r.length_diff.as_ref()),
+        );
+
+        let virt = trip.and_then(|t| t.virtual_leg.as_ref());
+        self.push_u64("virtual_trip_count", virt.map(|v| v.count as u64));
+        self.push_u64(
+            "nb_agents_at_least_one_virtual_trip",
+            virt.map(|v| v.mode_count_one as u64),
+        );
+        self.push_u64(
+            "nb_agents_all_virtual_trips",
+            virt.map(|v| v.mode_count_all as u64),
+        );
+        self.push_distr(
+            "virtual_trip_count_by_agent",
+            virt.map(|v| &v.count_distribution),
+        );
+        self.push_distr(
+            "virtual_trip_departure_time",
+            virt.map(|v| &v.departure_time),
+        );
+        self.push_distr("virtual_trip_arrival_time", virt.map(|v| &v.arrival_time));
+        self.push_distr("virtual_trip_travel_time", virt.map(|v| &v.travel_time));
+        self.push_distr(
+            "virtual_trip_global_free_flow_travel_time",
+            virt.map(|v| &v.global_free_flow_travel_time),
+        );
+        self.push_distr(
+            "virtual_trip_global_congestion",
+            virt.map(|v| &v.global_congestion),
+        );
+        self.push_distr("virtual_trip_utility", virt.map(|v| &v.utility));
+
+        let constant = results.mode_results.constant.as_ref();
+        self.push_u64("no_trip_alt_count", constant.map(|c| c.count as u64));
+        self.push_distr("constant_utility", constant.map(|c| &c.utility));
+
+        self.push_f64(
+            "sim_road_network_cond_rmse",
+            results.sim_road_network_weights_rmse.map(Into::into),
+        );
+        self.push_f64(
+            "exp_road_network_cond_rmse",
+            results.exp_road_network_weights_rmse.map(Into::into),
+        );
+
+        debug_assert_eq!(
+            self.cursor,
+            self.fields.len(),
+            "Not all the columns were pushed for this row"
+        );
+    }
+
+    /// Returns the appended rows as a [RecordBatch].
+    fn finish(&mut self) -> Result<[Option<RecordBatch>; 1]> {
+        if self.fields.is_empty() {
+            return Ok([None]);
+        }
+        let schema = Arc::new(Schema::new(std::mem::take(&mut self.fields)));
+        let columns: Vec<ArrayRef> = self.columns.iter_mut().map(ColumnBuilder::finish).collect();
+        let batch = RecordBatch::try_new(schema, columns)?;
+        if batch.num_rows() == 0 {
+            Ok([None])
+        } else {
+            Ok([Some(batch)])
+        }
+    }
+}
+
+impl ToArrow<1> for SimulationResults {
+    fn to_arrow(data: &SimulationResults) -> Result<[Option<RecordBatch>; 1]> {
+        let mut builder = AggregateResultsBuilder::default();
+        for results in data.iterations.iter() {
+            builder.append(results);
+        }
+        builder.finish()
+    }
+    fn names() -> [&'static str; 1] {
+        ["iteration_results"]
     }
 }

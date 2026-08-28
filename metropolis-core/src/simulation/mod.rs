@@ -93,8 +93,6 @@ fn run_impl() -> Result<()> {
             &preprocess_data,
             &mut node_orders,
         )?;
-        info!("Saving aggregate results");
-        results::save_aggregate_results(&iteration_output.aggregate_results)?;
         // TODO: add this as an option.
         // results::save_iteration_results(
         // &iteration_output.iteration_results,
@@ -102,6 +100,8 @@ fn run_impl() -> Result<()> {
         // Some(format!("iter{iteration_counter}")),
         // )?;
         sim_results.push_iteration(iteration_output.aggregate_results);
+        info!("Saving aggregate results");
+        results::save_aggregate_results(&sim_results)?;
         running_times.update(&iteration_output.running_times);
         if iteration_output.stop_simulation {
             info!("Stopping simulation");
@@ -327,7 +327,7 @@ pub fn run_within_day_model(
     }
     bp.finish();
     debug_assert_eq!(agent_results.len(), agent_results.nb_agents_arrived());
-    debug!("Succesfully executed {} events", nb_events);
+    debug!("Successfully executed {} events", nb_events);
     // Compute network weights.
     debug!("Computing network weights");
     let weights = state.into_weights(&preprocess_data.network);

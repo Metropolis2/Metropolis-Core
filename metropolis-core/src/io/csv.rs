@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Imports / exports through parquet format.
+//! Imports / exports through CSV format.
 
 use std::{
     fs::File,
@@ -28,10 +28,8 @@ use arrow::{
     array::RecordBatch,
     csv::{reader::Format, ReaderBuilder, Writer},
 };
-use polars::prelude::{CsvReadOptions, CsvWriter, SerReader, SerWriter};
 
 use super::arrow::ToArrow;
-use super::polars::ToPolars;
 
 /// Write data that can be converted to arrow format as a CSV file.
 pub fn write_csv<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
@@ -57,37 +55,6 @@ pub fn write_csv_with_prefix<D: ToArrow<J>, const J: usize>(
             writer.write(&batch)?;
         }
     }
-    Ok(())
-}
-
-/// Append data to a CSV file.
-///
-/// The data is appended as a new row to the existing CSV file.
-///
-/// If the CSV file does not exist, it is create with a single row.
-pub fn append_csv<D: ToPolars>(data: D, output_dir: &Path, name: &str) -> Result<()> {
-    let append_df = data.to_dataframe()?;
-    let filename: PathBuf = [output_dir.to_str().unwrap(), &format!("{name}.csv")]
-        .iter()
-        .collect();
-    let mut df = if filename.is_file() {
-        let mut df = CsvReadOptions::default()
-            .with_schema(Some(Arc::new(D::schema())))
-            .try_into_reader_with_file_path(Some(filename.clone()))
-            .with_context(|| format!("Cannot open file `{filename:?}`"))?
-            .finish()
-            .with_context(|| format!("Cannot read file `{filename:?}`"))?;
-        df.vstack_mut(&append_df)
-            .context("Cannot append iteration results to DataFrame")?;
-        df
-    } else {
-        append_df
-    };
-    let mut file =
-        File::create(&filename).with_context(|| format!("Cannot create file `{filename:?}`"))?;
-    CsvWriter::new(&mut file)
-        .finish(&mut df)
-        .with_context(|| format!("Cannot write file `{filename:?}`"))?;
     Ok(())
 }
 
