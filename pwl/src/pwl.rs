@@ -273,11 +273,16 @@ where
     }
 
     /// Returns the last `y` value.
+    #[inline]
     fn last_y(&self) -> Y {
         self.points[self.points.len() - 1]
     }
 
     /// Evaluates the value of the function at the given `x` value.
+    ///
+    /// This is inlined because it is called in tight loops (e.g., when evaluating the utility of
+    /// each candidate departure time), where hoisting the field loads out of the loop matters.
+    #[inline]
     pub fn eval(&self, x: X) -> Y {
         debug_assert!(!self.is_empty());
         // `i` is the position of `x` in the vector of `y` values.
@@ -370,7 +375,12 @@ where
             interval_x
         );
         debug_assert!(y.iter().all(|v| !v.is_nan()));
-        let (&min, &max) = y.iter().minmax().into_option().unwrap();
+        // `TTFNum::min` / `TTFNum::max` are used instead of a comparison-based scan (e.g.
+        // `Itertools::minmax`) because they lower to branchless instructions that the compiler can
+        // vectorize; the values are known not to be NaN, so both give the same result.
+        let (min, max) = y[1..].iter().fold((y[0], y[0]), |(min, max), &value| {
+            (TTFNum::min(min, value), TTFNum::max(max, value))
+        });
         PwlXYF {
             points: y,
             min,

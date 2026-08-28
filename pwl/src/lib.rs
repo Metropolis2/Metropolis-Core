@@ -122,6 +122,7 @@ where
     }
 
     /// Returns the `y` value at the given `x` value.
+    #[inline]
     pub fn eval(&self, x: X) -> Y {
         match self {
             Self::Piecewise(pwl_xyf) => pwl_xyf.eval(x),
