@@ -168,7 +168,7 @@ impl Mode {
         weights: &'a NetworkWeights,
         exp_skims: &'a NetworkSkim,
         preprocess_data: &'a NetworkPreprocessingData,
-        progress_bar: MetroProgressBar,
+        progress_bar: &'a MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'a>)> {
         match self {

@@ -612,57 +612,39 @@ impl TravelingMode {
         period: Interval,
     ) -> PwlXYF<AnySeconds, Utility, AnyNum> {
         let interval = crate::parameters::departure_time_interval();
-        let tds: Vec<_> = std::iter::successors(Some(period.start()), |x| {
-            Some(*x + NonNegativeSeconds::from(interval))
-        })
-        .take_while(|&x| x <= period.end())
-        .collect();
-        let mut utilities = vec![Utility::ZERO; tds.len()];
-        // Add schedule utility at origin.
-        utilities
-            .iter_mut()
-            .zip(tds.iter())
-            .for_each(|(u, &td)| *u += self.origin_schedule_utility.get_utility(td));
-        let mut current_times = tds.clone();
-        // Add origin delay.
-        current_times
-            .iter_mut()
-            .for_each(|t| *t += self.origin_delay);
-        for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
-            // Add the leg-specific travel-time utility and schedule utility, and update the
-            // current times.
-            utilities
-                .iter_mut()
-                .zip(current_times.iter_mut())
-                .for_each(|(u, t)| {
-                    let tt = NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(*t)))
-                        .expect("The travel time is negative");
-                    // Update the current time.
-                    *t += tt;
-                    // Increase the utility for the associated departure time.
-                    *u += leg.travel_utility.get_travel_utility(tt)
-                        + leg.schedule_utility.get_utility(*t);
-                    // Add the stopping time.
-                    *t += leg.stopping_time;
-                });
+        let step = NonNegativeSeconds::from(interval);
+        let total_stopping_time = self.get_total_stopping_time();
+        // The utility of each candidate departure time is computed in a single pass, so that no
+        // intermediate vector of departure times / arrival times has to be allocated.
+        let mut utilities =
+            Vec::with_capacity((period.length() / interval).to_usize_unchecked() + 1);
+        let mut td = period.start();
+        while td <= period.end() {
+            // Add schedule utility at origin.
+            let mut u = self.origin_schedule_utility.get_utility(td);
+            // Add origin delay.
+            let mut t = td + self.origin_delay;
+            for (leg_ttf, leg) in leg_ttfs.iter().zip(self.legs.iter()) {
+                // Add the leg-specific travel-time utility and schedule utility, and update the
+                // current time.
+                let tt = NonNegativeSeconds::try_from(leg_ttf.eval(AnySeconds::from(t)))
+                    .expect("The travel time is negative");
+                // Update the current time.
+                t += tt;
+                // Increase the utility for the associated departure time.
+                u +=
+                    leg.travel_utility.get_travel_utility(tt) + leg.schedule_utility.get_utility(t);
+                // Add the stopping time.
+                t += leg.stopping_time;
+            }
+            // Add schedule utility at destination.
+            u += self.destination_schedule_utility.get_utility(t);
+            // Add total travel utility (stopping time needs to be excluded).
+            let tot_tt = t.sub_unchecked(td).sub_unchecked(total_stopping_time);
+            u += self.total_travel_utility.get_travel_utility(tot_tt);
+            utilities.push(u);
+            td += step;
         }
-        // Add schedule utility at destination.
-        utilities
-            .iter_mut()
-            .zip(current_times.iter())
-            .for_each(|(u, &ta)| *u += self.destination_schedule_utility.get_utility(ta));
-        // Add total travel utility (stopping time needs to be excluded).
-        utilities
-            .iter_mut()
-            .zip(current_times)
-            .zip(tds)
-            .for_each(|((u, ta), td)| {
-                // total stopping time is always larger that
-                let tot_tt = ta
-                    .sub_unchecked(td)
-                    .sub_unchecked(self.get_total_stopping_time());
-                *u += self.total_travel_utility.get_travel_utility(tot_tt)
-            });
         PwlXYF::from_values(utilities, period.start().into(), interval.into())
     }
 
@@ -812,7 +794,7 @@ impl TravelingMode {
         rn_weights: Option<&'b RoadNetworkWeights>,
         rn_skims: Option<&'b RoadNetworkSkims>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
-        progress_bar: MetroProgressBar,
+        progress_bar: &'b MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'b>)> {
         if let Some(choice) = self.choice.get() {
@@ -832,7 +814,7 @@ impl TravelingMode {
         rn_weights: Option<&'b RoadNetworkWeights>,
         rn_skims: Option<&'b RoadNetworkSkims>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
-        progress_bar: MetroProgressBar,
+        progress_bar: &'b MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'b>)> {
         debug_assert!(self.departure_time_model.is_constant());
@@ -880,7 +862,7 @@ impl TravelingMode {
                                 road_leg,
                                 current_time,
                                 vehicle_skims,
-                                progress_bar.clone(),
+                                progress_bar,
                                 alloc,
                             )?;
                             let global_free_flow_travel_time = *preprocess_data
@@ -963,7 +945,7 @@ impl TravelingMode {
         rn_weights: Option<&'b RoadNetworkWeights>,
         rn_skims: Option<&'b RoadNetworkSkims>,
         preprocess_data: Option<&'b RoadNetworkPreprocessingData>,
-        progress_bar: MetroProgressBar,
+        progress_bar: &'b MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<(Utility, ModeCallback<'b>)> {
         if let &DepartureTimeModel::Constant(departure_time) = &self.departure_time_model {
@@ -1084,7 +1066,7 @@ impl TravelingMode {
         preprocess_data: Option<&RoadNetworkPreprocessingData>,
         weights: Option<&RoadNetworkWeights>,
         skims: Option<&RoadNetworkSkims>,
-        progress_bar: MetroProgressBar,
+        progress_bar: &MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<TripResults> {
         let mut leg_results = Vec::with_capacity(self.legs.len());
@@ -1124,7 +1106,7 @@ impl TravelingMode {
                                 road_leg,
                                 current_time,
                                 vehicle_skims,
-                                progress_bar.clone(),
+                                progress_bar,
                                 alloc,
                             )?;
                             let global_free_flow_travel_time = *preprocess_data
@@ -1317,7 +1299,7 @@ fn get_arrival_time_and_route(
     leg: &RoadLeg,
     departure_time: NonNegativeSeconds,
     skims: &RoadNetworkSkim,
-    progress_bar: MetroProgressBar,
+    progress_bar: &MetroProgressBar,
     alloc: &mut EAAllocation,
 ) -> Result<(NonNegativeSeconds, Vec<EdgeIndex>)> {
     if let Some((arrival_time, route)) = skims.earliest_arrival_query(

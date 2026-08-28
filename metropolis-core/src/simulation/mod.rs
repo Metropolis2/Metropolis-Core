@@ -257,7 +257,7 @@ pub fn run_pre_day_model(
                         preprocess_data,
                         Some(prev_agent_result),
                         update,
-                        bp.clone(),
+                        &bp,
                         alloc,
                     )
                 },
@@ -276,7 +276,7 @@ pub fn run_pre_day_model(
                     preprocess_data,
                     None,
                     true,
-                    bp.clone(),
+                    &bp,
                     alloc,
                 )
             })
@@ -549,7 +549,7 @@ pub fn compute_and_store_choices() -> Result<()> {
                     &preprocess_data,
                     None,
                     true,
-                    bp.clone(),
+                    &bp,
                     alloc,
                 )
             })

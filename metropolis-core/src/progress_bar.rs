@@ -17,7 +17,8 @@
 //! Progress bar and spinner for the library.
 use std::{
     borrow::Cow,
-    sync::{Arc, Mutex},
+    sync::atomic::{AtomicU64, Ordering},
+    sync::Arc,
     time::Duration,
 };
 
@@ -33,7 +34,7 @@ const UPDATE_MS: Duration = Duration::from_millis(1000);
 #[derive(Debug, Clone)]
 pub struct MetroProgressBar {
     bp: ProgressBar,
-    current: Arc<Mutex<u64>>,
+    current: Arc<AtomicU64>,
 }
 
 impl MetroProgressBar {
@@ -51,7 +52,7 @@ impl MetroProgressBar {
         );
         MetroProgressBar {
             bp,
-            current: Arc::new(Mutex::new(0)),
+            current: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -78,8 +79,9 @@ impl MetroProgressBar {
     ///
     /// The bar is refreshed only periodically.
     pub fn inc(&self) {
-        let mut current = self.current.lock().unwrap();
-        *current += 1;
+        // An atomic counter is used instead of a mutex because this is called once per agent from
+        // all the threads of the pre-day model.
+        let current = self.current.fetch_add(1, Ordering::Relaxed) + 1;
         if current.is_multiple_of(UPDATE) {
             self.bp.inc(UPDATE);
         }

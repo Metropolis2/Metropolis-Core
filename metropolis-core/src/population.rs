@@ -182,7 +182,7 @@ impl Agent {
         preprocess_data: &PreprocessingData,
         previous_day_result: Option<&AgentResult>,
         update: bool,
-        progress_bar: MetroProgressBar,
+        progress_bar: &MetroProgressBar,
         alloc: &mut EAAllocation,
     ) -> Result<AgentResult> {
         if update {
@@ -194,7 +194,7 @@ impl Agent {
                             weights,
                             exp_skims,
                             &preprocess_data.network,
-                            progress_bar.clone(),
+                            progress_bar,
                             alloc,
                         )
                     }),
@@ -310,7 +310,7 @@ mod tests {
                 &Default::default(),
                 None,
                 false,
-                bp.clone(),
+                &bp,
                 &mut alloc
             )
             .is_err());
@@ -322,7 +322,7 @@ mod tests {
                 &Default::default(),
                 None,
                 true,
-                bp.clone(),
+                &bp,
                 &mut alloc,
             )
             .unwrap();
@@ -341,7 +341,7 @@ mod tests {
                     &Default::default(),
                     Some(&result),
                     false,
-                    bp.clone(),
+                    &bp,
                     &mut alloc,
                 )
                 .unwrap(),
@@ -359,7 +359,7 @@ mod tests {
                 &Default::default(),
                 None,
                 true,
-                bp.clone(),
+                &bp,
                 &mut alloc,
             )
             .unwrap();
