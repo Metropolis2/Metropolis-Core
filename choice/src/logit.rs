@@ -156,13 +156,32 @@ impl LogitModel {
     /// - `x1 - x0` is small
     ///
     /// - `mu` is small
+    #[cfg(test)]
     fn get_cum_func_value(&self, (x0, y0): (f64, f64), (x1, y1): (f64, f64)) -> f64 {
+        self.get_cum_func_value_with_exp(
+            (x0, y0),
+            (x1, y1),
+            (y0 / self.mu).exp(),
+            (y1 / self.mu).exp(),
+        )
+    }
+
+    /// Same as [Self::get_cum_func_value], but with the exponentials `exp(y0 / mu)` and
+    /// `exp(y1 / mu)` given as arguments.
+    ///
+    /// Each breakpoint of a piecewise-linear function is shared by two consecutive segments, so
+    /// the caller can compute one exponential per breakpoint instead of two per segment.
+    fn get_cum_func_value_with_exp(
+        &self,
+        (x0, y0): (f64, f64),
+        (x1, y1): (f64, f64),
+        y0_exp: f64,
+        y1_exp: f64,
+    ) -> f64 {
         if y0 == y1 {
             // Area of a square.
-            return (y0 / self.mu).exp() * (x1 - x0);
+            return y0_exp * (x1 - x0);
         }
-        let y0_exp = (y0 / self.mu).exp();
-        let y1_exp = (y1 / self.mu).exp();
         let y_exp_diff = y1_exp - y0_exp;
         if y_exp_diff == 0.0 {
             // Practically a square.
@@ -218,15 +237,23 @@ impl LogitModel {
         // Let M + 1 be the number of breakpoints.
         // Compute each part G_i of the cumulative distribution function, for 1 <= i <= M.
         // G_i is defined as the integral, from x_i to x_i+1, of exp(y(tau) / mu) d tau.
-        let cum_probs_parts: Vec<f64> = func
-            .double_iter()
-            .map(|((x0, y0), (x1, y1))| {
-                self.get_cum_func_value(
-                    (x0.into(), Into::<f64>::into(y0) - max_value),
-                    (x1.into(), Into::<f64>::into(y1) - max_value),
-                )
-            })
-            .collect();
+        // The exponential of each breakpoint value is computed only once and re-used for the two
+        // segments sharing that breakpoint.
+        let mut cum_probs_parts: Vec<f64> = Vec::with_capacity(func.len().saturating_sub(1));
+        let mut previous: Option<((f64, f64), f64)> = None;
+        for (x, y) in func.iter() {
+            let point = (x.into(), Into::<f64>::into(y) - max_value);
+            let y_exp = (point.1 / self.mu).exp();
+            if let Some((previous_point, previous_y_exp)) = previous {
+                cum_probs_parts.push(self.get_cum_func_value_with_exp(
+                    previous_point,
+                    point,
+                    previous_y_exp,
+                    y_exp,
+                ));
+            }
+            previous = Some((point, y_exp));
+        }
         // Compute the integral from x_1 to x_M+1 (i.e., the sum of the values G_i).
         let sigma: f64 = cum_probs_parts.iter().sum();
         if sigma == 0.0 {
