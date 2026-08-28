@@ -14,10 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use hashbrown::HashSet;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use ttf::TTF;
+
+use crate::hash::HashSet;
 
 /// Trait for Structs that can hold node-specific data during a Dijkstra search.
 pub trait NodeData {

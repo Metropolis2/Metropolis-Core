@@ -20,7 +20,6 @@ use std::collections::VecDeque;
 use anyhow::Result;
 use either::Either;
 use enum_as_inner::EnumAsInner;
-use hashbrown::HashMap;
 use log::warn;
 use num_traits::{ConstZero, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
@@ -30,6 +29,7 @@ use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
 use super::{original_edge_id_of, EdgeFlow, RoadEdge, RoadNetworkPreprocessingData};
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
+use crate::hash::HashMap;
 use crate::mode::trip::event::VehicleEvent;
 use crate::population::{agent, AgentIndex};
 use crate::units::*;
@@ -753,7 +753,7 @@ impl RoadNetworkState {
         );
         RoadNetworkState {
             graph,
-            pending_edges: HashMap::new(),
+            pending_edges: HashMap::default(),
             max_pending_duration: super::parameters::max_pending_duration(),
             warnings: 0,
             backward_wave_speed: super::parameters::backward_wave_speed(),

@@ -26,6 +26,7 @@ csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
 enum-as-inner = "0.7"
 fixedbitset = "0.5"
+foldhash = "0.2"
 hashbrown = { version = "0.17", features = ["rayon", "serde"] }
 indicatif = "0.18"
 log = "0.4"

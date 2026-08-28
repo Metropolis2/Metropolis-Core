@@ -16,10 +16,10 @@
 
 //! Description of the vehicles that can travel on a [RoadNetwork](super::RoadNetwork).
 use anyhow::{anyhow, bail, Context, Result};
-use hashbrown::HashSet;
 use num_traits::ConstZero;
 
 use super::OriginalEdgeId;
+use crate::hash::HashSet;
 use crate::units::*;
 
 /// Enumerator representing a function that maps a baseline speed to an effective speed.

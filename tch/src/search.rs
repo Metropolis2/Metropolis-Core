@@ -15,13 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::{anyhow, Result};
-use hashbrown::{HashMap, HashSet};
 use petgraph::graph::NodeIndex;
 
 use super::min_queue::MinPriorityQueue;
 use super::node_data::NodeData;
 use super::ops::DijkstraOps;
 use super::query::QueryRef;
+use crate::hash::{HashMap, HashSet};
 
 /// A data structure that can be used to run any uni-directional Dijkstra's algorithm.
 ///
@@ -270,7 +270,7 @@ where
     /// predecessor is reached.
     pub fn get_reverse_path(&self, &end: &NodeIndex) -> Result<Vec<NodeIndex>> {
         let mut path = vec![end];
-        let mut visited = HashSet::new();
+        let mut visited = HashSet::default();
         visited.insert(end);
         let mut next = end;
         while let Some(&pred) = self.get_predecessor(&next) {
@@ -298,7 +298,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use hashbrown::HashMap;
+    use crate::hash::HashMap;
     use petgraph::graph::node_index;
     use priority_queue::PriorityQueue;
 
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn path_test() {
-        let mut labels: HashMap<NodeIndex, (i32, Option<NodeIndex>)> = HashMap::new();
+        let mut labels: HashMap<NodeIndex, (i32, Option<NodeIndex>)> = HashMap::default();
         labels.insert(node_index(1), (0, Some(node_index(0))));
         labels.insert(node_index(2), (0, Some(node_index(1))));
         labels.insert(node_index(3), (0, Some(node_index(4))));

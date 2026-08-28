@@ -28,10 +28,10 @@ use arrow::array::{
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::datatypes::{DataType, Field, FieldRef, Schema};
 use arrow::record_batch::RecordBatch;
-use hashbrown::{HashMap, HashSet};
 use log::warn;
 use ttf::{PwlTTF, TTF};
 
+use crate::hash::{HashMap, HashSet};
 use crate::tools::{Edge, Graph, MetroId, Query, QueryResult};
 
 pub trait ToArrow<const J: usize = 1> {
@@ -45,12 +45,12 @@ pub fn get_graph_from_files(edges_path: &Path, ttfs_path: Option<&Path>) -> Resu
         let ttfs_batch = filename_to_batch_record(path)?;
         let ttfs_vec = read_ttfs(ttfs_batch).context("Cannot parse TTFs")?;
         // Collect all the values in a map edge_id -> (td, tt).
-        let mut global_map: HashMap<MetroId, Vec<(f64, f64)>> = HashMap::new();
+        let mut global_map: HashMap<MetroId, Vec<(f64, f64)>> = HashMap::default();
         for (eid, x, y) in ttfs_vec {
             global_map.entry(eid).or_insert_with(Vec::new).push((x, y));
         }
         // Build the TTFs.
-        let mut ttf_map = HashMap::with_capacity(global_map.len());
+        let mut ttf_map = HashMap::with_capacity_and_hasher(global_map.len(), Default::default());
         for (eid, xy_vec) in global_map.into_iter() {
             let ttf = build_ttf(xy_vec)
                 .with_context(|| format!("Failed to build TTF for edge id `{eid}`"))?;
@@ -59,7 +59,7 @@ pub fn get_graph_from_files(edges_path: &Path, ttfs_path: Option<&Path>) -> Resu
         check_same_start_and_interval(&ttf_map)?;
         ttf_map
     } else {
-        HashMap::new()
+        HashMap::default()
     };
     let edge_batch = filename_to_batch_record(edges_path)?;
     let mut edges = read_edges(edge_batch).context("Cannot parse edges")?;
@@ -327,7 +327,7 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<Vec<Edge>> {
     let travel_time_values = get_column!(["travel_time"] in struct_array as f64);
     let n = struct_array.len();
     let mut edges = Vec::with_capacity(n);
-    let mut unique_ids = HashSet::with_capacity(n);
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let edge_id = get_id_value!(edge_id_values[i]);
         let source = get_id_value!(source_values[i]);
@@ -386,8 +386,8 @@ pub(crate) fn read_node_order(batch: RecordBatch) -> Result<HashMap<MetroId, usi
     let node_id_values = get_id_column!(["node_id"] in struct_array);
     let order_values = get_column!(["order"] in struct_array as u64);
     let n = struct_array.len();
-    let mut nodes = HashMap::with_capacity(n);
-    let mut unique_ids = HashSet::with_capacity(n);
+    let mut nodes = HashMap::with_capacity_and_hasher(n, Default::default());
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let node_id = get_id_value!(node_id_values[i]);
         let order = get_value!(order_values[i]);
@@ -413,7 +413,7 @@ pub(crate) fn read_queries(batch: RecordBatch) -> Result<Vec<Query>> {
     let departure_time_values = get_column!(["departure_time"] in struct_array as f64);
     let n = struct_array.len();
     let mut queries = Vec::with_capacity(n);
-    let mut unique_ids = HashSet::with_capacity(n);
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let query_id = get_id_value!(query_id_values[i]);
         let origin = get_id_value!(origin_values[i]);

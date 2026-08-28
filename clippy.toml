@@ -1,1 +1,9 @@
-disallowed-types = ["std::collections::HashMap", "std::collections::HashSet"]
+disallowed-types = [
+  # Use `crate::hash::HashMap` / `crate::hash::HashSet` instead: `hashbrown`'s default hasher is
+  # randomly seeded, which makes the iteration order (and hence the simulation results) vary from
+  # one run to another.
+  "std::collections::HashMap",
+  "std::collections::HashSet",
+  "hashbrown::HashMap",
+  "hashbrown::HashSet",
+]

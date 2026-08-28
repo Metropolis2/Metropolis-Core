@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Integration test for trip chaining.
-use hashbrown::HashSet;
+use metropolis_core::hash::HashSet;
 use metropolis_core::mode::trip::event::RoadEvent;
 use metropolis_core::mode::trip::results::{
     LegResults, LegTypeResults, RoadLegResults, TripResults,
@@ -75,16 +75,16 @@ fn init_simulation() {
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        HashSet::new(),
-        HashSet::new(),
+        HashSet::default(),
+        HashSet::default(),
     );
     let v1 = Vehicle::new(
         2,
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Multiplicator(PositiveNum::try_from(0.5).unwrap()),
-        HashSet::new(),
-        HashSet::new(),
+        HashSet::default(),
+        HashSet::default(),
     );
     let road_network = RoadNetwork::from_edges(edges, vec![v0, v1]);
     let network = Network::new(Some(road_network));

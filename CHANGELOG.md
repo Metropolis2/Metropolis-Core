@@ -19,6 +19,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] Switch to `FxHashSet` and `FxHashMap` when building the network in `routing_cli` to make
   the runs deterministic.
+- [USER] `metropolis-core` and `tch` now use a fixed-seed hasher for all their hash maps and sets.
 - [DEV] Various optimizations.
 - [DEV] Remove polars dependency.
 
@@ -29,6 +30,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   graph.
 - [INPUT] Read id columns of any integer type (u8, u16, u32, i8, i16, i32)
 - [OUTPUT] Sort output edge TTFs by edge id
+- [OUTPUT] Runs are now reproducible: two runs on the same input produce identical output files,
+  provided the `random_seed` parameter is set.
 
 ## [1.4.0] - 2026-06-15
 

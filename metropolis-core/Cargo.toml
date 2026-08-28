@@ -33,6 +33,7 @@ askama = { version = "0.16", default-features = false, features = [
 clap = { version = "4.0", features = ["derive"] }
 either = "1.8"
 enum-as-inner = "0.7"
+foldhash = "0.2"
 hashbrown = { version = "0.17", features = ["rayon"] }
 indicatif = "0.18"
 itertools = "0.15"

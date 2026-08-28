@@ -18,7 +18,6 @@
 use std::ops::Index;
 
 use anyhow::{anyhow, Result};
-use hashbrown::{HashMap, HashSet};
 use num_traits::ConstZero;
 use rayon::prelude::*;
 
@@ -26,6 +25,7 @@ use super::node_order::NodeOrderCache;
 use super::skim::EAAllocation;
 use super::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 use super::{AnySeconds, OriginalNodeId};
+use crate::hash::{HashMap, HashSet};
 use crate::mode::Mode;
 use crate::units::{MetroId, NonNegativeSeconds};
 
@@ -72,7 +72,7 @@ impl UniqueVehicles {
 
     fn init_inner(vehicles: &[Vehicle]) -> Self {
         let mut list: Vec<(VehicleIndex, Vec<MetroId>)> = Vec::new();
-        let mut vehicle_map = HashMap::with_capacity(vehicles.len());
+        let mut vehicle_map = HashMap::with_capacity_and_hasher(vehicles.len(), Default::default());
         for (vehicle_idx, vehicle) in vehicles.iter().enumerate() {
             if let Some(uid) = list
                 .iter()
@@ -529,7 +529,7 @@ mod tests {
             NonNegativeMeters::new_unchecked(10.0),
             PCE::new_unchecked(1.0),
             speed_function.clone(),
-            HashSet::new(),
+            HashSet::default(),
             [id2].into_iter().collect(),
         );
         let v1 = Vehicle::new(
@@ -537,7 +537,7 @@ mod tests {
             NonNegativeMeters::new_unchecked(30.0),
             PCE::new_unchecked(3.0),
             speed_function.clone(),
-            HashSet::new(),
+            HashSet::default(),
             [id2].into_iter().collect(),
         );
         let v2 = Vehicle::new(
@@ -546,7 +546,7 @@ mod tests {
             PCE::new_unchecked(1.0),
             speed_function,
             [id1, id1].into_iter().collect(),
-            HashSet::new(),
+            HashSet::default(),
         );
         let vehicles = vec![v0, v1, v2];
         let results = UniqueVehicles::init_inner(&vehicles);

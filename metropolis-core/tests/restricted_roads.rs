@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Integration test for road restrictions.
-use hashbrown::HashSet;
+use metropolis_core::hash::HashSet;
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::Mode;
 use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
@@ -105,8 +105,8 @@ fn init_simulation() {
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        HashSet::new(),
-        HashSet::new(),
+        HashSet::default(),
+        HashSet::default(),
     );
     let v1 = Vehicle::new(
         2,
@@ -114,14 +114,14 @@ fn init_simulation() {
         PCE::ONE,
         SpeedFunction::Base,
         [id0, id1, id3].into_iter().collect(),
-        HashSet::new(),
+        HashSet::default(),
     );
     let v2 = Vehicle::new(
         3,
         NonNegativeMeters::try_from(1.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        HashSet::new(),
+        HashSet::default(),
         [id2].into_iter().collect(),
     );
     // For vehicle type `v3`, only route 0 -> 2 -> 3 is feasible according to allowed edges but

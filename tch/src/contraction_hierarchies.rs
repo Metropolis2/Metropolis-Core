@@ -18,7 +18,6 @@ use std::collections::VecDeque;
 
 use anyhow::{anyhow, Context, Result};
 use fixedbitset::FixedBitSet;
-use hashbrown::{HashMap, HashSet};
 use object_pool::Pool;
 use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
 use petgraph::visit::{EdgeFiltered, EdgeRef, NodeFiltered};
@@ -34,6 +33,7 @@ use crate::bidirectional_ops::{
     BidirectionalTCHProfileInterval,
 };
 use crate::bidirectional_search::BidirectionalDijkstraSearch;
+use crate::hash::{HashMap, HashSet};
 use crate::min_queue::{MinPQ, MinPriorityQueue};
 use crate::node_data::{
     NodeData, ProfileData, ProfileIntervalData, ProfileIntervalDataWithExtra, ScalarData,
@@ -599,7 +599,7 @@ impl<T> NoLoopPath<T> {
     fn new() -> Self {
         Self {
             route: Vec::new(),
-            traversed_nodes: HashMap::new(),
+            traversed_nodes: HashMap::default(),
         }
     }
 

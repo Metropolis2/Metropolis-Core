@@ -18,6 +18,7 @@
 #![doc(html_no_source)]
 
 pub mod event;
+pub mod hash;
 pub mod io;
 pub mod learning;
 pub mod logging;

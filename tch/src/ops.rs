@@ -17,13 +17,13 @@
 //! Trait and structs used to represent Dijkstra algorithms.
 use std::hash::Hash;
 
-use hashbrown::{HashMap, HashSet};
 use petgraph::graph::IndexType;
 use petgraph::visit::{EdgeRef, IntoEdgesDirected};
 use petgraph::Direction;
 use ttf::{TTFNum, TTF};
 
 use crate::bound::Bound;
+use crate::hash::{HashMap, HashSet};
 use crate::node_data::{NodeData, NodeDataWithExtra};
 use crate::query::Query;
 
@@ -120,7 +120,7 @@ pub trait DijkstraOps {
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
 /// use tch::ops::ScalarDijkstra;
@@ -128,7 +128,7 @@ pub trait DijkstraOps {
 /// use tch::DijkstraSearch;
 ///
 /// // Run a standard point-to-point Dijkstra search with scalars on a graph with three edges.
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
 /// let mut ops = ScalarDijkstra::new_forward(&graph, |e: EdgeReference<_>| *e.weight());
 /// let query = PointToPointQuery::from_default(node_index(0), node_index(2));
@@ -245,12 +245,12 @@ where
 /// use tch::ops::TimeDependentDijkstra;
 /// use tch::query::PointToPointQuery;
 /// use tch::DijkstraSearch;
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
 ///     (1, 2, TTF::Constant(2.)),
@@ -408,7 +408,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -417,7 +417,7 @@ where
 /// use tch::DijkstraSearch;
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
 ///     (1, 2, TTF::Constant(2.)),
@@ -534,7 +534,7 @@ where
         prev: Option<G::NodeId>,
         label: TTF<T>,
     ) -> (TTF<T>, Option<HashSet<G::NodeId>>) {
-        let mut hs = HashSet::new();
+        let mut hs = HashSet::default();
         if let Some(p) = prev {
             hs.insert(p);
         }
@@ -624,7 +624,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -633,7 +633,7 @@ where
 /// use tch::DijkstraSearch;
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
 ///     (1, 2, TTF::Constant(2.)),
@@ -816,7 +816,7 @@ where
         prev: Option<G::NodeId>,
         label: [T; 2],
     ) -> ([T; 2], Option<HashSet<G::NodeId>>) {
-        let mut hs = HashSet::new();
+        let mut hs = HashSet::default();
         if let Some(p) = prev {
             hs.insert(p);
         }
@@ -844,7 +844,7 @@ where
             // The new label dominates the existing one.
             *node_label = new_label;
             if let Some(p) = node_pred {
-                let mut hs = HashSet::new();
+                let mut hs = HashSet::default();
                 hs.insert(prev);
                 *p = hs;
             }
@@ -916,7 +916,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -925,7 +925,7 @@ where
 /// use tch::DijkstraSearch;
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
 ///     (1, 2, TTF::Constant(2.)),
@@ -1099,7 +1099,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
 /// use tch::ops::HopLimitedDijkstra;
@@ -1108,7 +1108,7 @@ where
 /// use tch::DijkstraSearch;
 ///
 /// // Standard scalar Dijkstra search with a hop limit of 0.
-/// let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
 /// let mut ops = HopLimitedDijkstra::new(
 ///     ScalarDijkstra::new_forward(&graph, |e: EdgeReference<_>| *e.weight()),
@@ -1284,7 +1284,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use hashbrown::HashMap;
+    use crate::hash::HashMap;
     use petgraph::graph::{node_index, DiGraph, EdgeReference};
     use petgraph::visit::EdgeRef;
     use priority_queue::PriorityQueue;
@@ -1303,7 +1303,7 @@ mod tests {
         // 0   3 - 4
         //  \ /
         //   2
-        let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
         let graph = DiGraph::<(), TTF<f64>>::from_edges(&[
             (0, 1, TTF::Constant(5.)),
             (1, 3, TTF::Constant(5.)),
@@ -1338,7 +1338,7 @@ mod tests {
         // 0   3 - 4
         //  \ /
         //   2
-        let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
         let graph = DiGraph::<(), TTF<f64>>::from_edges(&[
             (0, 1, TTF::Constant(5.)),
             (1, 3, TTF::Constant(5.)),

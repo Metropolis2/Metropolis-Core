@@ -21,7 +21,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use choice::{ChoiceModel, ContinuousChoiceModel};
 use either::Either;
 use enum_as_inner::EnumAsInner;
-use hashbrown::HashSet;
 use log::warn;
 use num_traits::{clamp, ConstZero};
 use once_cell::sync::OnceCell;
@@ -30,6 +29,7 @@ use ttf::{PwlXYF, TTF};
 
 use self::results::{RoadLegResults, TripResults};
 use super::{ModeCallback, ModeResults};
+use crate::hash::HashSet;
 use crate::mode::trip::results::{LegResults, LegTypeResults};
 use crate::network::road_network::skim::{EAAllocation, RoadNetworkSkim, RoadNetworkSkims};
 use crate::network::road_network::{

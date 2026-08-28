@@ -20,14 +20,15 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Context, Result};
-use hashbrown::HashMap;
 use log::{warn, LevelFilter};
 use simplelog::{
     ColorChoice, CombinedLogger, Config, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
 
+use crate::hash::HashMap;
+
 static SENT_WARNINGS: LazyLock<Mutex<HashMap<WarningType, usize>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+    LazyLock::new(|| Mutex::new(HashMap::default()));
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// Enum representing the various type of warning messages that can be sent.

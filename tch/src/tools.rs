@@ -24,7 +24,6 @@ use std::{env, fmt};
 use anyhow::{bail, Context, Result};
 use arrayvec::ArrayString;
 use enum_as_inner::EnumAsInner;
-use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{info, log_enabled, warn, Level, LevelFilter};
 use object_pool::Pool;
@@ -48,6 +47,7 @@ use crate::algo::{
     profile_query,
 };
 use crate::bidirectional_ops::{BidirectionalProfileDijkstra, BidirectionalTCHEA};
+use crate::hash::{HashMap, HashSet};
 use crate::query::BidirectionalPointToPointQuery;
 use crate::HierarchyOverlay;
 use crate::{
@@ -528,8 +528,11 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                             td,
                             Default::default(),
                         );
-                        let mut ops =
-                            BidirectionalTCHEA::new(&graph.graph, ttf_func_edge, HashMap::new());
+                        let mut ops = BidirectionalTCHEA::new(
+                            &graph.graph,
+                            ttf_func_edge,
+                            HashMap::default(),
+                        );
                         let result = earliest_arrival_query(
                             &mut alloc.ea_alloc,
                             &bidir_query,
@@ -562,7 +565,7 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                         let mut ops = BidirectionalProfileDijkstra::new(
                             &graph.graph,
                             ttf_func_edge,
-                            HashMap::new(),
+                            HashMap::default(),
                         );
                         let bidir_query = BidirectionalPointToPointQuery::from_default(
                             graph.get_node_id(query.source),

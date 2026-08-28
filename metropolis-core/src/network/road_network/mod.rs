@@ -27,7 +27,6 @@ use std::ops::{Deref, Index};
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, bail, Context, Result};
-use hashbrown::{HashMap, HashSet};
 use log::{debug, warn};
 use num_traits::{ConstZero, Pow, Zero};
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeIndex, NodeIndex};
@@ -44,6 +43,7 @@ pub(crate) use self::skim::RoadNetworkSkims;
 pub(crate) use self::state::RoadNetworkState;
 use self::vehicle::{vehicle_index, Vehicle, VehicleIndex};
 pub(crate) use self::weights::RoadNetworkWeights;
+use crate::hash::{HashMap, HashSet};
 use crate::network::road_network::preprocess::unique_vehicle_index;
 use crate::units::*;
 
@@ -859,7 +859,7 @@ impl Index<VehicleIndex> for RoadNetwork {
 
 #[cfg(test)]
 mod tests {
-    use hashbrown::HashSet;
+    use crate::hash::HashSet;
 
     use super::parameters::RoadNetworkParameters;
     use super::vehicle::SpeedFunction;
@@ -886,8 +886,8 @@ mod tests {
             NonNegativeMeters::new_unchecked(10.),
             PCE::new_unchecked(1.),
             SpeedFunction::Base,
-            HashSet::new(),
-            HashSet::new(),
+            HashSet::default(),
+            HashSet::default(),
         );
         // 1 km at 50 km/h is 40s.
         assert_eq!(
@@ -1032,7 +1032,7 @@ mod tests {
             NonNegativeMeters::new_unchecked(1.0),
             PCE::new_unchecked(1.0),
             SpeedFunction::Base,
-            HashSet::new(),
+            HashSet::default(),
             [MetroId::Integer(0)].into_iter().collect(),
         );
         let road_network = RoadNetwork::from_edges(edges, vec![vehicle.clone()]);

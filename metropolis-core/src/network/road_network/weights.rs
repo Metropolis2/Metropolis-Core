@@ -18,7 +18,6 @@
 use std::ops::{Index, IndexMut};
 
 use anyhow::{bail, Context, Result};
-use hashbrown::{HashMap, HashSet};
 use log::warn;
 use num_traits::ConstZero;
 use ttf::{PwlTTF, TTF};
@@ -27,6 +26,7 @@ use super::{
     preprocess::{UniqueVehicleIndex, UniqueVehicles},
     OriginalEdgeId,
 };
+use crate::hash::{HashMap, HashSet};
 use crate::units::*;
 
 /// Structure to store the travel-time functions of each edge of a
@@ -71,16 +71,23 @@ impl VehicleWeights {
             "The weights do not have the same vehicle ids"
         );
         let mut sum = NonNegativeSeconds::ZERO;
-        for (self_id, self_ttf) in self.weights.iter() {
-            if let Some(other_ttf) = other.weights.get(self_id) {
-                sum += self_ttf
-                    .squared_difference(other_ttf)
-                    .assume_non_negative_unchecked();
-            } else {
-                panic!("The weights do not have the same edge ids");
-            }
+        let mut n = 0;
+        for edge_id in super::iter_original_edge_ids() {
+            // The edge is skipped if it is not accessible for this vehicle.
+            let Some(self_ttf) = self.weights.get(&edge_id) else {
+                continue;
+            };
+            let other_ttf = other
+                .weights
+                .get(&edge_id)
+                .expect("The weights do not have the same edge ids");
+            sum += self_ttf
+                .squared_difference(other_ttf)
+                .assume_non_negative_unchecked();
+            n += 1;
         }
-        (sum, self.len())
+        debug_assert_eq!(n, self.len(), "The weights do not have the same edge ids");
+        (sum, n)
     }
 
     /// Returns the root mean squared difference between `self` and `other`.
@@ -109,7 +116,7 @@ impl RoadNetworkWeights {
             .iter_original_ids()
             .map(|vehicle_ids| VehicleWeights {
                 vehicle_ids: vehicle_ids.to_vec(),
-                weights: HashMap::with_capacity(nb_edges),
+                weights: HashMap::with_capacity_and_hasher(nb_edges, Default::default()),
             })
             .collect();
         RoadNetworkWeights { weights }
@@ -144,7 +151,7 @@ impl RoadNetworkWeights {
         for v_weights in instance.weights.iter() {
             weights.push(VehicleWeights {
                 vehicle_ids: v_weights.vehicle_ids.clone(),
-                weights: HashMap::with_capacity(v_weights.len()),
+                weights: HashMap::with_capacity_and_hasher(v_weights.len(), Default::default()),
             });
         }
         RoadNetworkWeights { weights }
@@ -164,7 +171,7 @@ impl RoadNetworkWeights {
         unique_vehicles: &UniqueVehicles,
     ) -> Result<Self> {
         // Collect all the values in a map (vid, eid) -> (td, tt).
-        let mut global_map: HashMap<(MetroId, OriginalEdgeId), XYVec> = HashMap::new();
+        let mut global_map: HashMap<(MetroId, OriginalEdgeId), XYVec> = HashMap::default();
         for (vid, eid, x, y) in values {
             global_map
                 .entry((vid, eid))
@@ -172,7 +179,7 @@ impl RoadNetworkWeights {
                 .push((x, y));
         }
         // Build the TTFs.
-        let mut ttf_map = HashMap::new();
+        let mut ttf_map = HashMap::default();
         for ((vid, eid), xy_vec) in global_map.into_iter() {
             let ttf = build_ttf(
                 xy_vec,
@@ -184,13 +191,13 @@ impl RoadNetworkWeights {
             })?;
             ttf_map
                 .entry(vid)
-                .or_insert_with(HashMap::new)
+                .or_insert_with(HashMap::default)
                 .insert(eid, ttf);
         }
         // Make sure that we have the weights for all vehicles and all accessible edges of the road
         // network.
         for vehicle in crate::network::road_network::vehicles().iter() {
-            let w = ttf_map.entry(vehicle.id).or_insert_with(HashMap::new);
+            let w = ttf_map.entry(vehicle.id).or_insert_with(HashMap::default);
             let mut nb_warnings = 0;
             let all_edges: HashSet<_> = crate::network::road_network::iter_original_edge_ids()
                 .filter(|&edge_id| vehicle.can_access(edge_id))

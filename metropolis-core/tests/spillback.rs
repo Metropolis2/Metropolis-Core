@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Integration test for spillback.
-use hashbrown::HashSet;
+use metropolis_core::hash::HashSet;
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::Mode;
 use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
@@ -99,8 +99,8 @@ fn init_simulation() {
         NonNegativeMeters::try_from(6.0).unwrap(),
         PCE::ONE,
         SpeedFunction::Base,
-        HashSet::new(),
-        HashSet::new(),
+        HashSet::default(),
+        HashSet::default(),
     );
     let road_network = RoadNetwork::from_edges(edges, vec![vehicle]);
     let network = Network::new(Some(road_network));

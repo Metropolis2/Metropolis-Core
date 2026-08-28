@@ -28,10 +28,10 @@ use arrow::array::{
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::datatypes::{DataType, Field, FieldRef, Schema};
 use arrow::record_batch::RecordBatch;
-use hashbrown::{HashMap, HashSet};
 use log::{info, warn};
 use ttf::TTF;
 
+use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::results::{LegTypeResults, PreDayLegTypeResults};
 use crate::mode::trip::Leg;
 use crate::mode::{Mode, ModeResults, PreDayModeResults};
@@ -439,8 +439,8 @@ pub(crate) fn read_trips(batch: RecordBatch) -> Result<LegMap> {
     let schedule_utility_delta_values =
         get_column!(["schedule_utility", "delta"] in struct_array as f64);
     let n = struct_array.len();
-    let mut trips: LegMap = HashMap::with_capacity(n);
-    let mut unique_tuples = HashSet::with_capacity(n);
+    let mut trips: LegMap = HashMap::with_capacity_and_hasher(n, Default::default());
+    let mut unique_tuples = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let agent_id = get_id_value!(agent_id_values[i]);
         let alt_id = get_id_value!(alt_id_values[i]);
@@ -586,8 +586,8 @@ pub(crate) fn read_alternatives(batch: RecordBatch, mut trips: LegMap) -> Result
         get_column!(["destination_utility", "delta"] in struct_array as f64);
     let pre_compute_route_values = get_column!(["pre_compute_route"] in struct_array as bool);
     let n = struct_array.len();
-    let mut alternatives: AltMap = HashMap::with_capacity(n);
-    let mut unique_pairs = HashSet::with_capacity(n);
+    let mut alternatives: AltMap = HashMap::with_capacity_and_hasher(n, Default::default());
+    let mut unique_pairs = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let agent_id = get_id_value!(agent_id_values[i]);
         let alt_id = get_id_value!(alt_id_values[i]);
@@ -687,7 +687,7 @@ pub(crate) fn read_agents(batch: RecordBatch, mut alternatives: AltMap) -> Resul
         get_column!(["alt_choice", "constants"] in struct_array as List of f64);
     let n = struct_array.len();
     let mut agents = Vec::with_capacity(n);
-    let mut unique_agent_ids = HashSet::with_capacity(n);
+    let mut unique_agent_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let agent_id = get_id_value!(agent_id_values[i]);
         let alt_choice_type = get_value!(alt_choice_type_values[i]);
@@ -764,7 +764,7 @@ pub(crate) fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId
     let overtaking_values = get_column!(["overtaking"] in struct_array as bool);
     let n = struct_array.len();
     let mut edges = Vec::with_capacity(n);
-    let mut unique_ids = HashSet::with_capacity(n);
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let edge_id = get_id_value!(edge_id_values[i]);
         let source = get_id_value!(source_values[i]);
@@ -847,7 +847,7 @@ pub(crate) fn read_vehicles(
     let restricted_edges_values = get_id_list_column!(["restricted_edges"] in struct_array);
     let n = struct_array.len();
     let mut vehicles = Vec::with_capacity(n);
-    let mut unique_ids = HashSet::with_capacity(n);
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
     for i in 0..n {
         let vehicle_id = get_id_value!(vehicle_id_values[i]);
         let headway = get_value!(headway_values[i]);

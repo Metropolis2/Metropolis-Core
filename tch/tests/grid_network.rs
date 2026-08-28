@@ -15,10 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Integration test based on a grid network (like Manhattan).
-use hashbrown::HashMap;
 use petgraph::graph::{edge_index, node_index, DiGraph, EdgeReference};
 use petgraph::visit::EdgeRef;
 use priority_queue::PriorityQueue;
+use tch::hash::HashMap;
 use tch::ops::ScalarDijkstra;
 use tch::*;
 use ttf::{PwlTTF, TTF};
@@ -63,7 +63,7 @@ fn profile_interval_test() {
             &cst_tt
         }
     });
-    let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let query = query::SingleSourceQuery::from_default(node_index(0));
     search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
@@ -117,7 +117,7 @@ fn thin_profile_interval_test() {
                 &cst_tt
             }
         });
-    let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let query = query::SingleSourceQuery::from_default(node_index(0));
     search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
@@ -139,7 +139,7 @@ fn hop_limit_test() {
 
     let scalar_ops = ScalarDijkstra::new_forward(&graph, |_| 1.0f32);
     let mut ops = ops::HopLimitedDijkstra::new(scalar_ops, 2);
-    let mut search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let mut search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let query = query::SingleSourceQuery::new(node_index(0), 0.);
     search.solve_query(&query, &mut ops);
     let label = search.get_label(&node_index(n + 1));
@@ -176,10 +176,10 @@ fn tchea_test() {
                 &cst_tt
             }
         },
-        HashMap::new(),
+        HashMap::default(),
     );
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
     let query =
         query::BidirectionalPointToPointQuery::new(node_index(0), node_index(n + 1), 45., [0., 0.]);
@@ -223,20 +223,20 @@ fn scalar_contraction_hierarchies_test() {
     let ch = HierarchyOverlay::order(&graph, |_| cst_tt.clone(), parameters);
     println!("Order: {:?}", ch.get_order());
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let ea_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let downward_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let downward_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut ea_alloc = algo::EarliestArrivalAllocation::new(ea_search, downward_search);
-    let mut candidate_map = HashMap::new();
+    let mut candidate_map = HashMap::default();
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let mut candidate_map2 = HashMap::new();
+    let mut candidate_map2 = HashMap::default();
 
     for n0 in 0..(n * n - 1) {
         for n1 in 0..(n * n - 1) {
@@ -369,12 +369,12 @@ fn contraction_hierarchies_test() {
     println!("Nb. nodes: {}", ch.node_count());
     println!("Nb. edges: {}", ch.edge_count());
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let ea_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let downward_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let downward_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut ea_alloc = algo::EarliestArrivalAllocation::new(ea_search, downward_search);
-    let mut candidate_map = HashMap::new();
+    let mut candidate_map = HashMap::default();
 
     // When leaving at time 0, the best path is to take the time-dependent path, with travel time
     // 10 + 15 = 25.
@@ -438,13 +438,13 @@ fn contraction_hierarchies_test() {
     assert_eq!(path.len(), 2 * (n - 1));
     assert_ne!(path[0], edge_index(0));
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let mut candidate_map2 = HashMap::new();
+    let mut candidate_map2 = HashMap::default();
 
     let label = ch.profile_query(
         node_index(0),
@@ -618,21 +618,21 @@ fn unreachable_edges_order_reuse_test() {
     assert_eq!(ch.get_order().len(), ch2.get_order().len());
 
     // Both hierarchies must also answer the queries identically.
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_interval_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let mut candidate_map = HashMap::new();
+    let mut candidate_map = HashMap::default();
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_interval_search2 = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut profile_search2 = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let mut candidate_map2 = HashMap::new();
+    let mut candidate_map2 = HashMap::default();
 
     let mut nb_reachable = 0;
     for n0 in 0..n * n {

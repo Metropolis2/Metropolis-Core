@@ -17,7 +17,6 @@
 //! Set of algorithm to compute time-dependent shortest paths.
 use anyhow::{anyhow, Context, Result};
 use either::Either;
-use hashbrown::hash_map::HashMap;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::{EdgeFiltered, EdgeRef, IntoEdgesDirected};
 use ttf::{TTFNum, TTF};
@@ -28,6 +27,7 @@ use crate::bidirectional_ops::{
 use crate::bidirectional_search::BidirectionalDijkstraSearch;
 use crate::bound::Bound;
 use crate::contraction_hierarchies::{SearchSpace, SearchSpaces};
+use crate::hash::{HashMap, HashSet};
 use crate::min_queue::{MinPQ, MinPriorityQueue};
 use crate::node_data::{NodeData, ProfileData, ProfileIntervalData, ScalarData};
 use crate::node_map::NodeMap;
@@ -42,7 +42,7 @@ use crate::search::DijkstraSearch;
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -52,8 +52,8 @@ use crate::search::DijkstraSearch;
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<f32>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -67,7 +67,7 @@ use crate::search::DijkstraSearch;
 /// let mut ops = BidirectionalProfileDijkstra::new(
 ///     &graph,
 ///     |e: EdgeReference<_>| &graph[e.id()],
-///     HashMap::new(),
+///     HashMap::default(),
 /// );
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
 /// let label = profile_query(&mut search, &query, &mut ops);
@@ -112,7 +112,7 @@ where
     }
     let mut i = 0;
     // This HashMap is used to store the merged labels.
-    let mut labels = HashMap::with_capacity(candidates.len() - 1);
+    let mut labels = HashMap::with_capacity_and_hasher(candidates.len() - 1, Default::default());
     while pq.len() >= 2 {
         // Merge the two next labels in the priority queue.
         let label1 = match pq.pop().unwrap().0 {
@@ -204,7 +204,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -214,8 +214,8 @@ where
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<f32>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -227,9 +227,9 @@ where
 ///     ),
 /// ]);
 /// let edge_label = |e: EdgeReference<_>| &graph[e.id()];
-/// let mut ops = BidirectionalTCHEA::new(&graph, edge_label, HashMap::new());
+/// let mut ops = BidirectionalTCHEA::new(&graph, edge_label, HashMap::default());
 /// let query = BidirectionalPointToPointQuery::new(node_index(0), node_index(2), 5., [0., 0.]);
-/// let down_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let down_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut alloc = EarliestArrivalAllocation::new(search, down_search);
 /// let results = earliest_arrival_query(&mut alloc, &query, &mut ops, &graph, edge_label);
 /// assert_eq!(
@@ -291,7 +291,7 @@ where
         .context("Failed to compute the path")?;
         if cfg!(debug_assertions) {
             // Check that there is no loop in the path.
-            let n = path.iter().collect::<hashbrown::HashSet<_>>().len();
+            let n = path.iter().collect::<HashSet<_>>().len();
             assert_eq!(n, path.len(), "Invalid path: {path:?}");
         }
         Ok(Some((label, path)))

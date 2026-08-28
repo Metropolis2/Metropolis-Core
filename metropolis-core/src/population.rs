@@ -20,9 +20,9 @@ use std::sync::OnceLock;
 
 use anyhow::{anyhow, bail, Context, Result};
 use choice::ChoiceModel;
-use hashbrown::HashSet;
 use itertools;
 
+use crate::hash::HashSet;
 use crate::mode::{mode_index, Mode, ModeIndex};
 use crate::network::road_network::skim::EAAllocation;
 use crate::network::road_network::OriginalNodeId;

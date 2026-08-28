@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 
 use petgraph::graph::IndexType;
 
@@ -40,9 +40,11 @@ pub trait NodeMap {
     fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (Self::Node, &'a Self::Value)> + 'a>;
 }
 
-impl<N, V> NodeMap for hashbrown::HashMap<N, V>
+#[expect(clippy::disallowed_types)]
+impl<N, V, S> NodeMap for hashbrown::HashMap<N, V, S>
 where
     N: Copy + Eq + Hash,
+    S: BuildHasher,
 {
     type Node = N;
     type Value = V;
@@ -143,7 +145,7 @@ mod tests {
 
     #[test]
     fn hash_map_test() {
-        let mut map = hashbrown::HashMap::new();
+        let mut map = crate::hash::HashMap::default();
         map.insert('a', 1);
         assert_eq!(map.get_value(&'a'), Some(&1));
         let value_a = map.get_mut_value(&'a').unwrap();

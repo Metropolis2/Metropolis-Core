@@ -17,11 +17,11 @@
 //! Trait and structs used to represent bidirectional Dijkstra algorithms.
 use std::collections::VecDeque;
 
-use hashbrown::{HashMap, HashSet};
 use petgraph::graph::IndexType;
 use petgraph::visit::{GraphBase, IntoEdgesDirected};
 use ttf::{TTFNum, TTF};
 
+use crate::hash::{HashMap, HashSet};
 use crate::node_data::{NodeData, NodeDataWithExtra};
 use crate::node_map::NodeMap;
 use crate::ops::{
@@ -100,7 +100,7 @@ pub trait BidirectionalDijkstraOps {
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use priority_queue::PriorityQueue;
 /// use tch::bidirectional_ops::ScalarBidirectionalDijkstra;
@@ -108,8 +108,8 @@ pub trait BidirectionalDijkstraOps {
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 ///
 /// // Run a point-to-point bidirectonal Dijkstra search with scalars on a graph with three edges.
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
 /// let mut ops = ScalarBidirectionalDijkstra::new(&graph, |e: EdgeReference<_>| *e.weight());
@@ -219,7 +219,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -228,8 +228,8 @@ where
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -243,7 +243,7 @@ where
 /// let mut ops = BidirectionalProfileDijkstra::new(
 ///     &graph,
 ///     |e: EdgeReference<_>| &graph[e.id()],
-///     HashMap::new(),
+///     HashMap::default(),
 /// );
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
 /// search.solve_query(&query, &mut ops);
@@ -361,7 +361,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -370,8 +370,8 @@ where
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -383,7 +383,7 @@ where
 ///     ),
 /// ]);
 /// let mut ops =
-///     BidirectionalTCHEA::new(&graph, |e: EdgeReference<_>| &graph[e.id()], HashMap::new());
+///     BidirectionalTCHEA::new(&graph, |e: EdgeReference<_>| &graph[e.id()], HashMap::default());
 /// let query = BidirectionalPointToPointQuery::new(node_index(0), node_index(2), 0., [0., 0.]);
 /// search.solve_query(&query, &mut ops);
 /// let candidates = ops.get_candidates();
@@ -549,7 +549,7 @@ where
 /// # Example
 ///
 /// ```
-/// use hashbrown::HashMap;
+/// use tch::hash::HashMap;
 /// use petgraph::graph::{node_index, DiGraph, EdgeReference};
 /// use petgraph::visit::EdgeRef;
 /// use priority_queue::PriorityQueue;
@@ -558,8 +558,8 @@ where
 /// use tch::{BidirectionalDijkstraSearch, DijkstraSearch};
 /// use ttf::{PwlTTF, TTF};
 ///
-/// let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-/// let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+/// let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+/// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), TTF<_>>::from_edges(&[
 ///     (0, 1, TTF::Constant(1.)),
@@ -571,7 +571,7 @@ where
 ///     ),
 /// ]);
 /// let mut ops =
-///     BidirectionalTCHProfile::new(&graph, |e: EdgeReference<_>| &graph[e.id()], HashMap::new());
+///     BidirectionalTCHProfile::new(&graph, |e: EdgeReference<_>| &graph[e.id()], HashMap::default());
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
 /// search.solve_query(&query, &mut ops);
 /// let candidates = ops.get_candidates();
@@ -917,7 +917,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use hashbrown::HashMap;
+    use crate::hash::HashMap;
     use petgraph::graph::{node_index, DiGraph};
     use priority_queue::PriorityQueue;
 
@@ -930,8 +930,8 @@ mod tests {
     fn disconnected_bidir_test() {
         // On a disconnected graph, the forward and backward search should never meet but the
         // bidirectional search should stop gracefully.
-        let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-        let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+        let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+        let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
         let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
         // Graph with two disconnected edges.
         let graph = DiGraph::<(), ()>::from_edges(&[(0, 1), (2, 3)]);

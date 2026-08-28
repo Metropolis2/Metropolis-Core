@@ -18,7 +18,6 @@
 use std::ops::Index;
 
 use anyhow::{anyhow, Result};
-use hashbrown::{HashMap, HashSet};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{log_enabled, Level};
 use object_pool::Pool;
@@ -32,6 +31,7 @@ use ttf::TTF;
 
 use super::preprocess::UniqueVehicleIndex;
 use super::OriginalNodeId;
+use crate::hash::{HashMap, HashSet};
 use crate::units::AnySeconds;
 
 /// Structure to store a [RoadNetworkSkim] for each unique vehicle of a
@@ -68,7 +68,7 @@ impl RoadNetworkSkim {
         RoadNetworkSkim {
             hierarchy_overlay,
             node_map,
-            profile_query_cache: HashMap::new(),
+            profile_query_cache: HashMap::default(),
         }
     }
 
@@ -159,7 +159,7 @@ impl RoadNetworkSkim {
                             .collect::<Result<HashMap<OriginalNodeId, Option<TTF<AnySeconds>>>>>()?
                     } else {
                         extra_targets.extend(targets);
-                        HashMap::with_capacity(extra_targets.len())
+                        HashMap::with_capacity_and_hasher(extra_targets.len(), Default::default())
                     };
                     // Run TCH queries for the remaining pairs.
                     for target in extra_targets {

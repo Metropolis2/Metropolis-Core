@@ -36,10 +36,11 @@ use std::sync::{LazyLock, RwLock};
 
 use anyhow::{bail, Result};
 use enum_as_inner::EnumAsInner;
-use hashbrown::HashMap;
 use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
+
+use crate::hash::HashMap;
 
 const MARGIN: f64 = 1e-8;
 

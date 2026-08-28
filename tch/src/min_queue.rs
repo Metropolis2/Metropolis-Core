@@ -17,7 +17,7 @@
 use std::cmp::Reverse;
 use std::hash::{BuildHasher, Hash};
 
-use hashbrown::DefaultHashBuilder;
+use foldhash::fast::FixedState;
 use priority_queue::PriorityQueue;
 
 /// Trait representing a priority queue of (key, value) items that are sorted in increasing order
@@ -56,7 +56,7 @@ impl<T: PartialOrd> Ord for ImplOrd<T> {
     }
 }
 
-pub(crate) type MinPQ<I, P> = PriorityQueue<I, Reverse<ImplOrd<P>>, DefaultHashBuilder>;
+pub(crate) type MinPQ<I, P> = PriorityQueue<I, Reverse<ImplOrd<P>>, FixedState>;
 
 impl<I, P, H> MinPriorityQueue for PriorityQueue<I, Reverse<ImplOrd<P>>, H>
 where

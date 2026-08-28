@@ -15,10 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Integration test for network loops.
-use hashbrown::{HashMap, HashSet};
 use petgraph::graph::{node_index, DiGraph};
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use priority_queue::PriorityQueue;
+use tch::hash::{HashMap, HashSet};
 use tch::*;
 use ttf::{PwlTTF, TTF};
 
@@ -77,12 +77,12 @@ fn no_loop_test() {
 
     let ch = HierarchyOverlay::construct(&graph, weight_fn, node_order_fn, parameters);
 
-    let forw_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
-    let back_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+    let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let ea_search = BidirectionalDijkstraSearch::new(forw_search, back_search);
-    let downward_search = DijkstraSearch::new(HashMap::new(), PriorityQueue::new());
+    let downward_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
     let mut ea_alloc = algo::EarliestArrivalAllocation::new(ea_search, downward_search);
-    let mut candidate_map = HashMap::new();
+    let mut candidate_map = HashMap::default();
 
     let (_arr_time, path) = ch
         .earliest_arrival_query(

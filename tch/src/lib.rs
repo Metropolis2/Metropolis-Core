@@ -23,6 +23,7 @@ mod bidirectional_search;
 mod bound;
 mod contraction_hierarchies;
 // TODO: the io module share many functions with the one in core, they should be merged
+pub mod hash;
 pub mod io;
 mod min_queue;
 mod node_data;

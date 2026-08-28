@@ -19,8 +19,8 @@ use std::collections::VecDeque;
 
 use either::Either;
 use fixedbitset::FixedBitSet;
-use hashbrown::hash_map::{Entry, HashMap};
-use hashbrown::HashSet;
+use hashbrown::hash_map::Entry;
+
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, log_enabled, Level};
 use object_pool::Pool;
@@ -36,6 +36,7 @@ use ttf::{TTFNum, TTF};
 use crate::contraction_hierarchies::{
     EdgePack, HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, Packed,
 };
+use crate::hash::{HashMap, HashSet};
 use crate::min_queue::MinPQ;
 use crate::node_data::NodeDataWithExtra;
 use crate::ops::{
@@ -191,11 +192,11 @@ struct AllocatedDijkstraData<T: PartialOrd> {
 impl<T: PartialOrd> Default for AllocatedDijkstraData<T> {
     fn default() -> Self {
         AllocatedDijkstraData {
-            interval_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            interval_search: DijkstraSearch::new(HashMap::default(), MinPQ::with_default_hasher()),
             // NOTE: No predecessor needed here.
-            sample_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            sample_search: DijkstraSearch::new(HashMap::default(), MinPQ::with_default_hasher()),
             // NOTE: No predecessor needed here.
-            profile_search: DijkstraSearch::new(HashMap::new(), MinPQ::with_default_hasher()),
+            profile_search: DijkstraSearch::new(HashMap::default(), MinPQ::with_default_hasher()),
         }
     }
 }
@@ -293,7 +294,7 @@ impl<T: TTFNum> ContractionGraph<T> {
         debug!("Starting ordering");
         // Initialize a ContractionCache.
         let mut cache = ContractionCache::new();
-        cache.resize_with(self.graph.node_count(), HashMap::new);
+        cache.resize_with(self.graph.node_count(), HashMap::default);
         // Compute initial tentative cost for all nodes.
         debug!("Computing initial costs");
         let costs: Vec<(NodeIndex, OrderedFloat<f64>)> = cache
@@ -384,7 +385,7 @@ impl<T: TTFNum> ContractionGraph<T> {
     /// Updates the depth of the neighbor nodes of the given nodes and return a vector with all
     /// neighbor nodes that were updated.
     fn update_depths(&mut self, nodes: &HashSet<NodeIndex>) -> HashSet<NodeIndex> {
-        let mut updated = HashSet::with_capacity(nodes.len() * 4);
+        let mut updated = HashSet::with_capacity_and_hasher(nodes.len() * 4, Default::default());
         for &old_node_id in nodes {
             let new_node_id = self.new_ids[old_node_id.index()].unwrap();
             let depth = self.graph[new_node_id].depth;
@@ -434,7 +435,8 @@ impl<T: TTFNum> ContractionGraph<T> {
         contractions: Vec<ContractionResults<T>>,
         cache: &mut ContractionCache,
     ) {
-        let mut merged_edges = HashSet::with_capacity(contractions.len());
+        let mut merged_edges =
+            HashSet::with_capacity_and_hasher(contractions.len(), Default::default());
         for (source, target, shortcut) in contractions {
             if let Some(existing_edge) = self.graph.find_edge(source, target) {
                 merged_edges.insert((self.graph[source].id, self.graph[target].id));
@@ -460,7 +462,8 @@ impl<T: TTFNum> ContractionGraph<T> {
         let graph = std::mem::take(&mut self.graph);
         let (nodes, edges) = graph.into_nodes_edges();
         self.new_ids.fill(None);
-        let mut original_ids = HashMap::with_capacity(nodes_to_contract.len());
+        let mut original_ids =
+            HashMap::with_capacity_and_hasher(nodes_to_contract.len(), Default::default());
         self.graph = DiGraph::with_capacity(nodes.len() - nodes_to_contract.len(), edges.len());
         for (i, node) in nodes.into_iter().enumerate() {
             let old_id = node.weight.id;
@@ -1044,7 +1047,7 @@ mod tests {
         let mut cg = ContractionGraph::new(graph, Default::default());
         // We update the depths from node 2.
         // New depths should be [0, 3, 2, 4],
-        let mut set = HashSet::new();
+        let mut set = HashSet::default();
         set.insert(node_index(2));
         cg.update_depths(&set);
         assert_eq!(cg.graph[node_index(0)].depth, 0);

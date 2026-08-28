@@ -22,7 +22,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use hashbrown::HashSet;
 use log::{debug, info, warn};
 use rand::prelude::*;
 use rand_xorshift::XorShiftRng;
@@ -33,6 +32,7 @@ use self::results::{
     SimulationResults,
 };
 use crate::event::{EventAlloc, EventInput};
+use crate::hash::HashSet;
 use crate::io;
 use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
