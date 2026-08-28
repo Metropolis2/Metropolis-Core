@@ -499,6 +499,23 @@ impl PreDayTripResults {
     }
 }
 
+/// Binds each `name = expression` to a local variable, computing all the expressions in parallel.
+///
+/// The aggregate results of an iteration are made of many independent statistics, each one
+/// computed by a full traversal of the agents' results. The traversals are spawned in a Rayon
+/// scope so that they run concurrently; each statistic is still computed by a single task, over
+/// the same values in the same order, so the results do not depend on the scheduling.
+macro_rules! parallel_bindings {
+    ( $( let $name:ident = $expression:expr; )* ) => {
+        $( let mut $name = None; )*
+        rayon::scope(|scope| {
+            $( scope.spawn(|_| $name = Some($expression)); )*
+        });
+        // Every binding was assigned by its task, so the `unwrap`s cannot panic.
+        $( let $name = $name.unwrap(); )*
+    };
+}
+
 /// Struct to store aggregate results specific to traveling modes of transportation.
 #[derive(Debug, Clone)]
 pub(crate) struct AggregateTripResults {
@@ -632,68 +649,71 @@ impl AggregateRoadLegResults {
             // No road leg taken.
             return None;
         }
-        let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
-            if m.nb_road_legs() > 0 {
-                Some(NonNegativeNum::new_unchecked(m.nb_road_legs() as f64))
-            } else {
-                None
-            }
-        }))
-        .unwrap();
-        let departure_time = get_distribution(results, |lr, _| lr.departure_time);
-        let arrival_time = get_distribution(results, |lr, _| lr.arrival_time);
-        let road_time = get_distribution(results, |_, rlr| rlr.road_time);
-        let in_bottleneck_time = get_distribution(results, |_, rlr| rlr.in_bottleneck_time);
-        let out_bottleneck_time = get_distribution(results, |_, rlr| rlr.out_bottleneck_time);
-        let travel_time = get_distribution(results, |lr, _| lr.travel_time());
-        let route_free_flow_travel_time =
-            get_distribution(results, |_, rlr| rlr.route_free_flow_travel_time);
-        let global_free_flow_travel_time =
-            get_distribution(results, |_, rlr| rlr.global_free_flow_travel_time);
-        let route_congestion = get_distribution(results, |lr, rlr| {
-            if rlr.route_free_flow_travel_time.is_zero() {
-                NonNegativeNum::ZERO
-            } else {
-                (lr.travel_time() - rlr.route_free_flow_travel_time).assume_non_negative_unchecked()
-                    / rlr.route_free_flow_travel_time.assume_positive_unchecked()
-            }
-        });
-        let global_congestion = get_distribution(results, |lr, rlr| {
-            if rlr.global_free_flow_travel_time.is_zero() {
-                NonNegativeNum::ZERO
-            } else {
-                (lr.travel_time() - rlr.global_free_flow_travel_time)
-                    .assume_non_negative_unchecked()
-                    / rlr.global_free_flow_travel_time.assume_positive_unchecked()
-            }
-        });
-        let length = get_distribution(results, |_, rlr| rlr.length);
-        let edge_count = get_distribution(results, |_, rlr| {
-            NonNegativeNum::new_unchecked(rlr.edge_count() as f64)
-        });
-        let utility = get_distribution(results, |lr, _| lr.total_utility());
-        let exp_travel_time = get_distribution(results, |lr, rlr| {
-            rlr.exp_arrival_time.sub_unchecked(lr.departure_time)
-        });
-        let exp_travel_time_rel_diff = get_distribution(results, |lr, rlr| {
-            let exp_travel_time = rlr.exp_arrival_time.sub_unchecked(lr.departure_time);
-            if exp_travel_time.is_zero() {
-                NonNegativeNum::ZERO
-            } else {
+        parallel_bindings! {
+            let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
+                if m.nb_road_legs() > 0 {
+                    Some(NonNegativeNum::new_unchecked(m.nb_road_legs() as f64))
+                } else {
+                    None
+                }
+            }))
+            .unwrap();
+            let departure_time = get_distribution(results, |lr, _| lr.departure_time);
+            let arrival_time = get_distribution(results, |lr, _| lr.arrival_time);
+            let road_time = get_distribution(results, |_, rlr| rlr.road_time);
+            let in_bottleneck_time = get_distribution(results, |_, rlr| rlr.in_bottleneck_time);
+            let out_bottleneck_time = get_distribution(results, |_, rlr| rlr.out_bottleneck_time);
+            let travel_time = get_distribution(results, |lr, _| lr.travel_time());
+            let route_free_flow_travel_time =
+                get_distribution(results, |_, rlr| rlr.route_free_flow_travel_time);
+            let global_free_flow_travel_time =
+                get_distribution(results, |_, rlr| rlr.global_free_flow_travel_time);
+            let route_congestion = get_distribution(results, |lr, rlr| {
+                if rlr.route_free_flow_travel_time.is_zero() {
+                    NonNegativeNum::ZERO
+                } else {
+                    (lr.travel_time() - rlr.route_free_flow_travel_time)
+                        .assume_non_negative_unchecked()
+                        / rlr.route_free_flow_travel_time.assume_positive_unchecked()
+                }
+            });
+            let global_congestion = get_distribution(results, |lr, rlr| {
+                if rlr.global_free_flow_travel_time.is_zero() {
+                    NonNegativeNum::ZERO
+                } else {
+                    (lr.travel_time() - rlr.global_free_flow_travel_time)
+                        .assume_non_negative_unchecked()
+                        / rlr.global_free_flow_travel_time.assume_positive_unchecked()
+                }
+            });
+            let length = get_distribution(results, |_, rlr| rlr.length);
+            let edge_count = get_distribution(results, |_, rlr| {
+                NonNegativeNum::new_unchecked(rlr.edge_count() as f64)
+            });
+            let utility = get_distribution(results, |lr, _| lr.total_utility());
+            let exp_travel_time = get_distribution(results, |lr, rlr| {
+                rlr.exp_arrival_time.sub_unchecked(lr.departure_time)
+            });
+            let exp_travel_time_rel_diff = get_distribution(results, |lr, rlr| {
+                let exp_travel_time = rlr.exp_arrival_time.sub_unchecked(lr.departure_time);
+                if exp_travel_time.is_zero() {
+                    NonNegativeNum::ZERO
+                } else {
+                    (exp_travel_time - lr.travel_time())
+                        .abs()
+                        .assume_non_negative_unchecked()
+                        / exp_travel_time.assume_positive_unchecked()
+                }
+            });
+            let exp_travel_time_abs_diff = get_distribution(results, |lr, rlr| {
+                let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
                 (exp_travel_time - lr.travel_time())
                     .abs()
                     .assume_non_negative_unchecked()
-                    / exp_travel_time.assume_positive_unchecked()
-            }
-        });
-        let exp_travel_time_abs_diff = get_distribution(results, |lr, rlr| {
-            let exp_travel_time = rlr.exp_arrival_time - lr.departure_time;
-            (exp_travel_time - lr.travel_time())
-                .abs()
-                .assume_non_negative_unchecked()
-        });
-        let exp_travel_time_diff_rmse = compute_exp_travel_time_diff_rmse(results);
-        let length_diff = get_distribution_with_filter(results, |_, rlr| rlr.length_diff);
+            });
+            let exp_travel_time_diff_rmse = compute_exp_travel_time_diff_rmse(results);
+            let length_diff = get_distribution_with_filter(results, |_, rlr| rlr.length_diff);
+        }
         Some(AggregateRoadLegResults {
             count,
             mode_count_one,
@@ -782,30 +802,33 @@ impl AggregateVirtualLegResults {
             // No virtual leg taken.
             return None;
         }
-        let count_distribution = Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
-            if m.nb_virtual_legs() > 0 {
-                Some(NonNegativeNum::new_unchecked(m.nb_virtual_legs() as f64))
-            } else {
-                None
-            }
-        }))
-        .unwrap();
-        let departure_time = get_distribution(results, |_, _, lr| lr.departure_time);
-        let arrival_time = get_distribution(results, |_, _, lr| lr.arrival_time);
-        let travel_time = get_distribution(results, |_, _, lr| lr.travel_time());
-        let global_free_flow_travel_time = get_distribution(results, |_, ttf, _| {
-            NonNegativeSeconds::try_from(ttf.get_min()).expect("The travel time is negative")
-        });
-        let global_congestion = get_distribution(results, |_, ttf, lr| {
-            let min_ttf =
-                NonNegativeSeconds::try_from(ttf.get_min()).expect("The travel time is negative");
-            if min_ttf.is_zero() {
-                NonNegativeNum::ZERO
-            } else {
-                (lr.travel_time().sub_unchecked(min_ttf)) / min_ttf.assume_positive_unchecked()
-            }
-        });
-        let utility = get_distribution(results, |_, _, lr| lr.total_utility());
+        parallel_bindings! {
+            let count_distribution =
+                Distribution::from_iterator(results.iter().flat_map(|(m, _)| {
+                    if m.nb_virtual_legs() > 0 {
+                        Some(NonNegativeNum::new_unchecked(m.nb_virtual_legs() as f64))
+                    } else {
+                        None
+                    }
+                }))
+                .unwrap();
+            let departure_time = get_distribution(results, |_, _, lr| lr.departure_time);
+            let arrival_time = get_distribution(results, |_, _, lr| lr.arrival_time);
+            let travel_time = get_distribution(results, |_, _, lr| lr.travel_time());
+            let global_free_flow_travel_time = get_distribution(results, |_, ttf, _| {
+                NonNegativeSeconds::try_from(ttf.get_min()).expect("The travel time is negative")
+            });
+            let global_congestion = get_distribution(results, |_, ttf, lr| {
+                let min_ttf = NonNegativeSeconds::try_from(ttf.get_min())
+                    .expect("The travel time is negative");
+                if min_ttf.is_zero() {
+                    NonNegativeNum::ZERO
+                } else {
+                    (lr.travel_time().sub_unchecked(min_ttf)) / min_ttf.assume_positive_unchecked()
+                }
+            });
+            let utility = get_distribution(results, |_, _, lr| lr.total_utility());
+        }
         Some(AggregateVirtualLegResults {
             count,
             mode_count_one,
@@ -851,15 +874,19 @@ impl AggregateTripResults {
             !results.is_empty(),
             "No value to compute aggregate results from"
         );
-        let departure_time = get_distribution(&results, |_, r| r.departure_time);
-        let arrival_time = get_distribution(&results, |_, r| r.arrival_time);
-        let travel_time = get_distribution(&results, |_, r| r.total_travel_time);
-        let utility = get_distribution(&results, |_, r| r.utility);
-        let expected_utility = get_distribution(&results, |_, r| r.expected_utility);
-        let dep_time_shift = get_distribution_with_filter(&results, |_, r| {
-            r.departure_time_shift.map(|dts| dts.abs())
-        });
-        let dep_time_rmse = compute_dep_time_rmse(&results);
+        parallel_bindings! {
+            let departure_time = get_distribution(&results, |_, r| r.departure_time);
+            let arrival_time = get_distribution(&results, |_, r| r.arrival_time);
+            let travel_time = get_distribution(&results, |_, r| r.total_travel_time);
+            let utility = get_distribution(&results, |_, r| r.utility);
+            let expected_utility = get_distribution(&results, |_, r| r.expected_utility);
+            let dep_time_shift = get_distribution_with_filter(&results, |_, r| {
+                r.departure_time_shift.map(|dts| dts.abs())
+            });
+            let dep_time_rmse = compute_dep_time_rmse(&results);
+            let road_leg = AggregateRoadLegResults::from_agent_results(&results);
+            let virtual_leg = AggregateVirtualLegResults::from_agent_results(&results);
+        }
         AggregateTripResults {
             count: results.len(),
             departure_time,
@@ -869,8 +896,8 @@ impl AggregateTripResults {
             expected_utility,
             dep_time_shift,
             dep_time_rmse,
-            road_leg: AggregateRoadLegResults::from_agent_results(&results),
-            virtual_leg: AggregateVirtualLegResults::from_agent_results(&results),
+            road_leg,
+            virtual_leg,
         }
     }
 }
