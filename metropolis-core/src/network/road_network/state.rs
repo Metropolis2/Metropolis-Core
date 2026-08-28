@@ -121,7 +121,7 @@ struct SimulatedFunctions {
 /// edge it is coming from (if any).
 #[derive(Clone, Debug)]
 struct QueuedVehicle {
-    event: VehicleEvent,
+    event: Box<VehicleEvent>,
     vehicle_pce: PCE,
     entry_time: NonNegativeSeconds,
 }
@@ -230,8 +230,8 @@ impl EdgeEntryState {
         &mut self,
         current_time: NonNegativeSeconds,
         vehicle_pce: PCE,
-        next_event: VehicleEvent,
-    ) -> Option<Either<VehicleEvent, AgentIndex>> {
+        next_event: Box<VehicleEvent>,
+    ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
         match (self.is_open(), self.is_full()) {
             (true, false) => {
                 // Free to go.
@@ -301,7 +301,7 @@ impl EdgeEntryState {
     fn try_open_entry(
         &mut self,
         current_time: NonNegativeSeconds,
-    ) -> Option<Either<VehicleEvent, AgentIndex>> {
+    ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
         if let Some(queued_vehicle) = self.queue.pop_front() {
             if self.is_full() {
                 // The edge is full, put the vehicle back in the queue (at the front).
@@ -325,7 +325,7 @@ impl EdgeEntryState {
     }
 
     /// Forces the release of the next pending vehicle.
-    fn force_release(&mut self, current_time: NonNegativeSeconds) -> VehicleEvent {
+    fn force_release(&mut self, current_time: NonNegativeSeconds) -> Box<VehicleEvent> {
         self.release_next_queued_vehicle(current_time, true)
     }
 
@@ -340,7 +340,7 @@ impl EdgeEntryState {
         &mut self,
         current_time: NonNegativeSeconds,
         vehicle_headway: NonNegativeMeters,
-    ) -> Option<VehicleEvent> {
+    ) -> Option<Box<VehicleEvent>> {
         self.increase_available_length(vehicle_headway);
         if self.status == EdgeEntryStatus::Full && !self.is_full() {
             // The edge was full but it is not anymore.
@@ -357,7 +357,7 @@ impl EdgeEntryState {
         &mut self,
         current_time: NonNegativeSeconds,
         phantom: bool,
-    ) -> VehicleEvent {
+    ) -> Box<VehicleEvent> {
         let queued_vehicle = self.queue.pop_front().expect("No vehicle to release");
         self.status = EdgeEntryStatus::Closed;
         self.record(queued_vehicle.entry_time, current_time);
@@ -441,8 +441,8 @@ impl EdgeExitState {
         &mut self,
         current_time: NonNegativeSeconds,
         vehicle_pce: PCE,
-        next_event: VehicleEvent,
-    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
+        next_event: Box<VehicleEvent>,
+    ) -> Option<(Box<VehicleEvent>, Option<NonNegativeSeconds>)> {
         if self.is_open() {
             debug_assert!(self.queue.is_empty());
             // Record the null waiting time.
@@ -502,7 +502,7 @@ impl EdgeExitState {
     fn open_bottleneck(
         &mut self,
         current_time: NonNegativeSeconds,
-    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
+    ) -> Option<(Box<VehicleEvent>, Option<NonNegativeSeconds>)> {
         debug_assert_eq!(self.status, EdgeExitStatus::Closed);
         if let Some(queued_vehicle) = self.queue.pop_front() {
             // A new vehicle is released.
@@ -574,8 +574,8 @@ impl RoadEdgeState {
         &mut self,
         current_time: NonNegativeSeconds,
         vehicle_pce: PCE,
-        next_event: VehicleEvent,
-    ) -> Option<Either<VehicleEvent, AgentIndex>> {
+        next_event: Box<VehicleEvent>,
+    ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
         if let Some(entry) = self.entry.as_mut() {
             entry.vehicle_reaches_entry(current_time, vehicle_pce, next_event)
         } else {
@@ -596,8 +596,8 @@ impl RoadEdgeState {
         &mut self,
         current_time: NonNegativeSeconds,
         vehicle_pce: PCE,
-        next_event: VehicleEvent,
-    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
+        next_event: Box<VehicleEvent>,
+    ) -> Option<(Box<VehicleEvent>, Option<NonNegativeSeconds>)> {
         if let Some(exit) = self.exit.as_mut() {
             exit.vehicle_reaches_exit(current_time, vehicle_pce, next_event)
         } else {
@@ -634,14 +634,14 @@ impl RoadEdgeState {
     fn open_entry_bottleneck(
         &mut self,
         current_time: NonNegativeSeconds,
-    ) -> Option<Either<VehicleEvent, AgentIndex>> {
+    ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
         self.entry
             .as_mut()
             .and_then(|entry| entry.try_open_entry(current_time))
     }
 
     /// Forces the release of the next vehicle pending at the edge entry.
-    fn force_release(&mut self, current_time: NonNegativeSeconds) -> VehicleEvent {
+    fn force_release(&mut self, current_time: NonNegativeSeconds) -> Box<VehicleEvent> {
         self.entry
             .as_mut()
             .expect("Cannot force vehicle release when there is no edge entry")
@@ -656,7 +656,7 @@ impl RoadEdgeState {
     fn open_exit_bottleneck(
         &mut self,
         current_time: NonNegativeSeconds,
-    ) -> Option<(VehicleEvent, Option<NonNegativeSeconds>)> {
+    ) -> Option<(Box<VehicleEvent>, Option<NonNegativeSeconds>)> {
         self.exit
             .as_mut()
             .and_then(|exit| exit.open_bottleneck(current_time))
@@ -682,7 +682,7 @@ impl RoadEdgeState {
         current_time: NonNegativeSeconds,
         vehicle_headway: NonNegativeMeters,
         was_phantom: bool,
-    ) -> Option<VehicleEvent> {
+    ) -> Option<Box<VehicleEvent>> {
         let released_vehicle_event = if was_phantom {
             // The vehicle was a phantom so we do not increase the available length on the edge.
             None
@@ -833,9 +833,9 @@ impl RoadNetworkState {
         edge_index: EdgeIndex,
         current_time: NonNegativeSeconds,
         vehicle: &'static Vehicle,
-        next_event: VehicleEvent,
+        next_event: Box<VehicleEvent>,
         event_queue: &mut EventQueue,
-    ) -> Option<VehicleEvent> {
+    ) -> Option<Box<VehicleEvent>> {
         let edge = &mut self.graph[edge_index];
         match edge.vehicle_reaches_entry(current_time, vehicle.pce, next_event) {
             Some(Either::Left(event)) => {
@@ -870,9 +870,9 @@ impl RoadNetworkState {
         edge_index: EdgeIndex,
         current_time: NonNegativeSeconds,
         vehicle: &'static Vehicle,
-        next_event: VehicleEvent,
+        next_event: Box<VehicleEvent>,
         event_queue: &mut EventQueue,
-    ) -> Option<VehicleEvent> {
+    ) -> Option<Box<VehicleEvent>> {
         let edge = &mut self.graph[edge_index];
         if let Some((next_event, closing_time_opt)) =
             edge.vehicle_reaches_exit(current_time, vehicle.pce, next_event)

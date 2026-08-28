@@ -299,8 +299,11 @@ impl VehicleEvent {
     }
 
     /// Executes the [VehicleEvent].
+    ///
+    /// The event is taken (and given back to the queue) as a `Box` so that the same allocation is
+    /// re-used for all the steps of a trip, instead of being freed and re-allocated at each step.
     pub(crate) fn execute<'sim: 'event, 'event>(
-        mut self,
+        mut self: Box<Self>,
         input: &'event mut EventInput<'sim>,
         road_network_state: &'event mut RoadNetworkState,
         alloc: &'event mut EventAlloc,
@@ -381,7 +384,7 @@ impl VehicleEvent {
                             .pre_exp_arrival_time
                             .sub_unchecked(road_leg_results.pre_exp_departure_time);
                         let exp_arrival_time = current_time + exp_travel_time;
-                        (exp_arrival_time, route.clone())
+                        (exp_arrival_time, route)
                     } else {
                         // Compute the route between origin and destination of the current leg.
                         let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
@@ -392,7 +395,7 @@ impl VehicleEvent {
                             road_leg,
                             self.at_time,
                             vehicle_skims,
-                            input.progress_bar.clone(),
+                            &input.progress_bar,
                             &mut alloc.ea_alloc,
                         )?
                     };
@@ -512,7 +515,7 @@ impl VehicleEvent {
         } {
             debug_assert!(next_event.at_time >= current_time);
             // Push next event to the queue.
-            events.push(Box::new(next_event));
+            events.push(next_event);
         }
         Ok(false)
     }
@@ -526,7 +529,7 @@ impl Event for VehicleEvent {
         alloc: &'event mut EventAlloc,
         events: &'event mut EventQueue,
     ) -> Result<bool> {
-        (*self).execute(input, road_network_state, alloc, events)
+        VehicleEvent::execute(self, input, road_network_state, alloc, events)
     }
 
     fn get_time(&self) -> NonNegativeSeconds {
