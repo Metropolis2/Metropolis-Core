@@ -474,8 +474,8 @@ macro_rules! impl_traits_on_any_unit(
                 fn is_finite(&self) -> bool {
                     self.0.is_finite()
                 }
-                fn trunc_to_usize(self) -> usize {
-                    self.0 as usize
+                fn trunc_to_i64(self) -> i64 {
+                    self.0 as i64
                 }
                 fn min(self, other: Self) -> Self {
                     Self(self.0.min(other.0))

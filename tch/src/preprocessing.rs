@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use std::cell::OnceCell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 
@@ -77,6 +78,66 @@ impl ContractionParameters {
             complexity_quotient_weight,
             thin_profile_interval_hop_limit,
         }
+    }
+}
+
+/// The travel-time function of a candidate shortcut, i.e., `in_ttf.link(out_ttf)`, materialized
+/// only when a caller really needs the function itself.
+///
+/// [`TTF::link`] allocates a new function and evaluates `out_ttf` once per breakpoint of
+/// `in_ttf`, which makes it the single most expensive operation of the contraction. Roughly half
+/// of the witness searches, though, are decided by [`LinkedTTF::min_lower_bound`] alone, and the
+/// searches that find no path between the two nodes never look at the function at all. Deferring
+/// the link lets all of those skip it.
+struct LinkedTTF<'a, T> {
+    /// Travel-time function of the incoming edge of the candidate shortcut.
+    in_ttf: &'a TTF<T>,
+    /// Travel-time function of the outgoing edge of the candidate shortcut.
+    out_ttf: &'a TTF<T>,
+    /// The linked function, once it has been computed.
+    linked: OnceCell<TTF<T>>,
+}
+
+impl<'a, T: TTFNum> LinkedTTF<'a, T> {
+    /// Creates the (not yet computed) travel-time function of the shortcut representing the two
+    /// given edges.
+    fn new(in_ttf: &'a TTF<T>, out_ttf: &'a TTF<T>) -> Self {
+        LinkedTTF {
+            in_ttf,
+            out_ttf,
+            linked: OnceCell::new(),
+        }
+    }
+
+    /// Returns a lower bound of the minimum of the linked function, without computing it.
+    ///
+    /// The linked function is `h(x) = f(x) + g(x + f(x))`, so `min h >= min f + min g` whichever
+    /// arrival times `g` ends up being evaluated at.
+    fn min_lower_bound(&self) -> T {
+        self.in_ttf.get_min() + self.out_ttf.get_min()
+    }
+
+    /// Returns the number of breakpoints of the linked function, without computing it.
+    ///
+    /// Linking keeps the breakpoints of whichever of the two functions is piecewise-linear (the
+    /// first one when both are), and is constant when both are.
+    fn complexity(&self) -> usize {
+        match self.in_ttf.complexity() {
+            0 => self.out_ttf.complexity(),
+            complexity => complexity,
+        }
+    }
+
+    /// Returns the linked function, computing it on first use.
+    fn get(&self) -> &TTF<T> {
+        self.linked.get_or_init(|| self.in_ttf.link(self.out_ttf))
+    }
+
+    /// Consumes the LinkedTTF and returns the linked function, computing it if needed.
+    fn into_ttf(self) -> TTF<T> {
+        self.linked
+            .into_inner()
+            .unwrap_or_else(|| self.in_ttf.link(self.out_ttf))
     }
 }
 
@@ -198,17 +259,6 @@ impl<T: PartialOrd> Default for AllocatedDijkstraData<T> {
             // NOTE: No predecessor needed here.
             profile_search: DijkstraSearch::new(HashMap::default(), MinPQ::with_default_hasher()),
         }
-    }
-}
-
-impl<T> AllocatedDijkstraData<T>
-where
-    T: Copy + PartialOrd,
-{
-    fn reset(&mut self) {
-        self.interval_search.reset();
-        self.sample_search.reset();
-        self.profile_search.reset();
     }
 }
 
@@ -630,12 +680,14 @@ impl<T: TTFNum> ContractionGraph<T> {
         )) {
             Entry::Occupied(e) => *e.get(),
             Entry::Vacant(e) => {
-                let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
+                let edge_score = LinkedTTF::new(&in_edge.weight().ttf, &out_edge.weight().ttf);
                 if self.search_witness(in_edge.source(), out_edge.target(), &edge_score, alloc) {
                     // Witness found.
                     *e.insert(CachedResult::Witness)
                 } else {
                     // No witness was found, we add the shortcut edge.
+                    // Only the complexity of the shortcut is needed here, which is known without
+                    // ever computing the linked function.
                     *e.insert(CachedResult::NoWitness(
                         edge_score.complexity(),
                         in_edge.weight().nb_packed + out_edge.weight().nb_packed,
@@ -704,7 +756,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             }
             None => (),
         }
-        let edge_score = in_edge.weight().ttf.link(&out_edge.weight().ttf);
+        let edge_score = LinkedTTF::new(&in_edge.weight().ttf, &out_edge.weight().ttf);
         let no_witness = if !is_cached {
             !self.search_witness(in_edge.source(), out_edge.target(), &edge_score, alloc)
         } else {
@@ -714,7 +766,7 @@ impl<T: TTFNum> ContractionGraph<T> {
             let middle_node_original_id = self.graph[in_edge.target()].id;
             // No witness was found, we add the shortcut edge.
             let shortcut = ToContractEdge::new_shortcut(
-                edge_score,
+                edge_score.into_ttf(),
                 in_edge.weight().nb_packed + out_edge.weight().nb_packed,
                 middle_node_original_id,
             );
@@ -730,13 +782,20 @@ impl<T: TTFNum> ContractionGraph<T> {
         &self,
         from: NodeIndex,
         to: NodeIndex,
-        edge_score: &TTF<T>,
+        edge_score: &LinkedTTF<'_, T>,
         alloc: &mut AllocatedDijkstraData<T>,
     ) -> bool {
-        alloc.reset();
         // Run a thin profile interval query from the source to the target.
         self.run_thin_profile_interval_query(from, to, alloc);
         if let Some(interval) = alloc.interval_search.get_label(&to) {
+            // The lower bound of the edge score is tried before the edge score itself. It costs
+            // two additions, and passing it implies passing the test below, so the linking can be
+            // skipped whenever it does.
+            if interval[1] < edge_score.min_lower_bound() {
+                // No shortcut edge is needed.
+                return true;
+            }
+            let edge_score = edge_score.get();
             if interval[1] < edge_score.get_min() {
                 // No shortcut edge is needed.
                 return true;
@@ -1157,12 +1216,17 @@ mod tests {
             ToContractEdge::new_original(TTF::Constant(2.), edge_index(1)),
         );
         let cg = ContractionGraph::new(graph, Default::default());
+        // The edge score is given as the two edges it links; linking with a zero-weight edge
+        // makes the score of the candidate shortcut the constant of the first one.
+        let zero = TTF::Constant(0.);
+        let (four, three, two) = (TTF::Constant(4.), TTF::Constant(3.), TTF::Constant(2.));
         // The shortest path n0 -> n2 has weight 1 + 2 = 3 so there is a if and only if the cost of
         // the edge to be contracted is smaller than 3.
-        assert!(cg.search_witness(n0, n2, &TTF::Constant(4.), &mut Default::default()));
+        let alloc = &mut Default::default();
+        assert!(cg.search_witness(n0, n2, &LinkedTTF::new(&four, &zero), alloc));
         // Ties do not count as witnesses.
-        assert!(!cg.search_witness(n0, n2, &TTF::Constant(3.), &mut Default::default()));
-        assert!(!cg.search_witness(n0, n2, &TTF::Constant(2.), &mut Default::default()));
+        assert!(!cg.search_witness(n0, n2, &LinkedTTF::new(&three, &zero), alloc));
+        assert!(!cg.search_witness(n0, n2, &LinkedTTF::new(&two, &zero), alloc));
     }
 
     #[test]

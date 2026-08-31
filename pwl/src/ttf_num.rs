@@ -43,8 +43,8 @@ pub trait TTFNum:
     fn is_nan(&self) -> bool;
     /// Returns `true` if the number is finite.
     fn is_finite(&self) -> bool;
-    /// Converts to a `usize`, truncating towards zero if required.
-    fn trunc_to_usize(self) -> usize;
+    /// Converts to an `i64`, truncating towards zero if required.
+    fn trunc_to_i64(self) -> i64;
     /// Returns the minimum of self and other.
     fn min(self, other: Self) -> Self;
     /// Returns the maximum of self and other.
@@ -60,8 +60,8 @@ impl TTFNum for f32 {
     fn is_finite(&self) -> bool {
         f32::is_finite(*self)
     }
-    fn trunc_to_usize(self) -> usize {
-        self as usize
+    fn trunc_to_i64(self) -> i64 {
+        self as i64
     }
     fn min(self, other: Self) -> Self {
         self.min(other)
@@ -80,8 +80,8 @@ impl TTFNum for f64 {
     fn is_finite(&self) -> bool {
         f64::is_finite(*self)
     }
-    fn trunc_to_usize(self) -> usize {
-        self as usize
+    fn trunc_to_i64(self) -> i64 {
+        self as i64
     }
     fn min(self, other: Self) -> Self {
         self.min(other)

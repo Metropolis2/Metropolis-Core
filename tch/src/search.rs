@@ -113,7 +113,7 @@ where
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
         O: DijkstraOps<Node = NodeIndex, Data = D, Key = K>,
-        D: NodeData<Label = L>,
+        D: NodeData<Label = L> + Default,
     {
         self.init_query(query, ops);
         self.solve(query, ops);
@@ -139,7 +139,7 @@ where
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
         O: DijkstraOps<Node = NodeIndex, Data = D, Key = K>,
-        D: NodeData<Label = L>,
+        D: NodeData<Label = L> + Default,
     {
         // Settle the nodes in order of increasing priority in the queue.
         while let Some((node, key)) = self.pop_queue() {
@@ -152,29 +152,29 @@ where
     where
         Q: QueryRef<Node = NodeIndex, Label = L>,
         O: DijkstraOps<Node = NodeIndex, Data = D, Key = K>,
-        D: NodeData<Label = L>,
+        D: NodeData<Label = L> + Default,
     {
         if ops.stop(node, key, query) {
             // Empty the queue so that the search will stop.
             self.empty_queue();
             return;
         }
-        // We want to access data for `node` without borrowing `self.data` so we remove the data
-        // from the HashMap.
-        let node_data = self.data.remove(&node).unwrap();
+        // We want to access the data of `node` without borrowing `self.data`, so we move it out
+        // of the map and leave a default value in its place. Taking it in place, rather than
+        // removing the entry and inserting it back afterwards, leaves the table itself untouched:
+        // no erasure, no re-insertion and no growth check, just two lookups.
+        let node_data = std::mem::take(self.data.get_mut(&node).unwrap());
         if ops.skip_node(node, &node_data, &self.data) {
-            debug_assert!(!self.data.contains_key(&node));
-            self.data.insert(node, node_data);
+            *self.data.get_mut(&node).unwrap() = node_data;
             return;
         }
         for edge in ops.edges_from(node) {
             self.relax_edge(edge, node, &node_data, query, ops);
         }
-        // We re-insert the data now.
+        // We move the data back now.
         // The function `relax_edge` did not try to modify it as long as self-loops are not
         // allowed.
-        debug_assert!(!self.data.contains_key(&node));
-        self.data.insert(node, node_data);
+        *self.data.get_mut(&node).unwrap() = node_data;
     }
 
     /// Relaxes an edge.
@@ -206,13 +206,18 @@ where
         let v = ops.get_next_node(uv_edge);
         // This operation is safe as long as there is no self-loop edges (so that `u_data` is
         // always different from `v_data`).
-        let v_label_from_u = ops.link(u_data.label(), uv_edge);
         let v_data = if let Some(v_data) = self.data.get_mut(&v) {
-            if let Some(new_key) = ops.relax_existing_label(u, v_label_from_u, v_data) {
-                self.queue.decrease_value(v, new_key);
+            // The link is computed only once the ops could not rule the relaxation out from the
+            // labels alone: building a label can be much more expensive than that test.
+            if !ops.cannot_improve(u_data.label(), uv_edge, v_data) {
+                let v_label_from_u = ops.link(u_data.label(), uv_edge);
+                if let Some(new_key) = ops.relax_existing_label(u, v_label_from_u, v_data) {
+                    self.queue.decrease_value(v, new_key);
+                }
             }
             v_data
         } else {
+            let v_label_from_u = ops.link(u_data.label(), uv_edge);
             self.queue.push(v, ops.get_key(&v_label_from_u));
             let v_data = ops.as_new_data(Some(u), v_label_from_u);
             unsafe { self.data.insert_unique_unchecked(v, v_data).1 }

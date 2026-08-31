@@ -72,6 +72,21 @@ pub trait DijkstraOps {
         new_label: <Self::Data as NodeData>::Label,
         node_data: &mut Self::Data,
     ) -> Option<Self::Key>;
+    /// Returns `true` if relaxing `edge` from a node labelled `u_label` provably cannot improve
+    /// the label that the node at the other end already holds.
+    ///
+    /// When this returns `true`, the search skips both [`DijkstraOps::link`] and
+    /// [`DijkstraOps::relax_existing_label`] for that edge. It is only worth implementing when
+    /// those two are expensive compared to the test itself, which is the case when the labels are
+    /// travel-time functions. Returning `false` is always correct, and is the default.
+    fn cannot_improve(
+        &self,
+        _u_label: &<Self::Data as NodeData>::Label,
+        _edge: Self::Edge,
+        _v_data: &Self::Data,
+    ) -> bool {
+        false
+    }
     /// Performs operations immediately after a node has been relaxed, given its predecessor, its
     /// label and the query.
     fn node_is_relaxed(
@@ -552,16 +567,29 @@ where
     fn get_key(&self, ttf: &TTF<T>) -> T {
         ttf.get_min()
     }
+    fn cannot_improve(
+        &self,
+        u_label: &TTF<T>,
+        edge: G::EdgeRef,
+        v_data: &(TTF<T>, Option<HashSet<G::NodeId>>),
+    ) -> bool {
+        // Linking cannot bring the label below `min u_label + min edge` at any departure time, so
+        // once that bound reaches the maximum of the label `v` already holds, the merge in
+        // `relax_existing_label` could not have picked a single point from the new label. Both the
+        // link and the merge allocate a travel-time function and walk all of its breakpoints,
+        // while this test only reads four numbers.
+        let edge_ttf = (self.edge_label)(edge);
+        u_label.get_min() + edge_ttf.get_min() >= v_data.0.get_max()
+    }
     fn relax_existing_label(
         &self,
         prev: G::NodeId,
         node_label: TTF<T>,
         node_data: &mut (TTF<T>, Option<HashSet<G::NodeId>>),
     ) -> Option<T> {
-        let (merged_label, descr) = node_label.merge(&node_data.0);
+        let descr = node_label.merge_into(&mut node_data.0);
         if descr.f_undercuts_strictly {
             // The label of the relaxed node was used to compute the new label.
-            node_data.0 = merged_label;
             if let Some(p) = node_data.predecessor_mut() {
                 if !descr.g_undercuts_strictly {
                     // The label of the relaxed edge dominates the old label.
@@ -1181,6 +1209,14 @@ where
     ) -> Option<Self::Key> {
         (self.ops).relax_existing_label(node, new_label, &mut node_data.data)
     }
+    fn cannot_improve(
+        &self,
+        u_label: &<O::Data as NodeData>::Label,
+        edge: Self::Edge,
+        v_data: &NodeDataWithExtra<O::Data, u8>,
+    ) -> bool {
+        (self.ops).cannot_improve(u_label, edge, &v_data.data)
+    }
     fn stop(&self, node: Self::Node, key: Self::Key, query: impl Query<Node = Self::Node>) -> bool {
         (self.ops).stop(node, key, query)
     }
@@ -1258,6 +1294,14 @@ where
         node_data: &mut Self::Data,
     ) -> Option<Self::Key> {
         (self.0).relax_existing_label(node, new_label, &mut node_data.data)
+    }
+    fn cannot_improve(
+        &self,
+        u_label: &<O::Data as NodeData>::Label,
+        edge: Self::Edge,
+        v_data: &Self::Data,
+    ) -> bool {
+        (self.0).cannot_improve(u_label, edge, &v_data.data)
     }
     fn stop(&self, node: Self::Node, key: Self::Key, query: impl Query<Node = Self::Node>) -> bool {
         (self.0).stop(node, key, query)

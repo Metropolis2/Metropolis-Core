@@ -103,8 +103,8 @@ where
         O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
-        FData: NodeData<Label = FLabel>,
-        BData: NodeData<Label = BLabel>,
+        FData: NodeData<Label = FLabel> + Default,
+        BData: NodeData<Label = BLabel> + Default,
     {
         self.reset();
         self.forward_search.init_query(query, ops.forward_ops());
@@ -134,8 +134,8 @@ where
         O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
-        FData: NodeData<Label = FLabel>,
-        BData: NodeData<Label = BLabel>,
+        FData: NodeData<Label = FLabel> + Default,
+        BData: NodeData<Label = BLabel> + Default,
     {
         self.init_query(query, ops);
         self.solve(query, ops);
@@ -167,8 +167,8 @@ where
         O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
-        FData: NodeData<Label = FLabel>,
-        BData: NodeData<Label = BLabel>,
+        FData: NodeData<Label = FLabel> + Default,
+        BData: NodeData<Label = BLabel> + Default,
     {
         self.change_direction();
         match self.current_direction {
@@ -254,8 +254,8 @@ where
         O: BidirectionalDijkstraOps<Node = NodeIndex>,
         O::FOps: DijkstraOps<Data = FData, Key = FKey>,
         O::BOps: DijkstraOps<Data = BData, Key = BKey>,
-        FData: NodeData<Label = FLabel>,
-        BData: NodeData<Label = BLabel>,
+        FData: NodeData<Label = FLabel> + Default,
+        BData: NodeData<Label = BLabel> + Default,
     {
         while !self.forward_search.is_empty() || !self.backward_search.is_empty() {
             self.next(query, ops);

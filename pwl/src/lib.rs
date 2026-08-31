@@ -251,6 +251,52 @@ impl<T: TTFNum> TTF<T> {
         }
     }
 
+    /// Merges `self` into `dst`, i.e., replaces `dst` with `min(self, dst)`, and returns the
+    /// [UndercutDescriptor] of `self` (as `f`) against the previous value of `dst` (as `g`).
+    ///
+    /// This is [`TTF::merge`] for a caller that owns the first function and wants the result in
+    /// place of the second one, which is what relaxing an edge of a profile search does. It skips
+    /// the function that `merge` allocates for its result and, when one of the two is entirely
+    /// below the other, it does not touch a single breakpoint.
+    pub fn merge_into(self, dst: &mut Self) -> UndercutDescriptor {
+        // Whether one of the two functions is entirely below the other, which is decided before
+        // touching either of them so that `self` can be moved into `dst`.
+        let self_is_below = match (&self, &*dst) {
+            (Self::Piecewise(f), Self::Piecewise(g)) => {
+                if f.max() < g.min() {
+                    Some(true)
+                } else if g.max() < f.min() {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        match self_is_below {
+            Some(true) => {
+                *dst = self;
+                UndercutDescriptor {
+                    f_undercuts_strictly: true,
+                    g_undercuts_strictly: false,
+                }
+            }
+            // `dst` is already the merged function.
+            Some(false) => UndercutDescriptor {
+                f_undercuts_strictly: false,
+                g_undercuts_strictly: true,
+            },
+            None => match (self, dst) {
+                (Self::Piecewise(f), Self::Piecewise(g)) => pwl::merge_into(&f, g),
+                (f, dst) => {
+                    let (merged, descr) = f.merge(dst);
+                    *dst = merged;
+                    descr
+                }
+            },
+        }
+    }
+
     /// Returns the integral of the squared difference between `self` and `other`, divided by the
     /// length of the period.
     pub fn squared_difference(&self, other: &Self) -> T {

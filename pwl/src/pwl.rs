@@ -290,7 +290,11 @@ where
         // 11th `y` value and 30% of the 12th `y` value.
         let i = (x - self.start_x) / self.interval_x;
         debug_assert!(i >= X::ZERO, "{:?} < {:?}", x, self.start_x);
-        let index = i.trunc_to_usize();
+        // The truncation goes through a signed integer, clamped to zero exactly like the `as
+        // usize` cast it replaces, so that neither it nor the conversion back to an `X` for
+        // `share` below needs the long unsigned-conversion sequences (see `TTFNum::trunc_to_i64`).
+        let signed_index = i.trunc_to_i64().max(0);
+        let index = signed_index as usize;
         if index >= self.points.len() - 1 {
             // Last known `x` is `start_x + interval_x * (n - 1)`, where `n` is the number of
             // points.
@@ -303,7 +307,7 @@ where
         // At this point, we know that `0 <= index < n - 1`.
         // `share` is the coefficient of `y[index + 1]` in the linear interpolation and `1 - share`
         // is the coefficient of `y[index]`.
-        let share = i - X::from_usize(index).expect("Failed to convert index to a number");
+        let share = i - X::from_i64(signed_index).expect("Failed to convert index to a number");
         debug_assert!(share >= X::ZERO);
         debug_assert!(share < X::ONE);
         if share.is_zero() {
@@ -541,6 +545,56 @@ pub(crate) fn merge<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> (PwlTTF<T>, Unde
     };
     debug_assert!(h.is_fifo(), "{h:?}");
     (h, descr)
+}
+
+/// Replaces `g` with `min(f, g)` and returns the [UndercutDescriptor] of `f` against the original
+/// `g`.
+///
+/// This computes exactly what [`merge`] does, but writes the result over `g` instead of building a
+/// new function, which saves an allocation and a full pass of writes on every relaxed edge of a
+/// profile search.
+///
+/// The two shortcuts of [`merge`] (one function entirely below the other) are *not* taken here:
+/// the caller handles them, as they can then be served by a move rather than a copy.
+pub(crate) fn merge_into<T: TTFNum>(f: &PwlTTF<T>, g: &mut PwlTTF<T>) -> UndercutDescriptor {
+    debug_assert!(!f.is_empty());
+    debug_assert!(!g.is_empty());
+    debug_assert!(f.is_fifo(), "{f:?}");
+    debug_assert!(g.is_fifo(), "{g:?}");
+    debug_assert_eq!(f.start_x, g.start_x);
+    debug_assert_eq!(f.interval_x, g.interval_x);
+    debug_assert!(f.max() >= g.min() && g.max() >= f.min());
+
+    let mut descr = UndercutDescriptor::default();
+
+    // Both bounds are read before the points are overwritten.
+    let min = f.min().min(g.min());
+    // Lower bound for the maximum `y` value of the merged function.
+    let mut max = f.min().max(g.min());
+
+    for (&f_y, g_y) in f.points.iter().zip(g.points.iter_mut()) {
+        let y = match f_y.partial_cmp(g_y) {
+            Some(Ordering::Equal) => f_y,
+            Some(Ordering::Less) => {
+                descr.f_undercuts_strictly = true;
+                f_y
+            }
+            Some(Ordering::Greater) => {
+                descr.g_undercuts_strictly = true;
+                *g_y
+            }
+            None => panic!("Cannot compare {:?} with {:?}", f_y, g_y),
+        };
+        if y > max {
+            max = y;
+        }
+        *g_y = y;
+    }
+
+    g.min = min;
+    g.max = max;
+    debug_assert!(g.is_fifo(), "{g:?}");
+    descr
 }
 
 pub(crate) fn merge_cst<T: TTFNum>(f: &PwlTTF<T>, c: T) -> (PwlTTF<T>, UndercutDescriptor) {
