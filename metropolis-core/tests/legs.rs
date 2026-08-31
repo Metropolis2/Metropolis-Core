@@ -206,7 +206,7 @@ fn legs_test() {
     init_simulation();
     let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
     let rn_weights = metropolis_core::network::road_network::free_flow_weights(
-        &preprocess_data.network.get_road_network().unwrap(),
+        preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
     let results = metropolis_core::simulation::run_iteration(

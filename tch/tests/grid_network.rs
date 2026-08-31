@@ -245,11 +245,7 @@ fn scalar_contraction_hierarchies_test() {
             }
             println!("n0: {}", n0);
             println!("n1: {}", n1);
-            let horiz_tt = if n0 % n > n1 % n {
-                n0 % n - n1 % n
-            } else {
-                n1 % n - n0 % n
-            };
+            let horiz_tt = (n0 % n).abs_diff(n1 % n);
             let vert_tt = if n0 > n1 {
                 n0 / n - n1 / n
             } else {
@@ -300,11 +296,7 @@ fn scalar_contraction_hierarchies_test() {
             }
             println!("n0: {}", n0);
             println!("n1: {}", n1);
-            let horiz_tt = if n0 % n > n1 % n {
-                n0 % n - n1 % n
-            } else {
-                n1 % n - n0 % n
-            };
+            let horiz_tt = (n0 % n).abs_diff(n1 % n);
             let vert_tt = if n0 > n1 {
                 n0 / n - n1 / n
             } else {

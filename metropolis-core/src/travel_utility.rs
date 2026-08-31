@@ -154,7 +154,6 @@ mod tests {
             c: ValueOfTime::new_unchecked(3.),
             d: ValueOfTime::new_unchecked(2.),
             e: ValueOfTime::new_unchecked(1.),
-            ..Default::default()
         });
         // 5 + 4 * 5 + 3 * 5^2 + 2 * 5^3 + 1 * 5^4 = 975.
         assert_eq!(model.get_travel_utility(tt), Utility::new_unchecked(975.));

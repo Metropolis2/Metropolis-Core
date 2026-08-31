@@ -121,7 +121,7 @@ fn bottleneck_test() {
     init_simulation(false);
     let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
     let rn_weights = metropolis_core::network::road_network::free_flow_weights(
-        &preprocess_data.network.get_road_network().unwrap(),
+        preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
     let results = metropolis_core::simulation::run_iteration(
@@ -146,7 +146,7 @@ fn bottleneck_test() {
     //
     // Total travel times: 2, 3, 6, 9, 8, 2.
 
-    let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
+    let expected_arrival_times = [2., 6., 10., 14., 18., 23.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
@@ -157,7 +157,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_in_bottleneck_times = vec![0., 1., 3., 4., 2., 0.];
+    let expected_in_bottleneck_times = [0., 1., 3., 4., 2., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())
@@ -175,7 +175,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
+    let expected_travel_times = [2., 2., 2., 2., 2., 2.];
     for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
         let t = agent_res.mode_results().as_trip().unwrap().legs[0]
             .class
@@ -190,7 +190,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_out_bottleneck_times = vec![0., 0., 1., 3., 4., 0.];
+    let expected_out_bottleneck_times = [0., 0., 1., 3., 4., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())
@@ -228,7 +228,7 @@ fn bottleneck_test() {
     init_simulation(true);
     let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
     let rn_weights = metropolis_core::network::road_network::free_flow_weights(
-        &preprocess_data.network.get_road_network().unwrap(),
+        preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
     let results = metropolis_core::simulation::run_iteration(
@@ -253,7 +253,7 @@ fn bottleneck_test() {
     //
     // Total travel times: 2, 3, 6, 9, 8, 2.
 
-    let expected_arrival_times = vec![2., 6., 10., 14., 18., 23.];
+    let expected_arrival_times = [2., 6., 10., 14., 18., 23.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
@@ -264,7 +264,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_in_bottleneck_times = vec![0., 1., 4., 7., 6., 0.];
+    let expected_in_bottleneck_times = [0., 1., 4., 7., 6., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())
@@ -282,7 +282,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_travel_times = vec![2., 2., 2., 2., 2., 2.];
+    let expected_travel_times = [2., 2., 2., 2., 2., 2.];
     for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
         let t = agent_res.mode_results().as_trip().unwrap().legs[0]
             .class
@@ -297,7 +297,7 @@ fn bottleneck_test() {
         );
     }
 
-    let expected_out_bottleneck_times = vec![0., 0., 0., 0., 0., 0.];
+    let expected_out_bottleneck_times = [0., 0., 0., 0., 0., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())

@@ -195,7 +195,7 @@ fn restricted_road_test() {
     init_simulation();
     let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
     let rn_weights = metropolis_core::network::road_network::free_flow_weights(
-        &preprocess_data.network.get_road_network().unwrap(),
+        preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
     let results = metropolis_core::simulation::run_iteration(
@@ -212,7 +212,7 @@ fn restricted_road_test() {
     // An arrival time of 2. means that the route 0 -> 1 -> 3 was taken (only possible for agent
     // 0).
     // An arrival time of 3. means that the route 0 -> 2 -> 3 was taken.
-    let expected_arrival_times = vec![2., 3., 3., 3., 2.];
+    let expected_arrival_times = [2., 3., 3., 3., 2.];
     for (i, (agent_res, &exp_ta)) in agent_results
         .iter()
         .zip(expected_arrival_times.iter())

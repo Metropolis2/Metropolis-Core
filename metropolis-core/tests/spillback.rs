@@ -36,11 +36,7 @@ fn init_simulation() {
     let departure_times = vec![0., 7., 5., 6., 9., 30.];
     let origins = vec![0, 1, 0, 0, 0, 0];
     let mut agents = Vec::with_capacity(departure_times.len());
-    for (i, (dt, o)) in departure_times
-        .into_iter()
-        .zip(origins.into_iter())
-        .enumerate()
-    {
+    for (i, (dt, o)) in departure_times.into_iter().zip(origins).enumerate() {
         let leg = Leg::new(
             1,
             LegType::Road(RoadLeg::new(o, 2, 1)),
@@ -126,7 +122,7 @@ fn spillback_test() {
     init_simulation();
     let preprocess_data = metropolis_core::simulation::preprocess().unwrap();
     let rn_weights = metropolis_core::network::road_network::free_flow_weights(
-        &preprocess_data.network.get_road_network().unwrap(),
+        preprocess_data.network.get_road_network().unwrap(),
     );
     let weights = NetworkWeights::new(Some(rn_weights));
     let results = metropolis_core::simulation::run_iteration(
@@ -154,7 +150,7 @@ fn spillback_test() {
     //
     // Total travel times: 20, 10, 22, 24, 28, 20.
 
-    let expected_arrival_times = vec![20., 17., 27., 30., 37., 50.];
+    let expected_arrival_times = [20., 17., 27., 30., 37., 50.];
     for (agent_res, &exp_ta) in agent_results.iter().zip(expected_arrival_times.iter()) {
         let ta = agent_res.mode_results().as_trip().unwrap().arrival_time();
         assert_eq!(
@@ -165,7 +161,7 @@ fn spillback_test() {
         );
     }
 
-    let expected_in_bottleneck_times = vec![0., 0., 2., 4., 8., 0.];
+    let expected_in_bottleneck_times = [0., 0., 2., 4., 8., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_in_bottleneck_times.iter())
@@ -183,7 +179,7 @@ fn spillback_test() {
         );
     }
 
-    let expected_travel_times = vec![20., 10., 20., 20., 20., 20.];
+    let expected_travel_times = [20., 10., 20., 20., 20., 20.];
     for (agent_res, &exp_t) in agent_results.iter().zip(expected_travel_times.iter()) {
         let t = agent_res.mode_results().as_trip().unwrap().legs[0]
             .class
@@ -198,7 +194,7 @@ fn spillback_test() {
         );
     }
 
-    let expected_out_bottleneck_times = vec![0., 0., 0., 0., 0., 0.];
+    let expected_out_bottleneck_times = [0., 0., 0., 0., 0., 0.];
     for (agent_res, &exp_t) in agent_results
         .iter()
         .zip(expected_out_bottleneck_times.iter())

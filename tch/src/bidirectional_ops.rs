@@ -934,7 +934,7 @@ mod tests {
         let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
         let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
         // Graph with two disconnected edges.
-        let graph = DiGraph::<(), ()>::from_edges(&[(0, 1), (2, 3)]);
+        let graph = DiGraph::<(), ()>::from_edges([(0, 1), (2, 3)]);
         let mut ops = ScalarBidirectionalDijkstra::new(&graph, |_| 1.0f64);
         let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(3));
         search.solve_query(&query, &mut ops);
