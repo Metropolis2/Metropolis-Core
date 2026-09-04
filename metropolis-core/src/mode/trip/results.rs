@@ -277,6 +277,7 @@ impl PreDayLegResults {
                     let road_event = RoadEvent {
                         edge: original_id,
                         entry_time: current_time,
+                        spillback_status: Default::default(),
                     };
                     current_time += NonNegativeSeconds::try_from(
                         weights[(vehicle_id, original_id)].eval(AnySeconds::from(current_time)),

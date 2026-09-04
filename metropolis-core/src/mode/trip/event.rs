@@ -51,6 +51,30 @@ enum VehicleEventType {
     TripEnds,
 }
 
+/// Status of the vehicle regarding pending at edge entry due to spillback.
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub enum SpillbackStatus {
+    /// The vehicle was not pending.
+    #[default]
+    NoSpillback,
+    /// The vehicle was pending to enter the edge.
+    Spillback,
+    /// The vehicle was pending to enter the edge and was forced released.
+    ForcedRelease,
+}
+
+impl SpillbackStatus {
+    /// Returns true if the vehicle was pending to enter the edge.
+    pub(crate) fn spillback(&self) -> bool {
+        *self != SpillbackStatus::NoSpillback
+    }
+
+    /// Returns true if the vehicle was forced released.
+    pub(crate) fn gridlock(&self) -> bool {
+        *self == SpillbackStatus::ForcedRelease
+    }
+}
+
 /// Timings for the event of an edge being taken by a vehicle.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct RoadEvent {
@@ -58,6 +82,8 @@ pub struct RoadEvent {
     pub edge: OriginalEdgeId,
     /// Time at which the vehicle enters the edge (i.e., it enters the in-bottleneck).
     pub entry_time: NonNegativeSeconds,
+    /// Whether the vehicle was stuck due to spillback.
+    pub spillback_status: SpillbackStatus,
 }
 
 /// Struct that describes the vehicle events that happen in the within-day model.
@@ -86,17 +112,31 @@ pub(crate) struct VehicleEvent {
     /// [RoadLegResults] for the current leg (if it is a road leg).
     road_leg_results: Option<RoadLegResults>,
     /// Records for the route being followed for the current leg.
-    route_record: Vec<(EdgeIndex, NonNegativeSeconds)>,
+    route_record: Vec<(EdgeIndex, NonNegativeSeconds, SpillbackStatus)>,
     /// If `true`, the vehicle is a phatom, i.e., it does not take any room on the edge.
     is_phantom: bool,
     /// If `true`, the vehicle was a phatom for the last edge it took.
     was_phantom: bool,
+    /// Spillback status for the current edge.
+    spillback_status: SpillbackStatus,
 }
 
 impl VehicleEvent {
     /// Changes the time of the event.
     pub(crate) fn set_time(&mut self, at_time: NonNegativeSeconds) {
         self.at_time = at_time;
+    }
+
+    /// The vehicle was realesed after being pending to enter the edge.
+    /// Updates the spillback status of the event.
+    ///
+    /// If phantom = true, the vehicle was forced released.
+    pub(crate) fn set_pending_released(&mut self, phantom: bool) {
+        if phantom {
+            self.spillback_status = SpillbackStatus::ForcedRelease;
+        } else {
+            self.spillback_status = SpillbackStatus::Spillback;
+        }
     }
 
     /// Set the vehicle to be a phantom.
@@ -149,6 +189,7 @@ impl VehicleEvent {
             route_record: Vec::new(),
             is_phantom: false,
             was_phantom: false,
+            spillback_status: SpillbackStatus::NoSpillback,
         }
     }
 }
@@ -179,8 +220,13 @@ impl VehicleEvent {
                 // Store the time spent at edge entry.
                 road_leg_results.in_bottleneck_time += event_duration.unwrap();
                 // Record the entry time for the current edge.
-                self.route_record
-                    .push((self.route[self.edge_position], self.at_time));
+                self.route_record.push((
+                    self.route[self.edge_position],
+                    self.at_time,
+                    self.spillback_status,
+                ));
+                // Reset spillback status.
+                self.spillback_status = SpillbackStatus::NoSpillback;
             }
             VehicleEventType::ReachesEdgeExit => {
                 let road_leg_results = self
@@ -477,9 +523,10 @@ impl VehicleEvent {
                     .route_record
                     .iter()
                     .copied()
-                    .map(|(e, t)| RoadEvent {
+                    .map(|(e, t, s)| RoadEvent {
                         edge: crate::network::road_network::original_edge_id_of(e),
                         entry_time: t,
+                        spillback_status: s,
                     })
                     .collect();
                 // Compute and store the travel time of the leg.

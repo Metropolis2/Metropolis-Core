@@ -221,7 +221,7 @@ impl EdgeEntryState {
     ///
     /// - If the edge is open and not full: closes the edge entry and returns `Some(Left)` with the
     ///   next event to execute for the vehicle.
-    /// - If there is closed: the vehicle is pushed to the queue of pending vehicles, returns
+    /// - If the edge is closed: the vehicle is pushed to the queue of pending vehicles, returns
     ///   `None`.
     /// - If the edge is open but full: the vehicle is pushed to the queue of pending vehicles,
     ///   returns `Some(Right)` with the index of the current edge of the pending vehicle (or
@@ -363,6 +363,7 @@ impl EdgeEntryState {
         self.record(queued_vehicle.entry_time, current_time);
         let mut event = queued_vehicle.event;
         event.set_time(current_time);
+        event.set_pending_released(phantom);
         if phantom {
             event.set_phantom();
         }

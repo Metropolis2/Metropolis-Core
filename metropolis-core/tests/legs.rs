@@ -257,6 +257,7 @@ fn legs_test() {
             route: vec![RoadEvent {
                 edge: MetroId::Integer(0),
                 entry_time: NonNegativeSeconds::try_from(3.0).unwrap(),
+                spillback_status: Default::default(),
             }],
             road_time: NonNegativeSeconds::try_from(1.0).unwrap(),
             in_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),
@@ -291,6 +292,7 @@ fn legs_test() {
             route: vec![RoadEvent {
                 edge: MetroId::Integer(1),
                 entry_time: NonNegativeSeconds::try_from(13.0).unwrap(),
+                spillback_status: Default::default(),
             }],
             road_time: NonNegativeSeconds::try_from(4.0).unwrap(),
             in_bottleneck_time: NonNegativeSeconds::try_from(0.0).unwrap(),

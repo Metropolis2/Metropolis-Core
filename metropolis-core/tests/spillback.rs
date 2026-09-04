@@ -16,6 +16,7 @@
 
 //! Integration test for spillback.
 use metropolis_core::hash::HashSet;
+use metropolis_core::mode::trip::event::SpillbackStatus;
 use metropolis_core::mode::trip::{DepartureTimeModel, Leg, LegType, RoadLeg, TravelingMode};
 use metropolis_core::mode::Mode;
 use metropolis_core::network::road_network::parameters::RoadNetworkParameters;
@@ -24,7 +25,7 @@ use metropolis_core::network::road_network::vehicle::{SpeedFunction, Vehicle};
 use metropolis_core::network::road_network::{RoadEdge, RoadNetwork, SpeedDensityFunction};
 use metropolis_core::network::{Network, NetworkWeights};
 use metropolis_core::parameters::Parameters;
-use metropolis_core::population::Agent;
+use metropolis_core::population::{agent_index, Agent};
 use metropolis_core::schedule_utility::ScheduleUtility;
 use metropolis_core::travel_utility::TravelUtility;
 use metropolis_core::units::*;
@@ -227,4 +228,69 @@ fn spillback_test() {
         ),
         "The period of the TTF should be equal to the period of the simulation"
     );
+
+    // Check route results spillback status.
+    for index in 0..5 {
+        for event in agent_results[agent_index(index)]
+            .mode_results()
+            .as_trip()
+            .unwrap()
+            .legs[0]
+            .class
+            .as_road()
+            .unwrap()
+            .route
+            .iter()
+        {
+            if index == 3 && event.edge == MetroId::Integer(0) {
+                // Agent 3 is pending to enter edge 0 (6 -> 10).
+                assert_eq!(
+                    event.spillback_status,
+                    SpillbackStatus::Spillback,
+                    "Agent 3 must face spillback to enter edge 0"
+                )
+            } else if index == 4 && event.edge == MetroId::Integer(0) {
+                // Agent 4 is pending to enter edge 0 (9 -> 15).
+                assert_eq!(
+                    event.spillback_status,
+                    SpillbackStatus::Spillback,
+                    "Agent 4 must face spillback to enter edge 0"
+                )
+            } else if index == 2 && event.edge == MetroId::Integer(1) {
+                // Agent 2 is pending to enter edge 1 (15 -> 17).
+                assert_eq!(
+                    event.spillback_status,
+                    SpillbackStatus::Spillback,
+                    "Agent 2 must face spillback to enter edge 1"
+                )
+            } else if index == 4 && event.edge == MetroId::Integer(1) {
+                // Agent 4 is pending to enter edge 1 (25 -> 27).
+                assert_eq!(
+                    event.spillback_status,
+                    SpillbackStatus::Spillback,
+                    "Agent 4 must face spillback to enter edge 1"
+                )
+            } else if index == 3 && event.edge == MetroId::Integer(1) {
+                // Agent 3 might be pending to enter edge 1 (20 -> 20).
+                // Agent 0 is leaving edge 1 at exactly the same time, so spillback might be registered or not
+                // depending on the tie-breaking rule.
+                assert!(
+                    matches!(
+                        event.spillback_status,
+                        SpillbackStatus::Spillback | SpillbackStatus::NoSpillback
+                    ),
+                    "Agent 3 might face spillback to enter edge 1 (but no gridlock)"
+                )
+            } else {
+                // No spillback for the other route events.
+                assert_eq!(
+                    event.spillback_status,
+                    SpillbackStatus::NoSpillback,
+                    "Agent {} must not face spillback to enter edge {}",
+                    index,
+                    event.edge
+                )
+            }
+        }
+    }
 }

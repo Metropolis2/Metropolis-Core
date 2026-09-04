@@ -14,6 +14,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   node order of the contraction hierarchies computed at a previous iteration is re-used, as long as
   the expected edge travel times did not drift by more than this value, which skips the expensive
   node-ordering phase of the contraction.
+- [OUTPUT] In `route_results`, columns `spillback` and `gridlock` (booleans) indicate whether the
+  vehicle was pending to enter the edge or was forced released due to gridlock.
 
 ### Changed
 

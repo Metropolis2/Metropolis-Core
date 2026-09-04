@@ -1055,6 +1055,8 @@ struct AgentResultsBuilder {
     route_edge_id: IdBuilder,
     route_entry_time: Float64Builder,
     route_exit_time: Float64Builder,
+    route_spillback: BooleanBuilder,
+    route_gridlock: BooleanBuilder,
 }
 
 impl AgentResultsBuilder {
@@ -1138,6 +1140,10 @@ impl AgentResultsBuilder {
                                 .append_value(Into::<f64>::into(event.entry_time));
                             self.route_exit_time
                                 .append_value(Into::<f64>::into(next_event.entry_time));
+                            self.route_spillback
+                                .append_value(event.spillback_status.spillback());
+                            self.route_gridlock
+                                .append_value(event.spillback_status.gridlock());
                         }
                         // The last event is not added by the previous for loop.
                         if let Some(last_event) = road_leg.route.last() {
@@ -1149,6 +1155,10 @@ impl AgentResultsBuilder {
                                 .append_value(Into::<f64>::into(last_event.entry_time));
                             self.route_exit_time
                                 .append_value(Into::<f64>::into(leg.arrival_time));
+                            self.route_spillback
+                                .append_value(last_event.spillback_status.spillback());
+                            self.route_gridlock
+                                .append_value(last_event.spillback_status.gridlock());
                         }
                     } else {
                         nb_virtual_legs += 1;
@@ -1266,6 +1276,8 @@ impl AgentResultsBuilder {
             Field::new("edge_id", self.route_edge_id.dtype(), false),
             Field::new("entry_time", DataType::Float64, false),
             Field::new("exit_time", DataType::Float64, false),
+            Field::new("spillback", DataType::Boolean, false),
+            Field::new("gridlock", DataType::Boolean, false),
         ]);
         let route_batch = RecordBatch::try_new(
             Arc::new(route_schema),
@@ -1276,6 +1288,8 @@ impl AgentResultsBuilder {
                 Arc::new(self.route_edge_id.finish()),
                 Arc::new(self.route_entry_time.finish()),
                 Arc::new(self.route_exit_time.finish()),
+                Arc::new(self.route_spillback.finish()),
+                Arc::new(self.route_gridlock.finish()),
             ],
         )?;
         let batch0 = if agent_batch.num_rows() == 0 {
