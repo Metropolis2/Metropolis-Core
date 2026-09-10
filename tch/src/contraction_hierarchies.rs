@@ -15,8 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use std::collections::VecDeque;
+use std::sync::OnceLock;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use fixedbitset::FixedBitSet;
 use object_pool::Pool;
 use petgraph::graph::{DiGraph, EdgeIndex, EdgeReference, NodeIndex};
@@ -133,6 +134,9 @@ impl<T> HierarchyEdge<T> {
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,
+    /// Cached value of [HierarchyOverlay::min_start_x], computed on first use.
+    #[serde(skip)]
+    min_start_x: OnceLock<Option<T>>,
 }
 
 impl<T> HierarchyOverlay<T> {
@@ -142,7 +146,11 @@ impl<T> HierarchyOverlay<T> {
     /// In particular, the [HierarchyDirection] of the edges must match the order of the source and
     /// target in the hierarchy.
     pub fn new_raw(graph: DiGraph<(), HierarchyEdge<T>>, order: Vec<usize>) -> Self {
-        HierarchyOverlay { graph, order }
+        HierarchyOverlay {
+            graph,
+            order,
+            min_start_x: OnceLock::new(),
+        }
     }
 
     /// Returns the order of the nodes in the hierarchy.
@@ -258,6 +266,20 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         contraction.order()
     }
 
+    /// Returns the earliest `x` value at which the edges' [TTF] are defined.
+    ///
+    /// Returns `None` if all the edges' [TTF] are constant, i.e., the `x`-domain is unbounded.
+    ///
+    /// The value is computed on the first call and cached for the subsequent ones.
+    pub fn min_start_x(&self) -> Option<T> {
+        *self.min_start_x.get_or_init(|| {
+            self.graph
+                .edge_weights()
+                .filter_map(|e| e.ttf.start_x())
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+        })
+    }
+
     /// Returns the complexity of the HierarchyOverlay.
     ///
     /// The complexity is the sum of the complexity of the edges' [TTF] (See [TTF::complexity]).
@@ -360,6 +382,17 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         PQ3: MinPriorityQueue<Key = NodeIndex, Value = T>,
         CM: NodeMap<Node = NodeIndex, Value = (T, T)>,
     {
+        // The TTFs are undefined before `min_start_x`: evaluating them there extrapolates
+        // backward, which yields negative travel times and breaks the invariant that the
+        // unpacking time is within the TTFs' domain (see `unpack_edge`).
+        if let Some(min_start_x) = self.min_start_x() {
+            if departure_time < min_start_x {
+                bail!(
+                    "Departure time {departure_time:?} is earlier than the start of the \
+                     travel-time functions ({min_start_x:?})"
+                );
+            }
+        }
         alloc.reset();
         candidate_map.reset();
         let zero = T::ZERO;

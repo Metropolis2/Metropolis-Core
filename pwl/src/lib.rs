@@ -121,6 +121,16 @@ where
         }
     }
 
+    /// Returns the `x` value at which the `x`-domain of the XYF starts.
+    ///
+    /// If the XYF is constant, the `x`-domain is unknown so `None` is returned instead.
+    pub fn start_x(&self) -> Option<X> {
+        match self {
+            Self::Piecewise(pwl_xyf) => Some(pwl_xyf.x_at_index(0)),
+            Self::Constant(_) => None,
+        }
+    }
+
     /// Returns the `y` value at the given `x` value.
     #[inline]
     pub fn eval(&self, x: X) -> Y {

@@ -35,6 +35,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [OUTPUT] Sort output edge TTFs by edge id
 - [OUTPUT] Runs are now reproducible: two runs on the same input produce identical output files,
   provided the `random_seed` parameter is set.
+- [USER] Send a clear error message when the departure time for an earliest-arrival query is earlier
+  than the TTFs period.
 
 ## [1.4.0] - 2026-06-15
 
