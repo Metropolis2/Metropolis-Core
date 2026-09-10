@@ -18,7 +18,6 @@ publish = false
 [dependencies]
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
-arrayvec = { version = "0.7.6", features = ["serde"] }
 arrow = { version = "59.0", default-features = false, features = ["csv"] }
 chrono = { version = "0.4", optional = true }
 clap = { version = "4.0", features = ["derive"] }

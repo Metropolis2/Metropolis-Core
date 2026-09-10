@@ -18,11 +18,11 @@
 
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, Instant};
 use std::{env, fmt};
 
 use anyhow::{bail, Context, Result};
-use arrayvec::ArrayString;
 use enum_as_inner::EnumAsInner;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{info, log_enabled, warn, Level, LevelFilter};
@@ -148,7 +148,7 @@ pub struct Graph {
 
 impl Graph {
     /// Creates a new [Graph] from a Vec of [Edge].
-    pub(crate) fn from_edges(raw_edges: Vec<Edge>) -> Result<Self> {
+    pub fn from_edges(raw_edges: Vec<Edge>) -> Result<Self> {
         let reverse_edge_map = raw_edges
             .iter()
             .enumerate()
@@ -215,6 +215,37 @@ impl DerefMut for Graph {
     }
 }
 
+// String ids used in the simulation.
+static STRING_INTERNER: LazyLock<RwLock<StringInterner>> = LazyLock::new(Default::default);
+
+/// A Struct to store the String ids used in the simulation.
+#[derive(Default, Debug)]
+pub struct StringInterner {
+    // string -> index
+    map: HashMap<String, u32>,
+    // index -> string
+    strings: Vec<String>,
+}
+
+impl StringInterner {
+    /// Stores a new value to the STRING_INTERNER.
+    pub fn intern(&mut self, s: impl Into<String>) -> u32 {
+        let s = s.into();
+        if let Some(&id) = self.map.get(&s) {
+            return id;
+        }
+        let id = self.strings.len() as u32;
+        self.strings.push(s.clone());
+        self.map.insert(s, id);
+        id
+    }
+
+    /// Returns the actual String value corresponding to the interner index.
+    pub fn resolve(&self, id: u32) -> Option<String> {
+        self.strings.get(id as usize).cloned()
+    }
+}
+
 /// Representation of an Identifier that can be either integer or string.
 #[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
 pub enum MetroId {
@@ -222,8 +253,23 @@ pub enum MetroId {
     Unsigned(u64),
     /// Id represented as an integer.
     Integer(i64),
-    /// Id represented as String (16 bytes max).
-    Arbitrary(ArrayString<16>),
+    /// Id represented as String.
+    /// Only the index of the String in `STRING_INTERNER` is stored so that MetroId can implement
+    /// Copy.
+    Arbitrary(u32),
+}
+
+impl MetroId {
+    /// Returns the actual String value corresponding to the stored id.
+    ///
+    /// Returns None if the id is not `Arbitrary`.
+    pub fn resolve_arbitrary(&self) -> Option<String> {
+        if let Self::Arbitrary(index) = self {
+            STRING_INTERNER.read().unwrap().resolve(*index)
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for MetroId {
@@ -244,15 +290,10 @@ impl From<i64> for MetroId {
     }
 }
 
-impl TryFrom<&str> for MetroId {
-    type Error = anyhow::Error;
-    fn try_from(value: &str) -> Result<Self> {
-        if value.len() > 16 {
-            bail!("Id with more than 16 characters: {value}");
-        }
-        let mut arraystr = ArrayString::new();
-        arraystr.push_str(value);
-        Ok(Self::Arbitrary(arraystr))
+impl From<&str> for MetroId {
+    fn from(value: &str) -> Self {
+        let index = STRING_INTERNER.write().unwrap().intern(value);
+        Self::Arbitrary(index)
     }
 }
 
@@ -265,7 +306,8 @@ impl fmt::Display for MetroId {
             Self::Integer(i) => {
                 write!(f, "{}", i)
             }
-            Self::Arbitrary(s) => {
+            Self::Arbitrary(_) => {
+                let s = self.resolve_arbitrary().unwrap();
                 write!(f, "{}", s)
             }
         }
@@ -274,12 +316,17 @@ impl fmt::Display for MetroId {
 
 impl Eq for MetroId {}
 
+/// A directed edge to build a [Graph] from.
 #[derive(Clone, Debug)]
-pub(crate) struct Edge {
-    pub(crate) edge_id: MetroId,
-    pub(crate) source: MetroId,
-    pub(crate) target: MetroId,
-    pub(crate) travel_time: TTF<f64>,
+pub struct Edge {
+    /// Original id of the edge.
+    pub edge_id: MetroId,
+    /// Original id of the source node.
+    pub source: MetroId,
+    /// Original id of the target node.
+    pub target: MetroId,
+    /// Travel-time function of the edge.
+    pub travel_time: TTF<f64>,
 }
 
 /// Point-to-point query (earliest-arrival or profile).

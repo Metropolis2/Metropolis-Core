@@ -22,6 +22,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] Switch to `FxHashSet` and `FxHashMap` when building the network in `routing_cli` to make
   the runs deterministic.
 - [USER] `metropolis-core` and `tch` now use a fixed-seed hasher for all their hash maps and sets.
+- [INPUT] Remove restriction on arbitrary ids' length for `routing_cli`.
 - [DEV] Various optimizations.
 - [DEV] Remove polars dependency.
 
