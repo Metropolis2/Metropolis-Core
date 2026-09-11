@@ -21,5 +21,7 @@ pub mod csv;
 pub mod json;
 pub mod parquet;
 
-pub use arrow::{get_graph_from_files, get_node_order_from_file, get_queries_from_file};
+pub use arrow::{
+    get_graph_from_files, get_node_order_from_file, get_queries_from_file, read_edges, read_queries,
+};
 pub use json::get_parameters_from_json;

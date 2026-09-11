@@ -318,7 +318,7 @@ macro_rules! get_id_value {
 const EDGE_COLUMNS: [&str; 4] = ["edge_id", "source", "target", "travel_time"];
 
 /// Reads an arrow `RecordBatch` with edges data and returns a `Vec` of `Edge`.
-pub(crate) fn read_edges(batch: RecordBatch) -> Result<Vec<Edge>> {
+pub fn read_edges(batch: RecordBatch) -> Result<Vec<Edge>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &EDGE_COLUMNS);
     let edge_id_values = get_id_column!(["edge_id"] in struct_array);
@@ -404,7 +404,7 @@ pub(crate) fn read_node_order(batch: RecordBatch) -> Result<HashMap<MetroId, usi
 const QUERY_COLUMNS: [&str; 4] = ["query_id", "origin", "destination", "departure_time"];
 
 /// Reads an arrow `RecordBatch` with queries and returns a Vec of [Query].
-pub(crate) fn read_queries(batch: RecordBatch) -> Result<Vec<Query>> {
+pub fn read_queries(batch: RecordBatch) -> Result<Vec<Query>> {
     let struct_array = StructArray::from(batch);
     warn_unused_columns(&struct_array, &QUERY_COLUMNS);
     let query_id_values = get_id_column!(["query_id"] in struct_array);
@@ -500,7 +500,7 @@ impl IdBuilder {
         match self {
             Self::Unsigned(builder) => builder.append_value(v.into_unsigned().unwrap()),
             Self::Integer(builder) => builder.append_value(v.into_integer().unwrap()),
-            Self::Arbitrary(builder) => builder.append_value(v.into_arbitrary().unwrap()),
+            Self::Arbitrary(builder) => builder.append_value(v.resolve_arbitrary().unwrap()),
             Self::Uninitiated => unreachable!(),
         }
     }
