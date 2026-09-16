@@ -127,7 +127,7 @@ impl VehicleEvent {
         self.at_time = at_time;
     }
 
-    /// The vehicle was realesed after being pending to enter the edge.
+    /// The vehicle was released after being pending to enter the edge.
     /// Updates the spillback status of the event.
     ///
     /// If phantom = true, the vehicle was forced released.
