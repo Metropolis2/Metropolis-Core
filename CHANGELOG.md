@@ -8,6 +8,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-18
+
 ### Added
 
 - [INPUT] New road-network parameter `node_order_reuse_threshold` (in seconds, default: 0). The
@@ -626,7 +628,8 @@ First stable release of METROPOLIS2!
 
 - First release of Metrolib, there are two many things to list.
 
-[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.4.0...HEAD
+[unreleased]: https://github.com/Metropolis2/Metropolis-Core/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.5.0
 [1.4.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.4.0
 [1.3.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.3.0
 [1.2.0]: https://github.com/Metropolis2/Metropolis-Core/releases/tag/1.2.0
