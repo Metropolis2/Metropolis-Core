@@ -16,21 +16,19 @@ categories = ["algorithms"]
 publish = false
 
 [dependencies]
+metro-io = { path = "../metro-io/" }
 ttf = { path = "../pwl/" }
 anyhow = "1.0"
 arrow = { version = "60.0", default-features = false, features = ["csv"] }
 chrono = { version = "0.4", optional = true }
 clap = { version = "4.0", features = ["derive"] }
-csv = "1.1"
 either = { version = "1.6", features = ["serde"] }
-enum-as-inner = "0.7"
 fixedbitset = "0.5"
 foldhash = "0.2"
 hashbrown = { version = "0.17", features = ["rayon", "serde"] }
 indicatif = "0.18"
 log = "0.4"
 num-traits = "0.2"
-parquet = { version = "60.0", features = ["arrow", "json"] }
 petgraph = { version = "0.8", default-features = false, features = ["serde-1"] }
 priority-queue = "2.0"
 object-pool = "0.6"
@@ -45,7 +43,6 @@ serde_with = { version = "3.7", default-features = false, features = [
   "macros",
 ] }
 simplelog = "0.12"
-zstd = "0.14"
 
 [lints]
 workspace = true

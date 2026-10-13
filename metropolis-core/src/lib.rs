@@ -18,7 +18,6 @@
 #![doc(html_no_source)]
 
 pub mod event;
-pub mod hash;
 pub mod io;
 pub mod learning;
 pub mod logging;
@@ -40,6 +39,7 @@ use anyhow::{anyhow, Context, Result};
 // Dependencies only used in the bins.
 use clap as _;
 use log::{error, log_enabled};
+pub use metro_io::hash;
 
 /// Deserializes a simulation, runs it and stores the results to a given output directory.
 ///

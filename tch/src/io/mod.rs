@@ -14,14 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Everything related to import / export of simulation data.
+//! Functions to read the input files and write the output files of the routing tool.
 
-mod arrow;
-pub mod csv;
-pub mod json;
-pub mod parquet;
+mod input;
+mod json;
+mod output;
 
-pub use arrow::{
+pub use input::{
     get_graph_from_files, get_node_order_from_file, get_queries_from_file, read_edges, read_queries,
 };
 pub use json::get_parameters_from_json;
+pub(crate) use output::{NodeOrder, QueryResults};

@@ -16,10 +16,9 @@
 
 //! Everything related to import / export of simulation data.
 
-mod arrow;
-pub mod csv;
+mod input;
 pub mod json;
-pub mod parquet;
+mod output;
 
 use std::path::Path;
 
@@ -32,7 +31,7 @@ use crate::parameters::InputFiles;
 use crate::population::Agent;
 
 pub(crate) fn read_population(input_files: &InputFiles) -> Result<Vec<Agent>> {
-    arrow::get_agents_from_files(
+    input::get_agents_from_files(
         &input_files.agents,
         &input_files.alternatives,
         input_files.trips.as_deref(),
@@ -46,7 +45,7 @@ pub(crate) fn read_network(input_files: &InputFiles) -> Result<Network> {
         input_files.vehicle_types.as_ref(),
     ) {
         (Some(edges_path), Some(vehicle_path)) => Some(
-            arrow::get_road_network_from_files(edges_path, vehicle_path)
+            input::get_road_network_from_files(edges_path, vehicle_path)
                 .context("Failed to read road-network")?,
         ),
         (Some(_), None) => {
@@ -64,5 +63,5 @@ pub(crate) fn read_rn_weights(
     filename: &Path,
     unique_vehicles: &UniqueVehicles,
 ) -> Result<RoadNetworkWeights> {
-    arrow::get_road_network_weights_from_file(filename, unique_vehicles)
+    input::get_road_network_weights_from_file(filename, unique_vehicles)
 }

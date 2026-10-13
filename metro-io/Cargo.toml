@@ -1,0 +1,24 @@
+[package]
+name = "metro-io"
+version = "0.1.0"
+authors = ["Lucas Javaudin <lucas@lucasjavaudin.com>"]
+edition = "2021"
+description = "Input / output utilities shared by the Metropolis-Core crates"
+repository = "https://github.com/Metropolis2/Metropolis-Core"
+publish = false
+license = "GPL-3.0-or-later"
+
+[dependencies]
+anyhow = "1.0"
+arrow = { version = "60.0", default-features = false, features = ["csv"] }
+enum-as-inner = "0.7"
+foldhash = "0.2"
+hashbrown = { version = "0.17", features = ["rayon", "serde"] }
+log = "0.4"
+parquet = { version = "60.0", features = ["arrow", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zstd = "0.14"
+
+[lints]
+workspace = true

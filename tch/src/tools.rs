@@ -16,16 +16,17 @@
 
 //! Structs and functions for the command-line tool.
 
+use std::env;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, Instant};
-use std::{env, fmt};
 
 use anyhow::{bail, Context, Result};
-use enum_as_inner::EnumAsInner;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{info, log_enabled, warn, Level, LevelFilter};
+use metro_io::json::write_json;
+use metro_io::write::{write_csv, write_parquet};
+pub use metro_io::MetroId;
 use object_pool::Pool;
 use petgraph::graph::EdgeReference;
 use petgraph::prelude::EdgeRef;
@@ -48,6 +49,7 @@ use crate::algo::{
 };
 use crate::bidirectional_ops::{BidirectionalProfileDijkstra, BidirectionalTCHEA};
 use crate::hash::{HashMap, HashSet};
+use crate::io::{NodeOrder, QueryResults};
 use crate::query::BidirectionalPointToPointQuery;
 use crate::HierarchyOverlay;
 use crate::{
@@ -214,107 +216,6 @@ impl DerefMut for Graph {
         &mut self.graph
     }
 }
-
-// String ids used in the simulation.
-static STRING_INTERNER: LazyLock<RwLock<StringInterner>> = LazyLock::new(Default::default);
-
-/// A Struct to store the String ids used in the simulation.
-#[derive(Default, Debug)]
-pub struct StringInterner {
-    // string -> index
-    map: HashMap<String, u32>,
-    // index -> string
-    strings: Vec<String>,
-}
-
-impl StringInterner {
-    /// Stores a new value to the STRING_INTERNER.
-    pub fn intern(&mut self, s: impl Into<String>) -> u32 {
-        let s = s.into();
-        if let Some(&id) = self.map.get(&s) {
-            return id;
-        }
-        let id = self.strings.len() as u32;
-        self.strings.push(s.clone());
-        self.map.insert(s, id);
-        id
-    }
-
-    /// Returns the actual String value corresponding to the interner index.
-    pub fn resolve(&self, id: u32) -> Option<String> {
-        self.strings.get(id as usize).cloned()
-    }
-}
-
-/// Representation of an Identifier that can be either integer or string.
-#[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
-pub enum MetroId {
-    /// Id represented as an unsigned integer.
-    Unsigned(u64),
-    /// Id represented as an integer.
-    Integer(i64),
-    /// Id represented as String.
-    /// Only the index of the String in `STRING_INTERNER` is stored so that MetroId can implement
-    /// Copy.
-    Arbitrary(u32),
-}
-
-impl MetroId {
-    /// Returns the actual String value corresponding to the stored id.
-    ///
-    /// Returns None if the id is not `Arbitrary`.
-    pub fn resolve_arbitrary(&self) -> Option<String> {
-        if let Self::Arbitrary(index) = self {
-            STRING_INTERNER.read().unwrap().resolve(*index)
-        } else {
-            None
-        }
-    }
-}
-
-impl Default for MetroId {
-    fn default() -> Self {
-        Self::Unsigned(0)
-    }
-}
-
-impl From<u64> for MetroId {
-    fn from(value: u64) -> Self {
-        Self::Unsigned(value)
-    }
-}
-
-impl From<i64> for MetroId {
-    fn from(value: i64) -> Self {
-        Self::Integer(value)
-    }
-}
-
-impl From<&str> for MetroId {
-    fn from(value: &str) -> Self {
-        let index = STRING_INTERNER.write().unwrap().intern(value);
-        Self::Arbitrary(index)
-    }
-}
-
-impl fmt::Display for MetroId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unsigned(i) => {
-                write!(f, "{}", i)
-            }
-            Self::Integer(i) => {
-                write!(f, "{}", i)
-            }
-            Self::Arbitrary(_) => {
-                let s = self.resolve_arbitrary().unwrap();
-                write!(f, "{}", s)
-            }
-        }
-    }
-}
-
-impl Eq for MetroId {}
 
 /// A directed edge to build a [Graph] from.
 #[derive(Clone, Debug)]
@@ -664,26 +565,22 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                 .collect();
             match parameters.saving_format {
                 SavingFormat::Parquet => {
-                    crate::io::parquet::write_parquet(&order_map, &parameters.output_directory)
+                    write_parquet(&NodeOrder(&order_map), &parameters.output_directory)
                         .context("Failed to write node order")?;
                 }
                 SavingFormat::CSV => {
-                    crate::io::csv::write_csv(&order_map, &parameters.output_directory)
+                    write_csv(&NodeOrder(&order_map), &parameters.output_directory)
                         .context("Failed to write node order")?;
                 }
                 SavingFormat::JSON => {
-                    crate::io::json::write_json(
-                        &order_map,
-                        &parameters.output_directory,
-                        "node_order",
-                    )
-                    .context("Failed to write node order")?;
+                    write_json(&order_map, &parameters.output_directory, "node_order")
+                        .context("Failed to write node order")?;
                 }
             }
         }
 
         if parameters.output_overlay {
-            crate::io::json::write_json(&overlay, &parameters.output_directory, "overlay")
+            write_json(&overlay, &parameters.output_directory, "overlay")
                 .context("Cannot write overlay")?;
         }
 
@@ -835,19 +732,19 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     info!("Saving results");
     match parameters.saving_format {
         SavingFormat::Parquet => {
-            crate::io::parquet::write_parquet(&results, &parameters.output_directory)
+            write_parquet(&QueryResults(&results), &parameters.output_directory)
                 .context("Failed to write results")?;
         }
         SavingFormat::CSV => {
-            crate::io::csv::write_csv(&results, &parameters.output_directory)
+            write_csv(&QueryResults(&results), &parameters.output_directory)
                 .context("Failed to write results")?;
         }
         SavingFormat::JSON => {
-            crate::io::json::write_json(&results, &parameters.output_directory, "results")
+            write_json(&results, &parameters.output_directory, "results")
                 .context("Failed to write results")?;
         }
     }
-    crate::io::json::write_json(details, &parameters.output_directory, "details")
+    write_json(details, &parameters.output_directory, "details")
         .context("Failed to write details")?;
     Ok(())
 }

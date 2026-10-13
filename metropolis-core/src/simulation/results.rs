@@ -20,10 +20,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use metro_io::json::write_json;
+use metro_io::write::{write_csv, write_csv_with_prefix, write_parquet, write_parquet_with_prefix};
 use serde::Serialize;
 
 use crate::event::{Event, EventQueue};
-use crate::io;
 use crate::mode::{AggregateModeResults, ModeIndex, ModeResults, PreDayModeResults};
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::RoadNetworkWeights;
@@ -420,10 +421,8 @@ impl PreDayAgentResults {
 /// interrupted before the last iteration.
 pub(crate) fn save_aggregate_results(sim_results: &SimulationResults) -> Result<()> {
     match crate::parameters::saving_format() {
-        SavingFormat::Parquet => {
-            io::parquet::write_parquet(sim_results, crate::parameters::output_directory())
-        }
-        SavingFormat::CSV => io::csv::write_csv(sim_results, crate::parameters::output_directory()),
+        SavingFormat::Parquet => write_parquet(sim_results, crate::parameters::output_directory()),
+        SavingFormat::CSV => write_csv(sim_results, crate::parameters::output_directory()),
     }
 }
 
@@ -448,36 +447,28 @@ pub fn save_iteration_results(
 
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            io::parquet::write_parquet(&iteration_results.agent_results, &output_dir)?;
-            io::parquet::write_parquet_with_prefix(
+            write_parquet(&iteration_results.agent_results, &output_dir)?;
+            write_parquet_with_prefix(
                 &iteration_results.exp_weights,
                 &output_dir,
                 "net_cond_exp_",
             )?;
-            io::parquet::write_parquet_with_prefix(
+            write_parquet_with_prefix(
                 &iteration_results.sim_weights,
                 &output_dir,
                 "net_cond_sim_",
             )?;
-            io::parquet::write_parquet_with_prefix(
+            write_parquet_with_prefix(
                 &iteration_results.new_exp_weights,
                 &output_dir,
                 "net_cond_next_exp_",
             )?;
         }
         SavingFormat::CSV => {
-            io::csv::write_csv(&iteration_results.agent_results, &output_dir)?;
-            io::csv::write_csv_with_prefix(
-                &iteration_results.exp_weights,
-                &output_dir,
-                "net_cond_exp_",
-            )?;
-            io::csv::write_csv_with_prefix(
-                &iteration_results.sim_weights,
-                &output_dir,
-                "net_cond_sim_",
-            )?;
-            io::csv::write_csv_with_prefix(
+            write_csv(&iteration_results.agent_results, &output_dir)?;
+            write_csv_with_prefix(&iteration_results.exp_weights, &output_dir, "net_cond_exp_")?;
+            write_csv_with_prefix(&iteration_results.sim_weights, &output_dir, "net_cond_sim_")?;
+            write_csv_with_prefix(
                 &iteration_results.new_exp_weights,
                 &output_dir,
                 "net_cond_next_exp_",
@@ -491,7 +482,7 @@ pub fn save_iteration_results(
 ///
 /// The RunningTimes are stored in the file `running_times.json`.
 pub fn save_running_times(running_times: RunningTimes) -> Result<()> {
-    io::json::write_json(
+    write_json(
         running_times,
         crate::parameters::output_directory(),
         "running_times",
@@ -503,10 +494,10 @@ pub fn save_running_times(running_times: RunningTimes) -> Result<()> {
 pub fn save_choices(agent_results: &PreDayAgentResults) -> Result<()> {
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            io::parquet::write_parquet(agent_results, crate::parameters::output_directory())?;
+            write_parquet(agent_results, crate::parameters::output_directory())?;
         }
         SavingFormat::CSV => {
-            io::csv::write_csv(agent_results, crate::parameters::output_directory())?;
+            write_csv(agent_results, crate::parameters::output_directory())?;
         }
     }
     Ok(())

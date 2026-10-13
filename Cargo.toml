@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["tch", "metropolis-core", "pwl", "choice"]
+members = ["tch", "metropolis-core", "pwl", "choice", "metro-io"]
 
 [profile.dev.package."*"]
 debug = false
@@ -36,7 +36,7 @@ unused_qualifications = "warn"
 all = "warn"
 derive_ord_xor_partial_ord = { level = "allow", priority = 1 }
 
-# The four workspace crates hold the whole simulation loop, so they are compiled as a single
+# The five workspace crates hold the whole simulation loop, so they are compiled as a single
 # codegen unit: it lets LLVM inline across their modules (which is worth ~10% of the running time).
 # The third-party dependencies keep the default, so build times stay reasonable.
 [profile.release.package.metropolis-core]
@@ -49,4 +49,7 @@ codegen-units = 1
 codegen-units = 1
 
 [profile.release.package.choice]
+codegen-units = 1
+
+[profile.release.package.metro-io]
 codegen-units = 1

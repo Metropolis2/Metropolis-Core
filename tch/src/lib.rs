@@ -22,8 +22,6 @@ pub mod bidirectional_ops;
 mod bidirectional_search;
 mod bound;
 mod contraction_hierarchies;
-// TODO: the io module share many functions with the one in core, they should be merged
-pub mod hash;
 pub mod io;
 mod min_queue;
 mod node_data;
@@ -38,6 +36,7 @@ pub use bidirectional_search::BidirectionalDijkstraSearch;
 pub use contraction_hierarchies::{
     HierarchyDirection, HierarchyEdge, HierarchyEdgeClass, HierarchyOverlay, SearchSpaces,
 };
+pub use metro_io::hash;
 use petgraph::graph::NodeIndex;
 pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
@@ -80,6 +79,5 @@ pub struct DefaultTCHProfileAllocation<T: ttf::TTFNum> {
 
 // Dependencies only used in the bins.
 use clap as _;
-use csv as _;
 use serde_json as _;
 use simplelog as _;

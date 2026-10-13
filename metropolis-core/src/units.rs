@@ -32,118 +32,14 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::iter;
 use std::ops::*;
-use std::sync::{LazyLock, RwLock};
 
 use anyhow::{bail, Result};
-use enum_as_inner::EnumAsInner;
+pub use metro_io::MetroId;
 use num_traits::{ConstOne, ConstZero, FromPrimitive, One, Pow, ToPrimitive, Zero};
 use serde_derive::{Deserialize, Serialize};
 use ttf::TTFNum;
 
-use crate::hash::HashMap;
-
 const MARGIN: f64 = 1e-8;
-
-// String ids used in the simulation.
-static STRING_INTERNER: LazyLock<RwLock<StringInterner>> = LazyLock::new(Default::default);
-
-/// A Struct to store the String ids used in the simulation.
-#[derive(Default, Debug)]
-pub struct StringInterner {
-    // string -> index
-    map: HashMap<String, u32>,
-    // index -> string
-    strings: Vec<String>,
-}
-
-impl StringInterner {
-    /// Stores a new value to the STRING_INTERNER.
-    pub fn intern(&mut self, s: impl Into<String>) -> u32 {
-        let s = s.into();
-        if let Some(&id) = self.map.get(&s) {
-            return id;
-        }
-        let id = self.strings.len() as u32;
-        self.strings.push(s.clone());
-        self.map.insert(s, id);
-        id
-    }
-
-    /// Returns the actual String value corresponding to the interner index.
-    pub fn resolve(&self, id: u32) -> Option<String> {
-        self.strings.get(id as usize).cloned()
-    }
-}
-
-/// Representation of an Identifier that can be either integer or string.
-#[derive(Copy, Clone, Debug, PartialEq, Hash, EnumAsInner, Serialize)]
-pub enum MetroId {
-    /// Id represented as an unsigned integer.
-    Unsigned(u64),
-    /// Id represented as an integer.
-    Integer(i64),
-    /// Id represented as String.
-    /// Only the index of the String in `STRING_INTERNER` is stored so that MetroId can implement
-    /// Copy.
-    Arbitrary(u32),
-}
-
-impl MetroId {
-    /// Returns the actual String value corresponding to the stored id.
-    ///
-    /// Returns None if the id is not `Arbitrary`.
-    pub fn resolve_arbitrary(&self) -> Option<String> {
-        if let Self::Arbitrary(index) = self {
-            STRING_INTERNER.read().unwrap().resolve(*index)
-        } else {
-            None
-        }
-    }
-}
-
-impl Default for MetroId {
-    fn default() -> Self {
-        Self::Unsigned(0)
-    }
-}
-
-impl From<u64> for MetroId {
-    fn from(value: u64) -> Self {
-        Self::Unsigned(value)
-    }
-}
-
-impl From<i64> for MetroId {
-    fn from(value: i64) -> Self {
-        Self::Integer(value)
-    }
-}
-
-impl From<&str> for MetroId {
-    fn from(value: &str) -> Self {
-        let index = STRING_INTERNER.write().unwrap().intern(value);
-        Self::Arbitrary(index)
-    }
-}
-
-impl fmt::Display for MetroId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unsigned(i) => {
-                write!(f, "{}", i)
-            }
-            Self::Integer(i) => {
-                write!(f, "{}", i)
-            }
-            Self::Arbitrary(_) => {
-                let s = self.resolve_arbitrary().unwrap();
-                write!(f, "{}", s)
-            }
-        }
-    }
-}
-
-impl Eq for MetroId {}
 
 pub(crate) trait MetroPositiveNum:
     Sized
