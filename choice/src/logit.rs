@@ -14,19 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, f64::consts::EULER_GAMMA};
 
 use anyhow::{bail, Context, Result};
 use ttf::{PwlXYF, TTFNum};
 
 use super::ContinuousChoiceCallback;
 
-/// Euler-Mascheroni constant
-const EGAMMA: f64 = 0.577_215_664_901_532_9_f64;
-
 /// A discrete or continuous Logit model.
 ///
-/// The expecte payoff of the choice is computed using the Log-sum formula.
+/// The expected payoff of the choice is computed using the Log-sum formula.
 ///
 /// # Example
 ///
@@ -133,9 +130,9 @@ impl LogitModel {
             .find(|&(_, cum_prob)| self.u < cum_prob)
             .unwrap();
         // Compute the expected payoff of the choice using the log-sum formula.
-        // Do not forget to add back the maximum value that was substracted.
+        // Do not forget to add back the maximum value that was subtracted.
         let expected_value =
-            V::try_from(max_value + self.mu * (sigma.ln() + EGAMMA)).map_err(|e| e.into())?;
+            V::try_from(max_value + self.mu * (sigma.ln() + EULER_GAMMA)).map_err(|e| e.into())?;
         Ok((choice_id, expected_value))
     }
 
@@ -268,8 +265,8 @@ impl LogitModel {
             return Ok((Box::new(move || func.x_at_index(id)), exp_payoff));
         }
         // Compute the expected payoff using the log-sum formula.
-        // Do not forget to add back the maximum value that was substracted.
-        let expected_payoff_float = max_value + self.mu * (sigma.ln() + EGAMMA);
+        // Do not forget to add back the maximum value that was subtracted.
+        let expected_payoff_float = max_value + self.mu * (sigma.ln() + EULER_GAMMA);
         let expected_payoff = Y::try_from(expected_payoff_float)
             .map_err(Into::into)
             .with_context(|| "Cannot convert `{expected_payoff_float}` to type Y")?;
@@ -320,22 +317,22 @@ mod tests {
         // assert!(model.get_choice(&[1., 0., f64::NEG_INFINITY]).is_err());
         assert!(model.get_choice(&[1., 0., f64::INFINITY]).is_err());
         // Only 1 choice: this choice is returned with its payoff (+ mu * Euler's constant).
-        assert_eq!(model.get_choice(&[1.]).unwrap(), (0, 1. + 2. * EGAMMA));
+        assert_eq!(model.get_choice(&[1.]).unwrap(), (0, 1. + 2. * EULER_GAMMA));
         // 2 choices with same payoff, the second one is returned because u > 0.5.
         // Expected payoff is mu * ln(1 + 1) + mu * Euler's constant.
         assert_eq!(
             model.get_choice(&[0., 0.]).unwrap(),
-            (1, 2. * 2.0f64.ln() + 2. * EGAMMA)
+            (1, 2. * 2.0f64.ln() + 2. * EULER_GAMMA)
         );
         // Vector of very large utilities.
         assert_eq!(
             model.get_choice(&[f64::MAX, f64::MAX]).unwrap(),
-            (1, f64::MAX + 2. * 2.0f64.ln() + 2. * EGAMMA)
+            (1, f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_GAMMA)
         );
         // Vector of very small utilities.
         assert_eq!(
             model.get_choice(&[f64::MIN, f64::MIN]).unwrap(),
-            (1, f64::MIN + 2. * 2.0f64.ln() + 2. * EGAMMA)
+            (1, f64::MIN + 2. * 2.0f64.ln() + 2. * EULER_GAMMA)
         );
         // Very small mu.
         let model = LogitModel::new(1e-4, f64::MIN_POSITIVE);
@@ -413,21 +410,21 @@ mod tests {
         let bpf = PwlTTF::from_values(vec![0., 0.], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 4.);
-        assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EGAMMA);
+        assert_eq!(choice.1, 2. * 10.0f64.ln() + 2. * EULER_GAMMA);
         // Very large slope 1.
         let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
-        assert_eq!(choice.1, f64::MAX + 2. * 2.0f64.ln() + 2. * EGAMMA);
+        assert_eq!(choice.1, f64::MAX + 2. * 2.0f64.ln() + 2. * EULER_GAMMA);
         // Very large slope 2.
         let bpf = PwlTTF::from_values(vec![f64::MIN, f64::MAX, f64::MIN], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 10.);
-        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EGAMMA);
+        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_GAMMA);
         // Very large slope 3.
         let bpf = PwlTTF::from_values(vec![f64::MAX, f64::MIN, f64::MAX], 0., 10.);
         let choice = model.get_continuous_choice(bpf).unwrap();
         assert_eq!((choice.0)(), 0.);
-        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EGAMMA);
+        assert_eq!(choice.1, f64::MAX + 2. * 3.0f64.ln() + 2. * EULER_GAMMA);
     }
 }
