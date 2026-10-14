@@ -17,6 +17,8 @@
 //! Everything related to simulations.
 pub mod results;
 
+use std::fmt::Display;
+use std::hash::Hash;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -38,7 +40,7 @@ use crate::mode::trip::results::AggregateTripResults;
 use crate::mode::{AggregateConstantResults, AggregateModeResults, Mode, ModeResults};
 use crate::network::road_network::node_order::NodeOrderCache;
 use crate::network::road_network::skim::EAAllocation;
-use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkWeights};
+use crate::network::{NetworkPreprocessingData, NetworkSkim, NetworkState, NetworkWeights};
 use crate::population::agent_index;
 use crate::progress_bar::MetroProgressBar;
 use crate::report;
@@ -59,16 +61,34 @@ fn iteration_results_filename() -> PathBuf {
     .collect()
 }
 
-/// Runs the simulation.
-pub fn run() -> Result<()> {
+/// What a run of the simulator computes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RunMode {
+    /// Full day-to-day simulation.
+    Simulation,
+    /// Pre-day choices of the first iteration only (`only_compute_decisions` parameter).
+    OnlyDecisions,
+}
+
+/// Returns the [RunMode] defined by the parameters.
+fn run_mode() -> RunMode {
     if crate::parameters::only_compute_decisions() {
-        compute_and_store_choices()
+        RunMode::OnlyDecisions
     } else {
-        run_impl()
+        RunMode::Simulation
     }
 }
 
-fn run_impl() -> Result<()> {
+/// Runs the simulation.
+pub fn run() -> Result<()> {
+    match run_mode() {
+        RunMode::Simulation => run_full_simulation(),
+        RunMode::OnlyDecisions => compute_and_store_choices(),
+    }
+}
+
+/// Runs the full day-to-day simulation, until a stopping criterion is met.
+fn run_full_simulation() -> Result<()> {
     // The previous iteration_results file need to be removed if it exists.
     let filename = iteration_results_filename();
     if filename.is_file() {
@@ -115,24 +135,11 @@ fn run_impl() -> Result<()> {
             info!("Done");
             break;
         }
-        // Record how much the expected travel times changed, so that the node order of the
-        // contraction hierarchies is re-computed once they drifted too much.
-        if let (Some(weights), Some(new_weights)) = (
-            iteration_output
-                .iteration_results
-                .exp_weights
-                .road_network(),
-            iteration_output
-                .iteration_results
-                .new_exp_weights
-                .road_network(),
-        ) {
-            node_orders.add_drift(
-                weights,
-                new_weights,
-                crate::network::road_network::parameters::node_order_reuse_threshold(),
-            );
-        }
+        record_weights_drift(
+            &mut node_orders,
+            &iteration_output.iteration_results.exp_weights,
+            &iteration_output.iteration_results.new_exp_weights,
+        );
         (exp_weights, prev_sim_weights, prev_agent_results) = (
             iteration_output.iteration_results.new_exp_weights,
             Some(iteration_output.iteration_results.sim_weights),
@@ -141,6 +148,22 @@ fn run_impl() -> Result<()> {
         iteration_counter += 1;
     }
     Ok(())
+}
+
+/// Records how much the expected travel times changed from `old` to `new` weights, so that the
+/// node order of the contraction hierarchies is re-computed once they drifted too much.
+fn record_weights_drift(
+    node_orders: &mut NodeOrderCache,
+    old: &NetworkWeights,
+    new: &NetworkWeights,
+) {
+    if let (Some(weights), Some(new_weights)) = (old.road_network(), new.road_network()) {
+        node_orders.add_drift(
+            weights,
+            new_weights,
+            crate::network::road_network::parameters::node_order_reuse_threshold(),
+        );
+    }
 }
 
 /// Compute everything that can be computed before the first iteration of the simulation and
@@ -181,8 +204,14 @@ pub fn run_iteration(
         )
     })?;
     info!("Running supply model");
-    let (sim_weights, t3) =
-        record_time(|| run_within_day_model(&mut agent_results, &skims, preprocess_data))?;
+    let (sim_weights, t3) = record_time(|| {
+        run_within_day_model(
+            &mut agent_results,
+            &skims,
+            preprocess_data,
+            crate::network::blank_state(),
+        )
+    })?;
     info!("Running learning model");
     let (new_exp_weights, t4) = record_time(|| {
         Ok(run_day_to_day_model(
@@ -286,18 +315,23 @@ pub fn run_pre_day_model(
     Ok(AgentResults::from_vec(results))
 }
 
-/// Runs the within-day model, using the given [AgentResults] and [NetworkSkim].
-/// Returns the resulting [NetworkWeights] and [AgentResults].
+/// Runs the within-day model, using the given [AgentResults] and [NetworkSkim], starting from the
+/// given initial [NetworkState] (e.g., [crate::network::blank_state]).
+/// Returns the resulting [NetworkWeights].
 ///
 /// In the within-day model, the movements of agents and vehicles on the network is simulated,
 /// given their pre-day choices.
+///
+/// The `agent_results` must be the fresh output of the pre-day model: they are completed in place
+/// with the simulated results, and the expected routes are moved out of them. To simulate the same
+/// pre-day choices several times, run the within-day model on clones of the pre-day results.
 pub fn run_within_day_model(
     agent_results: &mut AgentResults,
     skims: &NetworkSkim,
     preprocess_data: &PreprocessingData,
+    mut state: NetworkState,
 ) -> Result<NetworkWeights> {
     debug!("Initializing variables");
-    let mut state = crate::network::blank_state();
     let mut events = agent_results.get_event_queue();
     let mut nb_events = 0;
     info!("Executing events");
@@ -494,37 +528,38 @@ fn check_validity() -> Result<()> {
         let destinations: HashSet<_> = crate::population::all_road_trips_destinations();
         let road_network_nodes: HashSet<_> =
             crate::network::road_network::iter_original_node_ids().collect();
-        let invalid_origins: HashSet<_> = origins.difference(&road_network_nodes).collect();
-        if !invalid_origins.is_empty() {
-            let invalid_origins_as_vec: Vec<_> = invalid_origins
-                .into_iter()
-                .map(|n| format!("{}", n))
-                .collect();
-            let invalid_ids = if invalid_origins_as_vec.len() > 10 {
-                format!("{}, ...", invalid_origins_as_vec[..10].join(", "))
-            } else {
-                invalid_origins_as_vec.join(", ")
-            };
-            let msg =
-            "The following node ids are used as trip origin but are not part of the road network";
-            bail!("{msg}: {invalid_ids}");
-        }
-        let invalid_destinations: HashSet<_> =
-            destinations.difference(&road_network_nodes).collect();
-        if !invalid_destinations.is_empty() {
-            let invalid_destinations_as_vec: Vec<_> = invalid_destinations
-                .into_iter()
-                .map(|n| format!("{}", n))
-                .collect();
-            let invalid_ids = if invalid_destinations_as_vec.len() > 10 {
-                format!("{}, ...", invalid_destinations_as_vec[..10].join(", "))
-            } else {
-                invalid_destinations_as_vec.join(", ")
-            };
-            let msg = "The following node ids are used as trip destination \
-                   but are not part of the road network";
-            bail!("{msg}: {invalid_ids}");
-        }
+        check_ids_exist(
+            &origins,
+            &road_network_nodes,
+            "The following node ids are used as trip origin but are not part of the road network",
+        )?;
+        check_ids_exist(
+            &destinations,
+            &road_network_nodes,
+            "The following node ids are used as trip destination \
+            but are not part of the road network",
+        )?;
+    }
+    Ok(())
+}
+
+/// Returns an error if some of the `used` ids are not in the set of `valid` ids.
+///
+/// The error message is `msg`, followed by the invalid ids (the first 10 only).
+pub(crate) fn check_ids_exist<T: Display + Eq + Hash>(
+    used: &HashSet<T>,
+    valid: &HashSet<T>,
+    msg: &str,
+) -> Result<()> {
+    let invalid: HashSet<_> = used.difference(valid).collect();
+    if !invalid.is_empty() {
+        let invalid_as_vec: Vec<_> = invalid.into_iter().map(|n| format!("{}", n)).collect();
+        let invalid_ids = if invalid_as_vec.len() > 10 {
+            format!("{}, ...", invalid_as_vec[..10].join(", "))
+        } else {
+            invalid_as_vec.join(", ")
+        };
+        bail!("{msg}: {invalid_ids}");
     }
     Ok(())
 }
@@ -536,26 +571,14 @@ pub fn compute_and_store_choices() -> Result<()> {
     let skims =
         crate::network::compute_skims(&weights, &preprocess_data.network, &mut node_orders)?;
     info!("Running demand model");
-    let bp = MetroProgressBar::new(crate::population::nb_agents());
-    let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(
-        crate::population::agents()
-            .par_iter()
-            .panic_fuse()
-            .map_init(EAAllocation::default, |alloc, agent| {
-                bp.inc();
-                agent.make_pre_day_choice(
-                    &weights,
-                    &skims,
-                    &preprocess_data,
-                    None,
-                    true,
-                    &bp,
-                    alloc,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    );
-    bp.finish();
+    let agent_results = run_pre_day_model(
+        &weights,
+        &skims,
+        &preprocess_data,
+        None,
+        crate::parameters::init_iteration_counter(),
+    )?;
+    let mut pre_day_agent_results = PreDayAgentResults::from_agent_results(agent_results.0);
     // At this point, we have the pre-day agent results but the route, route length and route
     // free-flow travel time is empty. We compute them now (if `pre_compute_route` is `true`).
     if let Some(rn_weights) = weights.road_network() {
@@ -603,4 +626,31 @@ fn record_time<Res>(func: impl FnOnce() -> Result<Res>) -> Result<(Res, Duration
     let now = Instant::now();
     let result = func()?;
     Ok((result, now.elapsed()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_ids_exist_test() {
+        let valid: HashSet<i64> = (0..5).collect();
+        let used: HashSet<i64> = (0..3).collect();
+        assert!(check_ids_exist(&used, &valid, "Invalid ids").is_ok());
+        let used: HashSet<i64> = (3..7).collect();
+        let msg = check_ids_exist(&used, &valid, "Invalid ids")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg == "Invalid ids: 5, 6" || msg == "Invalid ids: 6, 5",
+            "{msg}"
+        );
+        // Only the first 10 invalid ids are printed.
+        let used: HashSet<i64> = (0..20).collect();
+        let msg = check_ids_exist(&used, &valid, "Invalid ids")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.ends_with(", ..."), "{msg}");
+        assert_eq!(msg.matches(", ").count(), 10, "{msg}");
+    }
 }

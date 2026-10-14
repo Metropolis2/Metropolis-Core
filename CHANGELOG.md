@@ -14,6 +14,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   and write CSV / Parquet / JSON files, the `MetroId` type and the fixed-seed hash maps.
 - [DEV] Columns of the input files are read through typed functions instead of macros.
 - [DEV] Refactor road network structs and functions in preparation for capacity calibration.
+- [DEV] Refactor simulation runs in preparation for capacity calibration.
 
 ## [1.5.0] - 2026-09-18
 
