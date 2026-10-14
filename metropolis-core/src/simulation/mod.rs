@@ -221,12 +221,14 @@ pub fn run_iteration(
     })?;
     info!("Running supply model");
     let (sim_weights, t3) = record_time(|| {
-        run_within_day_model(
+        let state = run_within_day_model(
             &mut agent_results,
             &skims,
             preprocess_data,
             crate::network::blank_state(),
-        )
+        )?;
+        debug!("Computing network weights");
+        Ok(state.into_weights(&preprocess_data.network))
     })?;
     info!("Running learning model");
     let (new_exp_weights, t4) = record_time(|| {
@@ -333,7 +335,8 @@ pub fn run_pre_day_model(
 
 /// Runs the within-day model, using the given [AgentResults] and [NetworkSkim], starting from the
 /// given initial [NetworkState] (e.g., [crate::network::blank_state]).
-/// Returns the resulting [NetworkWeights].
+/// Returns the final [NetworkState] (use [NetworkState::into_weights] to get the simulated
+/// [NetworkWeights]).
 ///
 /// In the within-day model, the movements of agents and vehicles on the network is simulated,
 /// given their pre-day choices.
@@ -346,7 +349,7 @@ pub fn run_within_day_model(
     skims: &NetworkSkim,
     preprocess_data: &PreprocessingData,
     mut state: NetworkState,
-) -> Result<NetworkWeights> {
+) -> Result<NetworkState> {
     debug!("Initializing variables");
     let mut events = agent_results.get_event_queue();
     let mut nb_events = 0;
@@ -378,10 +381,7 @@ pub fn run_within_day_model(
     bp.finish();
     debug_assert_eq!(agent_results.len(), agent_results.nb_agents_arrived());
     debug!("Successfully executed {} events", nb_events);
-    // Compute network weights.
-    debug!("Computing network weights");
-    let weights = state.into_weights(&preprocess_data.network);
-    Ok(weights)
+    Ok(state)
 }
 
 /// Runs the day-to-day model, using the given old [NetworkWeights] (from the previous
@@ -485,13 +485,24 @@ fn get_update_vector(iteration_counter: u32) -> Vec<bool> {
 
 /// Initializes the simulation before running it.
 fn initialize() -> Result<(PreprocessingData, NetworkWeights, NodeOrderCache)> {
-    // Initialize the global rayon thread pool.
+    init_thread_pool();
+    // Check that the simulation is valid.
+    check_validity()?;
+    prepare()
+}
+
+/// Initializes the global rayon thread pool.
+pub(crate) fn init_thread_pool() {
     rayon::ThreadPoolBuilder::new()
         .num_threads(crate::parameters::nb_threads())
         .build_global()
         .unwrap();
-    // Check that the simulation is valid.
-    check_validity()?;
+}
+
+/// Pre-processes the simulation and returns the [PreprocessingData], the initial
+/// [NetworkWeights] (input road-network conditions, or free-flow conditions) and the cached node
+/// orders.
+pub(crate) fn prepare() -> Result<(PreprocessingData, NetworkWeights, NodeOrderCache)> {
     // Pre-process the simulation.
     let mut preprocess_data = preprocess()?;
     // The pre-processing built a contraction hierarchy for the free-flow travel times; its node

@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! The part of the network dedicated to road vehicles.
+pub(crate) mod arrival_curve;
 pub mod node_order;
 pub mod parameters;
 pub mod preprocess;
@@ -458,6 +459,25 @@ impl BottleneckFlows {
                 .map(|e| e.bottleneck_flow.clone())
                 .collect(),
         )
+    }
+
+    /// Returns the bottleneck flows of the given edges (ordered by [EdgeIndex]), where the edges
+    /// with `Some` capacity per lane get that constant capacity (over all their lanes) and the
+    /// edges with `None` keep their input flow.
+    pub(crate) fn from_capacities(
+        edges: &[&RoadEdge],
+        capacities: impl IntoIterator<Item = Option<FlowPerLane>>,
+    ) -> Self {
+        let flows: Vec<_> = edges
+            .iter()
+            .zip(capacities)
+            .map(|(e, c)| {
+                c.map(|c| EdgeFlow::from(c * e.segment.lanes))
+                    .or_else(|| e.bottleneck_flow.clone())
+            })
+            .collect();
+        debug_assert_eq!(flows.len(), edges.len());
+        Self(flows)
     }
 
     /// Returns the total bottleneck flow of the given edge (`None` if the flow is infinite).
@@ -972,6 +992,33 @@ mod tests {
         parameters::Parameters,
         units::{Interval, NonNegativeSeconds, PCE},
     };
+
+    #[test]
+    fn bottleneck_flows_from_capacities_test() {
+        let edge = |flow: Option<f64>| {
+            RoadEdge::new(
+                1,
+                MetersPerSecond::new_unchecked(10.),
+                NonNegativeMeters::new_unchecked(100.),
+                Lanes::new_unchecked(2.0),
+                SpeedDensityFunction::FreeFlow,
+                flow.map(FlowPerLane::new_unchecked),
+                NonNegativeSeconds::ZERO,
+                true,
+            )
+        };
+        let (e0, e1, e2) = (edge(Some(0.5)), edge(Some(0.5)), edge(None));
+        let flows = BottleneckFlows::from_capacities(
+            &[&e0, &e1, &e2],
+            [Some(FlowPerLane::new_unchecked(0.25)), None, None],
+        );
+        let flow_of = |i: usize| flows.get(edge_index(i)).map(|f| f.current_flow);
+        // The capacity per lane is multiplied by the number of lanes.
+        assert_eq!(flow_of(0), Some(Flow::new_unchecked(0.5)));
+        // The edges without a capacity keep their input flow (finite or infinite).
+        assert_eq!(flow_of(1), Some(Flow::new_unchecked(1.0)));
+        assert_eq!(flow_of(2), None);
+    }
 
     #[test]
     fn get_travel_time_test() {

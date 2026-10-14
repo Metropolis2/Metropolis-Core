@@ -25,6 +25,7 @@ use num_traits::{ConstZero, Zero};
 use petgraph::graph::{DiGraph, EdgeIndex};
 use ttf::{PwlXYF, TTF, XYF};
 
+use super::arrival_curve::{ArrivalCurve, ArrivalCurves};
 use super::vehicle::Vehicle;
 use super::weights::RoadNetworkWeights;
 use super::{
@@ -220,6 +221,8 @@ struct EdgeEntryState {
     available_length: Option<AnyMeters>,
     /// Indicates the status of the edge entry (open, closed or pending).
     status: EdgeEntryStatus,
+    /// Cumulative arrival curve at the edge entry, or `None` if the arrivals are not recorded.
+    arrivals: Option<ArrivalCurve>,
 }
 
 impl EdgeEntryState {
@@ -239,6 +242,7 @@ impl EdgeEntryState {
             bottleneck: Bottleneck::new(flow),
             available_length,
             status: EdgeEntryStatus::Open,
+            arrivals: None,
         }
     }
 
@@ -287,6 +291,9 @@ impl EdgeEntryState {
         vehicle_pce: PCE,
         next_event: Box<VehicleEvent>,
     ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
+        if let Some(arrivals) = self.arrivals.as_mut() {
+            arrivals.push(current_time, vehicle_pce);
+        }
         match (self.is_open(), self.is_full()) {
             (true, false) => {
                 // Free to go.
@@ -730,6 +737,35 @@ impl RoadNetworkState {
             warnings: 0,
             backward_wave_speed: super::parameters::backward_wave_speed(),
         }
+    }
+
+    /// Enables the recording of the cumulative arrival curves at the entry of the given edges.
+    ///
+    /// The edges whose entry bottleneck has an infinite flow are skipped (vehicles are never
+    /// delayed there).
+    pub(crate) fn record_arrivals(&mut self, edges: impl IntoIterator<Item = EdgeIndex>) {
+        for edge_index in edges {
+            let entry = &mut self.graph[edge_index].entry;
+            if entry.bottleneck.flow.is_some() {
+                entry.arrivals = Some(ArrivalCurve::default());
+            }
+        }
+    }
+
+    /// Moves out the arrival curves recorded at the edge entries.
+    pub(crate) fn take_arrival_curves(&mut self) -> ArrivalCurves {
+        ArrivalCurves(
+            self.graph
+                .edge_weights_mut()
+                .map(|e| {
+                    let mut curve = e.entry.arrivals.take();
+                    if let Some(c) = curve.as_mut() {
+                        c.shrink_to_fit();
+                    }
+                    curve
+                })
+                .collect(),
+        )
     }
 
     /// Return a [RoadNetworkWeights] (i.e., travel times) from the observations recorded in the

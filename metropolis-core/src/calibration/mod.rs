@@ -25,8 +25,10 @@ use self::parameters::{IdValue, InitialCapacities};
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::DepartureTimeModel;
 use crate::mode::Mode;
+use crate::network::road_network::arrival_curve::ArrivalCurves;
 use crate::network::road_network::vehicle::Vehicle;
-use crate::network::road_network::{OriginalEdgeId, RoadEdge};
+use crate::network::road_network::{BottleneckFlows, OriginalEdgeId, RoadEdge, RoadNetworkState};
+use crate::network::NetworkState;
 use crate::population::Agent;
 use crate::simulation::{check_ids_exist, format_ids};
 use crate::units::*;
@@ -37,12 +39,17 @@ const TIME_TOLERANCE: f64 = 0.01;
 
 /// Runs the road-capacity calibration.
 pub fn run() -> Result<()> {
+    crate::simulation::init_thread_pool();
     crate::simulation::check_validity()?;
     let params = crate::parameters::capacity_calibration()
         .expect("The capacity-calibration parameters are not set");
     check_population(crate::population::agents())?;
     let edges: Vec<_> = crate::network::road_network::iter_edges().collect();
     let categories = EdgeCategories::new(&edges, &params.initial_capacities)?;
+    check_bottleneck_model(
+        &edges,
+        crate::network::road_network::parameters::constrain_inflow(),
+    )?;
     let vehicle = calibration_vehicle(
         crate::network::road_network::vehicles(),
         params.vehicle_type.as_ref(),
@@ -59,7 +66,91 @@ pub fn run() -> Result<()> {
         vehicle.id
     );
     categories.log_summary();
+    simulate_day(
+        &edges,
+        &categories,
+        &categories.initial_capacities,
+        &target_routes,
+    )?;
     bail!("The capacity-calibration loop is not implemented yet")
+}
+
+/// Checks that the bottleneck model is supported by the capacity calibration, which models the
+/// queues at the edge entries only.
+fn check_bottleneck_model(edges: &[&RoadEdge], constrain_inflow: bool) -> Result<()> {
+    if !constrain_inflow {
+        bail!(
+            "The capacity calibration requires the road-network parameter `constrain_inflow` to \
+            be `true` (only the queues at the edge entries are modeled)"
+        );
+    }
+    let no_overtaking: Vec<_> = edges
+        .iter()
+        .filter(|e| !e.overtaking_is_allowed())
+        .map(|e| e.id())
+        .collect();
+    if !no_overtaking.is_empty() {
+        warn!(
+            "{} edges do not allow overtaking: a vehicle waiting to enter the next edge blocks \
+            their exit, which the capacity calibration does not model: {}",
+            no_overtaking.len(),
+            format_ids(no_overtaking),
+        );
+    }
+    Ok(())
+}
+
+/// Simulates one day with the given capacities (by category): runs the pre-day model with the
+/// initial network conditions, then the within-day model, recording the arrival curves at the
+/// entry of the edges of the target routes.
+fn simulate_day(
+    edges: &[&RoadEdge],
+    categories: &EdgeCategories,
+    capacities: &[FlowPerLane],
+    target_routes: &[TargetRoute],
+) -> Result<ArrivalCurves> {
+    let (preprocess_data, weights, mut node_orders) = crate::simulation::prepare()?;
+    info!("Computing skims");
+    let skims =
+        crate::network::compute_skims(&weights, &preprocess_data.network, &mut node_orders)?;
+    info!("Running demand model");
+    let mut agent_results = crate::simulation::run_pre_day_model(
+        &weights,
+        &skims,
+        &preprocess_data,
+        None,
+        crate::parameters::init_iteration_counter(),
+    )?;
+    let target_route_edges: HashSet<_> = target_routes
+        .iter()
+        .flat_map(|r| r.path.iter())
+        .map(|&id| crate::network::road_network::edge_index_of(id))
+        .collect();
+    let mut rn_state = RoadNetworkState::init(&categories.bottleneck_flows(edges, capacities));
+    rn_state.record_arrivals(target_route_edges.iter().copied());
+    info!("Running supply model");
+    let mut state = crate::simulation::run_within_day_model(
+        &mut agent_results,
+        &skims,
+        &preprocess_data,
+        NetworkState::new(Some(rn_state)),
+    )?;
+    let curves = state
+        .get_mut_road_network()
+        .expect("The road-network state is set")
+        .take_arrival_curves();
+    curves.log_summary();
+    let nb_infinite = target_route_edges
+        .iter()
+        .filter(|&&e| curves.get(e).is_none())
+        .count();
+    if nb_infinite > 0 {
+        info!(
+            "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
+            arrival curve is recorded)"
+        );
+    }
+    Ok(curves)
 }
 
 /// A route with an observed travel time, that the calibrated capacities must reproduce.
@@ -275,6 +366,24 @@ impl EdgeCategories {
             initial_capacities,
             edge_categories,
         })
+    }
+
+    /// Returns the capacity per lane of each edge (`None` if the edge is not calibrated), given
+    /// the capacity of each category.
+    fn edge_capacities<'a>(
+        &'a self,
+        capacities: &'a [FlowPerLane],
+    ) -> impl Iterator<Item = Option<FlowPerLane>> + 'a {
+        debug_assert_eq!(capacities.len(), self.ids.len());
+        self.edge_categories
+            .iter()
+            .map(|cat| cat.map(|i| capacities[i]))
+    }
+
+    /// Returns the bottleneck flows of the edges (ordered by `EdgeIndex`), given the capacity of
+    /// each category (the edges that are not calibrated keep their input flow).
+    fn bottleneck_flows(&self, edges: &[&RoadEdge], capacities: &[FlowPerLane]) -> BottleneckFlows {
+        BottleneckFlows::from_capacities(edges, self.edge_capacities(capacities))
     }
 
     /// Logs the number of edges and the initial capacity of each category.
@@ -590,6 +699,43 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(msg.contains("1 edges have another function: 1"), "{msg}");
+    }
+
+    #[test]
+    fn edge_capacities_test() {
+        // Single category.
+        let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
+        let e1 = edge(1, "FreeFlow", None, false, None);
+        let edges = [&e0, &e1];
+        let categories =
+            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let capacities: Vec<_> = categories.edge_capacities(&[capacity(0.3)]).collect();
+        assert_eq!(capacities, vec![Some(capacity(0.3)); 2]);
+
+        // With categories: the edges without a category are not calibrated.
+        let e0 = edge(0, "FreeFlow", Some(1.0), false, Some("b"));
+        let e1 = edge(1, "FreeFlow", Some(1.0), false, None);
+        let e2 = edge(2, "FreeFlow", None, false, Some("a"));
+        let edges = [&e0, &e1, &e2];
+        let categories =
+            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let capacities: Vec<_> = categories
+            .edge_capacities(&[capacity(0.3), capacity(0.4)])
+            .collect();
+        assert_eq!(
+            capacities,
+            vec![Some(capacity(0.3)), None, Some(capacity(0.4))]
+        );
+    }
+
+    #[test]
+    fn check_bottleneck_model_test() {
+        let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
+        assert!(check_bottleneck_model(&[&e0], true).is_ok());
+        let msg = check_bottleneck_model(&[&e0], false)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("`constrain_inflow`"), "{msg}");
     }
 
     fn vehicle(id: i64) -> Vehicle {

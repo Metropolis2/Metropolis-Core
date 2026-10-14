@@ -148,7 +148,8 @@ pub struct NetworkState {
 }
 
 impl NetworkState {
-    const fn new(road_network: Option<RoadNetworkState>) -> Self {
+    /// Creates a new [NetworkState] from the given road-network state (if any).
+    pub(crate) const fn new(road_network: Option<RoadNetworkState>) -> Self {
         NetworkState { road_network }
     }
 
