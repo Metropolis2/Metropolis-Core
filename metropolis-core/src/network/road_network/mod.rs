@@ -121,6 +121,11 @@ pub(crate) fn edge_index_of(original_id: OriginalEdgeId) -> EdgeIndex {
         .expect("Invalid original edge id")
 }
 
+/// Returns an Iterator over the [RoadEdge]s of the graph, ordered by [EdgeIndex].
+pub(crate) fn iter_edges() -> impl Iterator<Item = &'static RoadEdge> {
+    graph().edge_weights()
+}
+
 /// Returns an Iterator over the [OriginalEdgeId] of the graph.
 pub(crate) fn iter_original_edge_ids() -> impl Iterator<Item = OriginalEdgeId> {
     graph().edge_map.keys().copied()
@@ -193,7 +198,8 @@ pub(crate) fn route_length_diff(
         .sum::<NonNegativeMeters>()
 }
 
-fn vehicles() -> &'static [Vehicle] {
+/// Returns the [Vehicle]s of the road network.
+pub(crate) fn vehicles() -> &'static [Vehicle] {
     &read_global().vehicles
 }
 
@@ -529,6 +535,9 @@ pub struct RoadEdge {
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
     overtaking: bool,
+    /// Category of the edge, used by the capacity calibration (`None` if the edge has no
+    /// category).
+    category: Option<MetroId>,
 }
 
 impl RoadEdge {
@@ -557,6 +566,7 @@ impl RoadEdge {
             },
             bottleneck_flow: bottleneck_flow.map(|f| EdgeFlow::from(f * lanes)),
             overtaking,
+            category: None,
         }
     }
 
@@ -578,6 +588,7 @@ impl RoadEdge {
         bottleneck_times: Option<Vec<f64>>,
         constant_travel_time: Option<f64>,
         overtaking: Option<bool>,
+        category: Option<MetroId>,
     ) -> Result<Self> {
         let base_speed =
             MetersPerSecond::try_from(speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
@@ -631,7 +642,36 @@ impl RoadEdge {
             },
             bottleneck_flow,
             overtaking,
+            category,
         })
+    }
+
+    /// Returns the original id of the edge.
+    pub(crate) const fn id(&self) -> OriginalEdgeId {
+        self.id
+    }
+
+    /// Returns the category of the edge (`None` if the edge has no category).
+    pub(crate) const fn category(&self) -> Option<MetroId> {
+        self.category
+    }
+
+    /// Returns `true` if the running part of the edge always has free-flow speed (i.e., the
+    /// speed-density function is [SpeedDensityFunction::FreeFlow]).
+    pub(crate) const fn has_free_flow_speed(&self) -> bool {
+        matches!(self.segment.speed_density, SpeedDensityFunction::FreeFlow)
+    }
+
+    /// Returns `true` if the edge has a bottleneck flow in the input (i.e., it is not infinite).
+    pub(crate) const fn has_bottleneck_flow(&self) -> bool {
+        self.bottleneck_flow.is_some()
+    }
+
+    /// Returns `true` if the input bottleneck flow of the edge is time-dependent.
+    pub(crate) fn has_time_dependent_flow(&self) -> bool {
+        self.bottleneck_flow
+            .as_ref()
+            .is_some_and(|flow| flow.values.len() > 1)
     }
 
     /// Returns `true` if vehicles are allowed to overtake each other at the edge's  exit
@@ -946,6 +986,7 @@ mod tests {
             },
             bottleneck_flow: None,
             overtaking: false,
+            category: None,
         };
         let vehicle = Vehicle::new(
             1,

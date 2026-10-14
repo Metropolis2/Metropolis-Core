@@ -19,8 +19,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{bail, Result};
+use log::warn;
 use serde_derive::Deserialize;
 
+use crate::calibration::parameters::CapacityCalibrationParameters;
 use crate::learning::LearningModel;
 use crate::network::road_network::parameters::RoadNetworkParameters;
 use crate::units::{Interval, MetroPositiveNum, PositiveSeconds};
@@ -103,6 +105,10 @@ pub(crate) fn only_compute_decisions() -> bool {
     read_global().only_compute_decisions
 }
 
+pub(crate) fn capacity_calibration() -> Option<&'static CapacityCalibrationParameters> {
+    read_global().capacity_calibration.as_ref()
+}
+
 const fn default_iteration_counter() -> u32 {
     1
 }
@@ -147,6 +153,8 @@ pub struct InputFiles {
     pub(crate) vehicle_types: Option<PathBuf>,
     #[serde(default)]
     pub(crate) road_network_conditions: Option<PathBuf>,
+    #[serde(default)]
+    pub(crate) target_routes: Option<PathBuf>,
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
@@ -204,6 +212,9 @@ pub struct Parameters {
     /// them and stop immediately.
     #[serde(default)]
     pub only_compute_decisions: bool,
+    /// If defined, the road-capacity calibration is run instead of the simulation.
+    #[serde(default)]
+    pub capacity_calibration: Option<CapacityCalibrationParameters>,
 }
 
 impl Default for Parameters {
@@ -222,6 +233,7 @@ impl Default for Parameters {
             nb_threads: 0,
             saving_format: Default::default(),
             only_compute_decisions: false,
+            capacity_calibration: None,
         }
     }
 }
@@ -232,6 +244,19 @@ pub(crate) fn check_validity() -> Result<()> {
     }
     if has_road_network_parameters() {
         road_network().check_validity()?;
+    }
+    if capacity_calibration().is_some() {
+        if !crate::network::has_road_network() {
+            bail!("A road network is mandatory for the capacity calibration.");
+        }
+        if input_files().target_routes.is_none() {
+            bail!("The input file `target_routes` is mandatory for the capacity calibration.");
+        }
+    } else if input_files().target_routes.is_some() {
+        warn!(
+            "The input file `target_routes` is ignored because the parameter \
+            `capacity_calibration` is not defined"
+        );
     }
     Ok(())
 }

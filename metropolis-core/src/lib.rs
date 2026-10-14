@@ -17,6 +17,7 @@
 //!  Metropolis-Core: the Rust-based core of the METROPOLIS2 simulator.
 #![doc(html_no_source)]
 
+pub mod calibration;
 pub mod event;
 pub mod io;
 pub mod learning;

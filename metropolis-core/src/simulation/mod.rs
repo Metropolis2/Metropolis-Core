@@ -68,22 +68,38 @@ enum RunMode {
     Simulation,
     /// Pre-day choices of the first iteration only (`only_compute_decisions` parameter).
     OnlyDecisions,
+    /// Road-capacity calibration (`capacity_calibration` parameter).
+    CapacityCalibration,
 }
 
 /// Returns the [RunMode] defined by the parameters.
-fn run_mode() -> RunMode {
-    if crate::parameters::only_compute_decisions() {
-        RunMode::OnlyDecisions
-    } else {
-        RunMode::Simulation
+fn run_mode() -> Result<RunMode> {
+    run_mode_from(
+        crate::parameters::only_compute_decisions(),
+        crate::parameters::capacity_calibration().is_some(),
+    )
+}
+
+/// Returns the [RunMode] given the `only_compute_decisions` parameter and whether the
+/// `capacity_calibration` parameter is defined.
+fn run_mode_from(only_compute_decisions: bool, capacity_calibration: bool) -> Result<RunMode> {
+    match (only_compute_decisions, capacity_calibration) {
+        (false, false) => Ok(RunMode::Simulation),
+        (true, false) => Ok(RunMode::OnlyDecisions),
+        (false, true) => Ok(RunMode::CapacityCalibration),
+        (true, true) => bail!(
+            "The parameters `only_compute_decisions` and `capacity_calibration` cannot be used \
+            together"
+        ),
     }
 }
 
 /// Runs the simulation.
 pub fn run() -> Result<()> {
-    match run_mode() {
+    match run_mode()? {
         RunMode::Simulation => run_full_simulation(),
         RunMode::OnlyDecisions => compute_and_store_choices(),
+        RunMode::CapacityCalibration => crate::calibration::run(),
     }
 }
 
@@ -519,7 +535,7 @@ fn initialize() -> Result<(PreprocessingData, NetworkWeights, NodeOrderCache)> {
 
 /// Performs some validity checks that can only be done when all the simulation input has been
 /// imported.
-fn check_validity() -> Result<()> {
+pub(crate) fn check_validity() -> Result<()> {
     // Check the validity of the simulation parameters.
     crate::parameters::check_validity()?;
     if crate::network::has_road_network() {
@@ -553,15 +569,19 @@ pub(crate) fn check_ids_exist<T: Display + Eq + Hash>(
 ) -> Result<()> {
     let invalid: HashSet<_> = used.difference(valid).collect();
     if !invalid.is_empty() {
-        let invalid_as_vec: Vec<_> = invalid.into_iter().map(|n| format!("{}", n)).collect();
-        let invalid_ids = if invalid_as_vec.len() > 10 {
-            format!("{}, ...", invalid_as_vec[..10].join(", "))
-        } else {
-            invalid_as_vec.join(", ")
-        };
-        bail!("{msg}: {invalid_ids}");
+        bail!("{msg}: {}", format_ids(invalid));
     }
     Ok(())
+}
+
+/// Formats the given ids as a comma-separated list, keeping only the first 10 ids.
+pub(crate) fn format_ids<T: Display>(ids: impl IntoIterator<Item = T>) -> String {
+    let ids: Vec<_> = ids.into_iter().map(|id| format!("{}", id)).collect();
+    if ids.len() > 10 {
+        format!("{}, ...", ids[..10].join(", "))
+    } else {
+        ids.join(", ")
+    }
 }
 
 /// Computes the pre-day choices of the simulation.
@@ -631,6 +651,17 @@ fn record_time<Res>(func: impl FnOnce() -> Result<Res>) -> Result<(Res, Duration
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_mode_test() {
+        assert_eq!(run_mode_from(false, false).unwrap(), RunMode::Simulation);
+        assert_eq!(run_mode_from(true, false).unwrap(), RunMode::OnlyDecisions);
+        assert_eq!(
+            run_mode_from(false, true).unwrap(),
+            RunMode::CapacityCalibration
+        );
+        assert!(run_mode_from(true, true).is_err());
+    }
 
     #[test]
     fn check_ids_exist_test() {

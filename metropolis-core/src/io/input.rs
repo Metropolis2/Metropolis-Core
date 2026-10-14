@@ -23,6 +23,7 @@ use arrow::record_batch::RecordBatch;
 use log::info;
 use metro_io::read::{read_batch, required, Columns, GetValue};
 
+use crate::calibration::TargetRoute;
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::Leg;
 use crate::mode::Mode;
@@ -84,6 +85,13 @@ pub(crate) fn get_road_network_weights_from_file(
     let rn_weights = RoadNetworkWeights::from_values(rn_weights_vec, unique_vehicles)
         .context("Invalid road-network conditions")?;
     Ok(rn_weights)
+}
+
+/// Reads the [TargetRoute]s of the capacity calibration from a filename.
+pub(crate) fn get_target_routes_from_file(path: &Path) -> Result<Vec<TargetRoute>> {
+    info!("Reading target routes");
+    let batch = read_batch(path)?;
+    read_target_routes(batch).context("Cannot parse target routes")
 }
 
 type LegMap = HashMap<(MetroId, MetroId), Vec<Leg>>;
@@ -299,6 +307,7 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
     let bottleneck_times = columns.list_f64(&["bottleneck_times"])?;
     let constant_travel_time = columns.f64(&["constant_travel_time"])?;
     let overtaking = columns.bool(&["overtaking"])?;
+    let edge_category = columns.id(&["edge_category"])?;
     columns.warn_unused();
     let n = columns.len();
     let mut edges = Vec::with_capacity(n);
@@ -323,6 +332,7 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
             bottleneck_times.get(i),
             constant_travel_time.get(i),
             overtaking.get(i),
+            edge_category.get(i),
         )
         .with_context(|| format!("Failed to parse edge {edge_id}"))?;
         if !unique_ids.insert(edge_id) {
@@ -402,4 +412,32 @@ fn read_rn_weights(batch: RecordBatch) -> Result<RnWeightsVec> {
             Ok((vehicle_id, edge_id, departure_time, travel_time))
         })
         .collect()
+}
+
+/// Reads an arrow `RecordBatch` with target routes data and returns a `Vec` of [TargetRoute].
+fn read_target_routes(batch: RecordBatch) -> Result<Vec<TargetRoute>> {
+    let mut columns = Columns::new(batch);
+    let route_id = columns.id(&["route_id"])?;
+    let departure_time = columns.f64(&["departure_time"])?;
+    let target_tt = columns.f64(&["target_tt"])?;
+    let path = columns.id_list(&["path"])?;
+    columns.warn_unused();
+    let n = columns.len();
+    let mut routes = Vec::with_capacity(n);
+    let mut unique_ids = HashSet::with_capacity_and_hasher(n, Default::default());
+    for i in 0..n {
+        let route_id = required(route_id.get(i), "route_id")?;
+        let route = TargetRoute::from_values(
+            route_id,
+            departure_time.get(i),
+            target_tt.get(i),
+            path.get(i),
+        )
+        .with_context(|| format!("Failed to parse target route {route_id}"))?;
+        if !unique_ids.insert(route_id) {
+            bail!("Found duplicate `route_id`: {route_id}",);
+        }
+        routes.push(route);
+    }
+    Ok(routes)
 }

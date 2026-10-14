@@ -914,7 +914,8 @@ impl Flow {
 ///
 /// Multiply by [Lanes] to get the total [Flow] of a road edge.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(try_from = "f64")]
 pub struct FlowPerLane(f64);
 
 impl FlowPerLane {
