@@ -147,11 +147,9 @@ type VehicleQueue = VecDeque<QueuedVehicle>;
 /// The bottleneck is shared by the entry and the exit of the edges.
 #[derive(Clone, Debug)]
 struct Bottleneck {
-    /// Flow of the bottleneck, per lane.
+    /// Total flow of the bottleneck (over all lanes).
     /// Or `None` if the flow is infinite.
     flow: Option<EdgeFlow>,
-    /// Number of lanes of the edge.
-    lanes: Lanes,
     /// Queue of vehicles currently waiting to cross the bottleneck.
     queue: VehicleQueue,
     /// Waiting time PwlTTF function.
@@ -159,11 +157,10 @@ struct Bottleneck {
 }
 
 impl Bottleneck {
-    /// Initializes a new [Bottleneck] with the given flow (per lane) and number of lanes.
-    fn new(flow: Option<EdgeFlow>, lanes: Lanes) -> Self {
+    /// Initializes a new [Bottleneck] with the given total flow.
+    fn new(flow: Option<EdgeFlow>) -> Self {
         Self {
             flow,
-            lanes,
             queue: VehicleQueue::new(),
             waiting_time_history: WaitXYFBuilder::new(),
         }
@@ -179,7 +176,7 @@ impl Bottleneck {
     ) -> NonNegativeSeconds {
         self.flow
             .as_mut()
-            .map(|f| vehicle_pce / (f.at(current_time) * self.lanes))
+            .map(|f| vehicle_pce / f.at(current_time))
             .unwrap_or(NonNegativeSeconds::ZERO)
     }
 
@@ -239,7 +236,7 @@ impl EdgeEntryState {
             None
         };
         Self {
-            bottleneck: Bottleneck::new(flow, edge.segment.lanes()),
+            bottleneck: Bottleneck::new(flow),
             available_length,
             status: EdgeEntryStatus::Open,
         }
@@ -444,7 +441,7 @@ impl EdgeExitState {
     /// Initializes a new [EdgeExitState] for a given edge, with the given bottleneck flow.
     fn new(edge: &RoadEdge, flow: Option<&EdgeFlow>) -> Self {
         Self {
-            bottleneck: Bottleneck::new(flow.cloned(), edge.segment.lanes()),
+            bottleneck: Bottleneck::new(flow.cloned()),
             status: EdgeExitStatus::Open,
             overtaking_allowed: edge.overtaking_is_allowed(),
         }

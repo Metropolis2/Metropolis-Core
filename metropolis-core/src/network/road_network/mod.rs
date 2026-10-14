@@ -385,6 +385,8 @@ impl ThreeRegimesSpeedDensityFunction {
     }
 }
 
+/// Total bottleneck flow of an edge (over all lanes), either constant or piecewise constant over
+/// time.
 #[derive(Clone, Debug)]
 struct EdgeFlow {
     current_flow: Flow,
@@ -433,8 +435,8 @@ impl EdgeFlow {
     }
 }
 
-/// Bottleneck flow of each edge of the road network (`None` for an infinite flow), indexed by
-/// [EdgeIndex].
+/// Total bottleneck flow (over all lanes) of each edge of the road network (`None` for an infinite
+/// flow), indexed by [EdgeIndex].
 ///
 /// The flows are used to initialize a [RoadNetworkState], so that the flows simulated in the
 /// within-day model can differ from the input values stored in the global road network.
@@ -452,7 +454,7 @@ impl BottleneckFlows {
         )
     }
 
-    /// Returns the bottleneck flow of the given edge (`None` if the flow is infinite).
+    /// Returns the total bottleneck flow of the given edge (`None` if the flow is infinite).
     fn get(&self, edge: EdgeIndex) -> Option<&EdgeFlow> {
         self.0[edge.index()].as_ref()
     }
@@ -494,11 +496,6 @@ impl RoadSegmentAttributes {
         self.length
     }
 
-    /// Return the number of lanes of the edge.
-    pub(crate) const fn lanes(&self) -> Lanes {
-        self.lanes
-    }
-
     /// Return the total length of the edge that can be occupied by vehicles, i.e., the length of
     /// the edge multiplied by the number of lanes.
     pub(crate) fn total_length(&self) -> NonNegativeMeters {
@@ -523,7 +520,8 @@ pub struct RoadEdge {
     id: OriginalEdgeId,
     /// Attributes of the running part of the edge.
     segment: RoadSegmentAttributes,
-    /// Maximum flow of vehicle entering the edge (in PCE per second), as given in the input.
+    /// Maximum total flow of vehicle entering / exiting the edge (over all lanes), as given in the
+    /// input (the input flow is per lane and is multiplied by the number of lanes).
     ///
     /// This is only the default value: the flows used in the within-day model are given by the
     /// [BottleneckFlows] used to initialize the [RoadNetworkState].
@@ -535,6 +533,8 @@ pub struct RoadEdge {
 
 impl RoadEdge {
     /// Creates a new RoadEdge.
+    ///
+    /// The bottleneck flow is given per lane.
     #[expect(clippy::too_many_arguments)]
     pub fn new(
         id: i64,
@@ -542,7 +542,7 @@ impl RoadEdge {
         length: NonNegativeMeters,
         lanes: Lanes,
         speed_density: SpeedDensityFunction,
-        bottleneck_flow: Option<Flow>,
+        bottleneck_flow: Option<FlowPerLane>,
         constant_travel_time: NonNegativeSeconds,
         overtaking: bool,
     ) -> Self {
@@ -555,7 +555,7 @@ impl RoadEdge {
                 speed_density,
                 constant_travel_time,
             },
-            bottleneck_flow: bottleneck_flow.map(EdgeFlow::from),
+            bottleneck_flow: bottleneck_flow.map(|f| EdgeFlow::from(f * lanes)),
             overtaking,
         }
     }
@@ -598,15 +598,18 @@ impl RoadEdge {
         )
         .context("Failed to create speed-density function")?;
         let bottleneck_flow = if let Some(v) = bottleneck_flow {
-            let cst_flow = Flow::try_from(v)
+            let cst_flow = FlowPerLane::try_from(v)
                 .context("Value `bottleneck_flow` does not satisfy the constraints")?;
-            Some(EdgeFlow::from(cst_flow))
+            Some(EdgeFlow::from(cst_flow * lanes))
         } else if let (Some(times), Some(flows)) = (bottleneck_times, bottleneck_flows) {
             let values: Vec<_> = times
                 .into_iter()
                 .zip(flows)
                 .map(|(t, f)| -> Result<(NonNegativeSeconds, Flow)> {
-                    Ok((NonNegativeSeconds::try_from(t)?, Flow::try_from(f)?))
+                    Ok((
+                        NonNegativeSeconds::try_from(t)?,
+                        FlowPerLane::try_from(f)? * lanes,
+                    ))
                 })
                 .collect::<Result<Vec<_>>>()?;
             Some(EdgeFlow::try_from(values)?)
@@ -1072,7 +1075,7 @@ mod tests {
                     NonNegativeMeters::new_unchecked(1.0),
                     Lanes::new_unchecked(1.0),
                     SpeedDensityFunction::FreeFlow,
-                    Some(Flow::new_unchecked(1.0)),
+                    Some(FlowPerLane::new_unchecked(1.0)),
                     NonNegativeSeconds::new_unchecked(0.0),
                     true,
                 ),
@@ -1086,7 +1089,7 @@ mod tests {
                     NonNegativeMeters::new_unchecked(1.0),
                     Lanes::new_unchecked(1.0),
                     SpeedDensityFunction::FreeFlow,
-                    Some(Flow::new_unchecked(1.0)),
+                    Some(FlowPerLane::new_unchecked(1.0)),
                     NonNegativeSeconds::new_unchecked(0.0),
                     true,
                 ),

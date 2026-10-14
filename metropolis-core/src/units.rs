@@ -23,7 +23,8 @@
 //! - [Speed]: in meter per second
 //! - [ValueOfTime]: in utility per second
 //! - [PCE] (Passenger Car Equivalent): in passenger car
-//! - [Flow]: in PCE per second
+//! - [Flow]: in PCE per second (total over all lanes)
+//! - [FlowPerLane]: in PCE per second per lane
 //!
 //! Other units can be assumed but the coherence between units must be kept.
 //! For example, if one consider that lengths are expressed in miles, then speeds must be expressed
@@ -892,11 +893,31 @@ impl PCE {
 }
 
 /// Representation of a positive value expressed in PCE per second.
+///
+/// For a road edge, this is the total flow over all its lanes (see [FlowPerLane] for the flow
+/// of a single lane).
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Flow(f64);
 
 impl Flow {
+    const fn lower_bound() -> Self {
+        Self(f64::MIN_POSITIVE)
+    }
+
+    const fn upper_bound() -> Self {
+        Self(f64::MAX)
+    }
+}
+
+/// Representation of a positive value expressed in PCE per second per lane.
+///
+/// Multiply by [Lanes] to get the total [Flow] of a road edge.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct FlowPerLane(f64);
+
+impl FlowPerLane {
     const fn lower_bound() -> Self {
         Self(f64::MIN_POSITIVE)
     }
@@ -919,6 +940,7 @@ impl_traits_on_positive_unit!(
     MetersPerSecond,
     PCE,
     Flow,
+    FlowPerLane,
     AnyNum,
     PositiveNum,
     NonNegativeNum,
@@ -1027,7 +1049,7 @@ impl_ops!(ValueOfTime * NonNegativeSeconds = Utility);
 impl_ops!(ValueOfTime * PositiveSeconds = Utility);
 impl_ops!(MetersPerSecond * NonNegativeSeconds = NonNegativeMeters);
 impl_ops!(NonNegativeMeters * Lanes = NonNegativeMeters);
-impl_ops!(Flow * Lanes = Flow);
+impl_ops!(FlowPerLane * Lanes = Flow);
 impl_ops!(Flow * NonNegativeSeconds = PCE);
 impl_ops!(MetersPerSecond * PositiveSeconds = PositiveMeters);
 impl_ops!(PositiveNum * MetersPerSecond = MetersPerSecond);
