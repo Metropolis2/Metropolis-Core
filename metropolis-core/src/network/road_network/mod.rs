@@ -165,7 +165,7 @@ pub(crate) fn route_length(route: impl Iterator<Item = EdgeIndex>) -> NonNegativ
             graph()
                 .edge_weight(e)
                 .expect("The route is incompatible with the road network.")
-                .length
+                .length()
         })
         .sum()
 }
@@ -186,7 +186,7 @@ pub(crate) fn route_length_diff(
                     graph()
                         .edge_weight(edge_id)
                         .expect("The route is incompatible with the road network.")
-                        .length,
+                        .length(),
                 )
             }
         })
@@ -433,6 +433,79 @@ impl EdgeFlow {
     }
 }
 
+/// Bottleneck flow of each edge of the road network (`None` for an infinite flow), indexed by
+/// [EdgeIndex].
+///
+/// The flows are used to initialize a [RoadNetworkState], so that the flows simulated in the
+/// within-day model can differ from the input values stored in the global road network.
+#[derive(Clone, Debug)]
+pub(crate) struct BottleneckFlows(Vec<Option<EdgeFlow>>);
+
+impl BottleneckFlows {
+    /// Returns the bottleneck flows of the edges, as given in the input.
+    pub(crate) fn from_input() -> Self {
+        Self(
+            graph()
+                .edge_weights()
+                .map(|e| e.bottleneck_flow.clone())
+                .collect(),
+        )
+    }
+
+    /// Returns the bottleneck flow of the given edge (`None` if the flow is infinite).
+    fn get(&self, edge: EdgeIndex) -> Option<&EdgeFlow> {
+        self.0[edge.index()].as_ref()
+    }
+}
+
+/// Attributes of the running part of a [RoadEdge], used to compute the travel time of vehicles.
+#[derive(Clone, Debug)]
+pub(crate) struct RoadSegmentAttributes {
+    /// The base speed of the edge.
+    base_speed: MetersPerSecond,
+    /// The length of the edge, from source node to target node.
+    length: NonNegativeMeters,
+    /// The number of lanes on the edge.
+    lanes: Lanes,
+    /// Speed-density function for the running part of the edge.
+    speed_density: SpeedDensityFunction,
+    /// Constant travel time penalty for the runnning part of the edge.
+    constant_travel_time: NonNegativeSeconds,
+}
+
+impl RoadSegmentAttributes {
+    /// Return the travel time for the running part of the edge for a given vehicle, given the
+    /// total length of the vehicles currently on the edge.
+    pub(crate) fn get_travel_time(
+        &self,
+        occupied_length: NonNegativeMeters,
+        vehicle: &Vehicle,
+    ) -> NonNegativeSeconds {
+        let base_vehicle_speed = vehicle.get_speed(self.base_speed);
+        let effective_speed =
+            self.speed_density
+                .get_speed(base_vehicle_speed, occupied_length, self.total_length());
+        let variable_tt = self.length() / effective_speed;
+        variable_tt + self.constant_travel_time
+    }
+
+    /// Return the length of the edge, from source to target.
+    pub(crate) const fn length(&self) -> NonNegativeMeters {
+        self.length
+    }
+
+    /// Return the number of lanes of the edge.
+    pub(crate) const fn lanes(&self) -> Lanes {
+        self.lanes
+    }
+
+    /// Return the total length of the edge that can be occupied by vehicles, i.e., the length of
+    /// the edge multiplied by the number of lanes.
+    pub(crate) fn total_length(&self) -> NonNegativeMeters {
+        self.length * self.lanes
+    }
+}
+
 /// An edge of a road network.
 ///
 /// A RoadEdge is directed and connected to two [RoadNode]s.
@@ -448,18 +521,13 @@ impl EdgeFlow {
 pub struct RoadEdge {
     /// Original id of the edge.
     id: OriginalEdgeId,
-    /// The base speed of the edge.
-    base_speed: MetersPerSecond,
-    /// The length of the edge, from source node to target node.
-    length: NonNegativeMeters,
-    /// The number of lanes on the edge.
-    lanes: Lanes,
-    /// Speed-density function for the running part of the edge.
-    speed_density: SpeedDensityFunction,
-    /// Maximum flow of vehicle entering the edge (in PCE per second).
+    /// Attributes of the running part of the edge.
+    segment: RoadSegmentAttributes,
+    /// Maximum flow of vehicle entering the edge (in PCE per second), as given in the input.
+    ///
+    /// This is only the default value: the flows used in the within-day model are given by the
+    /// [BottleneckFlows] used to initialize the [RoadNetworkState].
     bottleneck_flow: Option<EdgeFlow>,
-    /// Constant travel time penalty for the runnning part of the edge.
-    constant_travel_time: NonNegativeSeconds,
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
     overtaking: bool,
@@ -480,12 +548,14 @@ impl RoadEdge {
     ) -> Self {
         RoadEdge {
             id: MetroId::Integer(id),
-            base_speed,
-            length,
-            lanes,
-            speed_density,
+            segment: RoadSegmentAttributes {
+                base_speed,
+                length,
+                lanes,
+                speed_density,
+                constant_travel_time,
+            },
             bottleneck_flow: bottleneck_flow.map(EdgeFlow::from),
-            constant_travel_time,
             overtaking,
         }
     }
@@ -549,12 +619,14 @@ impl RoadEdge {
         let overtaking = overtaking.unwrap_or(true);
         Ok(RoadEdge {
             id,
-            base_speed,
-            length,
-            lanes,
-            speed_density,
+            segment: RoadSegmentAttributes {
+                base_speed,
+                length,
+                lanes,
+                speed_density,
+                constant_travel_time,
+            },
             bottleneck_flow,
-            constant_travel_time,
             overtaking,
         })
     }
@@ -572,12 +644,7 @@ impl RoadEdge {
         occupied_length: NonNegativeMeters,
         vehicle: &Vehicle,
     ) -> NonNegativeSeconds {
-        let base_vehicle_speed = vehicle.get_speed(self.base_speed);
-        let effective_speed =
-            self.speed_density
-                .get_speed(base_vehicle_speed, occupied_length, self.total_length());
-        let variable_tt = self.length() / effective_speed;
-        variable_tt + self.constant_travel_time
+        self.segment.get_travel_time(occupied_length, vehicle)
     }
 
     /// Return the free-flow travel time on the road for the given vehicle.
@@ -587,13 +654,7 @@ impl RoadEdge {
 
     /// Return the length of the edge, from source to target.
     pub(crate) const fn length(&self) -> NonNegativeMeters {
-        self.length
-    }
-
-    /// Return the total length of the edge that can be occupied by vehicles, i.e., the length of
-    /// the edge multiplied by the number of lanes.
-    pub(crate) fn total_length(&self) -> NonNegativeMeters {
-        self.length * self.lanes
+        self.segment.length()
     }
 }
 
@@ -707,7 +768,7 @@ impl RoadNetwork {
 
 /// Returns an empty [RoadNetworkState].
 pub(crate) fn blank_state() -> RoadNetworkState {
-    RoadNetworkState::init()
+    RoadNetworkState::init(&BottleneckFlows::from_input())
 }
 
 /// Compute and return the [RoadNetworkSkims] for the RoadNetwork, with the given
@@ -873,12 +934,14 @@ mod tests {
     fn get_travel_time_test() {
         let mut edge = RoadEdge {
             id: MetroId::Integer(1),
-            base_speed: MetersPerSecond::new_unchecked(25.), // 50 km/h
-            length: NonNegativeMeters::new_unchecked(1000.), // 1 km
-            lanes: Lanes::new_unchecked(2.0),
-            speed_density: SpeedDensityFunction::FreeFlow,
+            segment: RoadSegmentAttributes {
+                base_speed: MetersPerSecond::new_unchecked(25.), // 50 km/h
+                length: NonNegativeMeters::new_unchecked(1000.), // 1 km
+                lanes: Lanes::new_unchecked(2.0),
+                speed_density: SpeedDensityFunction::FreeFlow,
+                constant_travel_time: NonNegativeSeconds::new_unchecked(10.),
+            },
             bottleneck_flow: None,
-            constant_travel_time: NonNegativeSeconds::new_unchecked(10.),
             overtaking: false,
         };
         let vehicle = Vehicle::new(
@@ -899,7 +962,8 @@ mod tests {
             NonNegativeSeconds::new_unchecked(40.) + NonNegativeSeconds::new_unchecked(10.)
         );
 
-        edge.speed_density = SpeedDensityFunction::Bottleneck(MetersPerSecond::new_unchecked(10.));
+        edge.segment.speed_density =
+            SpeedDensityFunction::Bottleneck(MetersPerSecond::new_unchecked(10.));
         // The capacity is 2 veh. / s. (there are two lanes) and each veh. can travel through the
         // edge in 40 s. so the threshold is at 80 veh. on the edge = 800 m occupied.
         assert_eq!(
@@ -920,12 +984,13 @@ mod tests {
             NonNegativeSeconds::new_unchecked(80.) + NonNegativeSeconds::new_unchecked(10.)
         );
 
-        edge.speed_density = SpeedDensityFunction::ThreeRegimes(ThreeRegimesSpeedDensityFunction {
-            min_density: NonNegativeNum::new_unchecked(0.2),
-            jam_density: NonNegativeNum::new_unchecked(0.8),
-            jam_speed: MetersPerSecond::new_unchecked(5.), // 18 km/h
-            beta: PositiveNum::new_unchecked(2.),
-        });
+        edge.segment.speed_density =
+            SpeedDensityFunction::ThreeRegimes(ThreeRegimesSpeedDensityFunction {
+                min_density: NonNegativeNum::new_unchecked(0.2),
+                jam_density: NonNegativeNum::new_unchecked(0.8),
+                jam_speed: MetersPerSecond::new_unchecked(5.), // 18 km/h
+                beta: PositiveNum::new_unchecked(2.),
+            });
         // Free-flow regime.
         assert_eq!(
             edge.get_travel_time(NonNegativeMeters::new_unchecked(0.), &vehicle,),

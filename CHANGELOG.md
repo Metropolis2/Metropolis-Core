@@ -13,6 +13,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] New workspace crate `metro-io`, with the code shared by `metropolis-core` and `tch` to read
   and write CSV / Parquet / JSON files, the `MetroId` type and the fixed-seed hash maps.
 - [DEV] Columns of the input files are read through typed functions instead of macros.
+- [DEV] Refactor road network structs and functions in preparation for capacity calibration.
 
 ## [1.5.0] - 2026-09-18
 
