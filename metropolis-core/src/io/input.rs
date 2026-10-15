@@ -419,7 +419,7 @@ fn read_target_routes(batch: RecordBatch) -> Result<Vec<TargetRoute>> {
     let mut columns = Columns::new(batch);
     let route_id = columns.id(&["route_id"])?;
     let departure_time = columns.f64(&["departure_time"])?;
-    let target_tt = columns.f64(&["target_tt"])?;
+    let target_delay = columns.f64(&["target_delay"])?;
     let path = columns.id_list(&["path"])?;
     columns.warn_unused();
     let n = columns.len();
@@ -430,7 +430,7 @@ fn read_target_routes(batch: RecordBatch) -> Result<Vec<TargetRoute>> {
         let route = TargetRoute::from_values(
             route_id,
             departure_time.get(i),
-            target_tt.get(i),
+            target_delay.get(i),
             path.get(i),
         )
         .with_context(|| format!("Failed to parse target route {route_id}"))?;

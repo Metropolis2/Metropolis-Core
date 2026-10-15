@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Road-capacity calibration: bottleneck capacities are calibrated by edge category so that the
-//! travel times of target routes match observed travel times.
+//! queueing delays of target routes match observed delays.
 pub mod parameters;
 mod surrogate;
 
@@ -37,10 +37,6 @@ use crate::network::NetworkState;
 use crate::population::Agent;
 use crate::simulation::{check_ids_exist, format_ids};
 use crate::units::*;
-
-/// Tolerance, in seconds, when comparing a target travel time with a simulated or free-flow travel
-/// time (absorbs float rounding, e.g., from target travel times stored as `f32`).
-const TIME_TOLERANCE: f64 = 0.01;
 
 /// Runs the road-capacity calibration.
 pub fn run() -> Result<()> {
@@ -64,7 +60,7 @@ pub fn run() -> Result<()> {
         .as_ref()
         .expect("The target-routes file is not set");
     let target_routes = crate::io::read_target_routes(path)?;
-    let target_delays = check_target_routes(&target_routes, vehicle)?;
+    check_target_routes(&target_routes)?;
     info!(
         "Capacity calibration with {} target routes and vehicle type `{}`",
         target_routes.len(),
@@ -93,6 +89,7 @@ pub fn run() -> Result<()> {
     );
     let start = Instant::now();
     let predicted_delays = surrogate.predict(&categories.initial_capacities);
+    let target_delays: Vec<_> = target_routes.iter().map(|r| r.target_delay).collect();
     log_fit(&target_delays, &predicted_delays, start.elapsed());
     bail!("The capacity-calibration loop is not implemented yet")
 }
@@ -125,7 +122,7 @@ fn check_bottleneck_model(edges: &[&RoadEdge], constrain_inflow: bool) -> Result
 /// Logs the fit of the predicted delays of the target routes (at the initial capacities) to their
 /// target delays, and the time taken by the surrogate model to predict them.
 fn log_fit(
-    target_delays: &[AnySeconds],
+    target_delays: &[NonNegativeSeconds],
     predicted_delays: &[NonNegativeSeconds],
     duration: Duration,
 ) {
@@ -204,15 +201,15 @@ fn simulate_day(
     Ok(curves)
 }
 
-/// A route with an observed travel time, that the calibrated capacities must reproduce.
+/// A route with an observed queueing delay, that the calibrated capacities must reproduce.
 #[derive(Clone, Debug)]
 pub(crate) struct TargetRoute {
     /// Id of the route.
     pub(crate) id: MetroId,
     /// Departure time from the first edge of the path.
     pub(crate) departure_time: NonNegativeSeconds,
-    /// Observed travel time of the route.
-    pub(crate) target_tt: NonNegativeSeconds,
+    /// Observed delay of the route: its travel time minus its free-flow travel time.
+    pub(crate) target_delay: NonNegativeSeconds,
     /// Edges of the route, in order.
     pub(crate) path: Vec<OriginalEdgeId>,
 }
@@ -222,17 +219,17 @@ impl TargetRoute {
     pub(crate) fn from_values(
         id: MetroId,
         departure_time: Option<f64>,
-        target_tt: Option<f64>,
+        target_delay: Option<f64>,
         path: Option<Vec<OriginalEdgeId>>,
     ) -> Result<Self> {
         let departure_time = NonNegativeSeconds::try_from(
             departure_time.ok_or_else(|| anyhow!("Value `departure_time` is mandatory"))?,
         )
         .context("Value `departure_time` does not satisfy the constraints")?;
-        let target_tt = NonNegativeSeconds::try_from(
-            target_tt.ok_or_else(|| anyhow!("Value `target_tt` is mandatory"))?,
+        let target_delay = NonNegativeSeconds::try_from(
+            target_delay.ok_or_else(|| anyhow!("Value `target_delay` is mandatory"))?,
         )
-        .context("Value `target_tt` does not satisfy the constraints")?;
+        .context("Value `target_delay` does not satisfy the constraints")?;
         let path = path.ok_or_else(|| anyhow!("Value `path` is mandatory"))?;
         if path.is_empty() {
             bail!("Value `path` cannot be empty");
@@ -240,7 +237,7 @@ impl TargetRoute {
         Ok(Self {
             id,
             departure_time,
-            target_tt,
+            target_delay,
             path,
         })
     }
@@ -496,16 +493,9 @@ fn calibration_vehicle<'a>(
     }
 }
 
-/// Checks that the edges of the target routes exist, warns about the target routes that cannot be
-/// matched and returns the target delay of each route.
-///
-/// The target delay is the target travel time minus the free-flow travel time of the path, for
-/// the vehicle type of the calibration. It is negative if the target travel time is below the
-/// free-flow travel time.
-fn check_target_routes(
-    target_routes: &[TargetRoute],
-    vehicle: &Vehicle,
-) -> Result<Vec<AnySeconds>> {
+/// Checks that the edges of the target routes exist and warns about the target routes that depart
+/// outside of the simulated period.
+fn check_target_routes(target_routes: &[TargetRoute]) -> Result<()> {
     let used_edges: HashSet<OriginalEdgeId> = target_routes
         .iter()
         .flat_map(|r| r.path.iter().copied())
@@ -530,33 +520,7 @@ fn check_target_routes(
             format_ids(outside_period),
         );
     }
-    let target_delays: Vec<AnySeconds> = target_routes
-        .iter()
-        .map(|r| {
-            let free_flow_tt = crate::network::road_network::route_free_flow_travel_time(
-                r.path
-                    .iter()
-                    .map(|&e| crate::network::road_network::edge_index_of(e)),
-                vehicle.id,
-            );
-            r.target_tt - free_flow_tt
-        })
-        .collect();
-    let below_free_flow: Vec<_> = target_routes
-        .iter()
-        .zip(target_delays.iter())
-        .filter(|(_, &d)| f64::from(d) + TIME_TOLERANCE < 0.0)
-        .map(|(r, _)| r.id)
-        .collect();
-    if !below_free_flow.is_empty() {
-        warn!(
-            "{} target routes have a target travel time smaller than their free-flow travel \
-            time (they cannot be matched): {}",
-            below_free_flow.len(),
-            format_ids(below_free_flow),
-        );
-    }
-    Ok(target_delays)
+    Ok(())
 }
 
 #[cfg(test)]
