@@ -48,6 +48,16 @@ impl ArrivalCurve {
         }
     }
 
+    /// Returns the arrival times of the curve (strictly increasing).
+    pub(crate) fn times(&self) -> &[NonNegativeSeconds] {
+        &self.times
+    }
+
+    /// Returns the total PCE of the vehicles arrived up to each arrival time (included).
+    pub(crate) fn cumulative_pce(&self) -> &[PCE] {
+        &self.cumulative_pce
+    }
+
     /// Returns the number of points of the curve (i.e., the number of distinct arrival times).
     pub(crate) fn len(&self) -> usize {
         self.times.len()
@@ -68,7 +78,21 @@ impl ArrivalCurve {
 /// Arrival curve at the entry bottleneck of each edge (`None` if the arrivals were not recorded),
 /// indexed by `EdgeIndex`.
 #[derive(Clone, Debug)]
-pub(crate) struct ArrivalCurves(pub(super) Vec<Option<ArrivalCurve>>);
+pub(crate) struct ArrivalCurves(Vec<Option<ArrivalCurve>>);
+
+impl FromIterator<Option<ArrivalCurve>> for ArrivalCurves {
+    fn from_iter<I: IntoIterator<Item = Option<ArrivalCurve>>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for ArrivalCurves {
+    type Item = Option<ArrivalCurve>;
+    type IntoIter = std::vec::IntoIter<Option<ArrivalCurve>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 impl ArrivalCurves {
     /// Returns the arrival curve at the entry of the given edge (`None` if the arrivals were not

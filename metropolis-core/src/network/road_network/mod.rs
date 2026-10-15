@@ -694,6 +694,20 @@ impl RoadEdge {
             .is_some_and(|flow| flow.values.len() > 1)
     }
 
+    /// Returns the input bottleneck flow of the edge, over all its lanes (`None` if the flow is
+    /// infinite).
+    ///
+    /// The flow must not be time-dependent.
+    pub(crate) fn constant_bottleneck_flow(&self) -> Option<Flow> {
+        debug_assert!(!self.has_time_dependent_flow());
+        self.bottleneck_flow.as_ref().map(|flow| flow.current_flow)
+    }
+
+    /// Returns the number of lanes of the edge.
+    pub(crate) const fn lanes(&self) -> Lanes {
+        self.segment.lanes
+    }
+
     /// Returns `true` if vehicles are allowed to overtake each other at the edge's  exit
     /// bottleneck.
     pub(crate) fn overtaking_is_allowed(&self) -> bool {

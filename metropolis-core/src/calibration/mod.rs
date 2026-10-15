@@ -17,11 +17,16 @@
 //! Road-capacity calibration: bottleneck capacities are calibrated by edge category so that the
 //! travel times of target routes match observed travel times.
 pub mod parameters;
+mod surrogate;
+
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use log::{info, warn};
+use petgraph::graph::EdgeIndex;
 
 use self::parameters::{IdValue, InitialCapacities};
+use self::surrogate::Surrogate;
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::DepartureTimeModel;
 use crate::mode::Mode;
@@ -59,19 +64,36 @@ pub fn run() -> Result<()> {
         .as_ref()
         .expect("The target-routes file is not set");
     let target_routes = crate::io::read_target_routes(path)?;
-    check_target_routes(&target_routes, vehicle)?;
+    let target_delays = check_target_routes(&target_routes, vehicle)?;
     info!(
         "Capacity calibration with {} target routes and vehicle type `{}`",
         target_routes.len(),
         vehicle.id
     );
     categories.log_summary();
-    simulate_day(
+    let curves = simulate_day(
         &edges,
         &categories,
         &categories.initial_capacities,
         &target_routes,
     )?;
+    let mut surrogate = Surrogate::new(
+        curves,
+        &edges,
+        &categories,
+        vehicle,
+        target_routes.iter().map(|r| {
+            let path = r
+                .path
+                .iter()
+                .map(|&e| crate::network::road_network::edge_index_of(e))
+                .collect();
+            (r.departure_time, path)
+        }),
+    );
+    let start = Instant::now();
+    let predicted_delays = surrogate.predict(&categories.initial_capacities);
+    log_fit(&target_delays, &predicted_delays, start.elapsed());
     bail!("The capacity-calibration loop is not implemented yet")
 }
 
@@ -98,6 +120,35 @@ fn check_bottleneck_model(edges: &[&RoadEdge], constrain_inflow: bool) -> Result
         );
     }
     Ok(())
+}
+
+/// Logs the fit of the predicted delays of the target routes (at the initial capacities) to their
+/// target delays, and the time taken by the surrogate model to predict them.
+fn log_fit(
+    target_delays: &[AnySeconds],
+    predicted_delays: &[NonNegativeSeconds],
+    duration: Duration,
+) {
+    debug_assert_eq!(target_delays.len(), predicted_delays.len());
+    if target_delays.is_empty() {
+        return;
+    }
+    let n = target_delays.len() as f64;
+    let errors: Vec<f64> = predicted_delays
+        .iter()
+        .zip(target_delays)
+        .map(|(&p, &t)| f64::from(p) - f64::from(t))
+        .collect();
+    let rmse = (errors.iter().map(|e| e * e).sum::<f64>() / n).sqrt();
+    let mean_error = errors.iter().sum::<f64>() / n;
+    let max_error = errors.iter().fold(0.0f64, |m, e| m.max(e.abs()));
+    let mean_target = target_delays.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
+    info!(
+        "Surrogate model at the initial capacities: RMSE of the delays {rmse:.3} s, mean error \
+        (predicted - target) {mean_error:.3} s, maximum absolute error {max_error:.3} s, mean \
+        target delay {mean_target:.3} s (evaluated in {:.1} ms)",
+        duration.as_secs_f64() * 1e3,
+    );
 }
 
 /// Simulates one day with the given capacities (by category): runs the pre-day model with the
@@ -380,6 +431,11 @@ impl EdgeCategories {
             .map(|cat| cat.map(|i| capacities[i]))
     }
 
+    /// Returns the category index of the given edge (`None` if the edge is not calibrated).
+    fn category_of(&self, edge: EdgeIndex) -> Option<usize> {
+        self.edge_categories[edge.index()]
+    }
+
     /// Returns the bottleneck flows of the edges (ordered by `EdgeIndex`), given the capacity of
     /// each category (the edges that are not calibrated keep their input flow).
     fn bottleneck_flows(&self, edges: &[&RoadEdge], capacities: &[FlowPerLane]) -> BottleneckFlows {
@@ -440,9 +496,16 @@ fn calibration_vehicle<'a>(
     }
 }
 
-/// Checks that the edges of the target routes exist and warns about the target routes that cannot
-/// be matched.
-fn check_target_routes(target_routes: &[TargetRoute], vehicle: &Vehicle) -> Result<()> {
+/// Checks that the edges of the target routes exist, warns about the target routes that cannot be
+/// matched and returns the target delay of each route.
+///
+/// The target delay is the target travel time minus the free-flow travel time of the path, for
+/// the vehicle type of the calibration. It is negative if the target travel time is below the
+/// free-flow travel time.
+fn check_target_routes(
+    target_routes: &[TargetRoute],
+    vehicle: &Vehicle,
+) -> Result<Vec<AnySeconds>> {
     let used_edges: HashSet<OriginalEdgeId> = target_routes
         .iter()
         .flat_map(|r| r.path.iter().copied())
@@ -467,18 +530,23 @@ fn check_target_routes(target_routes: &[TargetRoute], vehicle: &Vehicle) -> Resu
             format_ids(outside_period),
         );
     }
-    let below_free_flow: Vec<_> = target_routes
+    let target_delays: Vec<AnySeconds> = target_routes
         .iter()
-        .filter(|r| {
+        .map(|r| {
             let free_flow_tt = crate::network::road_network::route_free_flow_travel_time(
                 r.path
                     .iter()
                     .map(|&e| crate::network::road_network::edge_index_of(e)),
                 vehicle.id,
             );
-            Into::<f64>::into(r.target_tt) + TIME_TOLERANCE < free_flow_tt.into()
+            r.target_tt - free_flow_tt
         })
-        .map(|r| r.id)
+        .collect();
+    let below_free_flow: Vec<_> = target_routes
+        .iter()
+        .zip(target_delays.iter())
+        .filter(|(_, &d)| f64::from(d) + TIME_TOLERANCE < 0.0)
+        .map(|(r, _)| r.id)
         .collect();
     if !below_free_flow.is_empty() {
         warn!(
@@ -488,7 +556,7 @@ fn check_target_routes(target_routes: &[TargetRoute], vehicle: &Vehicle) -> Resu
             format_ids(below_free_flow),
         );
     }
-    Ok(())
+    Ok(target_delays)
 }
 
 #[cfg(test)]

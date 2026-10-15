@@ -754,18 +754,16 @@ impl RoadNetworkState {
 
     /// Moves out the arrival curves recorded at the edge entries.
     pub(crate) fn take_arrival_curves(&mut self) -> ArrivalCurves {
-        ArrivalCurves(
-            self.graph
-                .edge_weights_mut()
-                .map(|e| {
-                    let mut curve = e.entry.arrivals.take();
-                    if let Some(c) = curve.as_mut() {
-                        c.shrink_to_fit();
-                    }
-                    curve
-                })
-                .collect(),
-        )
+        self.graph
+            .edge_weights_mut()
+            .map(|e| {
+                let mut curve = e.entry.arrivals.take();
+                if let Some(c) = curve.as_mut() {
+                    c.shrink_to_fit();
+                }
+                curve
+            })
+            .collect()
     }
 
     /// Return a [RoadNetworkWeights] (i.e., travel times) from the observations recorded in the
