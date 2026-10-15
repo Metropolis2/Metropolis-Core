@@ -32,11 +32,6 @@ use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::RoadEdge;
 use crate::units::*;
 
-/// Tolerance, in seconds, when comparing the time at which a probe reaches a bottleneck with the
-/// arrival times of the curve: the vehicles arriving at the same time as the probe (within the
-/// tolerance) are not ahead of it.
-const TIE_TOLERANCE: f64 = 1e-6;
-
 /// Total flow of a bottleneck of the surrogate model.
 #[derive(Clone, Copy, Debug)]
 enum Capacity {
@@ -111,14 +106,15 @@ fn compute_release_times(
 
 /// Returns the time at which a probe reaching a bottleneck at the given time crosses it, given the
 /// arrival curve and the release times of the bottleneck.
+///
+/// The vehicles arriving at the same time as the probe are not ahead of it.
 fn entry_time(
     curve: &ArrivalCurve,
     release_times: &[NonNegativeSeconds],
     time: NonNegativeSeconds,
 ) -> NonNegativeSeconds {
-    let threshold = f64::from(time) - TIE_TOLERANCE;
     // Number of arrival times strictly before the probe.
-    let nb_ahead = curve.times().partition_point(|&t| f64::from(t) < threshold);
+    let nb_ahead = curve.times().partition_point(|&t| t < time);
     if nb_ahead == 0 {
         time
     } else {
@@ -271,11 +267,11 @@ mod tests {
         // The queue is empty.
         assert_eq!(entry(7.), s(7.));
         assert_eq!(entry(11.), s(12.));
-        // Same time as the vehicle arrived at 1 (up to rounding): it is not ahead of the probe,
-        // which crosses the bottleneck at the same time as that vehicle in the simulation.
+        // Same time as the vehicle arrived at 1: it is not ahead of the probe, which crosses the
+        // bottleneck at the same time as that vehicle in the simulation.
         assert_eq!(entry(1.), s(2.));
-        assert_eq!(entry(1. + 1e-9), s(2.));
-        assert_eq!(entry(1. - 1e-9), s(2.));
+        // Just after that vehicle: it is ahead of the probe.
+        assert_eq!(entry(1. + 1e-9), s(4.));
 
         // Simultaneous arrivals are served as a group.
         let curve = self::curve(&[(0., 1.), (0., 2.), (1., 0.5)]);
