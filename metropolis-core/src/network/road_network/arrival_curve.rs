@@ -16,19 +16,18 @@
 
 //! Cumulative arrival curves recorded at the edge-entry bottlenecks during the within-day model.
 use log::info;
-use num_traits::ConstZero;
 use petgraph::graph::EdgeIndex;
 
 use crate::units::*;
 
-/// Cumulative arrival curve at a bottleneck: total PCE of the vehicles that have reached the
-/// bottleneck by each time.
+/// Arrival curve at a bottleneck: PCE of the vehicles that have reached the bottleneck at each
+/// time.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ArrivalCurve {
     /// Arrival times, strictly increasing (vehicles arriving at the same time are merged).
     times: Vec<NonNegativeSeconds>,
-    /// Total PCE of the vehicles arrived up to `times[i]` (included).
-    cumulative_pce: Vec<PCE>,
+    /// Total PCE of the vehicles arrived at `times[i]`.
+    pce: Vec<PCE>,
 }
 
 impl ArrivalCurve {
@@ -38,12 +37,12 @@ impl ArrivalCurve {
     pub(crate) fn push(&mut self, time: NonNegativeSeconds, pce: PCE) {
         match self.times.last() {
             Some(&last_time) if last_time == time => {
-                *self.cumulative_pce.last_mut().unwrap() += pce;
+                *self.pce.last_mut().unwrap() += pce;
             }
             last_time_opt => {
                 debug_assert!(last_time_opt.is_none_or(|&t| t < time));
                 self.times.push(time);
-                self.cumulative_pce.push(self.total_pce() + pce);
+                self.pce.push(pce);
             }
         }
     }
@@ -53,9 +52,9 @@ impl ArrivalCurve {
         &self.times
     }
 
-    /// Returns the total PCE of the vehicles arrived up to each arrival time (included).
-    pub(crate) fn cumulative_pce(&self) -> &[PCE] {
-        &self.cumulative_pce
+    /// Returns the total PCE of the vehicles arrived at each arrival time.
+    pub(crate) fn pce(&self) -> &[PCE] {
+        &self.pce
     }
 
     /// Returns the number of points of the curve (i.e., the number of distinct arrival times).
@@ -65,13 +64,13 @@ impl ArrivalCurve {
 
     /// Returns the total PCE of the vehicles recorded.
     pub(crate) fn total_pce(&self) -> PCE {
-        self.cumulative_pce.last().copied().unwrap_or(PCE::ZERO)
+        self.pce.iter().copied().sum()
     }
 
     /// Shrinks the capacity of the curve as much as possible.
     pub(crate) fn shrink_to_fit(&mut self) {
         self.times.shrink_to_fit();
-        self.cumulative_pce.shrink_to_fit();
+        self.pce.shrink_to_fit();
     }
 }
 
@@ -118,6 +117,8 @@ impl ArrivalCurves {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::ConstZero;
+
     use super::*;
 
     fn s(t: f64) -> NonNegativeSeconds {
@@ -140,7 +141,7 @@ mod tests {
         curve.push(s(15.), pce(1.));
         assert_eq!(curve.len(), 3);
         assert_eq!(curve.times, vec![s(10.), s(12.), s(15.)]);
-        assert_eq!(curve.cumulative_pce, vec![pce(1.), pce(3.5), pce(4.5)]);
+        assert_eq!(curve.pce, vec![pce(1.), pce(2.5), pce(1.)]);
         assert_eq!(curve.total_pce(), pce(4.5));
     }
 }
