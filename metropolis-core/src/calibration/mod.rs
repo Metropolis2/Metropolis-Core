@@ -91,6 +91,16 @@ pub fn run() -> Result<()> {
     let predicted_delays = surrogate.predict(&categories.initial_capacities);
     let target_delays: Vec<_> = target_routes.iter().map(|r| r.target_delay).collect();
     log_fit(&target_delays, &predicted_delays, start.elapsed());
+    let start = Instant::now();
+    let (predicted_delays, jacobian) =
+        surrogate.predict_with_jacobian(&categories.initial_capacities);
+    log_sensitivity(
+        &categories,
+        &target_delays,
+        &predicted_delays,
+        &jacobian,
+        start.elapsed(),
+    );
     bail!("The capacity-calibration loop is not implemented yet")
 }
 
@@ -145,6 +155,61 @@ fn log_fit(
         (predicted - target) {mean_error:.3} s, maximum absolute error {max_error:.3} s, mean \
         target delay {mean_target:.3} s (evaluated in {:.1} ms)",
         duration.as_secs_f64() * 1e3,
+    );
+}
+
+/// Logs, for each category, the number of target routes whose predicted delay depends on its
+/// capacity and the change of the RMSE of the delays for a capacity 1% lower or higher, predicted
+/// by the linearized delays (from the Jacobian matrix of the predicted delays at the initial
+/// capacities), and the time taken by the surrogate model to compute the predicted delays and the
+/// Jacobian.
+fn log_sensitivity(
+    categories: &EdgeCategories,
+    target_delays: &[NonNegativeSeconds],
+    predicted_delays: &[NonNegativeSeconds],
+    jacobian: &[f64],
+    duration: Duration,
+) {
+    let nb_categories = categories.initial_capacities.len();
+    debug_assert_eq!(jacobian.len(), target_delays.len() * nb_categories);
+    if target_delays.is_empty() {
+        return;
+    }
+    let n = target_delays.len() as f64;
+    let residuals: Vec<f64> = predicted_delays
+        .iter()
+        .zip(target_delays)
+        .map(|(&p, &t)| f64::from(p) - f64::from(t))
+        .collect();
+    let rmse = |shifts: &mut dyn Iterator<Item = f64>| {
+        (residuals
+            .iter()
+            .zip(shifts)
+            .map(|(r, d)| (r + d).powi(2))
+            .sum::<f64>()
+            / n)
+            .sqrt()
+    };
+    let initial_rmse = rmse(&mut std::iter::repeat(0.));
+    for (j, &capacity) in categories.initial_capacities.iter().enumerate() {
+        let column = || jacobian.iter().skip(j).step_by(nb_categories);
+        let nb_routes = column().filter(|&&d| d != 0.).count();
+        // Change of the RMSE with the linearized delays d_n + J_nj * dc.
+        let change = |relative_change: f64| {
+            let dc = relative_change * f64::from(capacity);
+            rmse(&mut column().map(|d| d * dc)) - initial_rmse
+        };
+        info!(
+            "Category {}: the delay of {nb_routes} target routes depends on its capacity; \
+            change of the RMSE (linearized) for a 1% lower / higher capacity: {:+.3} s / {:+.3} s",
+            categories.name(j),
+            change(-0.01),
+            change(0.01),
+        );
+    }
+    info!(
+        "Predicted delays and Jacobian evaluated in {:.1} ms",
+        duration.as_secs_f64() * 1e3
     );
 }
 
@@ -439,6 +504,12 @@ impl EdgeCategories {
         BottleneckFlows::from_capacities(edges, self.edge_capacities(capacities))
     }
 
+    /// Returns the name of the given category, for the logs (its id, or "all edges" for the single
+    /// category used when no edge has a category).
+    fn name(&self, category: usize) -> String {
+        self.ids[category].map_or_else(|| "all edges".to_owned(), |id| format!("`{id}`"))
+    }
+
     /// Logs the number of edges and the initial capacity of each category.
     fn log_summary(&self) {
         let mut nb_edges = vec![0; self.ids.len()];
@@ -450,15 +521,10 @@ impl EdgeCategories {
                 nb_uncalibrated_edges += 1;
             }
         }
-        for ((id, capacity), n) in self
-            .ids
-            .iter()
-            .zip(self.initial_capacities.iter())
-            .zip(nb_edges)
-        {
-            let name = id.map_or_else(|| "all edges".to_owned(), |id| format!("`{id}`"));
+        for (i, (capacity, n)) in self.initial_capacities.iter().zip(nb_edges).enumerate() {
             info!(
-                "Category {name}: {n} edges, initial capacity of {} PCE/s per lane",
+                "Category {}: {n} edges, initial capacity of {} PCE/s per lane",
+                self.name(i),
                 f64::from(capacity)
             );
         }
