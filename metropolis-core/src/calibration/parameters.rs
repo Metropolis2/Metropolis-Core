@@ -27,23 +27,111 @@ use crate::units::FlowPerLane;
 /// When these parameters are defined, the capacity calibration is run instead of the simulation.
 #[derive(Clone, Debug, Deserialize)]
 pub struct CapacityCalibrationParameters {
-    /// Initial bottleneck capacity of each edge category, in PCE per second per lane.
-    pub initial_capacities: InitialCapacities,
+    /// Initial bottleneck capacity of each edge category and its optional bounds, in PCE per
+    /// second per lane.
+    pub capacities: Capacities,
     /// Vehicle type used to compute the free-flow travel times of the target routes.
     ///
     /// This is optional if a single vehicle type is defined.
     #[serde(default)]
     pub vehicle_type: Option<IdValue>,
+    /// Parameters of the optimization of the capacities.
+    #[serde(default)]
+    pub optimizer: OptimizerParameters,
 }
 
-/// Initial bottleneck capacities of the edge categories, in PCE per second per lane.
+/// Parameters of the optimization of the capacities (Levenberg–Marquardt algorithm), given the
+/// arrival curves of a simulated day.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct OptimizerParameters {
+    /// Maximum relative change of the capacity of each category, compared to its capacity in the
+    /// simulated day (between 0 and 1, default: 0.2).
+    pub trust_region: f64,
+    /// Maximum number of iterations (default: 30).
+    pub max_iterations: u64,
+    /// The optimization stops when no capacity changes by more than this relative amount in an
+    /// iteration (default: 1e-4).
+    pub step_tolerance: f64,
+}
+
+impl Default for OptimizerParameters {
+    fn default() -> Self {
+        Self {
+            trust_region: 0.2,
+            max_iterations: 30,
+            step_tolerance: 1e-4,
+        }
+    }
+}
+
+/// Bottleneck capacities of the edge categories (initial value and optional bounds).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
-pub enum InitialCapacities {
-    /// The same initial capacity for all the categories.
-    Uniform(FlowPerLane),
-    /// The initial capacity of each category, given by category id.
-    ByCategory(HashMap<String, FlowPerLane>),
+pub enum Capacities {
+    /// The same capacity for all the categories.
+    Uniform(CategoryCapacity),
+    /// The capacity of each category, given by category id.
+    ByCategory(HashMap<String, CategoryCapacity>),
+}
+
+/// Bottleneck capacity of an edge category, in PCE per second per lane: initial value and optional
+/// bounds.
+///
+/// It is given either as an object (`{"initial": 0.5, "min": 0.1, "max": 0.8}`, the bounds are
+/// optional) or as a number (the initial value, without bounds).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(from = "CategoryCapacityValue")]
+pub struct CategoryCapacity {
+    /// Initial capacity.
+    pub initial: FlowPerLane,
+    /// Minimum capacity (no minimum if `None`).
+    pub min: Option<FlowPerLane>,
+    /// Maximum capacity (no maximum if `None`).
+    pub max: Option<FlowPerLane>,
+}
+
+/// Forms of a [CategoryCapacity] in the parameters.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CategoryCapacityValue {
+    Initial(FlowPerLane),
+    Full(CategoryCapacityObject),
+}
+
+/// Object form of a [CategoryCapacity] in the parameters (unknown fields are rejected, so that a
+/// map of capacities by category is not read as a single capacity).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CategoryCapacityObject {
+    initial: FlowPerLane,
+    #[serde(default)]
+    min: Option<FlowPerLane>,
+    #[serde(default)]
+    max: Option<FlowPerLane>,
+}
+
+impl From<CategoryCapacityValue> for CategoryCapacity {
+    fn from(value: CategoryCapacityValue) -> Self {
+        match value {
+            CategoryCapacityValue::Initial(initial) => Self {
+                initial,
+                min: None,
+                max: None,
+            },
+            CategoryCapacityValue::Full(CategoryCapacityObject { initial, min, max }) => {
+                Self { initial, min, max }
+            }
+        }
+    }
+}
+
+impl CategoryCapacity {
+    /// Returns `true` if the initial capacity is between the bounds.
+    pub(crate) fn is_within_bounds(&self) -> bool {
+        self.min.is_none_or(|min| min <= self.initial)
+            && self.max.is_none_or(|max| self.initial <= max)
+    }
 }
 
 /// An identifier given in the parameters, either as an integer or as a string.
@@ -75,34 +163,99 @@ mod tests {
         serde_json::from_str(json)
     }
 
+    fn capacity(value: f64) -> FlowPerLane {
+        FlowPerLane::try_from(value).unwrap()
+    }
+
     #[test]
     fn deserialize_test() {
-        let params = parse(r#"{"initial_capacities": 0.5}"#).unwrap();
-        assert!(matches!(
-            params.initial_capacities,
-            InitialCapacities::Uniform(c) if c == FlowPerLane::try_from(0.5).unwrap()
-        ));
+        let params = parse(r#"{"capacities": 0.5}"#).unwrap();
+        let Capacities::Uniform(c) = params.capacities else {
+            panic!("The capacity should be uniform");
+        };
+        assert_eq!(
+            c,
+            CategoryCapacity {
+                initial: capacity(0.5),
+                min: None,
+                max: None
+            }
+        );
         assert_eq!(params.vehicle_type, None);
+        assert_eq!(params.optimizer.trust_region, 0.2);
+        assert_eq!(params.optimizer.max_iterations, 30);
+        assert_eq!(params.optimizer.step_tolerance, 1e-4);
 
-        let params =
-            parse(r#"{"initial_capacities": {"1": 0.5, "motorway": 0.6}, "vehicle_type": 3}"#)
-                .unwrap();
-        let InitialCapacities::ByCategory(capacities) = params.initial_capacities else {
+        let params = parse(r#"{"capacities": {"initial": 0.5, "max": 0.8}}"#).unwrap();
+        let Capacities::Uniform(c) = params.capacities else {
+            panic!("The capacity should be uniform");
+        };
+        assert_eq!(
+            c,
+            CategoryCapacity {
+                initial: capacity(0.5),
+                min: None,
+                max: Some(capacity(0.8))
+            }
+        );
+
+        let params = parse(
+            r#"{"capacities": {"1": 0.5, "motorway": {"initial": 0.6, "min": 0.1, "max": 0.8}},
+            "vehicle_type": 3}"#,
+        )
+        .unwrap();
+        let Capacities::ByCategory(capacities) = params.capacities else {
             panic!("Capacities should be given by category");
         };
         assert_eq!(capacities.len(), 2);
-        assert_eq!(capacities["1"], FlowPerLane::try_from(0.5).unwrap());
-        assert_eq!(capacities["motorway"], FlowPerLane::try_from(0.6).unwrap());
+        assert_eq!(capacities["1"].initial, capacity(0.5));
+        assert_eq!(capacities["1"].min, None);
+        assert_eq!(
+            capacities["motorway"],
+            CategoryCapacity {
+                initial: capacity(0.6),
+                min: Some(capacity(0.1)),
+                max: Some(capacity(0.8))
+            }
+        );
         assert_eq!(params.vehicle_type, Some(IdValue::Integer(3)));
         assert_eq!(params.vehicle_type.unwrap().to_string(), "3");
 
-        let params = parse(r#"{"initial_capacities": 0.5, "vehicle_type": "car"}"#).unwrap();
+        // A map whose keys are all fields of a capacity is read as a single capacity, unless the
+        // values are objects.
+        let params = parse(r#"{"capacities": {"initial": {"initial": 0.5}}}"#).unwrap();
+        assert!(matches!(params.capacities, Capacities::ByCategory(_)));
+
+        let params = parse(
+            r#"{"capacities": 0.5, "vehicle_type": "car",
+            "optimizer": {"trust_region": 0.1, "max_iterations": 5}}"#,
+        )
+        .unwrap();
         assert_eq!(params.vehicle_type, Some(IdValue::String("car".to_owned())));
+        assert_eq!(params.optimizer.trust_region, 0.1);
+        assert_eq!(params.optimizer.max_iterations, 5);
+        assert_eq!(params.optimizer.step_tolerance, 1e-4);
 
         // Capacities must be positive.
-        assert!(parse(r#"{"initial_capacities": -0.5}"#).is_err());
-        assert!(parse(r#"{"initial_capacities": {"1": 0.0}}"#).is_err());
+        assert!(parse(r#"{"capacities": -0.5}"#).is_err());
+        assert!(parse(r#"{"capacities": {"1": 0.0}}"#).is_err());
+        assert!(parse(r#"{"capacities": {"initial": 0.5, "min": 0.0}}"#).is_err());
         // Initial capacities are mandatory.
         assert!(parse(r#"{"vehicle_type": "car"}"#).is_err());
+        assert!(parse(r#"{"capacities": {"1": {"min": 0.5}}}"#).is_err());
+    }
+
+    #[test]
+    fn is_within_bounds_test() {
+        let c = |min: Option<f64>, max: Option<f64>| CategoryCapacity {
+            initial: capacity(0.5),
+            min: min.map(capacity),
+            max: max.map(capacity),
+        };
+        assert!(c(None, None).is_within_bounds());
+        assert!(c(Some(0.5), Some(0.5)).is_within_bounds());
+        assert!(c(Some(0.1), None).is_within_bounds());
+        assert!(!c(Some(0.6), None).is_within_bounds());
+        assert!(!c(None, Some(0.4)).is_within_bounds());
     }
 }

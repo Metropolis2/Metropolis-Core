@@ -356,6 +356,8 @@ mod tests {
     use num_traits::ConstOne;
 
     use super::*;
+    use crate::calibration::optimizer::optimize_capacities;
+    use crate::calibration::parameters::OptimizerParameters;
     use crate::hash::HashSet;
     use crate::network::road_network::vehicle::SpeedFunction;
     use crate::network::road_network::SpeedDensityFunction;
@@ -525,6 +527,8 @@ mod tests {
         let categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a"))],
             initial_capacities: vec![FlowPerLane::new_unchecked(0.25)],
+            min_capacities: vec![None],
+            max_capacities: vec![None],
             edge_categories: vec![Some(0), None, None],
         };
         // Queues at edge 1: 0, 1, 2 and 2 at times 10, 12, 16 and 20.
@@ -580,9 +584,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn jacobian_test() {
-        // Edge 0: category 0, 1 lane. Edge 1: category 1, 2 lanes. Edge 2: not calibrated.
+    /// Returns a surrogate model with pseudo-random arrival curves (about 0.5 PCE/s at each edge)
+    /// at 3 edges (edge 0: category 0, 1 lane; edge 1: category 1, 2 lanes; edge 2: not
+    /// calibrated) and 60 probes with paths through the 3 edges.
+    fn random_surrogate() -> Surrogate {
         let e0 = edge(0, 20., 1., None);
         let e1 = edge(1, 20., 2., None);
         let e2 = edge(2, 20., 1., Some(0.5));
@@ -590,6 +595,8 @@ mod tests {
         let categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
             initial_capacities: vec![FlowPerLane::new_unchecked(0.5); 2],
+            min_capacities: vec![None; 2],
+            max_capacities: vec![None; 2],
             edge_categories: vec![Some(0), Some(1), None],
         };
         // Random arrivals of about 0.5 PCE/s at each edge.
@@ -628,7 +635,12 @@ mod tests {
                 (s(1800. * d[0]), path)
             })
             .collect();
-        let mut surrogate = Surrogate::new(curves, &edges, &categories, &vehicle, routes);
+        Surrogate::new(curves, &edges, &categories, &vehicle, routes)
+    }
+
+    #[test]
+    fn jacobian_test() {
+        let mut surrogate = random_surrogate();
         let delays = |surrogate: &mut Surrogate, capacities: &[f64]| -> Vec<f64> {
             let capacities: Vec<_> = capacities
                 .iter()
@@ -677,5 +689,41 @@ mod tests {
             assert!(nb_checked >= 2 * predicted.len() * 9 / 10);
             assert!(nb_non_zero >= predicted.len() / 2);
         }
+    }
+
+    #[test]
+    fn recover_capacities_test() {
+        // The target delays are the predicted delays at some capacities, which the optimization
+        // must recover from other initial capacities.
+        let mut surrogate = random_surrogate();
+        let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
+        let target_delays = surrogate.predict(&capacities([0.4, 0.3]));
+        let mut categories = EdgeCategories {
+            ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
+            initial_capacities: capacities([0.44, 0.27]).to_vec(),
+            min_capacities: vec![None; 2],
+            max_capacities: vec![None; 2],
+            edge_categories: vec![Some(0), Some(1), None],
+        };
+        let mut optimize = |categories: &EdgeCategories| -> Vec<f64> {
+            optimize_capacities(
+                &mut surrogate,
+                &target_delays,
+                &categories.initial_capacities,
+                &OptimizerParameters::default(),
+                categories,
+            )
+            .into_iter()
+            .map(f64::from)
+            .collect()
+        };
+        let optimized = optimize(&categories);
+        for (c, expected) in optimized.into_iter().zip([0.4, 0.3]) {
+            assert!((c / expected - 1.).abs() < 1e-3, "{c} != {expected}");
+        }
+        // With a maximum capacity of 0.28 for category 1, it stops at that bound.
+        categories.max_capacities[1] = Some(FlowPerLane::new_unchecked(0.28));
+        let optimized = optimize(&categories);
+        assert!((optimized[1] - 0.28).abs() < 1e-12, "{}", optimized[1]);
     }
 }

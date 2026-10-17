@@ -16,6 +16,7 @@
 
 //! Road-capacity calibration: bottleneck capacities are calibrated by edge category so that the
 //! queueing delays of target routes match observed delays.
+mod optimizer;
 pub mod parameters;
 mod surrogate;
 
@@ -25,7 +26,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use log::{info, warn};
 use petgraph::graph::EdgeIndex;
 
-use self::parameters::{IdValue, InitialCapacities};
+use self::parameters::{Capacities, CategoryCapacity, IdValue, OptimizerParameters};
 use self::surrogate::Surrogate;
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::DepartureTimeModel;
@@ -46,7 +47,8 @@ pub fn run() -> Result<()> {
         .expect("The capacity-calibration parameters are not set");
     check_population(crate::population::agents())?;
     let edges: Vec<_> = crate::network::road_network::iter_edges().collect();
-    let categories = EdgeCategories::new(&edges, &params.initial_capacities)?;
+    let categories = EdgeCategories::new(&edges, &params.capacities)?;
+    check_optimizer_parameters(&params.optimizer)?;
     check_bottleneck_model(
         &edges,
         crate::network::road_network::parameters::constrain_inflow(),
@@ -101,7 +103,31 @@ pub fn run() -> Result<()> {
         &jacobian,
         start.elapsed(),
     );
-    bail!("The capacity-calibration loop is not implemented yet")
+    optimizer::optimize_capacities(
+        &mut surrogate,
+        &target_delays,
+        &categories.initial_capacities,
+        &params.optimizer,
+        &categories,
+    );
+    bail!(
+        "The capacity-calibration loop (simulation with the optimized capacities) is not \
+        implemented yet"
+    )
+}
+
+/// Checks the parameters of the optimization of the capacities.
+fn check_optimizer_parameters(optimizer: &OptimizerParameters) -> Result<()> {
+    if optimizer.trust_region <= 0. || optimizer.trust_region >= 1. {
+        bail!("The parameter `optimizer.trust_region` must be between 0 and 1");
+    }
+    if optimizer.step_tolerance <= 0. {
+        bail!("The parameter `optimizer.step_tolerance` must be positive");
+    }
+    if optimizer.max_iterations == 0 {
+        bail!("The parameter `optimizer.max_iterations` must be positive");
+    }
+    Ok(())
 }
 
 /// Checks that the bottleneck model is supported by the capacity calibration, which models the
@@ -364,18 +390,22 @@ struct EdgeCategories {
     ids: Vec<Option<MetroId>>,
     /// Initial capacity of each category.
     initial_capacities: Vec<FlowPerLane>,
+    /// Minimum capacity of each category (`None` if there is no minimum).
+    min_capacities: Vec<Option<FlowPerLane>>,
+    /// Maximum capacity of each category (`None` if there is no maximum).
+    max_capacities: Vec<Option<FlowPerLane>>,
     /// Category index of each edge (`None` if the edge is not calibrated), indexed by `EdgeIndex`.
     edge_categories: Vec<Option<usize>>,
 }
 
 impl EdgeCategories {
     /// Creates the [EdgeCategories] from the edges of the road network (ordered by `EdgeIndex`)
-    /// and the initial capacities of the parameters.
+    /// and the capacities of the parameters (initial values and bounds).
     ///
     /// If no edge has a category, all the edges form a single category.
     /// Otherwise, the edges without a category are not calibrated and keep their input bottleneck
     /// flow.
-    fn new(edges: &[&RoadEdge], initial_capacities: &InitialCapacities) -> Result<Self> {
+    fn new(edges: &[&RoadEdge], capacities: &Capacities) -> Result<Self> {
         let non_free_flow: Vec<_> = edges
             .iter()
             .filter(|e| !e.has_free_flow_speed())
@@ -390,19 +420,15 @@ impl EdgeCategories {
             );
         }
         let categories = if edges.iter().any(|e| e.category().is_some()) {
-            Self::from_edge_categories(edges, initial_capacities)?
+            Self::from_edge_categories(edges, capacities)?
         } else {
-            let &InitialCapacities::Uniform(capacity) = initial_capacities else {
+            let &Capacities::Uniform(capacity) = capacities else {
                 bail!(
-                    "The parameter `initial_capacities` must be a single value when no edge has \
-                    a category"
+                    "The parameter `capacities` must be a single value when no edge has a \
+                    category"
                 );
             };
-            Self {
-                ids: vec![None],
-                initial_capacities: vec![capacity],
-                edge_categories: vec![Some(0); edges.len()],
-            }
+            Self::from_capacities(vec![None], vec![capacity], vec![Some(0); edges.len()])?
         };
         let nb_ignored_flows = edges
             .iter()
@@ -419,10 +445,7 @@ impl EdgeCategories {
     }
 
     /// Creates the [EdgeCategories] when some edges have a category.
-    fn from_edge_categories(
-        edges: &[&RoadEdge],
-        initial_capacities: &InitialCapacities,
-    ) -> Result<Self> {
+    fn from_edge_categories(edges: &[&RoadEdge], capacities: &Capacities) -> Result<Self> {
         let mut ids = Vec::new();
         let mut index_of: HashMap<MetroId, usize> = HashMap::default();
         let mut time_dependent = Vec::new();
@@ -450,9 +473,9 @@ impl EdgeCategories {
                 format_ids(time_dependent),
             );
         }
-        let initial_capacities = match initial_capacities {
-            &InitialCapacities::Uniform(capacity) => vec![capacity; ids.len()],
-            InitialCapacities::ByCategory(capacities) => {
+        let capacities = match capacities {
+            &Capacities::Uniform(capacity) => vec![capacity; ids.len()],
+            Capacities::ByCategory(capacities) => {
                 // The categories of the parameters are compared to the categories of the edges
                 // through their string representation.
                 let names: HashSet<String> = ids.iter().map(|id| id.unwrap().to_string()).collect();
@@ -460,25 +483,53 @@ impl EdgeCategories {
                 check_ids_exist(
                     &names,
                     &keys,
-                    "The following edge categories have no value in the parameter \
-                    `initial_capacities`",
+                    "The following edge categories have no value in the parameter `capacities`",
                 )?;
                 check_ids_exist(
                     &keys,
                     &names,
-                    "The following categories of the parameter `initial_capacities` are not the \
-                    category of any edge",
+                    "The following categories of the parameter `capacities` are not the category \
+                    of any edge",
                 )?;
                 ids.iter()
                     .map(|id| capacities[&id.unwrap().to_string()])
                     .collect()
             }
         };
-        Ok(Self {
+        Self::from_capacities(ids, capacities, edge_categories)
+    }
+
+    /// Creates the [EdgeCategories] from the id and the capacity of each category and the
+    /// category index of each edge.
+    ///
+    /// Returns an error if an initial capacity is not between the bounds of its category.
+    fn from_capacities(
+        ids: Vec<Option<MetroId>>,
+        capacities: Vec<CategoryCapacity>,
+        edge_categories: Vec<Option<usize>>,
+    ) -> Result<Self> {
+        let categories = Self {
             ids,
-            initial_capacities,
+            initial_capacities: capacities.iter().map(|c| c.initial).collect(),
+            min_capacities: capacities.iter().map(|c| c.min).collect(),
+            max_capacities: capacities.iter().map(|c| c.max).collect(),
             edge_categories,
-        })
+        };
+        let outside: Vec<_> = capacities
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_within_bounds())
+            .map(|(i, _)| categories.name(i))
+            .collect();
+        if !outside.is_empty() {
+            bail!(
+                "The initial capacity of {} categories is not between their minimum and maximum \
+                capacities: {}",
+                outside.len(),
+                outside.join(", "),
+            );
+        }
+        Ok(categories)
     }
 
     /// Returns the capacity per lane of each edge (`None` if the edge is not calibrated), given
@@ -510,7 +561,7 @@ impl EdgeCategories {
         self.ids[category].map_or_else(|| "all edges".to_owned(), |id| format!("`{id}`"))
     }
 
-    /// Logs the number of edges and the initial capacity of each category.
+    /// Logs the number of edges, the initial capacity and the bounds of each category.
     fn log_summary(&self) {
         let mut nb_edges = vec![0; self.ids.len()];
         let mut nb_uncalibrated_edges = 0;
@@ -522,10 +573,15 @@ impl EdgeCategories {
             }
         }
         for (i, (capacity, n)) in self.initial_capacities.iter().zip(nb_edges).enumerate() {
+            let bound = |name: &str, value: Option<FlowPerLane>| {
+                value.map_or_else(String::new, |v| format!(", {name} {}", f64::from(v)))
+            };
             info!(
-                "Category {}: {n} edges, initial capacity of {} PCE/s per lane",
+                "Category {}: {n} edges, initial capacity of {} PCE/s per lane{}{}",
                 self.name(i),
-                f64::from(capacity)
+                f64::from(capacity),
+                bound("minimum", self.min_capacities[i]),
+                bound("maximum", self.max_capacities[i]),
             );
         }
         if nb_uncalibrated_edges > 0 {
@@ -721,11 +777,23 @@ mod tests {
         FlowPerLane::try_from(value).unwrap()
     }
 
-    fn by_category(values: &[(&str, f64)]) -> InitialCapacities {
-        InitialCapacities::ByCategory(
+    fn category_capacity(value: f64) -> CategoryCapacity {
+        CategoryCapacity {
+            initial: capacity(value),
+            min: None,
+            max: None,
+        }
+    }
+
+    fn uniform(value: f64) -> Capacities {
+        Capacities::Uniform(category_capacity(value))
+    }
+
+    fn by_category(values: &[(&str, f64)]) -> Capacities {
+        Capacities::ByCategory(
             values
                 .iter()
-                .map(|&(name, value)| (name.to_owned(), capacity(value)))
+                .map(|&(name, value)| (name.to_owned(), category_capacity(value)))
                 .collect(),
         )
     }
@@ -736,8 +804,7 @@ mod tests {
         let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
         let e1 = edge(1, "FreeFlow", None, true, None);
         let edges = [&e0, &e1];
-        let categories =
-            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
         assert_eq!(categories.ids, vec![None]);
         assert_eq!(categories.initial_capacities, vec![capacity(0.5)]);
         assert_eq!(categories.edge_categories, vec![Some(0), Some(0)]);
@@ -765,16 +832,51 @@ mod tests {
             categories.edge_categories,
             vec![Some(0), None, Some(1), Some(0)]
         );
-        let categories =
-            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
         assert_eq!(categories.initial_capacities, vec![capacity(0.5); 2]);
+        assert_eq!(categories.min_capacities, vec![None; 2]);
+        assert_eq!(categories.max_capacities, vec![None; 2]);
+
+        // Bounds by category.
+        let bounded = |initial: f64, min: Option<f64>, max: Option<f64>| CategoryCapacity {
+            initial: capacity(initial),
+            min: min.map(capacity),
+            max: max.map(capacity),
+        };
+        let capacities = |a: CategoryCapacity, b: CategoryCapacity| {
+            Capacities::ByCategory(
+                [("a".to_owned(), a), ("b".to_owned(), b)]
+                    .into_iter()
+                    .collect(),
+            )
+        };
+        let categories = EdgeCategories::new(
+            &edges,
+            &capacities(bounded(0.5, Some(0.1), None), bounded(0.6, None, Some(0.8))),
+        )
+        .unwrap();
+        assert_eq!(categories.min_capacities, vec![None, Some(capacity(0.1))]);
+        assert_eq!(categories.max_capacities, vec![Some(capacity(0.8)), None]);
+        // The initial capacities must be within the bounds.
+        let msg = EdgeCategories::new(
+            &edges,
+            &capacities(bounded(0.5, Some(0.6), None), bounded(0.6, None, Some(0.5))),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            msg.ends_with(
+                "2 categories is not between their minimum and maximum capacities: `b`, `a`"
+            ),
+            "{msg}"
+        );
 
         // Missing or extra category in the parameters.
         let msg = EdgeCategories::new(&edges, &by_category(&[("a", 0.5)]))
             .unwrap_err()
             .to_string();
         assert!(
-            msg.ends_with("no value in the parameter `initial_capacities`: b"),
+            msg.ends_with("no value in the parameter `capacities`: b"),
             "{msg}"
         );
         let msg = EdgeCategories::new(&edges, &by_category(&[("a", 0.5), ("b", 0.6), ("c", 0.7)]))
@@ -785,7 +887,7 @@ mod tests {
         // Time-dependent flows are not allowed on the edges without a category.
         let e1 = edge(1, "FreeFlow", None, true, None);
         let edges = [&e0, &e1];
-        let msg = EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5)))
+        let msg = EdgeCategories::new(&edges, &uniform(0.5))
             .unwrap_err()
             .to_string();
         assert!(msg.contains("1 edges have one: 1"), "{msg}");
@@ -793,7 +895,7 @@ mod tests {
         // All the edges must have a `FreeFlow` speed-density function.
         let e1 = edge(1, "Bottleneck", None, false, Some("b"));
         let edges = [&e0, &e1];
-        let msg = EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5)))
+        let msg = EdgeCategories::new(&edges, &uniform(0.5))
             .unwrap_err()
             .to_string();
         assert!(msg.contains("1 edges have another function: 1"), "{msg}");
@@ -805,8 +907,7 @@ mod tests {
         let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
         let e1 = edge(1, "FreeFlow", None, false, None);
         let edges = [&e0, &e1];
-        let categories =
-            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
         let capacities: Vec<_> = categories.edge_capacities(&[capacity(0.3)]).collect();
         assert_eq!(capacities, vec![Some(capacity(0.3)); 2]);
 
@@ -815,8 +916,7 @@ mod tests {
         let e1 = edge(1, "FreeFlow", Some(1.0), false, None);
         let e2 = edge(2, "FreeFlow", None, false, Some("a"));
         let edges = [&e0, &e1, &e2];
-        let categories =
-            EdgeCategories::new(&edges, &InitialCapacities::Uniform(capacity(0.5))).unwrap();
+        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
         let capacities: Vec<_> = categories
             .edge_capacities(&[capacity(0.3), capacity(0.4)])
             .collect();
@@ -824,6 +924,22 @@ mod tests {
             capacities,
             vec![Some(capacity(0.3)), None, Some(capacity(0.4))]
         );
+    }
+
+    #[test]
+    fn check_optimizer_parameters_test() {
+        assert!(check_optimizer_parameters(&OptimizerParameters::default()).is_ok());
+        for (optimizer, name) in [
+            (r#"{"trust_region": 0.0}"#, "trust_region"),
+            (r#"{"trust_region": 1.0}"#, "trust_region"),
+            (r#"{"step_tolerance": 0.0}"#, "step_tolerance"),
+            (r#"{"max_iterations": 0}"#, "max_iterations"),
+        ] {
+            let msg = check_optimizer_parameters(&serde_json::from_str(optimizer).unwrap())
+                .unwrap_err()
+                .to_string();
+            assert!(msg.contains(&format!("`optimizer.{name}`")), "{msg}");
+        }
     }
 
     #[test]
