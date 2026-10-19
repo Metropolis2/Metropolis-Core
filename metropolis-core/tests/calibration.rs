@@ -171,8 +171,9 @@ fn calibrate(initial_capacities: [f64; 2], target_routes: &[TargetRoute]) -> Vec
         initial_capacities[0], initial_capacities[1],
     ))
     .unwrap();
-    let mut capacities =
-        metropolis_core::calibration::calibrate(&params, target_routes.to_vec()).unwrap();
+    let mut capacities = metropolis_core::calibration::calibrate(&params, target_routes.to_vec())
+        .unwrap()
+        .capacities;
     capacities.sort_by_key(|(id, _)| id.unwrap().to_string());
     capacities.into_iter().map(|(_, c)| f64::from(c)).collect()
 }

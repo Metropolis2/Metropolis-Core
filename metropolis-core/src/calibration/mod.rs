@@ -17,6 +17,7 @@
 //! Road-capacity calibration: bottleneck capacities are calibrated by edge category so that the
 //! queueing delays of target routes match observed delays.
 mod optimizer;
+mod output;
 pub mod parameters;
 mod surrogate;
 
@@ -55,7 +56,9 @@ pub fn run() -> Result<()> {
         .as_ref()
         .expect("The target-routes file is not set");
     let target_routes = crate::io::read_target_routes(path)?;
-    calibrate(params, target_routes)?;
+    let results = calibrate(params, target_routes)?;
+    info!("Saving the results of the capacity calibration");
+    output::save(&results)?;
     info!("Capacity calibration done");
     Ok(())
 }
@@ -64,7 +67,7 @@ pub fn run() -> Result<()> {
 /// routes reproduce their target delays.
 ///
 /// Returns the calibrated capacity of each category, with the id of the category (`None` for the
-/// single category used when no edge has a category).
+/// single category used when no edge has a category), and the diagnostics of the calibration.
 ///
 /// The input of the simulation (parameters, population and network) must be initialized.
 ///
@@ -84,7 +87,7 @@ pub fn run() -> Result<()> {
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
-) -> Result<Vec<(Option<MetroId>, FlowPerLane)>> {
+) -> Result<CalibrationResults> {
     check_population(crate::population::agents())?;
     let edges: Vec<_> = crate::network::road_network::iter_edges().collect();
     let categories = EdgeCategories::new(&edges, &params.capacities)?;
@@ -149,12 +152,17 @@ pub fn calibrate(
     let fit_at = |surrogate: &mut Surrogate, capacities: &[FlowPerLane]| {
         let start = Instant::now();
         let predicted_delays = surrogate.predict(capacities);
-        log_fit(&target_delays, &predicted_delays, start.elapsed())
+        let fit = log_fit(&target_delays, &predicted_delays, start.elapsed());
+        (fit, predicted_delays)
     };
     let mut capacities = categories.initial_capacities.clone();
     let mut sensitivity_logged = false;
-    // Best fit after the route-choice days, with its capacities and outer iteration.
-    let mut best: Option<(f64, Vec<FlowPerLane>, u64)> = None;
+    // Best fit after the route-choice days, with its capacities, outer iteration and predicted
+    // delays.
+    let mut best: Option<(f64, Vec<FlowPerLane>, u64, Vec<NonNegativeSeconds>)> = None;
+    // Predicted delays after the route-choice days of the first outer iteration.
+    let mut initial_predicted_delays = None;
+    let mut iterations = Vec::new();
     let mut since_best = 0;
     let mut stop_reason = "maximum number of iterations";
     let mut nb_outer = 0;
@@ -171,14 +179,24 @@ pub fn calibrate(
         let mut day = route_choice.day;
         // The outer iteration is scored by the fit at the capacities of the route-choice days.
         let mut surrogate = new_surrogate(day.curves);
-        let mut fit = fit_at(&mut surrogate, &capacities);
-        if best.as_ref().is_none_or(|(best_fit, _, _)| fit < *best_fit) {
-            best = Some((fit, capacities.clone(), outer));
+        let (mut fit, predicted_delays) = fit_at(&mut surrogate, &capacities);
+        iterations.push(OuterIterationResults {
+            outer,
+            conditions_rmse: route_choice.conditions_rmse.clone(),
+            score: fit,
+            nb_optimizations: 0,
+            capacities: capacities.clone(),
+        });
+        if initial_predicted_delays.is_none() {
+            initial_predicted_delays = Some(predicted_delays.clone());
+        }
+        if best.as_ref().is_none_or(|(best_fit, ..)| fit < *best_fit) {
+            best = Some((fit, capacities.clone(), outer, predicted_delays));
             since_best = 0;
         } else {
             since_best += 1;
         }
-        let (best_fit, _, best_outer) = best.as_ref().unwrap();
+        let (best_fit, _, best_outer, _) = best.as_ref().unwrap();
         info!(
             "Outer iteration {outer}: RMSE of the delays after the route-choice days {fit:.3} s \
             (best: {best_fit:.3} s, at outer iteration {best_outer})"
@@ -210,6 +228,7 @@ pub fn calibrate(
             );
             let change = max_relative_change(&capacities, &optimized);
             capacities = optimized;
+            iterations.last_mut().unwrap().nb_optimizations += 1;
             info!(
                 "Inner iteration {inner}: maximum change of the capacities {:.2}%",
                 100. * change
@@ -217,7 +236,7 @@ pub fn calibrate(
             info!("Simulating a day with the optimized capacities and the same routes");
             day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
             surrogate = new_surrogate(day.curves);
-            let new_fit = fit_at(&mut surrogate, &capacities);
+            let (new_fit, _) = fit_at(&mut surrogate, &capacities);
             if new_fit >= (1. - params.inner_loop.tolerance) * fit {
                 info!("Inner loop stopped: the fit improved by less than the tolerance");
                 break;
@@ -243,7 +262,8 @@ pub fn calibrate(
         );
         exp_weights = new_exp_weights;
     }
-    let (best_fit, capacities, best_outer) = best.expect("At least one outer iteration is run");
+    let (best_fit, capacities, best_outer, predicted_delays) =
+        best.expect("At least one outer iteration is run");
     info!(
         "Capacity calibration stopped ({stop_reason}) after {nb_outer} outer iterations; best fit \
         after the route-choice days at outer iteration {best_outer}: RMSE of the delays \
@@ -263,7 +283,74 @@ pub fn calibrate(
             100. * (f64::from(capacity) / f64::from(initial) - 1.),
         );
     }
-    Ok(categories.ids.iter().copied().zip(capacities).collect())
+    let delays = target_routes
+        .iter()
+        .zip(initial_predicted_delays.unwrap())
+        .zip(predicted_delays)
+        .map(
+            |((route, initial_predicted_delay), predicted_delay)| TargetDelay {
+                id: route.id,
+                departure_time: route.departure_time,
+                target_delay: route.target_delay,
+                initial_predicted_delay,
+                predicted_delay,
+            },
+        )
+        .collect();
+    Ok(CalibrationResults {
+        capacities: categories.ids.iter().copied().zip(capacities).collect(),
+        iterations,
+        delays,
+        category_ids: categories.ids.clone(),
+    })
+}
+
+/// Results of the capacity calibration.
+#[derive(Clone, Debug)]
+pub struct CalibrationResults {
+    /// Calibrated capacity of each category, with the id of the category (`None` for the single
+    /// category used when no edge has a category).
+    pub capacities: Vec<(Option<MetroId>, FlowPerLane)>,
+    /// Diagnostics of each outer iteration.
+    iterations: Vec<OuterIterationResults>,
+    /// Target and predicted delay of each target route.
+    delays: Vec<TargetDelay>,
+    /// Id of each category (`None` for the single category used when no edge has a category).
+    category_ids: Vec<Option<MetroId>>,
+}
+
+/// Diagnostics of an outer iteration of the capacity calibration.
+#[derive(Clone, Debug)]
+struct OuterIterationResults {
+    /// Index of the outer iteration (starting at 1).
+    outer: u64,
+    /// RMSE between the expected and simulated network conditions of each route-choice day, in
+    /// seconds.
+    conditions_rmse: Vec<f64>,
+    /// Score of the outer iteration: fit of the surrogate model (RMSE of the delays, in seconds)
+    /// at the capacities of the route-choice days, on the last route-choice day.
+    score: f64,
+    /// Number of optimizations of the capacities in the inner loop.
+    nb_optimizations: u64,
+    /// Capacity of each category during the route-choice days (the scored capacities).
+    capacities: Vec<FlowPerLane>,
+}
+
+/// Target and predicted delays of a target route.
+#[derive(Clone, Debug)]
+struct TargetDelay {
+    /// Id of the target route.
+    id: MetroId,
+    /// Departure time from the first edge of the path.
+    departure_time: NonNegativeSeconds,
+    /// Observed delay of the route.
+    target_delay: NonNegativeSeconds,
+    /// Delay predicted after the route-choice days of the first outer iteration (at the initial
+    /// capacities).
+    initial_predicted_delay: NonNegativeSeconds,
+    /// Delay predicted after the route-choice days of the best outer iteration (at the calibrated
+    /// capacities).
+    predicted_delay: NonNegativeSeconds,
 }
 
 /// Returns the largest relative change from `old` to `new` capacities.
@@ -441,6 +528,9 @@ struct RouteChoiceDay {
     day: SimulatedDay,
     /// Iteration counter of the learning model at the day.
     iteration_counter: u32,
+    /// RMSE between the expected and simulated network conditions of each route-choice day, in
+    /// seconds.
+    conditions_rmse: Vec<f64>,
 }
 
 /// Simulates the days of the calibration.
@@ -470,6 +560,7 @@ impl Simulator<'_> {
         let mut previous_results: Option<AgentResults> = None;
         let mut iteration_counter = crate::parameters::init_iteration_counter();
         let mut nb_days = 1;
+        let mut conditions_rmse = Vec::new();
         loop {
             info!("Route-choice day {nb_days}");
             info!("Computing skims");
@@ -497,6 +588,7 @@ impl Simulator<'_> {
                 conditions {:.3} s",
                 f64::from(rmse)
             );
+            conditions_rmse.push(f64::from(rmse));
             if params.tolerance.is_some_and(|tol| rmse <= tol) || nb_days >= params.max_iterations {
                 return Ok(RouteChoiceDay {
                     exp_weights,
@@ -504,6 +596,7 @@ impl Simulator<'_> {
                     pre_day,
                     day,
                     iteration_counter,
+                    conditions_rmse,
                 });
             }
             let new_exp_weights = crate::simulation::run_day_to_day_model(
