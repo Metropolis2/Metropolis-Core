@@ -69,11 +69,18 @@ pub fn run() -> Result<()> {
 /// The input of the simulation (parameters, population and network) must be initialized.
 ///
 /// Each outer iteration runs route-choice days with the current capacities, until route choice is
-/// stable. Then, the inner loop optimizes the capacities on the arrival curves of the last
-/// simulated day and simulates a day with the optimized capacities and the same routes, until the
-/// capacities do not change any more. The next outer iteration starts from the expected network
-/// conditions of the last route-choice day, updated with the network conditions of the last
-/// simulated day by the learning model.
+/// stable, and is scored by the fit of the surrogate model at these capacities (RMSE of the
+/// delays) on the arrival curves of the last route-choice day. Then, the inner loop optimizes the
+/// capacities on the arrival curves of the last simulated day and simulates a day with the
+/// optimized capacities and the same routes, until the fit of the simulated day does not improve
+/// any more. The next outer iteration starts from the expected network conditions of the last
+/// route-choice day, updated with the network conditions of the last simulated day by the
+/// learning model.
+///
+/// The outer loop stops when the best score has not improved for `outer_loop.patience` outer
+/// iterations, or after `outer_loop.max_iterations`. The capacities of the outer iteration with
+/// the best score are returned (the capacities from the inner loop of the last outer iteration have
+/// no route-choice days, so they are not scored).
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
@@ -139,11 +146,21 @@ pub fn calibrate(
         preprocess_data: &preprocess_data,
         recorded_edges: &recorded_edges,
     };
+    let fit_at = |surrogate: &mut Surrogate, capacities: &[FlowPerLane]| {
+        let start = Instant::now();
+        let predicted_delays = surrogate.predict(capacities);
+        log_fit(&target_delays, &predicted_delays, start.elapsed())
+    };
     let mut capacities = categories.initial_capacities.clone();
     let mut sensitivity_logged = false;
-    let mut outer = 1;
-    let last_day = loop {
+    // Best fit after the route-choice days, with its capacities and outer iteration.
+    let mut best: Option<(f64, Vec<FlowPerLane>, u64)> = None;
+    let mut since_best = 0;
+    let mut stop_reason = "maximum number of iterations";
+    let mut nb_outer = 0;
+    for outer in 1..=params.outer_loop.max_iterations {
         info!("===== Outer iteration {outer} =====");
+        nb_outer = outer;
         let start_capacities = capacities.clone();
         let route_choice = simulator.route_choice(
             exp_weights,
@@ -152,12 +169,26 @@ pub fn calibrate(
             &mut node_orders,
         )?;
         let mut day = route_choice.day;
+        // The outer iteration is scored by the fit at the capacities of the route-choice days.
+        let mut surrogate = new_surrogate(day.curves);
+        let mut fit = fit_at(&mut surrogate, &capacities);
+        if best.as_ref().is_none_or(|(best_fit, _, _)| fit < *best_fit) {
+            best = Some((fit, capacities.clone(), outer));
+            since_best = 0;
+        } else {
+            since_best += 1;
+        }
+        let (best_fit, _, best_outer) = best.as_ref().unwrap();
+        info!(
+            "Outer iteration {outer}: RMSE of the delays after the route-choice days {fit:.3} s \
+            (best: {best_fit:.3} s, at outer iteration {best_outer})"
+        );
+        if since_best >= params.outer_loop.patience {
+            stop_reason = "no improvement of the best fit";
+            break;
+        }
         for inner in 1..=params.inner_loop.max_iterations {
             info!("Inner iteration {inner}");
-            let mut surrogate = new_surrogate(day.curves);
-            let start = Instant::now();
-            let predicted_delays = surrogate.predict(&capacities);
-            log_fit(&target_delays, &predicted_delays, start.elapsed());
             if !sensitivity_logged {
                 let start = Instant::now();
                 let (predicted_delays, jacobian) = surrogate.predict_with_jacobian(&capacities);
@@ -179,32 +210,24 @@ pub fn calibrate(
             );
             let change = max_relative_change(&capacities, &optimized);
             capacities = optimized;
-            info!("Simulating a day with the optimized capacities and the same routes");
-            day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
             info!(
                 "Inner iteration {inner}: maximum change of the capacities {:.2}%",
                 100. * change
             );
-            if change <= params.inner_loop.tolerance {
+            info!("Simulating a day with the optimized capacities and the same routes");
+            day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
+            surrogate = new_surrogate(day.curves);
+            let new_fit = fit_at(&mut surrogate, &capacities);
+            if new_fit >= (1. - params.inner_loop.tolerance) * fit {
+                info!("Inner loop stopped: the fit improved by less than the tolerance");
                 break;
             }
+            fit = new_fit;
         }
-        let change = max_relative_change(&start_capacities, &capacities);
-        let stop = if change <= params.outer_loop.tolerance {
-            Some("capacities changed by less than the tolerance")
-        } else if outer >= params.outer_loop.max_iterations {
-            Some("maximum number of iterations")
-        } else {
-            None
-        };
         info!(
             "Outer iteration {outer}: maximum change of the capacities {:.2}%",
-            100. * change
+            100. * max_relative_change(&start_capacities, &capacities)
         );
-        if let Some(reason) = stop {
-            info!("Capacity calibration stopped ({reason}) after {outer} outer iterations");
-            break day;
-        }
         // The next outer iteration starts from the expected network conditions of the last
         // route-choice day, updated with the network conditions of the last simulated day by the
         // learning model.
@@ -219,12 +242,13 @@ pub fn calibrate(
             &new_exp_weights,
         );
         exp_weights = new_exp_weights;
-        outer += 1;
-    };
-    let mut surrogate = new_surrogate(last_day.curves);
-    let start = Instant::now();
-    let predicted_delays = surrogate.predict(&capacities);
-    log_fit(&target_delays, &predicted_delays, start.elapsed());
+    }
+    let (best_fit, capacities, best_outer) = best.expect("At least one outer iteration is run");
+    info!(
+        "Capacity calibration stopped ({stop_reason}) after {nb_outer} outer iterations; best fit \
+        after the route-choice days at outer iteration {best_outer}: RMSE of the delays \
+        {best_fit:.3} s"
+    );
     for (j, (&capacity, &initial)) in capacities
         .iter()
         .zip(categories.initial_capacities.iter())
@@ -253,16 +277,17 @@ fn max_relative_change(old: &[FlowPerLane], new: &[FlowPerLane]) -> f64 {
 /// Checks the parameters of the optimization of the capacities and of the loops.
 fn check_loop_parameters(params: &CapacityCalibrationParameters) -> Result<()> {
     check_optimizer_parameters(&params.optimizer)?;
-    for (name, loop_params) in [
-        ("inner_loop", &params.inner_loop),
-        ("outer_loop", &params.outer_loop),
-    ] {
-        if loop_params.tolerance <= 0. {
-            bail!("The parameter `{name}.tolerance` must be positive");
-        }
-        if loop_params.max_iterations == 0 {
-            bail!("The parameter `{name}.max_iterations` must be positive");
-        }
+    if params.inner_loop.tolerance <= 0. {
+        bail!("The parameter `inner_loop.tolerance` must be positive");
+    }
+    if params.inner_loop.max_iterations == 0 {
+        bail!("The parameter `inner_loop.max_iterations` must be positive");
+    }
+    if params.outer_loop.patience == 0 {
+        bail!("The parameter `outer_loop.patience` must be positive");
+    }
+    if params.outer_loop.max_iterations == 0 {
+        bail!("The parameter `outer_loop.max_iterations` must be positive");
     }
     if params.route_choice.max_iterations == 0 {
         bail!("The parameter `route_choice.max_iterations` must be positive");
@@ -315,10 +340,10 @@ fn log_fit(
     target_delays: &[NonNegativeSeconds],
     predicted_delays: &[NonNegativeSeconds],
     duration: Duration,
-) {
+) -> f64 {
     debug_assert_eq!(target_delays.len(), predicted_delays.len());
     if target_delays.is_empty() {
-        return;
+        return 0.;
     }
     let n = target_delays.len() as f64;
     let errors: Vec<f64> = predicted_delays
@@ -336,6 +361,7 @@ fn log_fit(
         target delay {mean_target:.3} s (evaluated in {:.1} ms)",
         duration.as_secs_f64() * 1e3,
     );
+    rmse
 }
 
 /// Logs, for each category, the number of target routes whose predicted delay depends on its
@@ -1198,10 +1224,7 @@ mod tests {
                 r#""inner_loop": {"max_iterations": 0}"#,
                 "inner_loop.max_iterations",
             ),
-            (
-                r#""outer_loop": {"tolerance": -1.0}"#,
-                "outer_loop.tolerance",
-            ),
+            (r#""outer_loop": {"patience": 0}"#, "outer_loop.patience"),
             (
                 r#""outer_loop": {"max_iterations": 0}"#,
                 "outer_loop.max_iterations",

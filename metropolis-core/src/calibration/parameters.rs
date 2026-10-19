@@ -45,10 +45,10 @@ pub struct CapacityCalibrationParameters {
     /// Parameters of the inner loop: optimization of the capacities, then simulation of a day with
     /// the optimized capacities and the same routes.
     #[serde(default)]
-    pub inner_loop: LoopParameters,
+    pub inner_loop: InnerLoopParameters,
     /// Parameters of the outer loop: route-choice days, then inner loop.
     #[serde(default)]
-    pub outer_loop: LoopParameters,
+    pub outer_loop: OuterLoopParameters,
 }
 
 /// Parameters of the route-choice days of an outer iteration (day-to-day learning with the current
@@ -73,22 +73,45 @@ impl Default for RouteChoiceParameters {
     }
 }
 
-/// Stopping criteria of a loop of the capacity calibration.
+/// Stopping criteria of the inner loop of the capacity calibration.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct LoopParameters {
-    /// The loop stops when no capacity changes by more than this relative amount in an iteration
-    /// (default: 0.01).
+pub struct InnerLoopParameters {
+    /// The loop stops when the fit of the surrogate model (RMSE of the delays) on the simulated day
+    /// improves by less than this relative amount, or gets worse (default: 0.01).
     pub tolerance: f64,
-    /// Maximum number of iterations (default: 10).
+    /// Maximum number of optimizations (default: 10).
     pub max_iterations: u64,
 }
 
-impl Default for LoopParameters {
+impl Default for InnerLoopParameters {
     fn default() -> Self {
         Self {
             tolerance: 0.01,
             max_iterations: 10,
+        }
+    }
+}
+
+/// Stopping criteria of the outer loop of the capacity calibration.
+///
+/// Each outer iteration is scored by the fit of the surrogate model (RMSE of the delays) after its
+/// route-choice days; the capacities with the best score are returned.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct OuterLoopParameters {
+    /// The loop stops when the best score has not improved for this number of outer iterations
+    /// (default: 5).
+    pub patience: u64,
+    /// Maximum number of outer iterations (default: 20).
+    pub max_iterations: u64,
+}
+
+impl Default for OuterLoopParameters {
+    fn default() -> Self {
+        Self {
+            patience: 5,
+            max_iterations: 20,
         }
     }
 }
@@ -242,8 +265,8 @@ mod tests {
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.01);
         assert_eq!(params.inner_loop.max_iterations, 10);
-        assert_eq!(params.outer_loop.tolerance, 0.01);
-        assert_eq!(params.outer_loop.max_iterations, 10);
+        assert_eq!(params.outer_loop.patience, 5);
+        assert_eq!(params.outer_loop.max_iterations, 20);
 
         let params = parse(r#"{"capacities": {"initial": 0.5, "max": 0.8}}"#).unwrap();
         let Capacities::Uniform(c) = params.capacities else {
@@ -307,7 +330,7 @@ mod tests {
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.001);
         assert_eq!(params.inner_loop.max_iterations, 10);
-        assert_eq!(params.outer_loop.tolerance, 0.01);
+        assert_eq!(params.outer_loop.patience, 5);
         assert_eq!(params.outer_loop.max_iterations, 3);
 
         // Capacities must be positive.

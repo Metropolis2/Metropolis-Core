@@ -167,7 +167,7 @@ fn calibrate(initial_capacities: [f64; 2], target_routes: &[TargetRoute]) -> Vec
         r#"{{"capacities": {{"A": {}, "B": {}}},
         "route_choice": {{"max_iterations": 1}},
         "inner_loop": {{"tolerance": 1e-4, "max_iterations": 20}},
-        "outer_loop": {{"tolerance": 1e-4}}}}"#,
+        "outer_loop": {{"patience": 1}}}}"#,
         initial_capacities[0], initial_capacities[1],
     ))
     .unwrap();
