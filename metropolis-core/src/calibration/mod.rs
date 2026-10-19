@@ -26,17 +26,22 @@ use anyhow::{anyhow, bail, Context, Result};
 use log::{info, warn};
 use petgraph::graph::EdgeIndex;
 
-use self::parameters::{Capacities, CategoryCapacity, IdValue, OptimizerParameters};
+use self::parameters::{
+    Capacities, CapacityCalibrationParameters, CategoryCapacity, IdValue, OptimizerParameters,
+    RouteChoiceParameters,
+};
 use self::surrogate::Surrogate;
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::DepartureTimeModel;
 use crate::mode::Mode;
 use crate::network::road_network::arrival_curve::ArrivalCurves;
+use crate::network::road_network::node_order::NodeOrderCache;
 use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::{BottleneckFlows, OriginalEdgeId, RoadEdge, RoadNetworkState};
-use crate::network::NetworkState;
+use crate::network::{NetworkSkim, NetworkState, NetworkWeights};
 use crate::population::Agent;
-use crate::simulation::{check_ids_exist, format_ids};
+use crate::simulation::results::AgentResults;
+use crate::simulation::{check_ids_exist, format_ids, PreprocessingData};
 use crate::units::*;
 
 /// Runs the road-capacity calibration.
@@ -45,10 +50,38 @@ pub fn run() -> Result<()> {
     crate::simulation::check_validity()?;
     let params = crate::parameters::capacity_calibration()
         .expect("The capacity-calibration parameters are not set");
+    let path = crate::parameters::input_files()
+        .target_routes
+        .as_ref()
+        .expect("The target-routes file is not set");
+    let target_routes = crate::io::read_target_routes(path)?;
+    calibrate(params, target_routes)?;
+    info!("Capacity calibration done");
+    Ok(())
+}
+
+/// Calibrates the capacity of the edge categories, so that the queueing delays of the target
+/// routes reproduce their target delays.
+///
+/// Returns the calibrated capacity of each category, with the id of the category (`None` for the
+/// single category used when no edge has a category).
+///
+/// The input of the simulation (parameters, population and network) must be initialized.
+///
+/// Each outer iteration runs route-choice days with the current capacities, until route choice is
+/// stable. Then, the inner loop optimizes the capacities on the arrival curves of the last
+/// simulated day and simulates a day with the optimized capacities and the same routes, until the
+/// capacities do not change any more. The next outer iteration starts from the expected network
+/// conditions of the last route-choice day, updated with the network conditions of the last
+/// simulated day by the learning model.
+pub fn calibrate(
+    params: &CapacityCalibrationParameters,
+    target_routes: Vec<TargetRoute>,
+) -> Result<Vec<(Option<MetroId>, FlowPerLane)>> {
     check_population(crate::population::agents())?;
     let edges: Vec<_> = crate::network::road_network::iter_edges().collect();
     let categories = EdgeCategories::new(&edges, &params.capacities)?;
-    check_optimizer_parameters(&params.optimizer)?;
+    check_loop_parameters(params)?;
     check_bottleneck_model(
         &edges,
         crate::network::road_network::parameters::constrain_inflow(),
@@ -57,11 +90,6 @@ pub fn run() -> Result<()> {
         crate::network::road_network::vehicles(),
         params.vehicle_type.as_ref(),
     )?;
-    let path = crate::parameters::input_files()
-        .target_routes
-        .as_ref()
-        .expect("The target-routes file is not set");
-    let target_routes = crate::io::read_target_routes(path)?;
     check_target_routes(&target_routes)?;
     info!(
         "Capacity calibration with {} target routes and vehicle type `{}`",
@@ -69,51 +97,177 @@ pub fn run() -> Result<()> {
         vehicle.id
     );
     categories.log_summary();
-    let curves = simulate_day(
-        &edges,
-        &categories,
-        &categories.initial_capacities,
-        &target_routes,
-    )?;
-    let mut surrogate = Surrogate::new(
-        curves,
-        &edges,
-        &categories,
-        vehicle,
-        target_routes.iter().map(|r| {
-            let path = r
-                .path
+    let paths: Vec<Vec<EdgeIndex>> = target_routes
+        .iter()
+        .map(|r| {
+            r.path
                 .iter()
                 .map(|&e| crate::network::road_network::edge_index_of(e))
-                .collect();
-            (r.departure_time, path)
-        }),
-    );
-    let start = Instant::now();
-    let predicted_delays = surrogate.predict(&categories.initial_capacities);
+                .collect()
+        })
+        .collect();
+    let recorded_edges: HashSet<EdgeIndex> = paths.iter().flatten().copied().collect();
+    let nb_infinite = recorded_edges
+        .iter()
+        .filter(|&&e| {
+            categories.category_of(e).is_none() && !edges[e.index()].has_bottleneck_flow()
+        })
+        .count();
+    if nb_infinite > 0 {
+        info!(
+            "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
+            arrival curve is recorded)"
+        );
+    }
     let target_delays: Vec<_> = target_routes.iter().map(|r| r.target_delay).collect();
-    log_fit(&target_delays, &predicted_delays, start.elapsed());
+    let new_surrogate = |curves| {
+        Surrogate::new(
+            curves,
+            &edges,
+            &categories,
+            vehicle,
+            target_routes
+                .iter()
+                .zip(paths.iter())
+                .map(|(r, path)| (r.departure_time, path.clone())),
+        )
+    };
+    let (preprocess_data, mut exp_weights, mut node_orders) = crate::simulation::prepare()?;
+    let simulator = Simulator {
+        edges: &edges,
+        categories: &categories,
+        preprocess_data: &preprocess_data,
+        recorded_edges: &recorded_edges,
+    };
+    let mut capacities = categories.initial_capacities.clone();
+    let mut sensitivity_logged = false;
+    let mut outer = 1;
+    let last_day = loop {
+        info!("===== Outer iteration {outer} =====");
+        let start_capacities = capacities.clone();
+        let route_choice = simulator.route_choice(
+            exp_weights,
+            &capacities,
+            &params.route_choice,
+            &mut node_orders,
+        )?;
+        let mut day = route_choice.day;
+        for inner in 1..=params.inner_loop.max_iterations {
+            info!("Inner iteration {inner}");
+            let mut surrogate = new_surrogate(day.curves);
+            let start = Instant::now();
+            let predicted_delays = surrogate.predict(&capacities);
+            log_fit(&target_delays, &predicted_delays, start.elapsed());
+            if !sensitivity_logged {
+                let start = Instant::now();
+                let (predicted_delays, jacobian) = surrogate.predict_with_jacobian(&capacities);
+                log_sensitivity(
+                    &categories,
+                    &target_delays,
+                    &predicted_delays,
+                    &jacobian,
+                    start.elapsed(),
+                );
+                sensitivity_logged = true;
+            }
+            let optimized = optimizer::optimize_capacities(
+                &mut surrogate,
+                &target_delays,
+                &capacities,
+                &params.optimizer,
+                &categories,
+            );
+            let change = max_relative_change(&capacities, &optimized);
+            capacities = optimized;
+            info!("Simulating a day with the optimized capacities and the same routes");
+            day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
+            info!(
+                "Inner iteration {inner}: maximum change of the capacities {:.2}%",
+                100. * change
+            );
+            if change <= params.inner_loop.tolerance {
+                break;
+            }
+        }
+        let change = max_relative_change(&start_capacities, &capacities);
+        let stop = if change <= params.outer_loop.tolerance {
+            Some("capacities changed by less than the tolerance")
+        } else if outer >= params.outer_loop.max_iterations {
+            Some("maximum number of iterations")
+        } else {
+            None
+        };
+        info!(
+            "Outer iteration {outer}: maximum change of the capacities {:.2}%",
+            100. * change
+        );
+        if let Some(reason) = stop {
+            info!("Capacity calibration stopped ({reason}) after {outer} outer iterations");
+            break day;
+        }
+        // The next outer iteration starts from the expected network conditions of the last
+        // route-choice day, updated with the network conditions of the last simulated day by the
+        // learning model.
+        let new_exp_weights = crate::simulation::run_day_to_day_model(
+            &route_choice.exp_weights,
+            &day.weights,
+            route_choice.iteration_counter,
+        );
+        crate::simulation::record_weights_drift(
+            &mut node_orders,
+            &route_choice.exp_weights,
+            &new_exp_weights,
+        );
+        exp_weights = new_exp_weights;
+        outer += 1;
+    };
+    let mut surrogate = new_surrogate(last_day.curves);
     let start = Instant::now();
-    let (predicted_delays, jacobian) =
-        surrogate.predict_with_jacobian(&categories.initial_capacities);
-    log_sensitivity(
-        &categories,
-        &target_delays,
-        &predicted_delays,
-        &jacobian,
-        start.elapsed(),
-    );
-    optimizer::optimize_capacities(
-        &mut surrogate,
-        &target_delays,
-        &categories.initial_capacities,
-        &params.optimizer,
-        &categories,
-    );
-    bail!(
-        "The capacity-calibration loop (simulation with the optimized capacities) is not \
-        implemented yet"
-    )
+    let predicted_delays = surrogate.predict(&capacities);
+    log_fit(&target_delays, &predicted_delays, start.elapsed());
+    for (j, (&capacity, &initial)) in capacities
+        .iter()
+        .zip(categories.initial_capacities.iter())
+        .enumerate()
+    {
+        info!(
+            "Category {}: calibrated capacity of {:.5} PCE/s per lane ({:.0} PCE/h per lane), \
+            {:+.2}% from the initial capacity",
+            categories.name(j),
+            f64::from(capacity),
+            3600. * f64::from(capacity),
+            100. * (f64::from(capacity) / f64::from(initial) - 1.),
+        );
+    }
+    Ok(categories.ids.iter().copied().zip(capacities).collect())
+}
+
+/// Returns the largest relative change from `old` to `new` capacities.
+fn max_relative_change(old: &[FlowPerLane], new: &[FlowPerLane]) -> f64 {
+    old.iter()
+        .zip(new)
+        .map(|(&o, &n)| (f64::from(n) / f64::from(o) - 1.).abs())
+        .fold(0., f64::max)
+}
+
+/// Checks the parameters of the optimization of the capacities and of the loops.
+fn check_loop_parameters(params: &CapacityCalibrationParameters) -> Result<()> {
+    check_optimizer_parameters(&params.optimizer)?;
+    for (name, loop_params) in [
+        ("inner_loop", &params.inner_loop),
+        ("outer_loop", &params.outer_loop),
+    ] {
+        if loop_params.tolerance <= 0. {
+            bail!("The parameter `{name}.tolerance` must be positive");
+        }
+        if loop_params.max_iterations == 0 {
+            bail!("The parameter `{name}.max_iterations` must be positive");
+        }
+    }
+    if params.route_choice.max_iterations == 0 {
+        bail!("The parameter `route_choice.max_iterations` must be positive");
+    }
+    Ok(())
 }
 
 /// Checks the parameters of the optimization of the capacities.
@@ -155,8 +309,8 @@ fn check_bottleneck_model(edges: &[&RoadEdge], constrain_inflow: bool) -> Result
     Ok(())
 }
 
-/// Logs the fit of the predicted delays of the target routes (at the initial capacities) to their
-/// target delays, and the time taken by the surrogate model to predict them.
+/// Logs the fit of the predicted delays of the target routes (at the capacities of the simulated
+/// day) to their target delays, and the time taken by the surrogate model to predict them.
 fn log_fit(
     target_delays: &[NonNegativeSeconds],
     predicted_delays: &[NonNegativeSeconds],
@@ -177,7 +331,7 @@ fn log_fit(
     let max_error = errors.iter().fold(0.0f64, |m, e| m.max(e.abs()));
     let mean_target = target_delays.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
     info!(
-        "Surrogate model at the initial capacities: RMSE of the delays {rmse:.3} s, mean error \
+        "Surrogate model at the capacities of the simulated day: RMSE of the delays {rmse:.3} s, mean error \
         (predicted - target) {mean_error:.3} s, maximum absolute error {max_error:.3} s, mean \
         target delay {mean_target:.3} s (evaluated in {:.1} ms)",
         duration.as_secs_f64() * 1e3,
@@ -239,75 +393,158 @@ fn log_sensitivity(
     );
 }
 
-/// Simulates one day with the given capacities (by category): runs the pre-day model with the
-/// initial network conditions, then the within-day model, recording the arrival curves at the
-/// entry of the edges of the target routes.
-fn simulate_day(
-    edges: &[&RoadEdge],
-    categories: &EdgeCategories,
-    capacities: &[FlowPerLane],
-    target_routes: &[TargetRoute],
-) -> Result<ArrivalCurves> {
-    let (preprocess_data, weights, mut node_orders) = crate::simulation::prepare()?;
-    info!("Computing skims");
-    let skims =
-        crate::network::compute_skims(&weights, &preprocess_data.network, &mut node_orders)?;
-    info!("Running demand model");
-    let mut agent_results = crate::simulation::run_pre_day_model(
-        &weights,
-        &skims,
-        &preprocess_data,
-        None,
-        crate::parameters::init_iteration_counter(),
-    )?;
-    let target_route_edges: HashSet<_> = target_routes
-        .iter()
-        .flat_map(|r| r.path.iter())
-        .map(|&id| crate::network::road_network::edge_index_of(id))
-        .collect();
-    let mut rn_state = RoadNetworkState::init(&categories.bottleneck_flows(edges, capacities));
-    rn_state.record_arrivals(target_route_edges.iter().copied());
-    info!("Running supply model");
-    let mut state = crate::simulation::run_within_day_model(
-        &mut agent_results,
-        &skims,
-        &preprocess_data,
-        NetworkState::new(Some(rn_state)),
-    )?;
-    let curves = state
-        .get_mut_road_network()
-        .expect("The road-network state is set")
-        .take_arrival_curves();
-    curves.log_summary();
-    let nb_infinite = target_route_edges
-        .iter()
-        .filter(|&&e| curves.get(e).is_none())
-        .count();
-    if nb_infinite > 0 {
-        info!(
-            "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
-            arrival curve is recorded)"
-        );
+/// Results of a simulated day of the calibration.
+struct SimulatedDay {
+    /// Results of the agents.
+    results: AgentResults,
+    /// Arrival curves at the entry of the edges of the target routes.
+    curves: ArrivalCurves,
+    /// Simulated network conditions.
+    weights: NetworkWeights,
+}
+
+/// Last day of the route-choice days of an outer iteration.
+struct RouteChoiceDay {
+    /// Expected network conditions of the day.
+    exp_weights: NetworkWeights,
+    /// Skims computed from the expected network conditions.
+    skims: NetworkSkim,
+    /// Results of the pre-day model (the routes kept for the inner loop).
+    pre_day: AgentResults,
+    /// The simulated day.
+    day: SimulatedDay,
+    /// Iteration counter of the learning model at the day.
+    iteration_counter: u32,
+}
+
+/// Simulates the days of the calibration.
+struct Simulator<'a> {
+    /// Edges of the road network, ordered by `EdgeIndex`.
+    edges: &'a [&'a RoadEdge],
+    categories: &'a EdgeCategories,
+    preprocess_data: &'a PreprocessingData,
+    /// Edges whose arrival curves are recorded (the edges of the target routes).
+    recorded_edges: &'a HashSet<EdgeIndex>,
+}
+
+impl Simulator<'_> {
+    /// Runs route-choice days (pre-day model, within-day model and day-to-day learning) with the
+    /// given capacities, starting from the given expected network conditions, until the RMSE
+    /// between the expected and simulated network conditions of a day is below the tolerance or
+    /// the maximum number of days is reached.
+    ///
+    /// The iteration counter of the learning model starts at `init_iteration_counter`.
+    fn route_choice(
+        &self,
+        mut exp_weights: NetworkWeights,
+        capacities: &[FlowPerLane],
+        params: &RouteChoiceParameters,
+        node_orders: &mut NodeOrderCache,
+    ) -> Result<RouteChoiceDay> {
+        let mut previous_results: Option<AgentResults> = None;
+        let mut iteration_counter = crate::parameters::init_iteration_counter();
+        let mut nb_days = 1;
+        loop {
+            info!("Route-choice day {nb_days}");
+            info!("Computing skims");
+            let skims = crate::network::compute_skims(
+                &exp_weights,
+                &self.preprocess_data.network,
+                node_orders,
+            )?;
+            info!("Running demand model");
+            let pre_day = crate::simulation::run_pre_day_model(
+                &exp_weights,
+                &skims,
+                self.preprocess_data,
+                previous_results.as_ref(),
+                iteration_counter,
+            )?;
+            let day = self.within_day(&pre_day, &skims, capacities)?;
+            let rmse = day
+                .weights
+                .road_network()
+                .expect("The calibration requires a road network")
+                .rmse(exp_weights.road_network().unwrap());
+            info!(
+                "Route-choice day {nb_days}: RMSE between the expected and simulated network \
+                conditions {:.3} s",
+                f64::from(rmse)
+            );
+            if params.tolerance.is_some_and(|tol| rmse <= tol) || nb_days >= params.max_iterations {
+                return Ok(RouteChoiceDay {
+                    exp_weights,
+                    skims,
+                    pre_day,
+                    day,
+                    iteration_counter,
+                });
+            }
+            let new_exp_weights = crate::simulation::run_day_to_day_model(
+                &exp_weights,
+                &day.weights,
+                iteration_counter,
+            );
+            crate::simulation::record_weights_drift(node_orders, &exp_weights, &new_exp_weights);
+            exp_weights = new_exp_weights;
+            previous_results = Some(day.results);
+            iteration_counter += 1;
+            nb_days += 1;
+        }
     }
-    Ok(curves)
+
+    /// Runs the within-day model on a clone of the given pre-day results, with the given capacities
+    /// (by category), recording the arrival curves at the entry of the edges of the target routes.
+    ///
+    /// The routes taken are not recorded in the results.
+    fn within_day(
+        &self,
+        pre_day: &AgentResults,
+        skims: &NetworkSkim,
+        capacities: &[FlowPerLane],
+    ) -> Result<SimulatedDay> {
+        let mut rn_state =
+            RoadNetworkState::init(&self.categories.bottleneck_flows(self.edges, capacities));
+        rn_state.record_arrivals(self.recorded_edges.iter().copied());
+        info!("Running supply model");
+        let mut results = pre_day.clone();
+        let mut state = crate::simulation::run_within_day_model(
+            &mut results,
+            skims,
+            self.preprocess_data,
+            NetworkState::new(Some(rn_state)),
+            false,
+        )?;
+        let curves = state
+            .get_mut_road_network()
+            .expect("The road-network state is set")
+            .take_arrival_curves();
+        curves.log_summary();
+        let weights = state.into_weights(&self.preprocess_data.network);
+        Ok(SimulatedDay {
+            results,
+            curves,
+            weights,
+        })
+    }
 }
 
 /// A route with an observed queueing delay, that the calibrated capacities must reproduce.
 #[derive(Clone, Debug)]
-pub(crate) struct TargetRoute {
+pub struct TargetRoute {
     /// Id of the route.
-    pub(crate) id: MetroId,
+    pub id: MetroId,
     /// Departure time from the first edge of the path.
-    pub(crate) departure_time: NonNegativeSeconds,
+    pub departure_time: NonNegativeSeconds,
     /// Observed delay of the route: its travel time minus its free-flow travel time.
-    pub(crate) target_delay: NonNegativeSeconds,
+    pub target_delay: NonNegativeSeconds,
     /// Edges of the route, in order.
-    pub(crate) path: Vec<OriginalEdgeId>,
+    pub path: Vec<OriginalEdgeId>,
 }
 
 impl TargetRoute {
     /// Creates a new TargetRoute from deserialized values.
-    pub(crate) fn from_values(
+    pub fn from_values(
         id: MetroId,
         departure_time: Option<f64>,
         target_delay: Option<f64>,
@@ -940,6 +1177,52 @@ mod tests {
                 .to_string();
             assert!(msg.contains(&format!("`optimizer.{name}`")), "{msg}");
         }
+    }
+
+    #[test]
+    fn check_loop_parameters_test() {
+        let parse = |json: &str| -> CapacityCalibrationParameters {
+            serde_json::from_str(&format!(r#"{{"capacities": 0.5, {json}}}"#)).unwrap()
+        };
+        assert!(check_loop_parameters(&parse(r#""vehicle_type": 1"#)).is_ok());
+        for (json, name) in [
+            (
+                r#""optimizer": {"trust_region": 0.0}"#,
+                "optimizer.trust_region",
+            ),
+            (
+                r#""inner_loop": {"tolerance": 0.0}"#,
+                "inner_loop.tolerance",
+            ),
+            (
+                r#""inner_loop": {"max_iterations": 0}"#,
+                "inner_loop.max_iterations",
+            ),
+            (
+                r#""outer_loop": {"tolerance": -1.0}"#,
+                "outer_loop.tolerance",
+            ),
+            (
+                r#""outer_loop": {"max_iterations": 0}"#,
+                "outer_loop.max_iterations",
+            ),
+            (
+                r#""route_choice": {"max_iterations": 0}"#,
+                "route_choice.max_iterations",
+            ),
+        ] {
+            let msg = check_loop_parameters(&parse(json)).unwrap_err().to_string();
+            assert!(msg.contains(&format!("`{name}`")), "{msg}");
+        }
+    }
+
+    #[test]
+    fn max_relative_change_test() {
+        let c =
+            |values: &[f64]| -> Vec<FlowPerLane> { values.iter().map(|&v| capacity(v)).collect() };
+        assert_eq!(max_relative_change(&c(&[0.5, 0.2]), &c(&[0.5, 0.2])), 0.);
+        let change = max_relative_change(&c(&[0.5, 0.2]), &c(&[0.45, 0.21]));
+        assert!((change - 0.1).abs() < 1e-12, "{change}");
     }
 
     #[test]

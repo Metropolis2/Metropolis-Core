@@ -43,6 +43,9 @@ pub(crate) struct EventInput<'a> {
     pub(crate) agent_results: &'a mut AgentResults,
     /// ProgressBar of the within-day model.
     pub(crate) progress_bar: MetroProgressBar,
+    /// If `true`, the edges taken by the vehicles are recorded in the results, with their entry
+    /// times.
+    pub(crate) record_routes: bool,
 }
 
 /// Memory allocations that can be re-used when executing events.

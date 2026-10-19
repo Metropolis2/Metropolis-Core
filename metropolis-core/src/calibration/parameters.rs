@@ -20,7 +20,7 @@ use std::fmt;
 use serde_derive::Deserialize;
 
 use crate::hash::HashMap;
-use crate::units::FlowPerLane;
+use crate::units::{FlowPerLane, NonNegativeSeconds};
 
 /// Set of parameters controlling the road-capacity calibration (`capacity_calibration`).
 ///
@@ -38,6 +38,59 @@ pub struct CapacityCalibrationParameters {
     /// Parameters of the optimization of the capacities.
     #[serde(default)]
     pub optimizer: OptimizerParameters,
+    /// Parameters of the route-choice days, run before the optimization of the capacities, in each
+    /// outer iteration.
+    #[serde(default)]
+    pub route_choice: RouteChoiceParameters,
+    /// Parameters of the inner loop: optimization of the capacities, then simulation of a day with
+    /// the optimized capacities and the same routes.
+    #[serde(default)]
+    pub inner_loop: LoopParameters,
+    /// Parameters of the outer loop: route-choice days, then inner loop.
+    #[serde(default)]
+    pub outer_loop: LoopParameters,
+}
+
+/// Parameters of the route-choice days of an outer iteration (day-to-day learning with the current
+/// capacities, until route choice is stable).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct RouteChoiceParameters {
+    /// The route-choice days stop when the RMSE between the expected and the simulated network
+    /// conditions of a day is at most this value, in seconds (default: no tolerance, i.e.,
+    /// `max_iterations` days are run).
+    pub tolerance: Option<NonNegativeSeconds>,
+    /// Maximum number of route-choice days (default: 10).
+    pub max_iterations: u64,
+}
+
+impl Default for RouteChoiceParameters {
+    fn default() -> Self {
+        Self {
+            tolerance: None,
+            max_iterations: 10,
+        }
+    }
+}
+
+/// Stopping criteria of a loop of the capacity calibration.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct LoopParameters {
+    /// The loop stops when no capacity changes by more than this relative amount in an iteration
+    /// (default: 0.01).
+    pub tolerance: f64,
+    /// Maximum number of iterations (default: 10).
+    pub max_iterations: u64,
+}
+
+impl Default for LoopParameters {
+    fn default() -> Self {
+        Self {
+            tolerance: 0.01,
+            max_iterations: 10,
+        }
+    }
 }
 
 /// Parameters of the optimization of the capacities (Levenberg–Marquardt algorithm), given the
@@ -185,6 +238,12 @@ mod tests {
         assert_eq!(params.optimizer.trust_region, 0.2);
         assert_eq!(params.optimizer.max_iterations, 30);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
+        assert_eq!(params.route_choice.tolerance, None);
+        assert_eq!(params.route_choice.max_iterations, 10);
+        assert_eq!(params.inner_loop.tolerance, 0.01);
+        assert_eq!(params.inner_loop.max_iterations, 10);
+        assert_eq!(params.outer_loop.tolerance, 0.01);
+        assert_eq!(params.outer_loop.max_iterations, 10);
 
         let params = parse(r#"{"capacities": {"initial": 0.5, "max": 0.8}}"#).unwrap();
         let Capacities::Uniform(c) = params.capacities else {
@@ -235,6 +294,21 @@ mod tests {
         assert_eq!(params.optimizer.trust_region, 0.1);
         assert_eq!(params.optimizer.max_iterations, 5);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
+
+        let params = parse(
+            r#"{"capacities": 0.5, "route_choice": {"tolerance": 2.0},
+            "inner_loop": {"tolerance": 0.001}, "outer_loop": {"max_iterations": 3}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            params.route_choice.tolerance,
+            Some(NonNegativeSeconds::try_from(2.0).unwrap())
+        );
+        assert_eq!(params.route_choice.max_iterations, 10);
+        assert_eq!(params.inner_loop.tolerance, 0.001);
+        assert_eq!(params.inner_loop.max_iterations, 10);
+        assert_eq!(params.outer_loop.tolerance, 0.01);
+        assert_eq!(params.outer_loop.max_iterations, 3);
 
         // Capacities must be positive.
         assert!(parse(r#"{"capacities": -0.5}"#).is_err());

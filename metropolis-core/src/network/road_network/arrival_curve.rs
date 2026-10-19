@@ -16,7 +16,6 @@
 
 //! Cumulative arrival curves recorded at the edge-entry bottlenecks during the within-day model.
 use log::info;
-use petgraph::graph::EdgeIndex;
 
 use crate::units::*;
 
@@ -94,12 +93,6 @@ impl IntoIterator for ArrivalCurves {
 }
 
 impl ArrivalCurves {
-    /// Returns the arrival curve at the entry of the given edge (`None` if the arrivals were not
-    /// recorded).
-    pub(crate) fn get(&self, edge: EdgeIndex) -> Option<&ArrivalCurve> {
-        self.0[edge.index()].as_ref()
-    }
-
     /// Logs the number of curves, number of points, total PCE and memory size of the curves.
     pub(crate) fn log_summary(&self) {
         let curves: Vec<_> = self.0.iter().flatten().collect();

@@ -168,7 +168,7 @@ fn run_full_simulation() -> Result<()> {
 
 /// Records how much the expected travel times changed from `old` to `new` weights, so that the
 /// node order of the contraction hierarchies is re-computed once they drifted too much.
-fn record_weights_drift(
+pub(crate) fn record_weights_drift(
     node_orders: &mut NodeOrderCache,
     old: &NetworkWeights,
     new: &NetworkWeights,
@@ -226,6 +226,7 @@ pub fn run_iteration(
             &skims,
             preprocess_data,
             crate::network::blank_state(),
+            true,
         )?;
         debug!("Computing network weights");
         Ok(state.into_weights(&preprocess_data.network))
@@ -344,11 +345,15 @@ pub fn run_pre_day_model(
 /// The `agent_results` must be the fresh output of the pre-day model: they are completed in place
 /// with the simulated results, and the expected routes are moved out of them. To simulate the same
 /// pre-day choices several times, run the within-day model on clones of the pre-day results.
+///
+/// If `record_routes` is `false`, the edges taken by the vehicles are not recorded in the results
+/// (the `route` of the road-leg results stays empty), which saves memory.
 pub fn run_within_day_model(
     agent_results: &mut AgentResults,
     skims: &NetworkSkim,
     preprocess_data: &PreprocessingData,
     mut state: NetworkState,
+    record_routes: bool,
 ) -> Result<NetworkState> {
     debug!("Initializing variables");
     let mut events = agent_results.get_event_queue();
@@ -361,6 +366,7 @@ pub fn run_within_day_model(
         skims,
         agent_results,
         progress_bar: bp.clone(),
+        record_routes,
     };
     let mut alloc = EventAlloc::default();
     while let Some(event) = events.pop() {

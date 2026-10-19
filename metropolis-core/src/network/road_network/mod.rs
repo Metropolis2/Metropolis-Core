@@ -590,6 +590,12 @@ impl RoadEdge {
         }
     }
 
+    /// Returns the RoadEdge with the given category (used by the capacity calibration).
+    pub fn with_category(mut self, category: MetroId) -> Self {
+        self.category = Some(category);
+        self
+    }
+
     /// Creates a new RoadEdge from deserialied values.
     #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_values(

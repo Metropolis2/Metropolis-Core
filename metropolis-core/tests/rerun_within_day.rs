@@ -150,6 +150,7 @@ fn rerun_within_day_test() {
             &skims,
             &preprocess_data,
             metropolis_core::network::blank_state(),
+            true,
         )
         .unwrap();
         runs.push(agent_results);

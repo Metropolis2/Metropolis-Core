@@ -195,7 +195,9 @@ impl VehicleEvent {
 }
 
 impl VehicleEvent {
-    fn record_event(&mut self) {
+    /// Records the timings of the event in the leg results (and the edge entry in the route
+    /// record, if `record_route` is `true`).
+    fn record_event(&mut self, record_route: bool) {
         debug_assert!(self.last_timing.is_none() || self.at_time >= self.last_timing.unwrap());
         let event_duration = if let Some(last_time) = self.last_timing {
             Some(self.at_time.sub_unchecked(last_time))
@@ -219,12 +221,14 @@ impl VehicleEvent {
                     .expect("The leg results should be set at this point");
                 // Store the time spent at edge entry.
                 road_leg_results.in_bottleneck_time += event_duration.unwrap();
-                // Record the entry time for the current edge.
-                self.route_record.push((
-                    self.route[self.edge_position],
-                    self.at_time,
-                    self.spillback_status,
-                ));
+                if record_route {
+                    // Record the entry time for the current edge.
+                    self.route_record.push((
+                        self.route[self.edge_position],
+                        self.at_time,
+                        self.spillback_status,
+                    ));
+                }
                 // Reset spillback status.
                 self.spillback_status = SpillbackStatus::NoSpillback;
             }
@@ -390,7 +394,7 @@ impl VehicleEvent {
 
         let current_time = self.at_time;
 
-        self.record_event();
+        self.record_event(input.record_routes);
 
         if let Some(next_event) = match self.event_type {
             VehicleEventType::TripStarts => {
