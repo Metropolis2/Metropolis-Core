@@ -57,9 +57,16 @@ pub struct CapacityCalibrationParameters {
 #[serde(default)]
 pub struct RouteChoiceParameters {
     /// The route-choice days stop when the RMSE between the expected and the simulated network
-    /// conditions of a day is at most this value, in seconds (default: no tolerance, i.e.,
-    /// `max_iterations` days are run).
+    /// conditions of a day is at most this value, in seconds (default: no tolerance).
     pub tolerance: Option<NonNegativeSeconds>,
+    /// The route-choice days stop when the RMSE between the expected and the simulated network
+    /// conditions of a day has decreased by less than this relative amount from the previous day,
+    /// or has increased, i.e., when it has reached its floor (between 0 and 1, default: no
+    /// minimum decrease).
+    ///
+    /// Unlike `tolerance`, it does not depend on the level of the floor, which is set by the
+    /// congestion and the learning model.
+    pub min_decrease: Option<f64>,
     /// Maximum number of route-choice days (default: 10).
     pub max_iterations: u64,
 }
@@ -68,6 +75,7 @@ impl Default for RouteChoiceParameters {
     fn default() -> Self {
         Self {
             tolerance: None,
+            min_decrease: None,
             max_iterations: 10,
         }
     }
@@ -272,6 +280,7 @@ mod tests {
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
         assert_eq!(params.optimizer.penalty, 0.);
         assert_eq!(params.route_choice.tolerance, None);
+        assert_eq!(params.route_choice.min_decrease, None);
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.01);
         assert_eq!(params.inner_loop.max_iterations, 10);
@@ -330,7 +339,7 @@ mod tests {
         assert_eq!(params.optimizer.penalty, 0.01);
 
         let params = parse(
-            r#"{"capacities": 0.5, "route_choice": {"tolerance": 2.0},
+            r#"{"capacities": 0.5, "route_choice": {"tolerance": 2.0, "min_decrease": 0.05},
             "inner_loop": {"tolerance": 0.001}, "outer_loop": {"max_iterations": 3}}"#,
         )
         .unwrap();
@@ -338,6 +347,7 @@ mod tests {
             params.route_choice.tolerance,
             Some(NonNegativeSeconds::try_from(2.0).unwrap())
         );
+        assert_eq!(params.route_choice.min_decrease, Some(0.05));
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.001);
         assert_eq!(params.inner_loop.max_iterations, 10);
