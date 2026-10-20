@@ -27,8 +27,8 @@ use super::surrogate::Surrogate;
 use super::EdgeCategories;
 use crate::units::*;
 
-/// Initial damping of the Levenberg–Marquardt algorithm, relative to the largest diagonal value
-/// of the Gauss–Newton matrix.
+/// Initial damping factor of the Levenberg–Marquardt algorithm (the damping matrix is this factor
+/// times the diagonal of the Gauss–Newton matrix).
 const INITIAL_DAMPING: f64 = 1e-3;
 
 /// Number of rows of the Jacobian matrix summed by each task when computing the normal equations
@@ -220,8 +220,10 @@ struct Solution {
 /// The function `evaluate` returns the residuals and their Jacobian matrix (row-major, one row per
 /// residual and one column per variable) for the given variables.
 ///
-/// The damping is the identity matrix times a factor updated with the rule of Nielsen (1999), so
-/// the variables that barely change the residuals stay close to their current value. The variables
+/// The damping is the diagonal of the Gauss–Newton matrix times a factor updated with the rule of
+/// Nielsen (1999) (Marquardt's scaling), so the step does not depend on the scale of each variable:
+/// a variable whose residuals barely depend on it still gets its Gauss–Newton step. The variables
+/// whose column of the Jacobian matrix is zero (they do not change the residuals) and the variables
 /// at a bound that the gradient pushes outside of the box are fixed, the step of the others is
 /// projected onto the box, and the step is accepted if it decreases the objective.
 ///
@@ -240,13 +242,15 @@ fn levenberg_marquardt(
     let (mut residuals, jacobian) = evaluate(&x);
     let mut objective = half_sum_of_squares(&residuals);
     let (mut hessian, mut gradient) = normal_equations(&residuals, &jacobian, n);
-    let mut damping = INITIAL_DAMPING * (0..n).map(|j| hessian[j * n + j]).fold(0., f64::max);
+    let mut damping = INITIAL_DAMPING;
     let mut damping_factor = 2.;
     let mut nb_iterations = 0;
     let termination = loop {
         let free: Vec<usize> = (0..n)
             .filter(|&j| {
-                !(x[j] <= lower[j] && gradient[j] > 0. || x[j] >= upper[j] && gradient[j] < 0.)
+                hessian[j * n + j] > 0.
+                    && !(x[j] <= lower[j] && gradient[j] > 0.
+                        || x[j] >= upper[j] && gradient[j] < 0.)
             })
             .collect();
         if free.iter().all(|&j| gradient[j] == 0.) {
@@ -351,8 +355,8 @@ fn normal_equations(residuals: &[f64], jacobian: &[f64], n: usize) -> (Vec<f64>,
     (hessian, gradient)
 }
 
-/// Returns the Levenberg–Marquardt step `-(H + λI)⁻¹ g` of the free variables (zero for the other
-/// variables), or `None` if the damped matrix is not positive definite (numerically).
+/// Returns the Levenberg–Marquardt step `-(H + λ·diag(H))⁻¹ g` of the free variables (zero for the
+/// other variables), or `None` if the damped matrix is not positive definite (numerically).
 fn damped_step(
     hessian: &[f64],
     gradient: &[f64],
@@ -364,7 +368,11 @@ fn damped_step(
         .iter()
         .flat_map(|&i| {
             free.iter().map(move |&j| {
-                let diagonal = if i == j { damping } else { 0. };
+                let diagonal = if i == j {
+                    damping * hessian[i * n + i]
+                } else {
+                    0.
+                };
                 hessian[i * n + j] + diagonal
             })
         })
@@ -520,6 +528,27 @@ mod tests {
         let solution = levenberg_marquardt(penalized, &[0.8], &[1.2], vec![1.], 100, 1e-12);
         assert_close(&solution.x, &[0.9], 1e-3);
         assert_ne!(solution.termination, Termination::MaxIterations);
+    }
+
+    #[test]
+    fn scaled_damping_test() {
+        // A strongly constrained variable and a variable whose only curvature, above 0.9, is a
+        // small penalty: with a damping that does not depend on the scale of each variable, both
+        // reach their optimum (with the identity damping, x2 would barely move).
+        let evaluate = |x: &[f64]| {
+            let (hinge, slope) = if x[1] < 0.9 {
+                (10. * (0.9 - x[1]), -10.)
+            } else {
+                (0., 0.)
+            };
+            (
+                vec![1000. * (x[0] - 1.1), hinge, 0.1 * x[1]],
+                vec![1000., 0., 0., slope, 0., 0.1],
+            )
+        };
+        let solution =
+            levenberg_marquardt(evaluate, &[0.8, 0.8], &[1.2, 1.2], vec![1., 1.], 30, 1e-4);
+        assert_close(&solution.x, &[1.1, 0.9], 1e-3);
     }
 
     #[test]
