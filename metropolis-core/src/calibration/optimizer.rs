@@ -15,8 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Optimization of the capacities of the categories: least squares of the predicted delays of the
-//! target routes (surrogate model) minus their target delays, with the Levenberg–Marquardt
-//! algorithm, within bounds.
+//! target routes (surrogate model) minus their target delays, plus an optional penalty on the
+//! capacities, with the Levenberg–Marquardt algorithm, within bounds.
 use std::time::Instant;
 
 use log::info;
@@ -41,6 +41,10 @@ const BLOCK_SIZE: usize = 1024;
 /// The capacities are bounded by the minimum and maximum capacities of their category (if any) and
 /// by the trust region around their initial value. The variables of the optimization are the capacities
 /// relative to their initial value.
+///
+/// The objective is the mean squared error of the delays plus the penalty `λ·Σₖ (cₖ / cₖ⁰)²`, where
+/// `cₖ⁰` is the initial capacity of category `k` in the parameters (the same in every
+/// optimization). The penalty is one residual per category, linear in the variables.
 pub(super) fn optimize_capacities(
     surrogate: &mut Surrogate,
     target_delays: &[NonNegativeSeconds],
@@ -74,9 +78,16 @@ pub(super) fn optimize_capacities(
             .collect()
     };
     let scales: Vec<f64> = capacities.iter().map(|&c| f64::from(c)).collect();
+    let weights = penalty_weights(
+        params.penalty,
+        target_delays.len(),
+        capacities,
+        &categories.initial_capacities,
+    );
+    let nb_categories = capacities.len();
     let evaluate = |x: &[f64]| {
         let (delays, mut jacobian) = surrogate.predict_with_jacobian(&to_capacities(x));
-        let residuals = delays
+        let mut residuals: Vec<f64> = delays
             .iter()
             .zip(target_delays)
             .map(|(&p, &t)| f64::from(p) - f64::from(t))
@@ -85,6 +96,10 @@ pub(super) fn optimize_capacities(
         jacobian.par_chunks_mut(scales.len()).for_each(|row| {
             row.iter_mut().zip(&scales).for_each(|(d, s)| *d *= s);
         });
+        for (j, (&w, &x)) in weights.iter().zip(x).enumerate() {
+            residuals.push(w * x);
+            jacobian.extend((0..nb_categories).map(|i| if i == j { w } else { 0. }));
+        }
         (residuals, jacobian)
     };
     info!("Optimizing the capacities");
@@ -97,6 +112,19 @@ pub(super) fn optimize_capacities(
         params.max_iterations,
         params.step_tolerance,
     );
+    let delay_residuals = &solution.residuals[..target_delays.len()];
+    let penalty = if weights.is_empty() {
+        String::new()
+    } else {
+        let penalty = solution
+            .x
+            .iter()
+            .zip(capacities)
+            .zip(&categories.initial_capacities)
+            .map(|((x, &c), &c0)| (x * f64::from(c) / f64::from(c0)).powi(2))
+            .sum::<f64>();
+        format!(", penalty {:.4} s²", params.penalty * penalty)
+    };
     let termination = match solution.termination {
         Termination::Stationary => "stationary point",
         Termination::StepTolerance => "step below the tolerance",
@@ -104,10 +132,10 @@ pub(super) fn optimize_capacities(
     };
     info!(
         "Optimization of the capacities stopped ({termination}) after {} iterations ({:.1} s): \
-        RMSE of the delays {:.3} s",
+        RMSE of the delays {:.3} s{penalty}",
         solution.nb_iterations,
         start.elapsed().as_secs_f64(),
-        solution.rmse,
+        rmse(half_sum_of_squares(delay_residuals), delay_residuals.len()),
     );
     let optimized = to_capacities(&solution.x);
     for (j, &capacity) in optimized.iter().enumerate() {
@@ -139,6 +167,29 @@ pub(super) fn optimize_capacities(
     optimized
 }
 
+/// Returns the weight `wₖ` of the penalty residual `wₖ·xₖ` of each category (empty if there is no
+/// penalty), where `xₖ` is the capacity relative to its value at the start of the optimization.
+///
+/// With `wₖ = √(N·λ)·cₖ/cₖ⁰` (`N` target routes, capacity `cₖ` at the start of the optimization,
+/// initial capacity `cₖ⁰`), half the sum of the squared residuals is `N/2` times the mean squared
+/// error of the delays plus `λ·Σₖ (cₖ / cₖ⁰)²`.
+fn penalty_weights(
+    penalty: f64,
+    nb_targets: usize,
+    capacities: &[FlowPerLane],
+    initial_capacities: &[FlowPerLane],
+) -> Vec<f64> {
+    if penalty == 0. {
+        return Vec::new();
+    }
+    let factor = (nb_targets as f64 * penalty).sqrt();
+    capacities
+        .iter()
+        .zip(initial_capacities)
+        .map(|(&c, &c0)| factor * f64::from(c) / f64::from(c0))
+        .collect()
+}
+
 /// Reason why the Levenberg–Marquardt algorithm stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Termination {
@@ -155,8 +206,8 @@ enum Termination {
 struct Solution {
     /// Value of the variables.
     x: Vec<f64>,
-    /// Root mean square of the residuals.
-    rmse: f64,
+    /// Residuals at the solution.
+    residuals: Vec<f64>,
     /// Number of iterations (each one evaluates the residuals once, except when no decrease of
     /// the objective is predicted).
     nb_iterations: u64,
@@ -173,6 +224,8 @@ struct Solution {
 /// the variables that barely change the residuals stay close to their current value. The variables
 /// at a bound that the gradient pushes outside of the box are fixed, the step of the others is
 /// projected onto the box, and the step is accepted if it decreases the objective.
+///
+/// Each iteration logs the root mean square of all the residuals.
 fn levenberg_marquardt(
     mut evaluate: impl FnMut(&[f64]) -> (Vec<f64>, Vec<f64>),
     lower: &[f64],
@@ -244,7 +297,7 @@ fn levenberg_marquardt(
     };
     Solution {
         x,
-        rmse: rmse(objective, residuals.len()),
+        residuals,
         nb_iterations,
         termination,
     }
@@ -393,7 +446,7 @@ mod tests {
         let solution =
             levenberg_marquardt(affine, &[0., 0.], &[5., 5.], vec![0.5, 0.5], 100, 1e-12);
         assert_close(&solution.x, &[1., 2.], 1e-8);
-        assert!(solution.rmse < 1e-8);
+        assert!(rmse(half_sum_of_squares(&solution.residuals), 3) < 1e-8);
         assert_ne!(solution.termination, Termination::MaxIterations);
     }
 
@@ -438,9 +491,54 @@ mod tests {
             1e-12,
         );
         assert_eq!(solution.x, vec![1.]);
-        assert_eq!(solution.rmse, 1.);
+        assert_eq!(solution.residuals, vec![1., -1.]);
         assert_eq!(solution.nb_iterations, 0);
         assert_eq!(solution.termination, Termination::Stationary);
+    }
+
+    #[test]
+    fn penalty_test() {
+        // Residual flat above 0.9 (no queue), as for a category without queues.
+        let hinge = |x: &[f64]| {
+            if x[0] < 0.9 {
+                (vec![10. * (0.9 - x[0])], vec![-10.])
+            } else {
+                (vec![0.], vec![0.])
+            }
+        };
+        let solution = levenberg_marquardt(hinge, &[0.8], &[1.2], vec![1.], 100, 1e-12);
+        assert_eq!(solution.x, vec![1.]);
+        assert_eq!(solution.termination, Termination::Stationary);
+        // With a small penalty, the variable goes down to the start of the non-flat region.
+        let weight = 0.1;
+        let penalized = |x: &[f64]| {
+            let (mut residuals, mut jacobian) = hinge(x);
+            residuals.push(weight * x[0]);
+            jacobian.push(weight);
+            (residuals, jacobian)
+        };
+        let solution = levenberg_marquardt(penalized, &[0.8], &[1.2], vec![1.], 100, 1e-12);
+        assert_close(&solution.x, &[0.9], 1e-3);
+        assert_ne!(solution.termination, Termination::MaxIterations);
+    }
+
+    #[test]
+    fn penalty_weights_test() {
+        let capacities = [
+            FlowPerLane::new_unchecked(0.4),
+            FlowPerLane::new_unchecked(0.2),
+        ];
+        let initial = [
+            FlowPerLane::new_unchecked(0.2),
+            FlowPerLane::new_unchecked(0.2),
+        ];
+        assert!(penalty_weights(0., 100, &capacities, &initial).is_empty());
+        // √(100 × 0.01) = 1.
+        assert_close(
+            &penalty_weights(0.01, 100, &capacities, &initial),
+            &[2., 1.],
+            1e-12,
+        );
     }
 
     #[test]

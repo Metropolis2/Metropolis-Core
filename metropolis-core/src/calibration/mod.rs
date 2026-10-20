@@ -393,6 +393,9 @@ fn check_optimizer_parameters(optimizer: &OptimizerParameters) -> Result<()> {
     if optimizer.max_iterations == 0 {
         bail!("The parameter `optimizer.max_iterations` must be positive");
     }
+    if optimizer.penalty < 0. || !optimizer.penalty.is_finite() {
+        bail!("The parameter `optimizer.penalty` must be non-negative");
+    }
     Ok(())
 }
 
@@ -1290,6 +1293,7 @@ mod tests {
             (r#"{"trust_region": 1.0}"#, "trust_region"),
             (r#"{"step_tolerance": 0.0}"#, "step_tolerance"),
             (r#"{"max_iterations": 0}"#, "max_iterations"),
+            (r#"{"penalty": -0.01}"#, "penalty"),
         ] {
             let msg = check_optimizer_parameters(&serde_json::from_str(optimizer).unwrap())
                 .unwrap_err()

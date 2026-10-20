@@ -129,6 +129,13 @@ pub struct OptimizerParameters {
     /// The optimization stops when no capacity changes by more than this relative amount in an
     /// iteration (default: 1e-4).
     pub step_tolerance: f64,
+    /// Weight λ of the penalty `λ·Σₖ (cₖ / cₖ⁰)²` added to the mean squared error of the delays, in
+    /// s², where `cₖ` is the capacity of category `k` and `cₖ⁰` its initial capacity (default: 0,
+    /// no penalty).
+    ///
+    /// A small penalty favors the lowest capacities consistent with the data: a category whose
+    /// edges have no queue gets about the capacity at which queues start.
+    pub penalty: f64,
 }
 
 impl Default for OptimizerParameters {
@@ -137,6 +144,7 @@ impl Default for OptimizerParameters {
             trust_region: 0.2,
             max_iterations: 30,
             step_tolerance: 1e-4,
+            penalty: 0.,
         }
     }
 }
@@ -261,6 +269,7 @@ mod tests {
         assert_eq!(params.optimizer.trust_region, 0.2);
         assert_eq!(params.optimizer.max_iterations, 30);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
+        assert_eq!(params.optimizer.penalty, 0.);
         assert_eq!(params.route_choice.tolerance, None);
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.01);
@@ -310,13 +319,14 @@ mod tests {
 
         let params = parse(
             r#"{"capacities": 0.5, "vehicle_type": "car",
-            "optimizer": {"trust_region": 0.1, "max_iterations": 5}}"#,
+            "optimizer": {"trust_region": 0.1, "max_iterations": 5, "penalty": 0.01}}"#,
         )
         .unwrap();
         assert_eq!(params.vehicle_type, Some(IdValue::String("car".to_owned())));
         assert_eq!(params.optimizer.trust_region, 0.1);
         assert_eq!(params.optimizer.max_iterations, 5);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
+        assert_eq!(params.optimizer.penalty, 0.01);
 
         let params = parse(
             r#"{"capacities": 0.5, "route_choice": {"tolerance": 2.0},
