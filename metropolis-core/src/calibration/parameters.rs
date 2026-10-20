@@ -134,7 +134,8 @@ pub struct OptimizerParameters {
     /// no penalty).
     ///
     /// A small penalty favors the lowest capacities consistent with the data: a category whose
-    /// edges have no queue gets about the capacity at which queues start.
+    /// edges have no queue gets about the capacity at which queues start. The categories crossed
+    /// by no target route are not penalized (their capacity is not calibrated).
     pub penalty: f64,
 }
 

@@ -342,6 +342,20 @@ impl Surrogate {
         (delays, jacobian)
     }
 
+    /// Returns, for each category, whether some target route crosses one of its edges (otherwise,
+    /// the predicted delays do not depend on its capacity).
+    pub(crate) fn crossed_categories(&self) -> Vec<bool> {
+        let mut crossed = vec![false; self.nb_categories];
+        for edge in self.probes.iter().flat_map(|p| p.path.iter()) {
+            if let Some(i) = edge.bottleneck {
+                if let Capacity::Calibrated { category, .. } = self.bottlenecks[i].capacity {
+                    crossed[category] = true;
+                }
+            }
+        }
+        crossed
+    }
+
     /// Updates the queues of the calibrated bottlenecks for the given capacity of each category.
     fn update(&mut self, capacities: &[FlowPerLane]) {
         debug_assert_eq!(capacities.len(), self.nb_categories);
@@ -584,10 +598,10 @@ mod tests {
         );
     }
 
-    /// Returns a surrogate model with pseudo-random arrival curves (about 0.5 PCE/s at each edge)
-    /// at 3 edges (edge 0: category 0, 1 lane; edge 1: category 1, 2 lanes; edge 2: not
-    /// calibrated) and 60 probes with paths through the 3 edges.
-    fn random_surrogate() -> Surrogate {
+    /// Returns a surrogate model with 2 categories, pseudo-random arrival curves (about 0.5 PCE/s
+    /// at each edge) at 3 edges (edge 0: 1 lane; edge 1: 2 lanes; edge 2: not calibrated) and 60
+    /// probes with paths through the 3 edges, given the categories of edges 0 and 1.
+    fn random_surrogate(edge_categories: [usize; 2]) -> Surrogate {
         let e0 = edge(0, 20., 1., None);
         let e1 = edge(1, 20., 2., None);
         let e2 = edge(2, 20., 1., Some(0.5));
@@ -597,7 +611,7 @@ mod tests {
             initial_capacities: vec![FlowPerLane::new_unchecked(0.5); 2],
             min_capacities: vec![None; 2],
             max_capacities: vec![None; 2],
-            edge_categories: vec![Some(0), Some(1), None],
+            edge_categories: vec![Some(edge_categories[0]), Some(edge_categories[1]), None],
         };
         // Random arrivals of about 0.5 PCE/s at each edge.
         let draws = pseudo_random(3 * 2 * 1000 + 2 * 60);
@@ -640,7 +654,7 @@ mod tests {
 
     #[test]
     fn jacobian_test() {
-        let mut surrogate = random_surrogate();
+        let mut surrogate = random_surrogate([0, 1]);
         let delays = |surrogate: &mut Surrogate, capacities: &[f64]| -> Vec<f64> {
             let capacities: Vec<_> = capacities
                 .iter()
@@ -695,7 +709,7 @@ mod tests {
     fn recover_capacities_test() {
         // The target delays are the predicted delays at some capacities, which the optimization
         // must recover from other initial capacities.
-        let mut surrogate = random_surrogate();
+        let mut surrogate = random_surrogate([0, 1]);
         let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
         let target_delays = surrogate.predict(&capacities([0.4, 0.3]));
         let mut categories = EdgeCategories {
@@ -705,25 +719,58 @@ mod tests {
             max_capacities: vec![None; 2],
             edge_categories: vec![Some(0), Some(1), None],
         };
-        let mut optimize = |categories: &EdgeCategories| -> Vec<f64> {
+        let mut optimize = |start: &[FlowPerLane], categories: &EdgeCategories| {
             optimize_capacities(
                 &mut surrogate,
                 &target_delays,
-                &categories.initial_capacities,
+                start,
                 &OptimizerParameters::default(),
                 categories,
             )
-            .into_iter()
-            .map(f64::from)
-            .collect()
         };
-        let optimized = optimize(&categories);
-        for (c, expected) in optimized.into_iter().zip([0.4, 0.3]) {
+        let optimized = optimize(&categories.initial_capacities, &categories);
+        for (&c, expected) in optimized.iter().zip([0.4, 0.3]) {
+            let c = f64::from(c);
             assert!((c / expected - 1.).abs() < 1e-3, "{c} != {expected}");
         }
-        // With a maximum capacity of 0.28 for category 1, it stops at that bound.
-        categories.max_capacities[1] = Some(FlowPerLane::new_unchecked(0.28));
-        let optimized = optimize(&categories);
-        assert!((optimized[1] - 0.28).abs() < 1e-12, "{}", optimized[1]);
+        // With a maximum capacity of 0.28 for category 1, it stops exactly at that bound, also when
+        // the optimization starts from that bound.
+        let max = FlowPerLane::new_unchecked(0.28);
+        categories.max_capacities[1] = Some(max);
+        let optimized = optimize(&categories.initial_capacities, &categories);
+        assert_eq!(optimized[1], max);
+        let optimized = optimize(&optimized, &categories);
+        assert_eq!(optimized[1], max);
+        // Same with a minimum capacity of 0.42 for category 0.
+        let min = FlowPerLane::new_unchecked(0.42);
+        categories.min_capacities[0] = Some(min);
+        let optimized = optimize(&categories.initial_capacities, &categories);
+        assert_eq!(optimized[0], min);
+        let optimized = optimize(&optimized, &categories);
+        assert_eq!(optimized[0], min);
+    }
+
+    #[test]
+    fn uncrossed_category_test() {
+        // The edges of category 1 are crossed by no target route: with a penalty, its capacity
+        // stays the same (instead of decreasing to the trust-region bound).
+        let mut surrogate = random_surrogate([0, 0]);
+        assert_eq!(surrogate.crossed_categories(), vec![true, false]);
+        let start = [0.4, 0.3].map(FlowPerLane::new_unchecked);
+        let target_delays = surrogate.predict(&start);
+        let categories = EdgeCategories {
+            ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
+            initial_capacities: start.to_vec(),
+            min_capacities: vec![None; 2],
+            max_capacities: vec![None; 2],
+            edge_categories: vec![Some(0), Some(0), None],
+        };
+        let params = OptimizerParameters {
+            penalty: 0.01,
+            ..Default::default()
+        };
+        let optimized =
+            optimize_capacities(&mut surrogate, &target_delays, &start, &params, &categories);
+        assert_eq!(optimized[1], start[1]);
     }
 }

@@ -71,10 +71,27 @@ pub(super) fn optimize_capacities(
         .iter()
         .map(|r| r.map_or(1. + trust_region, |r| r.min(1. + trust_region)))
         .collect();
+    // The capacities are clamped to the bounds of their category, so that a capacity at a bound is
+    // exactly the bound (and stays within the bounds in the next optimization), despite rounding.
     let to_capacities = |x: &[f64]| -> Vec<FlowPerLane> {
         x.iter()
             .zip(capacities)
-            .map(|(&x, &c)| FlowPerLane::new_unchecked(x * f64::from(c)))
+            .zip(
+                categories
+                    .min_capacities
+                    .iter()
+                    .zip(&categories.max_capacities),
+            )
+            .map(|((&x, &c), (min, max))| {
+                let mut c = x * f64::from(c);
+                if let Some(min) = min {
+                    c = c.max(f64::from(*min));
+                }
+                if let Some(max) = max {
+                    c = c.min(f64::from(*max));
+                }
+                FlowPerLane::new_unchecked(c)
+            })
             .collect()
     };
     let scales: Vec<f64> = capacities.iter().map(|&c| f64::from(c)).collect();
@@ -83,6 +100,7 @@ pub(super) fn optimize_capacities(
         target_delays.len(),
         capacities,
         &categories.initial_capacities,
+        &surrogate.crossed_categories(),
     );
     let nb_categories = capacities.len();
     let evaluate = |x: &[f64]| {
@@ -116,14 +134,11 @@ pub(super) fn optimize_capacities(
     let penalty = if weights.is_empty() {
         String::new()
     } else {
-        let penalty = solution
-            .x
-            .iter()
-            .zip(capacities)
-            .zip(&categories.initial_capacities)
-            .map(|((x, &c), &c0)| (x * f64::from(c) / f64::from(c0)).powi(2))
-            .sum::<f64>();
-        format!(", penalty {:.4} s²", params.penalty * penalty)
+        // The penalty is the sum of the squared penalty residuals divided by `N` (see
+        // `penalty_weights`).
+        let penalty_residuals = &solution.residuals[target_delays.len()..];
+        let penalty = 2. * half_sum_of_squares(penalty_residuals) / target_delays.len() as f64;
+        format!(", penalty {penalty:.4} s²")
     };
     let termination = match solution.termination {
         Termination::Stationary => "stationary point",
@@ -173,11 +188,16 @@ pub(super) fn optimize_capacities(
 /// With `wₖ = √(N·λ)·cₖ/cₖ⁰` (`N` target routes, capacity `cₖ` at the start of the optimization,
 /// initial capacity `cₖ⁰`), half the sum of the squared residuals is `N/2` times the mean squared
 /// error of the delays plus `λ·Σₖ (cₖ / cₖ⁰)²`.
+///
+/// The weight is zero for the categories crossed by no target route: the delays do not depend on
+/// their capacity, so the penalty alone would decrease it in every optimization. With a zero
+/// column of the Jacobian matrix, their capacity is fixed.
 fn penalty_weights(
     penalty: f64,
     nb_targets: usize,
     capacities: &[FlowPerLane],
     initial_capacities: &[FlowPerLane],
+    crossed: &[bool],
 ) -> Vec<f64> {
     if penalty == 0. {
         return Vec::new();
@@ -186,7 +206,14 @@ fn penalty_weights(
     capacities
         .iter()
         .zip(initial_capacities)
-        .map(|(&c, &c0)| factor * f64::from(c) / f64::from(c0))
+        .zip(crossed)
+        .map(|((&c, &c0), &crossed)| {
+            if crossed {
+                factor * f64::from(c) / f64::from(c0)
+            } else {
+                0.
+            }
+        })
         .collect()
 }
 
@@ -561,11 +588,18 @@ mod tests {
             FlowPerLane::new_unchecked(0.2),
             FlowPerLane::new_unchecked(0.2),
         ];
-        assert!(penalty_weights(0., 100, &capacities, &initial).is_empty());
+        let crossed = [true, true];
+        assert!(penalty_weights(0., 100, &capacities, &initial, &crossed).is_empty());
         // √(100 × 0.01) = 1.
         assert_close(
-            &penalty_weights(0.01, 100, &capacities, &initial),
+            &penalty_weights(0.01, 100, &capacities, &initial, &crossed),
             &[2., 1.],
+            1e-12,
+        );
+        // No penalty for a category crossed by no target route.
+        assert_close(
+            &penalty_weights(0.01, 100, &capacities, &initial, &[true, false]),
+            &[2., 0.],
             1e-12,
         );
     }

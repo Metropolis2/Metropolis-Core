@@ -129,6 +129,24 @@ pub fn calibrate(
             arrival curve is recorded)"
         );
     }
+    let mut crossed = vec![false; categories.ids.len()];
+    for &e in recorded_edges.iter() {
+        if let Some(cat) = categories.category_of(e) {
+            crossed[cat] = true;
+        }
+    }
+    let uncrossed: Vec<_> = (0..crossed.len())
+        .filter(|&j| !crossed[j])
+        .map(|j| categories.name(j))
+        .collect();
+    if !uncrossed.is_empty() {
+        warn!(
+            "{} categories are crossed by no target route: their capacity is not calibrated (it \
+            keeps its initial value): {}",
+            uncrossed.len(),
+            uncrossed.join(", ")
+        );
+    }
     let target_delays: Vec<_> = target_routes.iter().map(|r| r.target_delay).collect();
     let new_surrogate = |curves| {
         Surrogate::new(
