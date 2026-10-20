@@ -251,8 +251,12 @@ struct Solution {
 /// Nielsen (1999) (Marquardt's scaling), so the step does not depend on the scale of each variable:
 /// a variable whose residuals barely depend on it still gets its Gauss–Newton step. The variables
 /// whose column of the Jacobian matrix is zero (they do not change the residuals) and the variables
-/// at a bound that the gradient pushes outside of the box are fixed, the step of the others is
-/// projected onto the box, and the step is accepted if it decreases the objective.
+/// at a bound that the gradient or their step pushes outside of the box are fixed (see
+/// [free_step]), the step of the others is projected onto the box, and the step is accepted if it
+/// decreases the objective.
+///
+/// The algorithm stops when the step changes no variable by more than `step_tolerance`, even if
+/// the step is rejected: the next steps would be smaller, with a larger damping.
 ///
 /// Each iteration logs the root mean square of all the residuals.
 fn levenberg_marquardt(
@@ -289,7 +293,7 @@ fn levenberg_marquardt(
         nb_iterations += 1;
         let mut accepted = false;
         let mut step_size = f64::INFINITY;
-        if let Some(step) = damped_step(&hessian, &gradient, &free, damping) {
+        if let Some(step) = free_step(&hessian, &gradient, free, damping, &x, lower, upper) {
             let trial: Vec<f64> = (0..n)
                 .map(|j| (x[j] + step[j]).clamp(lower[j], upper[j]))
                 .collect();
@@ -335,12 +339,12 @@ fn levenberg_marquardt(
 }
 
 /// Returns half the sum of the squared residuals.
-fn half_sum_of_squares(residuals: &[f64]) -> f64 {
+pub(super) fn half_sum_of_squares(residuals: &[f64]) -> f64 {
     residuals.iter().map(|r| r * r).sum::<f64>() / 2.
 }
 
 /// Returns the root mean square of the residuals, given half their sum of squares.
-fn rmse(half_sum_of_squares: f64, nb_residuals: usize) -> f64 {
+pub(super) fn rmse(half_sum_of_squares: f64, nb_residuals: usize) -> f64 {
     if nb_residuals == 0 {
         0.
     } else {
@@ -380,6 +384,32 @@ fn normal_equations(residuals: &[f64], jacobian: &[f64], n: usize) -> (Vec<f64>,
         gradient.iter_mut().zip(g).for_each(|(a, b)| *a += b);
     }
     (hessian, gradient)
+}
+
+/// Returns the Levenberg–Marquardt step of the given free variables (zero for the other variables),
+/// at `x` in the box `[lower, upper]`, or `None` if the damped matrix is not positive definite
+/// (numerically).
+///
+/// The free variables at a bound whose step points outside of the box are fixed, and the step of
+/// the others is computed again (otherwise, it would assume that the fixed variables move), until
+/// no step points outside of the box at a bound.
+fn free_step(
+    hessian: &[f64],
+    gradient: &[f64],
+    mut free: Vec<usize>,
+    damping: f64,
+    x: &[f64],
+    lower: &[f64],
+    upper: &[f64],
+) -> Option<Vec<f64>> {
+    loop {
+        let step = damped_step(hessian, gradient, &free, damping)?;
+        let nb_free = free.len();
+        free.retain(|&j| !(x[j] <= lower[j] && step[j] < 0. || x[j] >= upper[j] && step[j] > 0.));
+        if free.len() == nb_free {
+            return Some(step);
+        }
+    }
 }
 
 /// Returns the Levenberg–Marquardt step `-(H + λ·diag(H))⁻¹ g` of the free variables (zero for the
@@ -602,6 +632,56 @@ mod tests {
             &[2., 0.],
             1e-12,
         );
+    }
+
+    #[test]
+    fn free_step_test() {
+        // Residuals (x1 + x2 - 1, 0.1 (x1 - x2 + 3)), minimum at (-1, 2). At (0, -2), with x1 at its
+        // lower bound 0, the gradient (-2.95, -3.05) pulls x1 inside the box, but the Gauss–Newton
+        // step (-1, 4) pushes it outside: x1 is fixed and x2 gets its step with x1 fixed,
+        // 3.05 / 1.01 (instead of 4).
+        let (residuals, jacobian) = (vec![-3., 0.5], vec![1., 1., 0.1, -0.1]);
+        let (hessian, gradient) = normal_equations(&residuals, &jacobian, 2);
+        assert_close(&gradient, &[-2.95, -3.05], 1e-12);
+        let step = free_step(
+            &hessian,
+            &gradient,
+            vec![0, 1],
+            0.,
+            &[0., -2.],
+            &[0., -5.],
+            &[5., 5.],
+        )
+        .unwrap();
+        assert_close(&step, &[0., 3.05 / 1.01], 1e-12);
+        // Inside the box, the step is the Gauss–Newton step.
+        let step = free_step(
+            &hessian,
+            &gradient,
+            vec![0, 1],
+            0.,
+            &[0., -2.],
+            &[-5., -5.],
+            &[5., 5.],
+        )
+        .unwrap();
+        assert_close(&step, &[-1., 4.], 1e-12);
+    }
+
+    #[test]
+    fn coupled_bound_test() {
+        // Same residuals as in `free_step_test`: the minimum with x1 >= 0 is at x1 = 0 and
+        // x2 = 2.06 / 2.02.
+        let evaluate = |x: &[f64]| {
+            (
+                vec![x[0] + x[1] - 1., 0.1 * (x[0] - x[1] + 3.)],
+                vec![1., 1., 0.1, -0.1],
+            )
+        };
+        let solution =
+            levenberg_marquardt(evaluate, &[0., -5.], &[5., 5.], vec![0., -2.], 100, 1e-12);
+        assert_close(&solution.x, &[0., 2.06 / 2.02], 1e-8);
+        assert_ne!(solution.termination, Termination::MaxIterations);
     }
 
     #[test]

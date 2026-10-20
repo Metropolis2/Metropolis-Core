@@ -99,9 +99,9 @@ impl CalibrationResults {
         for it in self.iterations.iter() {
             outer.append_value(it.outer);
             nb_days.append_value(it.conditions_rmse.len() as u64);
-            first_rmse.append_option(it.conditions_rmse.first().copied());
-            last_rmse.append_option(it.conditions_rmse.last().copied());
-            score.append_value(it.score);
+            first_rmse.append_option(it.conditions_rmse.first().map(|&r| f64::from(r)));
+            last_rmse.append_option(it.conditions_rmse.last().map(|&r| f64::from(r)));
+            score.append_value(f64::from(it.score));
             nb_optimizations.append_value(it.nb_optimizations);
             for (builder, &capacity) in capacities.iter_mut().zip(it.capacities.iter()) {
                 builder.append_value(f64::from(capacity));

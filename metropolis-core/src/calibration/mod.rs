@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use log::{info, warn};
+use num_traits::ConstZero;
 use petgraph::graph::EdgeIndex;
 
 use self::parameters::{
@@ -177,7 +178,12 @@ pub fn calibrate(
     let mut sensitivity_logged = false;
     // Best fit after the route-choice days, with its capacities, outer iteration and predicted
     // delays.
-    let mut best: Option<(f64, Vec<FlowPerLane>, u64, Vec<NonNegativeSeconds>)> = None;
+    let mut best: Option<(
+        NonNegativeSeconds,
+        Vec<FlowPerLane>,
+        u64,
+        Vec<NonNegativeSeconds>,
+    )> = None;
     // Predicted delays after the route-choice days of the first outer iteration.
     let mut initial_predicted_delays = None;
     let mut iterations = Vec::new();
@@ -216,8 +222,10 @@ pub fn calibrate(
         }
         let (best_fit, _, best_outer, _) = best.as_ref().unwrap();
         info!(
-            "Outer iteration {outer}: RMSE of the delays after the route-choice days {fit:.3} s \
-            (best: {best_fit:.3} s, at outer iteration {best_outer})"
+            "Outer iteration {outer}: RMSE of the delays after the route-choice days {:.3} s \
+            (best: {:.3} s, at outer iteration {best_outer})",
+            f64::from(fit),
+            f64::from(*best_fit),
         );
         if since_best >= params.outer_loop.patience {
             stop_reason = "no improvement of the best fit";
@@ -255,7 +263,7 @@ pub fn calibrate(
             day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
             surrogate = new_surrogate(day.curves);
             let (new_fit, _) = fit_at(&mut surrogate, &capacities);
-            if new_fit >= (1. - params.inner_loop.tolerance) * fit {
+            if f64::from(new_fit) >= (1. - params.inner_loop.tolerance) * f64::from(fit) {
                 info!("Inner loop stopped: the fit improved by less than the tolerance");
                 break;
             }
@@ -284,8 +292,8 @@ pub fn calibrate(
         best.expect("At least one outer iteration is run");
     info!(
         "Capacity calibration stopped ({stop_reason}) after {nb_outer} outer iterations; best fit \
-        after the route-choice days at outer iteration {best_outer}: RMSE of the delays \
-        {best_fit:.3} s"
+        after the route-choice days at outer iteration {best_outer}: RMSE of the delays {:.3} s",
+        f64::from(best_fit),
     );
     for (j, (&capacity, &initial)) in capacities
         .iter()
@@ -342,12 +350,11 @@ pub struct CalibrationResults {
 struct OuterIterationResults {
     /// Index of the outer iteration (starting at 1).
     outer: u64,
-    /// RMSE between the expected and simulated network conditions of each route-choice day, in
-    /// seconds.
-    conditions_rmse: Vec<f64>,
-    /// Score of the outer iteration: fit of the surrogate model (RMSE of the delays, in seconds)
-    /// at the capacities of the route-choice days, on the last route-choice day.
-    score: f64,
+    /// RMSE between the expected and simulated network conditions of each route-choice day.
+    conditions_rmse: Vec<NonNegativeSeconds>,
+    /// Score of the outer iteration: fit of the surrogate model (RMSE of the delays) at the
+    /// capacities of the route-choice days, on the last route-choice day.
+    score: NonNegativeSeconds,
     /// Number of optimizations of the capacities in the inner loop.
     nb_optimizations: u64,
     /// Capacity of each category during the route-choice days (the scored capacities).
@@ -444,14 +451,16 @@ fn check_bottleneck_model(edges: &[&RoadEdge], constrain_inflow: bool) -> Result
 
 /// Logs the fit of the predicted delays of the target routes (at the capacities of the simulated
 /// day) to their target delays, and the time taken by the surrogate model to predict them.
+///
+/// Returns the RMSE of the delays.
 fn log_fit(
     target_delays: &[NonNegativeSeconds],
     predicted_delays: &[NonNegativeSeconds],
     duration: Duration,
-) -> f64 {
+) -> NonNegativeSeconds {
     debug_assert_eq!(target_delays.len(), predicted_delays.len());
     if target_delays.is_empty() {
-        return 0.;
+        return NonNegativeSeconds::ZERO;
     }
     let n = target_delays.len() as f64;
     let errors: Vec<f64> = predicted_delays
@@ -459,7 +468,7 @@ fn log_fit(
         .zip(target_delays)
         .map(|(&p, &t)| f64::from(p) - f64::from(t))
         .collect();
-    let rmse = (errors.iter().map(|e| e * e).sum::<f64>() / n).sqrt();
+    let rmse = optimizer::rmse(optimizer::half_sum_of_squares(&errors), errors.len());
     let mean_error = errors.iter().sum::<f64>() / n;
     let max_error = errors.iter().fold(0.0f64, |m, e| m.max(e.abs()));
     let mean_target = target_delays.iter().map(|&d| f64::from(d)).sum::<f64>() / n;
@@ -469,7 +478,7 @@ fn log_fit(
         target delay {mean_target:.3} s (evaluated in {:.1} ms)",
         duration.as_secs_f64() * 1e3,
     );
-    rmse
+    NonNegativeSeconds::new_unchecked(rmse)
 }
 
 /// Logs, for each category, the number of target routes whose predicted delay depends on its
@@ -489,20 +498,14 @@ fn log_sensitivity(
     if target_delays.is_empty() {
         return;
     }
-    let n = target_delays.len() as f64;
     let residuals: Vec<f64> = predicted_delays
         .iter()
         .zip(target_delays)
         .map(|(&p, &t)| f64::from(p) - f64::from(t))
         .collect();
     let rmse = |shifts: &mut dyn Iterator<Item = f64>| {
-        (residuals
-            .iter()
-            .zip(shifts)
-            .map(|(r, d)| (r + d).powi(2))
-            .sum::<f64>()
-            / n)
-            .sqrt()
+        let shifted: Vec<f64> = residuals.iter().zip(shifts).map(|(r, d)| r + d).collect();
+        optimizer::rmse(optimizer::half_sum_of_squares(&shifted), shifted.len())
     };
     let initial_rmse = rmse(&mut std::iter::repeat(0.));
     for (j, &capacity) in categories.initial_capacities.iter().enumerate() {
@@ -549,9 +552,8 @@ struct RouteChoiceDay {
     day: SimulatedDay,
     /// Iteration counter of the learning model at the day.
     iteration_counter: u32,
-    /// RMSE between the expected and simulated network conditions of each route-choice day, in
-    /// seconds.
-    conditions_rmse: Vec<f64>,
+    /// RMSE between the expected and simulated network conditions of each route-choice day.
+    conditions_rmse: Vec<NonNegativeSeconds>,
 }
 
 /// Simulates the days of the calibration.
@@ -609,7 +611,7 @@ impl Simulator<'_> {
                 conditions {:.3} s",
                 f64::from(rmse)
             );
-            conditions_rmse.push(f64::from(rmse));
+            conditions_rmse.push(rmse);
             if params.tolerance.is_some_and(|tol| rmse <= tol) || nb_days >= params.max_iterations {
                 return Ok(RouteChoiceDay {
                     exp_weights,
