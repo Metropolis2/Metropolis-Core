@@ -89,6 +89,8 @@ impl CalibrationResults {
         let mut nb_days = UInt64Builder::new();
         let mut first_rmse = Float64Builder::new();
         let mut last_rmse = Float64Builder::new();
+        let mut first_gap = Float64Builder::new();
+        let mut last_gap = Float64Builder::new();
         let mut score = Float64Builder::new();
         let mut nb_optimizations = UInt64Builder::new();
         let mut capacities: Vec<_> = self
@@ -101,6 +103,8 @@ impl CalibrationResults {
             nb_days.append_value(it.conditions_rmse.len() as u64);
             first_rmse.append_option(it.conditions_rmse.first().map(|&r| f64::from(r)));
             last_rmse.append_option(it.conditions_rmse.last().map(|&r| f64::from(r)));
+            first_gap.append_option(it.travel_time_gaps.first().copied().flatten());
+            last_gap.append_option(it.travel_time_gaps.last().copied().flatten());
             score.append_value(f64::from(it.score));
             nb_optimizations.append_value(it.nb_optimizations);
             for (builder, &capacity) in capacities.iter_mut().zip(it.capacities.iter()) {
@@ -117,6 +121,8 @@ impl CalibrationResults {
             ("nb_route_choice_days", &mut nb_days, false),
             ("first_day_conditions_rmse", &mut first_rmse, false),
             ("last_day_conditions_rmse", &mut last_rmse, false),
+            ("first_day_travel_time_gap", &mut first_gap, true),
+            ("last_day_travel_time_gap", &mut last_gap, true),
             ("score", &mut score, false),
             ("nb_optimizations", &mut nb_optimizations, false),
         ];

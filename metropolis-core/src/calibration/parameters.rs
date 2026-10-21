@@ -69,6 +69,11 @@ pub struct RouteChoiceParameters {
     pub min_decrease: Option<f64>,
     /// Maximum number of route-choice days (default: 10).
     pub max_iterations: u64,
+    /// If `true` (default), the iteration counter of the learning model restarts at
+    /// `init_iteration_counter` in each outer iteration. If `false`, it continues from the last
+    /// route-choice day of the previous outer iteration, as in a simulation: the weight of each
+    /// new day in the expected network conditions keeps decreasing over the calibration.
+    pub reset_counter: bool,
 }
 
 impl Default for RouteChoiceParameters {
@@ -77,6 +82,7 @@ impl Default for RouteChoiceParameters {
             tolerance: None,
             min_decrease: None,
             max_iterations: 10,
+            reset_counter: true,
         }
     }
 }
@@ -282,6 +288,7 @@ mod tests {
         assert_eq!(params.route_choice.tolerance, None);
         assert_eq!(params.route_choice.min_decrease, None);
         assert_eq!(params.route_choice.max_iterations, 10);
+        assert!(params.route_choice.reset_counter);
         assert_eq!(params.inner_loop.tolerance, 0.01);
         assert_eq!(params.inner_loop.max_iterations, 10);
         assert_eq!(params.outer_loop.patience, 5);
@@ -339,7 +346,8 @@ mod tests {
         assert_eq!(params.optimizer.penalty, 0.01);
 
         let params = parse(
-            r#"{"capacities": 0.5, "route_choice": {"tolerance": 2.0, "min_decrease": 0.05},
+            r#"{"capacities": 0.5,
+            "route_choice": {"tolerance": 2.0, "min_decrease": 0.05, "reset_counter": false},
             "inner_loop": {"tolerance": 0.001}, "outer_loop": {"max_iterations": 3}}"#,
         )
         .unwrap();
@@ -348,6 +356,7 @@ mod tests {
             Some(NonNegativeSeconds::try_from(2.0).unwrap())
         );
         assert_eq!(params.route_choice.min_decrease, Some(0.05));
+        assert!(!params.route_choice.reset_counter);
         assert_eq!(params.route_choice.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.001);
         assert_eq!(params.inner_loop.max_iterations, 10);

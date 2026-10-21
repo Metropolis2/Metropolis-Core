@@ -34,8 +34,9 @@ use self::parameters::{
 };
 use self::surrogate::Surrogate;
 use crate::hash::{HashMap, HashSet};
+use crate::mode::trip::results::LegTypeResults;
 use crate::mode::trip::DepartureTimeModel;
-use crate::mode::Mode;
+use crate::mode::{Mode, ModeResults};
 use crate::network::road_network::arrival_curve::ArrivalCurves;
 use crate::network::road_network::node_order::NodeOrderCache;
 use crate::network::road_network::vehicle::Vehicle;
@@ -190,14 +191,23 @@ pub fn calibrate(
     let mut since_best = 0;
     let mut stop_reason = "maximum number of iterations";
     let mut nb_outer = 0;
+    // Iteration counter of the learning model at the first route-choice day of the next outer
+    // iteration, when it is not reset.
+    let mut next_counter = crate::parameters::init_iteration_counter();
     for outer in 1..=params.outer_loop.max_iterations {
         info!("===== Outer iteration {outer} =====");
         nb_outer = outer;
         let start_capacities = capacities.clone();
+        let first_counter = if params.route_choice.reset_counter {
+            crate::parameters::init_iteration_counter()
+        } else {
+            next_counter
+        };
         let route_choice = simulator.route_choice(
             exp_weights,
             &capacities,
             &params.route_choice,
+            first_counter,
             &mut node_orders,
         )?;
         let mut day = route_choice.day;
@@ -207,6 +217,7 @@ pub fn calibrate(
         iterations.push(OuterIterationResults {
             outer,
             conditions_rmse: route_choice.conditions_rmse.clone(),
+            travel_time_gaps: route_choice.travel_time_gaps.clone(),
             score: fit,
             nb_optimizations: 0,
             capacities: capacities.clone(),
@@ -287,6 +298,7 @@ pub fn calibrate(
             &new_exp_weights,
         );
         exp_weights = new_exp_weights;
+        next_counter = route_choice.iteration_counter + 1;
     }
     let (best_fit, capacities, best_outer, predicted_delays) =
         best.expect("At least one outer iteration is run");
@@ -352,6 +364,9 @@ struct OuterIterationResults {
     outer: u64,
     /// RMSE between the expected and simulated network conditions of each route-choice day.
     conditions_rmse: Vec<NonNegativeSeconds>,
+    /// Relative gap between the expected and simulated travel times of the road trips of each
+    /// route-choice day (see [relative_travel_time_gap]).
+    travel_time_gaps: Vec<Option<f64>>,
     /// Score of the outer iteration: fit of the surrogate model (RMSE of the delays) at the
     /// capacities of the route-choice days, on the last route-choice day.
     score: NonNegativeSeconds,
@@ -408,6 +423,39 @@ fn stop_route_choice(
     params.tolerance.is_some_and(|tol| rmse <= tol)
         || params.min_decrease.is_some_and(reached_floor)
         || conditions_rmse.len() as u64 >= params.max_iterations
+}
+
+/// Returns the relative gap between the expected and simulated travel times of the road legs of a
+/// simulated day: the sum over the legs of the absolute difference between the expected and the
+/// simulated travel time, divided by the sum of the simulated travel times.
+///
+/// Returns `None` if there is no road leg (or if all travel times are zero).
+fn relative_travel_time_gap(results: &AgentResults) -> Option<f64> {
+    let legs = results
+        .iter()
+        .filter_map(|r| match r.mode_results() {
+            ModeResults::Trip(trip) => Some(trip.legs.iter()),
+            ModeResults::Constant(_) => None,
+        })
+        .flatten()
+        .filter_map(|leg| match &leg.class {
+            LegTypeResults::Road(road) => Some((
+                f64::from(road.exp_arrival_time) - f64::from(leg.departure_time),
+                f64::from(leg.arrival_time) - f64::from(leg.departure_time),
+            )),
+            _ => None,
+        });
+    relative_gap(legs)
+}
+
+/// Returns the sum of the absolute differences between the expected and the simulated travel
+/// times, divided by the sum of the simulated travel times, given `(expected, simulated)` pairs.
+fn relative_gap(travel_times: impl Iterator<Item = (f64, f64)>) -> Option<f64> {
+    let (sum_diff, sum_simulated) = travel_times
+        .fold((0., 0.), |(diff, sim), (expected, simulated)| {
+            (diff + (expected - simulated).abs(), sim + simulated)
+        });
+    (sum_simulated > 0.).then(|| sum_diff / sum_simulated)
 }
 
 /// Checks the parameters of the optimization of the capacities and of the loops.
@@ -585,6 +633,9 @@ struct RouteChoiceDay {
     iteration_counter: u32,
     /// RMSE between the expected and simulated network conditions of each route-choice day.
     conditions_rmse: Vec<NonNegativeSeconds>,
+    /// Relative gap between the expected and simulated travel times of the road trips of each
+    /// route-choice day.
+    travel_time_gaps: Vec<Option<f64>>,
 }
 
 /// Simulates the days of the calibration.
@@ -602,18 +653,20 @@ impl Simulator<'_> {
     /// given capacities, starting from the given expected network conditions, until one of the
     /// stopping rules of [stop_route_choice] is met.
     ///
-    /// The iteration counter of the learning model starts at `init_iteration_counter`.
+    /// The iteration counter of the learning model starts at `first_counter`.
     fn route_choice(
         &self,
         mut exp_weights: NetworkWeights,
         capacities: &[FlowPerLane],
         params: &RouteChoiceParameters,
+        first_counter: u32,
         node_orders: &mut NodeOrderCache,
     ) -> Result<RouteChoiceDay> {
         let mut previous_results: Option<AgentResults> = None;
-        let mut iteration_counter = crate::parameters::init_iteration_counter();
+        let mut iteration_counter = first_counter;
         let mut nb_days = 1;
         let mut conditions_rmse = Vec::new();
+        let mut travel_time_gaps = Vec::new();
         loop {
             info!("Route-choice day {nb_days}");
             info!("Computing skims");
@@ -636,12 +689,16 @@ impl Simulator<'_> {
                 .road_network()
                 .expect("The calibration requires a road network")
                 .rmse(exp_weights.road_network().unwrap());
+            let gap = relative_travel_time_gap(&day.results);
             info!(
-                "Route-choice day {nb_days}: RMSE between the expected and simulated network \
-                conditions {:.3} s",
-                f64::from(rmse)
+                "Route-choice day {nb_days} (iteration counter {iteration_counter}): RMSE between \
+                the expected and simulated network conditions {:.3} s, relative gap between the \
+                expected and simulated travel times of the road trips {}",
+                f64::from(rmse),
+                gap.map_or_else(|| "-".to_owned(), |g| format!("{:.3}%", 100. * g)),
             );
             conditions_rmse.push(rmse);
+            travel_time_gaps.push(gap);
             if stop_route_choice(params, &conditions_rmse) {
                 return Ok(RouteChoiceDay {
                     exp_weights,
@@ -650,6 +707,7 @@ impl Simulator<'_> {
                     day,
                     iteration_counter,
                     conditions_rmse,
+                    travel_time_gaps,
                 });
             }
             let new_exp_weights = crate::simulation::run_day_to_day_model(
@@ -1427,6 +1485,16 @@ mod tests {
         assert!(!stop_route_choice(&all, &rmse(&[2.0, 1.0])));
         assert!(stop_route_choice(&all, &rmse(&[2.0, 0.4])));
         assert!(stop_route_choice(&all, &rmse(&[2.0, 1.0, 0.6])));
+    }
+
+    #[test]
+    fn relative_gap_test() {
+        assert_eq!(relative_gap(std::iter::empty()), None);
+        assert_eq!(relative_gap([(10., 0.)].into_iter()), None);
+        assert_eq!(relative_gap([(10., 10.), (20., 20.)].into_iter()), Some(0.));
+        // |12 - 10| + |15 - 20| = 7, divided by 10 + 20.
+        let gap = relative_gap([(12., 10.), (15., 20.)].into_iter()).unwrap();
+        assert!((gap - 7. / 30.).abs() < 1e-12, "{gap}");
     }
 
     #[test]
