@@ -61,8 +61,8 @@ pub struct RouteChoiceParameters {
     pub tolerance: Option<NonNegativeSeconds>,
     /// The route-choice days stop when the RMSE between the expected and the simulated network
     /// conditions of a day has decreased by less than this relative amount from the previous day,
-    /// or has increased, i.e., when it has reached its floor (between 0 and 1, default: no
-    /// minimum decrease).
+    /// i.e., when it has reached its floor (between 0 and 1, exclusive, default: no minimum
+    /// decrease). They do not stop on a day where the RMSE has increased.
     ///
     /// Unlike `tolerance`, it does not depend on the level of the floor, which is set by the
     /// congestion and the learning model.

@@ -390,6 +390,9 @@ fn max_relative_change(old: &[FlowPerLane], new: &[FlowPerLane]) -> f64 {
 /// network conditions of each day run: the RMSE of the last day is at most `tolerance`, it has
 /// decreased by less than `min_decrease` (relative) from the previous day, or `max_iterations`
 /// days have been run.
+///
+/// The days do not stop when the RMSE increases: the last day would then be a fluctuation away
+/// from the floor, and the outer iteration would be scored and optimized on it.
 fn stop_route_choice(
     params: &RouteChoiceParameters,
     conditions_rmse: &[NonNegativeSeconds],
@@ -397,8 +400,9 @@ fn stop_route_choice(
     let rmse = *conditions_rmse.last().expect("At least one day is run");
     let reached_floor = |min_decrease: f64| {
         conditions_rmse.len() >= 2 && {
-            let previous = conditions_rmse[conditions_rmse.len() - 2];
-            f64::from(rmse) >= (1. - min_decrease) * f64::from(previous)
+            let previous = f64::from(conditions_rmse[conditions_rmse.len() - 2]);
+            let rmse = f64::from(rmse);
+            rmse <= previous && rmse >= (1. - min_decrease) * previous
         }
     };
     params.tolerance.is_some_and(|tol| rmse <= tol)
@@ -427,7 +431,7 @@ fn check_loop_parameters(params: &CapacityCalibrationParameters) -> Result<()> {
     if params
         .route_choice
         .min_decrease
-        .is_some_and(|d| !(0. ..1.).contains(&d))
+        .is_some_and(|d| !(d > 0. && d < 1.))
     {
         bail!("The parameter `route_choice.min_decrease` must be between 0 and 1");
     }
@@ -1377,7 +1381,7 @@ mod tests {
                 "route_choice.max_iterations",
             ),
             (
-                r#""route_choice": {"min_decrease": -0.1}"#,
+                r#""route_choice": {"min_decrease": 0.0}"#,
                 "route_choice.min_decrease",
             ),
             (
@@ -1408,18 +1412,16 @@ mod tests {
         let tolerance = params(r#"{"tolerance": 1.0}"#);
         assert!(!stop_route_choice(&tolerance, &rmse(&[1.5])));
         assert!(stop_route_choice(&tolerance, &rmse(&[1.0])));
-        // Minimum decrease: never on the first day, then when the RMSE decreases by less than 5%
-        // or increases.
+        // Minimum decrease: never on the first day, then when the RMSE decreases by less than 5%,
+        // but not when it increases.
         let min_decrease = params(r#"{"min_decrease": 0.05}"#);
         assert!(!stop_route_choice(&min_decrease, &rmse(&[0.5])));
         assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 0.9])));
         assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 0.96])));
-        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2])));
-        assert!(!stop_route_choice(&min_decrease, &rmse(&[2.0, 1.0, 0.9])));
-        // With a minimum decrease of 0, the days stop when the RMSE does not decrease.
-        let zero = params(r#"{"min_decrease": 0.0}"#);
-        assert!(!stop_route_choice(&zero, &rmse(&[1.0, 0.99])));
-        assert!(stop_route_choice(&zero, &rmse(&[1.0, 1.0])));
+        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 1.0])));
+        assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2])));
+        assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2, 0.9])));
+        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2, 1.18])));
         // The rules combine: the first one met stops the days.
         let all = params(r#"{"tolerance": 0.5, "min_decrease": 0.05, "max_iterations": 3}"#);
         assert!(!stop_route_choice(&all, &rmse(&[2.0, 1.0])));
