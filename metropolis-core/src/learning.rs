@@ -41,6 +41,24 @@ pub enum LearningModel {
     /// Linear learning model: `x_{t+1} = (t / (t + 1)) * x_t + (1 / (t + 1)) * y`
     #[default]
     Linear,
+    /// Exponential model with no adjustment for the initial weights (see
+    /// [ExponentialUnadjusted](Self::ExponentialUnadjusted)) for the first `nb_exponential`
+    /// iterations, then Linear model (see [Linear](Self::Linear)) restarted from the learned
+    /// values.
+    ///
+    /// The fast exponential phase quickly gets rid of the initial conditions; the Linear phase then
+    /// averages all the following iterations with equal weights, so that the noise vanishes
+    /// without keeping the early (very congested) iterations in memory.
+    ///
+    /// With `t` the iteration counter given to the learning model, `x_{t+1} = alpha * x_t + (1 -
+    /// alpha) * y` if `t <= nb_exponential`, and `x_{t+1} = (s / (s + 1)) * x_t + (1 / (s + 1)) * y`
+    /// with `s = t - nb_exponential` otherwise.
+    ExponentialThenLinear {
+        /// Parameter of the exponential phase.
+        alpha: ZeroOneNum,
+        /// Number of iterations of the exponential phase.
+        nb_exponential: u32,
+    },
     /// Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
     Genetic,
     /// Quadratic learning model: `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where
@@ -81,6 +99,24 @@ impl LearningModel {
             }
             &Self::ExponentialUnadjusted(alpha) => {
                 old_weights.average(update_weights, alpha.one_minus())
+            }
+            &Self::ExponentialThenLinear {
+                alpha,
+                nb_exponential,
+            } => {
+                if iteration_counter <= nb_exponential {
+                    Self::ExponentialUnadjusted(alpha).learn(
+                        old_weights,
+                        update_weights,
+                        iteration_counter,
+                    )
+                } else {
+                    Self::Linear.learn(
+                        old_weights,
+                        update_weights,
+                        iteration_counter - nb_exponential,
+                    )
+                }
             }
             Self::Linear => {
                 let t = iteration_counter as f64;
@@ -235,6 +271,38 @@ mod tests {
             );
         } else {
             panic!("Invalid road network weight: {:?}", x3.road_network());
+        }
+    }
+
+    #[test]
+    fn exponential_then_linear_learning_test() {
+        let old_weights = get_weigths(10.);
+        let update_weights = get_weigths(20.);
+        let model = LearningModel::ExponentialThenLinear {
+            alpha: ZeroOneNum::new_unchecked(0.2),
+            nb_exponential: 5,
+        };
+        // Exponential phase: 0.8 * 10 + 0.2 * 20 = 12.
+        for t in [1, 5] {
+            assert_eq!(
+                model
+                    .learn(&old_weights, &update_weights, t)
+                    .road_network()
+                    .unwrap()
+                    .weights,
+                get_weigths(12.).road_network().unwrap().weights
+            );
+        }
+        // Linear phase, restarted after the exponential phase (s = 1 and s = 4).
+        for (t, expected) in [(6, 15.), (9, 12.)] {
+            assert_eq!(
+                model
+                    .learn(&old_weights, &update_weights, t)
+                    .road_network()
+                    .unwrap()
+                    .weights,
+                get_weigths(expected).road_network().unwrap().weights
+            );
         }
     }
 }

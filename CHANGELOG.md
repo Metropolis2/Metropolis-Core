@@ -8,6 +8,11 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 ## [Unreleased]
 
+### Added
+
+- [INPUT] Add the `ExponentialThenLinear` learning model (`ExponentialUnadjusted` for the first
+  `nb_exponential` iterations, then `Linear`).
+
 ### Changed
 
 - [DEV] New workspace crate `metro-io`, with the code shared by `metropolis-core` and `tch` to read
