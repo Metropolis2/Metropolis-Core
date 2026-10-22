@@ -19,13 +19,13 @@ use log::info;
 
 use crate::units::*;
 
-/// Arrival curve at a bottleneck: PCE of the vehicles that have reached the bottleneck at each
-/// time.
+/// Arrival curve at a bottleneck: arrival time and PCE of each vehicle that has reached the
+/// bottleneck, in the order in which the vehicles reached it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ArrivalCurve {
-    /// Arrival times, strictly increasing (vehicles arriving at the same time are merged).
+    /// Arrival times, non-decreasing (the vehicles arriving at the same time have one entry each).
     times: Vec<NonNegativeSeconds>,
-    /// Total PCE of the vehicles arrived at `times[i]`.
+    /// PCE of the vehicle arrived at `times[i]`.
     pce: Vec<PCE>,
 }
 
@@ -34,29 +34,22 @@ impl ArrivalCurve {
     ///
     /// The arrivals must be recorded in chronological order.
     pub(crate) fn push(&mut self, time: NonNegativeSeconds, pce: PCE) {
-        match self.times.last() {
-            Some(&last_time) if last_time == time => {
-                *self.pce.last_mut().unwrap() += pce;
-            }
-            last_time_opt => {
-                debug_assert!(last_time_opt.is_none_or(|&t| t < time));
-                self.times.push(time);
-                self.pce.push(pce);
-            }
-        }
+        debug_assert!(self.times.last().is_none_or(|&t| t <= time));
+        self.times.push(time);
+        self.pce.push(pce);
     }
 
-    /// Returns the arrival times of the curve (strictly increasing).
+    /// Returns the arrival times of the curve (non-decreasing).
     pub(crate) fn times(&self) -> &[NonNegativeSeconds] {
         &self.times
     }
 
-    /// Returns the total PCE of the vehicles arrived at each arrival time.
+    /// Returns the PCE of the vehicle arrived at each arrival time.
     pub(crate) fn pce(&self) -> &[PCE] {
         &self.pce
     }
 
-    /// Returns the number of points of the curve (i.e., the number of distinct arrival times).
+    /// Returns the number of points of the curve (i.e., the number of vehicles recorded).
     pub(crate) fn len(&self) -> usize {
         self.times.len()
     }
@@ -101,7 +94,7 @@ impl ArrivalCurves {
         let point_size = size_of::<NonNegativeSeconds>() + size_of::<PCE>();
         let memory = (nb_points * point_size) as f64 / 1e6;
         info!(
-            "Recorded arrival curves at {} edges: {nb_points} distinct arrival times, \
+            "Recorded arrival curves at {} edges: {nb_points} arrivals, \
             {total_pce:.0} PCE, {memory:.1} MB",
             curves.len(),
         );
@@ -129,12 +122,12 @@ mod tests {
         assert_eq!(curve.total_pce(), PCE::ZERO);
         curve.push(s(10.), pce(1.));
         curve.push(s(12.), pce(2.));
-        // Arrivals at the same time are merged.
+        // Arrivals at the same time are kept separate.
         curve.push(s(12.), pce(0.5));
         curve.push(s(15.), pce(1.));
-        assert_eq!(curve.len(), 3);
-        assert_eq!(curve.times, vec![s(10.), s(12.), s(15.)]);
-        assert_eq!(curve.pce, vec![pce(1.), pce(2.5), pce(1.)]);
+        assert_eq!(curve.len(), 4);
+        assert_eq!(curve.times, vec![s(10.), s(12.), s(12.), s(15.)]);
+        assert_eq!(curve.pce, vec![pce(1.), pce(2.), pce(0.5), pce(1.)]);
         assert_eq!(curve.total_pce(), pce(4.5));
     }
 }

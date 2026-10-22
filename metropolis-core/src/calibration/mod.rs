@@ -32,7 +32,7 @@ use self::parameters::{
     Capacities, CapacityCalibrationParameters, CategoryCapacity, IdValue, OptimizerParameters,
     RouteChoiceParameters,
 };
-use self::surrogate::Surrogate;
+use self::surrogate::{RecordingGrid, Surrogate};
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::results::LegTypeResults;
 use crate::mode::trip::DepartureTimeModel;
@@ -160,6 +160,10 @@ pub fn calibrate(
                 .iter()
                 .zip(paths.iter())
                 .map(|(r, path)| (r.departure_time, path.clone())),
+            RecordingGrid::new(
+                crate::parameters::period(),
+                crate::network::road_network::parameters::recording_interval(),
+            ),
         )
     };
     let (preprocess_data, mut exp_weights, mut node_orders) = crate::simulation::prepare()?;
