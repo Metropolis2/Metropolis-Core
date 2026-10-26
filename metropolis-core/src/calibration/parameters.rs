@@ -42,6 +42,10 @@ pub struct CapacityCalibrationParameters {
     /// outer iteration.
     #[serde(default)]
     pub route_choice: RouteChoiceParameters,
+    /// Parameters of the equilibrium days, run after the route-choice days, in each outer
+    /// iteration.
+    #[serde(default)]
+    pub equilibrium_days: EquilibriumDaysParameters,
     /// Parameters of the inner loop: optimization of the capacities, then simulation of a day with
     /// the optimized capacities and the same routes.
     #[serde(default)]
@@ -87,12 +91,44 @@ impl Default for RouteChoiceParameters {
     }
 }
 
+/// Parameters of the equilibrium days of an outer iteration: the last route-choice day and the
+/// following days of the day-to-day model, with the same capacities. The outer iteration is scored,
+/// and its first optimization made, on the mean of the delays predicted by the surrogate models of
+/// these days.
+///
+/// The noise of the mean predicted delays is `√(σ̄²/K)`, where `K` is the number of equilibrium
+/// days and `σ̄²` is the variance of the predicted delay of a target route between the days,
+/// averaged over the target routes. At least two days are needed to estimate it.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct EquilibriumDaysParameters {
+    /// The equilibrium days stop when the noise of the mean predicted delays is at most this
+    /// value, in seconds (default: no tolerance).
+    pub tolerance: Option<NonNegativeSeconds>,
+    /// Maximum number of equilibrium days, including the last route-choice day (default: 1, the
+    /// outer iteration is scored on the last route-choice day).
+    pub max_iterations: u64,
+}
+
+impl Default for EquilibriumDaysParameters {
+    fn default() -> Self {
+        Self {
+            tolerance: None,
+            max_iterations: 1,
+        }
+    }
+}
+
 /// Stopping criteria of the inner loop of the capacity calibration.
+///
+/// The first optimization is made on the mean of the equilibrium days; each following one on the
+/// day re-simulated with the routes of the last equilibrium day.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct InnerLoopParameters {
     /// The loop stops when the fit of the surrogate model (RMSE of the delays) on the simulated day
-    /// improves by less than this relative amount, or gets worse (default: 0.01).
+    /// improves by less than this relative amount, or gets worse (default: 0.01). The first
+    /// re-simulated day is compared to the last equilibrium day.
     pub tolerance: f64,
     /// Maximum number of optimizations (default: 10).
     pub max_iterations: u64,
@@ -109,8 +145,8 @@ impl Default for InnerLoopParameters {
 
 /// Stopping criteria of the outer loop of the capacity calibration.
 ///
-/// Each outer iteration is scored by the fit of the surrogate model (RMSE of the delays) after its
-/// route-choice days; the capacities with the best score are returned.
+/// Each outer iteration is scored by the fit of the mean surrogate model of its equilibrium days
+/// (RMSE of the delays); the capacities with the best score are returned.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct OuterLoopParameters {
@@ -289,6 +325,8 @@ mod tests {
         assert_eq!(params.route_choice.min_decrease, None);
         assert_eq!(params.route_choice.max_iterations, 10);
         assert!(params.route_choice.reset_counter);
+        assert_eq!(params.equilibrium_days.tolerance, None);
+        assert_eq!(params.equilibrium_days.max_iterations, 1);
         assert_eq!(params.inner_loop.tolerance, 0.01);
         assert_eq!(params.inner_loop.max_iterations, 10);
         assert_eq!(params.outer_loop.patience, 5);
@@ -348,6 +386,7 @@ mod tests {
         let params = parse(
             r#"{"capacities": 0.5,
             "route_choice": {"tolerance": 2.0, "min_decrease": 0.05, "reset_counter": false},
+            "equilibrium_days": {"tolerance": 3.0, "max_iterations": 10},
             "inner_loop": {"tolerance": 0.001}, "outer_loop": {"max_iterations": 3}}"#,
         )
         .unwrap();
@@ -358,6 +397,11 @@ mod tests {
         assert_eq!(params.route_choice.min_decrease, Some(0.05));
         assert!(!params.route_choice.reset_counter);
         assert_eq!(params.route_choice.max_iterations, 10);
+        assert_eq!(
+            params.equilibrium_days.tolerance,
+            Some(NonNegativeSeconds::try_from(3.0).unwrap())
+        );
+        assert_eq!(params.equilibrium_days.max_iterations, 10);
         assert_eq!(params.inner_loop.tolerance, 0.001);
         assert_eq!(params.inner_loop.max_iterations, 10);
         assert_eq!(params.outer_loop.patience, 5);

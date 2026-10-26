@@ -91,7 +91,9 @@ impl CalibrationResults {
         let mut last_rmse = Float64Builder::new();
         let mut first_gap = Float64Builder::new();
         let mut last_gap = Float64Builder::new();
+        let mut nb_equilibrium_days = UInt64Builder::new();
         let mut score = Float64Builder::new();
+        let mut score_noise = Float64Builder::new();
         let mut nb_optimizations = UInt64Builder::new();
         let mut capacities: Vec<_> = self
             .category_ids
@@ -105,7 +107,9 @@ impl CalibrationResults {
             last_rmse.append_option(it.conditions_rmse.last().map(|&r| f64::from(r)));
             first_gap.append_option(it.travel_time_gaps.first().copied().flatten());
             last_gap.append_option(it.travel_time_gaps.last().copied().flatten());
+            nb_equilibrium_days.append_value(it.nb_equilibrium_days);
             score.append_value(f64::from(it.score));
+            score_noise.append_option(it.score_noise.map(f64::from));
             nb_optimizations.append_value(it.nb_optimizations);
             for (builder, &capacity) in capacities.iter_mut().zip(it.capacities.iter()) {
                 builder.append_value(f64::from(capacity));
@@ -123,7 +127,9 @@ impl CalibrationResults {
             ("last_day_conditions_rmse", &mut last_rmse, false),
             ("first_day_travel_time_gap", &mut first_gap, true),
             ("last_day_travel_time_gap", &mut last_gap, true),
+            ("nb_equilibrium_days", &mut nb_equilibrium_days, false),
             ("score", &mut score, false),
+            ("score_noise", &mut score_noise, true),
             ("nb_optimizations", &mut nb_optimizations, false),
         ];
         for (name, builder) in capacity_names.iter().zip(capacities.iter_mut()) {

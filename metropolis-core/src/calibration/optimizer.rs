@@ -23,7 +23,7 @@ use log::info;
 use rayon::prelude::*;
 
 use super::parameters::OptimizerParameters;
-use super::surrogate::Surrogate;
+use super::surrogate::MeanSurrogate;
 use super::EdgeCategories;
 use crate::units::*;
 
@@ -36,7 +36,8 @@ const INITIAL_DAMPING: f64 = 1e-3;
 const BLOCK_SIZE: usize = 1024;
 
 /// Returns the optimized capacity of each category, starting from the capacities of the simulated
-/// day whose arrival curves are held by the surrogate model.
+/// days whose arrival curves are held by the surrogate model (the mean of their predicted delays
+/// is fitted).
 ///
 /// The capacities are bounded by the minimum and maximum capacities of their category (if any) and
 /// by the trust region around their initial value. The variables of the optimization are the capacities
@@ -46,7 +47,7 @@ const BLOCK_SIZE: usize = 1024;
 /// `cₖ⁰` is the initial capacity of category `k` in the parameters (the same in every
 /// optimization). The penalty is one residual per category, linear in the variables.
 pub(super) fn optimize_capacities(
-    surrogate: &mut Surrogate,
+    surrogate: &mut MeanSurrogate,
     target_delays: &[NonNegativeSeconds],
     capacities: &[FlowPerLane],
     params: &OptimizerParameters,

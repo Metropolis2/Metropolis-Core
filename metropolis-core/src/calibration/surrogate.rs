@@ -462,6 +462,72 @@ impl Surrogate {
     }
 }
 
+/// Surrogate model of several simulated days with the same capacities: predicts the mean of the
+/// delays predicted by the surrogate models of the days.
+#[derive(Clone, Debug)]
+pub(crate) struct MeanSurrogate {
+    days: Vec<Surrogate>,
+}
+
+impl MeanSurrogate {
+    /// Creates the [MeanSurrogate] from the surrogate model of each day (at least one).
+    pub(crate) fn new(days: Vec<Surrogate>) -> Self {
+        assert!(
+            !days.is_empty(),
+            "The mean surrogate model needs at least one day"
+        );
+        Self { days }
+    }
+
+    /// Returns the mean predicted queueing delay of each target route (in the order of the routes)
+    /// and the mean Jacobian matrix of the delays with respect to the capacities (see
+    /// [Surrogate::predict_with_jacobian]), given the capacity of each category.
+    pub(crate) fn predict_with_jacobian(
+        &mut self,
+        capacities: &[FlowPerLane],
+    ) -> (Vec<NonNegativeSeconds>, Vec<f64>) {
+        let (delays, jacobians): (Vec<Vec<f64>>, Vec<Vec<f64>>) = self
+            .days
+            .iter_mut()
+            .map(|day| {
+                let (delays, jacobian) = day.predict_with_jacobian(capacities);
+                (delays.into_iter().map(f64::from).collect(), jacobian)
+            })
+            .unzip();
+        let delays = mean(delays.into_iter())
+            .into_iter()
+            .map(NonNegativeSeconds::new_unchecked)
+            .collect();
+        (delays, mean(jacobians.into_iter()))
+    }
+
+    /// Returns, for each category, whether some target route crosses one of its edges on some day
+    /// (otherwise, the predicted delays do not depend on its capacity).
+    pub(crate) fn crossed_categories(&self) -> Vec<bool> {
+        self.days
+            .iter()
+            .map(Surrogate::crossed_categories)
+            .reduce(|a, b| a.iter().zip(b).map(|(&a, b)| a || b).collect())
+            .expect("There is at least one day")
+    }
+}
+
+/// Returns the element-wise mean of vectors of the same length.
+fn mean(vectors: impl Iterator<Item = Vec<f64>>) -> Vec<f64> {
+    let mut sums: Vec<f64> = Vec::new();
+    let mut nb_vectors = 0;
+    for vector in vectors {
+        if nb_vectors == 0 {
+            sums = vector;
+        } else {
+            sums.iter_mut().zip(vector).for_each(|(s, x)| *s += x);
+        }
+        nb_vectors += 1;
+    }
+    sums.iter_mut().for_each(|s| *s /= nb_vectors as f64);
+    sums
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::ConstOne;
@@ -881,9 +947,10 @@ mod tests {
     fn recover_capacities_test() {
         // The target delays are the predicted delays at some capacities, which the optimization
         // must recover from other initial capacities.
-        let mut surrogate = random_surrogate([0, 1]);
+        let mut day = random_surrogate([0, 1]);
         let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
-        let target_delays = surrogate.predict(&capacities([0.4, 0.3]));
+        let target_delays = day.predict(&capacities([0.4, 0.3]));
+        let mut surrogate = MeanSurrogate::new(vec![day]);
         let mut categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
             initial_capacities: capacities([0.44, 0.27]).to_vec(),
@@ -926,10 +993,11 @@ mod tests {
     fn uncrossed_category_test() {
         // The edges of category 1 are crossed by no target route: with a penalty, its capacity
         // stays the same (instead of decreasing to the trust-region bound).
-        let mut surrogate = random_surrogate([0, 0]);
-        assert_eq!(surrogate.crossed_categories(), vec![true, false]);
+        let mut day = random_surrogate([0, 0]);
         let start = [0.4, 0.3].map(FlowPerLane::new_unchecked);
-        let target_delays = surrogate.predict(&start);
+        let target_delays = day.predict(&start);
+        let mut surrogate = MeanSurrogate::new(vec![day]);
+        assert_eq!(surrogate.crossed_categories(), vec![true, false]);
         let categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
             initial_capacities: start.to_vec(),
@@ -944,5 +1012,39 @@ mod tests {
         let optimized =
             optimize_capacities(&mut surrogate, &target_delays, &start, &params, &categories);
         assert_eq!(optimized[1], start[1]);
+    }
+
+    #[test]
+    fn mean_surrogate_test() {
+        let capacities = [0.4, 0.3].map(FlowPerLane::new_unchecked);
+        let to_f64 = |delays: Vec<NonNegativeSeconds>| -> Vec<f64> {
+            delays.into_iter().map(f64::from).collect()
+        };
+        // A single day: the mean surrogate model is the surrogate model of the day.
+        let mut day = random_surrogate([0, 1]);
+        let mut single = MeanSurrogate::new(vec![day.clone()]);
+        assert_eq!(
+            single.predict_with_jacobian(&capacities),
+            day.predict_with_jacobian(&capacities)
+        );
+        // Two days (with different categories, so that their predictions differ): the mean of
+        // their delays and Jacobian matrices.
+        let mut other = random_surrogate([1, 0]);
+        let (delays_0, jacobian_0) = day.predict_with_jacobian(&capacities);
+        let (delays_1, jacobian_1) = other.predict_with_jacobian(&capacities);
+        let (delays_0, delays_1) = (to_f64(delays_0), to_f64(delays_1));
+        assert_ne!(delays_0, delays_1);
+        let mut two = MeanSurrogate::new(vec![day, other]);
+        let (delays, jacobian) = two.predict_with_jacobian(&capacities);
+        let delays = to_f64(delays);
+        for (n, &d) in delays.iter().enumerate() {
+            assert_close(d, (delays_0[n] + delays_1[n]) / 2.);
+        }
+        for (i, &d) in jacobian.iter().enumerate() {
+            assert_close(d, (jacobian_0[i] + jacobian_1[i]) / 2.);
+        }
+        // A category is crossed if it is crossed on some day.
+        let two = MeanSurrogate::new(vec![random_surrogate([0, 0]), random_surrogate([1, 1])]);
+        assert_eq!(two.crossed_categories(), vec![true, true]);
     }
 }

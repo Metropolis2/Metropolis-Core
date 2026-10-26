@@ -68,7 +68,7 @@ impl ArrivalCurve {
 
 /// Arrival curve at the entry bottleneck of each edge (`None` if the arrivals were not recorded),
 /// indexed by `EdgeIndex`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct ArrivalCurves(Vec<Option<ArrivalCurve>>);
 
 impl FromIterator<Option<ArrivalCurve>> for ArrivalCurves {

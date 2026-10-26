@@ -160,14 +160,14 @@ fn simulated_target_routes() -> Vec<TargetRoute> {
         .collect()
 }
 
-/// Runs the calibration from the given initial capacities of `A` and `B` and returns the
-/// calibrated capacities.
-fn calibrate(initial_capacities: [f64; 2], target_routes: &[TargetRoute]) -> Vec<f64> {
+/// Runs the calibration from the given initial capacities of `A` and `B`, with the given additional
+/// parameters (JSON fields), and returns the calibrated capacities.
+fn calibrate(initial_capacities: [f64; 2], extra: &str, target_routes: &[TargetRoute]) -> Vec<f64> {
     let params: CapacityCalibrationParameters = serde_json::from_str(&format!(
         r#"{{"capacities": {{"A": {}, "B": {}}},
         "route_choice": {{"max_iterations": 1}},
         "inner_loop": {{"tolerance": 1e-4, "max_iterations": 20}},
-        "outer_loop": {{"patience": 1}}}}"#,
+        "outer_loop": {{"patience": 1}}{extra}}}"#,
         initial_capacities[0], initial_capacities[1],
     ))
     .unwrap();
@@ -196,13 +196,24 @@ fn calibration_test() {
 
     // From the true capacities, the surrogate model reproduces the simulated delays exactly, so the
     // capacities do not change.
-    let capacities = calibrate(TRUE_CAPACITIES, &target_routes);
+    let capacities = calibrate(TRUE_CAPACITIES, "", &target_routes);
     for (c, t) in capacities.iter().zip(TRUE_CAPACITIES) {
         assert!((c / t - 1.).abs() < 1e-6, "{capacities:?}");
     }
 
     // From a wrong guess, the true capacities are recovered.
-    let capacities = calibrate([0.4, 0.18], &target_routes);
+    let capacities = calibrate([0.4, 0.18], "", &target_routes);
+    for (c, t) in capacities.iter().zip(TRUE_CAPACITIES) {
+        assert!((c / t - 1.).abs() < 1e-3, "{capacities:?}");
+    }
+
+    // Same with equilibrium days: the days are identical, so the noise of their mean is zero and
+    // they stop after two days.
+    let capacities = calibrate(
+        [0.4, 0.18],
+        r#", "equilibrium_days": {"tolerance": 0.01, "max_iterations": 3}"#,
+        &target_routes,
+    );
     for (c, t) in capacities.iter().zip(TRUE_CAPACITIES) {
         assert!((c / t - 1.).abs() < 1e-3, "{capacities:?}");
     }
