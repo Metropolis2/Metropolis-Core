@@ -90,6 +90,11 @@ pub fn run() -> Result<()> {
 /// `stopping.window` days differ by at most `stopping.tolerance` from those of the `window` days
 /// before (see [stable_capacities]). The calibrated capacities are the mean capacities of the last
 /// `window` days (after the warm-up days).
+///
+/// The capacities are also optimized after the last day, and the results include them with the
+/// expected network conditions of the next day: a new calibration started from them (as initial
+/// capacities and road-network conditions), with the next iteration counter and no warm-up day,
+/// continues this one (only the surrogate models of the previous days are lost).
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
@@ -190,6 +195,7 @@ pub fn calibrate(
     let mut stop_reason = "maximum number of days";
     for day in 1..=params.stopping.max_days {
         info!("===== Day {day} =====");
+        let mut stop = false;
         // Iteration counter of the learning model, increasing from `init_iteration_counter`.
         let iteration_counter = crate::parameters::init_iteration_counter() + (day - 1) as u32;
         let SimulatedDay {
@@ -295,12 +301,10 @@ pub fn calibrate(
                 .collect();
             if stable_capacities(&history, window, params.stopping.tolerance) {
                 stop_reason = "stable capacities";
-                break;
+                stop = true;
             }
-            if day == params.stopping.max_days {
-                // The capacities optimized after the last day would not be simulated.
-                break;
-            }
+            // The capacities are also optimized after the last day, so that the calibration can be
+            // resumed from its output (see [CalibrationResults::next_capacities]).
             let optimized = optimizer::optimize_capacities(
                 surrogate,
                 &target_delays,
@@ -323,7 +327,11 @@ pub fn calibrate(
         crate::simulation::record_weights_drift(&mut node_orders, &exp_weights, &new_exp_weights);
         exp_weights = new_exp_weights;
         previous_results = Some(results);
+        if stop {
+            break;
+        }
     }
+    let next_capacities = capacities;
     let nb_days = days.len();
     // The warm-up days are not averaged (there is at least one day after them).
     let nb_averaged = window.min(nb_days - warmup_days);
@@ -375,6 +383,13 @@ pub fn calibrate(
         .collect();
     Ok(CalibrationResults {
         capacities: categories.ids.iter().copied().zip(capacities).collect(),
+        next_capacities: categories
+            .ids
+            .iter()
+            .copied()
+            .zip(next_capacities)
+            .collect(),
+        next_exp_weights: exp_weights,
         days,
         delays,
         category_ids: categories.ids.clone(),
@@ -387,6 +402,11 @@ pub struct CalibrationResults {
     /// Calibrated capacity of each category, with the id of the category (`None` for the single
     /// category used when no edge has a category).
     pub capacities: Vec<(Option<MetroId>, FlowPerLane)>,
+    /// Capacity of each category optimized after the last day, i.e., the capacities of the next
+    /// day if the calibration were continued (same format as `capacities`).
+    pub next_capacities: Vec<(Option<MetroId>, FlowPerLane)>,
+    /// Expected network conditions of the next day (learned from the last day).
+    next_exp_weights: NetworkWeights,
     /// Diagnostics of each simulated day.
     days: Vec<DayResults>,
     /// Target and predicted delay of each target route.

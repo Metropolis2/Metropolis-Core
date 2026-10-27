@@ -20,28 +20,48 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use arrow::array::{ArrayBuilder, Float64Builder, RecordBatch, UInt64Builder};
 use metro_io::json::write_json;
-use metro_io::write::{finish_batch, write_csv, write_parquet, IdBuilder, ToArrow};
+use metro_io::write::{
+    finish_batch, write_csv, write_csv_with_prefix, write_parquet, write_parquet_with_prefix,
+    IdBuilder, ToArrow,
+};
 use serde_derive::Serialize;
 
 use super::CalibrationResults;
 use crate::parameters::SavingFormat;
+use crate::units::{FlowPerLane, MetroId};
 
 /// Saves the results of the capacity calibration in the output directory:
 ///
 /// - `calibrated_capacities.json`: the calibrated capacities, in the format of the `capacities`
 ///   parameter of the calibration (in PCE per second per lane);
+/// - `next_capacities.json`: the capacities optimized after the last day, in the same format;
+/// - `net_cond_next_exp_edge_ttfs.[ext]`: the expected network conditions of the next day, in the
+///   format of the `road_network_conditions` input file.
+///
+/// The last two files allow to resume the calibration (see [super::calibrate]).
 /// - `calibration_days.[ext]`: the diagnostics of each simulated day;
 /// - `calibration_delays.[ext]`: the target and predicted delays of each target route.
 pub(super) fn save(results: &CalibrationResults) -> Result<()> {
     let output_dir = crate::parameters::output_directory();
     write_json(
-        capacities_json(results),
+        capacities_json(&results.capacities),
         output_dir,
         "calibrated_capacities",
     )?;
+    write_json(
+        capacities_json(&results.next_capacities),
+        output_dir,
+        "next_capacities",
+    )?;
     match crate::parameters::saving_format() {
-        SavingFormat::Parquet => write_parquet(results, output_dir),
-        SavingFormat::CSV => write_csv(results, output_dir),
+        SavingFormat::Parquet => {
+            write_parquet(results, output_dir)?;
+            write_parquet_with_prefix(&results.next_exp_weights, output_dir, "net_cond_next_exp_")
+        }
+        SavingFormat::CSV => {
+            write_csv(results, output_dir)?;
+            write_csv_with_prefix(&results.next_exp_weights, output_dir, "net_cond_next_exp_")
+        }
     }
 }
 
@@ -56,10 +76,10 @@ enum CapacitiesJson {
     ByCategory(BTreeMap<String, f64>),
 }
 
-/// Returns the calibrated capacities in the format of the `capacities` parameter of the
+/// Returns the capacity of each category in the format of the `capacities` parameter of the
 /// calibration.
-fn capacities_json(results: &CalibrationResults) -> CapacitiesJson {
-    match results.capacities.as_slice() {
+fn capacities_json(capacities: &[(Option<MetroId>, FlowPerLane)]) -> CapacitiesJson {
+    match capacities {
         [(None, capacity)] => CapacitiesJson::Uniform(f64::from(*capacity)),
         capacities => CapacitiesJson::ByCategory(
             capacities

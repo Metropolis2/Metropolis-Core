@@ -234,4 +234,12 @@ fn calibration_test() {
         capacities,
         vec![("A".to_owned(), 0.4), ("B".to_owned(), 0.18)]
     );
+    // The capacities are still optimized after the last day, towards the true capacities.
+    for (id, c) in results.next_capacities.iter() {
+        let c = f64::from(*c);
+        match id.unwrap().to_string().as_str() {
+            "A" => assert!(c > 0.4, "{c}"),
+            _ => assert!(c < 0.18, "{c}"),
+        }
+    }
 }
