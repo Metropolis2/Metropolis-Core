@@ -15,7 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Day-to-day learning models.
-use num_traits::{ConstOne, One, Zero};
 use serde_derive::Deserialize;
 
 use crate::{network::NetworkWeights, units::*};
@@ -78,60 +77,51 @@ impl LearningModel {
         iteration_counter: u32,
     ) -> NetworkWeights {
         match self {
+            Self::Genetic => {
+                let t = iteration_counter as f64;
+                old_weights.genetic_average(update_weights, t, 1.0)
+            }
+            _ => {
+                // The weight of the update value is between 0 and 1.
+                let coef_old = 1. - self.update_weight(iteration_counter);
+                old_weights.average(update_weights, ZeroOneNum::new_unchecked(coef_old))
+            }
+        }
+    }
+
+    /// Returns the weight of the update value `y` in the new value `x_{t+1}` computed by
+    /// [learn](Self::learn) with the given iteration counter (for the Genetic model, the exponent
+    /// of `y`).
+    ///
+    /// For the `Exponential` model, the formula corrects the weight of the first values (with
+    /// `alpha = 0`, it is the Linear model).
+    pub fn update_weight(&self, iteration_counter: u32) -> f64 {
+        let t = iteration_counter as f64;
+        match self {
             &Self::Exponential(alpha) => {
-                // Use the formula to correct the weight of the first value.
-                let coef_update = if alpha.is_one() {
-                    ZeroOneNum::ONE
-                } else if alpha.is_zero() {
-                    // With `alpha = 0`, we resort to Linear learning.
-                    return Self::Linear.learn(old_weights, update_weights, iteration_counter);
+                let alpha = f64::from(alpha);
+                if alpha == 1. {
+                    1.
+                } else if alpha == 0. {
+                    Self::Linear.update_weight(iteration_counter)
                 } else {
-                    alpha
-                        / PositiveNum::try_from(
-                            alpha
-                                .one_minus()
-                                .powi(iteration_counter as i32 + 1)
-                                .one_minus(),
-                        )
-                        .unwrap()
-                };
-                old_weights.average(update_weights, coef_update.one_minus())
+                    // At most 1 (the weight is 1 at counter 0, up to rounding errors).
+                    (alpha / (1. - (1. - alpha).powi(iteration_counter as i32 + 1))).min(1.)
+                }
             }
-            &Self::ExponentialUnadjusted(alpha) => {
-                old_weights.average(update_weights, alpha.one_minus())
-            }
+            &Self::ExponentialUnadjusted(alpha) => f64::from(alpha),
             &Self::ExponentialThenLinear {
                 alpha,
                 nb_exponential,
             } => {
                 if iteration_counter <= nb_exponential {
-                    Self::ExponentialUnadjusted(alpha).learn(
-                        old_weights,
-                        update_weights,
-                        iteration_counter,
-                    )
+                    f64::from(alpha)
                 } else {
-                    Self::Linear.learn(
-                        old_weights,
-                        update_weights,
-                        iteration_counter - nb_exponential,
-                    )
+                    Self::Linear.update_weight(iteration_counter - nb_exponential)
                 }
             }
-            Self::Linear => {
-                let t = iteration_counter as f64;
-                let coef = t / (t + 1.0);
-                old_weights.average(update_weights, ZeroOneNum::new_unchecked(coef))
-            }
-            Self::Genetic => {
-                let t = iteration_counter as f64;
-                old_weights.genetic_average(update_weights, t, 1.0)
-            }
-            Self::Quadratic => {
-                let t = iteration_counter as f64;
-                let coef = t.sqrt() / (t.sqrt() + 1.0);
-                old_weights.average(update_weights, ZeroOneNum::new_unchecked(coef))
-            }
+            Self::Linear | Self::Genetic => 1. / (t + 1.),
+            Self::Quadratic => 1. / (t.sqrt() + 1.),
         }
     }
 }
@@ -304,5 +294,42 @@ mod tests {
                 get_weigths(expected).road_network().unwrap().weights
             );
         }
+    }
+
+    #[test]
+    fn update_weight_test() {
+        let uid = unique_vehicle_index(0);
+        let id = MetroId::Integer(0);
+        let alpha = ZeroOneNum::new_unchecked(0.2);
+        let models = [
+            LearningModel::Exponential(alpha),
+            LearningModel::Exponential(ZeroOneNum::new_unchecked(0.)),
+            LearningModel::Exponential(ZeroOneNum::new_unchecked(1.)),
+            LearningModel::ExponentialUnadjusted(alpha),
+            LearningModel::ExponentialThenLinear {
+                alpha,
+                nb_exponential: 5,
+            },
+            LearningModel::Linear,
+            LearningModel::Quadratic,
+        ];
+        // From 10 to 20, the learned value is 10 + 10 * weight.
+        for model in models.iter() {
+            for t in [0, 1, 2, 5, 6, 9, 100] {
+                let learned = model.learn(&get_weigths(10.), &get_weigths(20.), t);
+                let TTF::Constant(v) = learned.road_network().unwrap()[(uid, id)] else {
+                    panic!("Invalid road network weight");
+                };
+                let expected = 10. + 10. * model.update_weight(t);
+                assert!(
+                    (f64::from(v) - expected).abs() < 1e-9,
+                    "{model:?} at {t}: {v:?} != {expected}"
+                );
+            }
+        }
+        // Weight of a day with `Exponential` 0.02: about 50% at counter 1, 2% when large.
+        let model = LearningModel::Exponential(ZeroOneNum::new_unchecked(0.02));
+        assert!((model.update_weight(1) - 0.02 / (1. - 0.98f64.powi(2))).abs() < 1e-12);
+        assert!((model.update_weight(1000) - 0.02).abs() < 1e-6);
     }
 }

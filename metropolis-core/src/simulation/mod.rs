@@ -402,6 +402,12 @@ pub fn run_day_to_day_model(
     crate::parameters::learning_model().learn(old_weights, weights, iteration_counter + 1)
 }
 
+/// Returns the weight of the simulated network conditions of the iteration with the given counter
+/// in the expected network conditions of the next iteration (see [run_day_to_day_model]).
+pub fn day_to_day_weight(iteration_counter: u32) -> f64 {
+    crate::parameters::learning_model().update_weight(iteration_counter + 1)
+}
+
 /// Returns [AggregateResults] given the [IterationResults] of the current iteration and the
 /// [AgentResults] of the previous iteration (if any).
 pub(crate) fn compute_aggregate_results(

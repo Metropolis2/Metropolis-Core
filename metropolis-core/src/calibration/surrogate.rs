@@ -25,6 +25,8 @@
 //! bottleneck at a given time waits the value of this function at that time, as the target delays
 //! are computed from the recorded functions (the waiting time of the probe is the mean waiting time
 //! of the vehicles arrived around it). It does not add any traffic.
+use std::collections::VecDeque;
+
 use num_traits::ConstZero;
 use petgraph::graph::EdgeIndex;
 use rayon::prelude::*;
@@ -462,21 +464,49 @@ impl Surrogate {
     }
 }
 
-/// Surrogate model of several simulated days with the same capacities: predicts the mean of the
-/// delays predicted by the surrogate models of the days.
+/// Surrogate model of the last simulated days: predicts the mean of the delays predicted by the
+/// surrogate models of the days.
+///
+/// The days may have been simulated with different capacities: the surrogate model of each day
+/// evaluates the queues of its arrival curves at any capacities.
 #[derive(Clone, Debug)]
 pub(crate) struct MeanSurrogate {
-    days: Vec<Surrogate>,
+    /// Surrogate model of each day, from the oldest to the newest (at least one).
+    days: VecDeque<Surrogate>,
 }
 
 impl MeanSurrogate {
-    /// Creates the [MeanSurrogate] from the surrogate model of each day (at least one).
-    pub(crate) fn new(days: Vec<Surrogate>) -> Self {
-        assert!(
-            !days.is_empty(),
-            "The mean surrogate model needs at least one day"
-        );
-        Self { days }
+    /// Creates the [MeanSurrogate] from the surrogate model of a first day.
+    pub(crate) fn new(day: Surrogate) -> Self {
+        Self {
+            days: VecDeque::from([day]),
+        }
+    }
+
+    /// Adds the surrogate model of a new day, then drops the oldest days so that at most
+    /// `max_days` days (at least one) are kept.
+    pub(crate) fn push(&mut self, day: Surrogate, max_days: usize) {
+        self.days.push_back(day);
+        while self.days.len() > max_days.max(1) {
+            self.days.pop_front();
+        }
+    }
+
+    /// Returns the number of days.
+    pub(crate) fn len(&self) -> usize {
+        self.days.len()
+    }
+
+    /// Returns the predicted queueing delay of each target route on each day (from the oldest to
+    /// the newest), given the capacity of each category.
+    pub(crate) fn predict_days(
+        &mut self,
+        capacities: &[FlowPerLane],
+    ) -> Vec<Vec<NonNegativeSeconds>> {
+        self.days
+            .iter_mut()
+            .map(|day| day.predict(capacities))
+            .collect()
     }
 
     /// Returns the mean predicted queueing delay of each target route (in the order of the routes)
@@ -950,7 +980,7 @@ mod tests {
         let mut day = random_surrogate([0, 1]);
         let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
         let target_delays = day.predict(&capacities([0.4, 0.3]));
-        let mut surrogate = MeanSurrogate::new(vec![day]);
+        let mut surrogate = MeanSurrogate::new(day);
         let mut categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
             initial_capacities: capacities([0.44, 0.27]).to_vec(),
@@ -963,6 +993,7 @@ mod tests {
                 &mut surrogate,
                 &target_delays,
                 start,
+                0.2,
                 &OptimizerParameters::default(),
                 categories,
             )
@@ -996,7 +1027,7 @@ mod tests {
         let mut day = random_surrogate([0, 0]);
         let start = [0.4, 0.3].map(FlowPerLane::new_unchecked);
         let target_delays = day.predict(&start);
-        let mut surrogate = MeanSurrogate::new(vec![day]);
+        let mut surrogate = MeanSurrogate::new(day);
         assert_eq!(surrogate.crossed_categories(), vec![true, false]);
         let categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
@@ -1009,8 +1040,14 @@ mod tests {
             penalty: 0.01,
             ..Default::default()
         };
-        let optimized =
-            optimize_capacities(&mut surrogate, &target_delays, &start, &params, &categories);
+        let optimized = optimize_capacities(
+            &mut surrogate,
+            &target_delays,
+            &start,
+            0.2,
+            &params,
+            &categories,
+        );
         assert_eq!(optimized[1], start[1]);
     }
 
@@ -1022,7 +1059,7 @@ mod tests {
         };
         // A single day: the mean surrogate model is the surrogate model of the day.
         let mut day = random_surrogate([0, 1]);
-        let mut single = MeanSurrogate::new(vec![day.clone()]);
+        let mut single = MeanSurrogate::new(day.clone());
         assert_eq!(
             single.predict_with_jacobian(&capacities),
             day.predict_with_jacobian(&capacities)
@@ -1034,7 +1071,9 @@ mod tests {
         let (delays_1, jacobian_1) = other.predict_with_jacobian(&capacities);
         let (delays_0, delays_1) = (to_f64(delays_0), to_f64(delays_1));
         assert_ne!(delays_0, delays_1);
-        let mut two = MeanSurrogate::new(vec![day, other]);
+        let mut two = MeanSurrogate::new(day.clone());
+        two.push(other.clone(), 2);
+        assert_eq!(two.len(), 2);
         let (delays, jacobian) = two.predict_with_jacobian(&capacities);
         let delays = to_f64(delays);
         for (n, &d) in delays.iter().enumerate() {
@@ -1043,8 +1082,29 @@ mod tests {
         for (i, &d) in jacobian.iter().enumerate() {
             assert_close(d, (jacobian_0[i] + jacobian_1[i]) / 2.);
         }
+        // The predictions of each day, from the oldest to the newest.
+        let days: Vec<_> = two
+            .predict_days(&capacities)
+            .into_iter()
+            .map(to_f64)
+            .collect();
+        assert_eq!(days, vec![delays_0, delays_1.clone()]);
+        // Beyond `max_days`, the oldest days are dropped.
+        two.push(other.clone(), 2);
+        assert_eq!(two.len(), 2);
+        let days: Vec<_> = two
+            .predict_days(&capacities)
+            .into_iter()
+            .map(to_f64)
+            .collect();
+        assert_eq!(days, vec![delays_1.clone(), delays_1]);
+        let mut one = MeanSurrogate::new(day);
+        one.push(other, 1);
+        assert_eq!(one.len(), 1);
+        assert_eq!(one.predict_with_jacobian(&capacities).1, jacobian_1);
         // A category is crossed if it is crossed on some day.
-        let two = MeanSurrogate::new(vec![random_surrogate([0, 0]), random_surrogate([1, 1])]);
+        let mut two = MeanSurrogate::new(random_surrogate([0, 0]));
+        two.push(random_surrogate([1, 1]), 2);
         assert_eq!(two.crossed_categories(), vec![true, true]);
     }
 }

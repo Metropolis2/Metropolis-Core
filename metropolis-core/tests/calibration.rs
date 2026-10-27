@@ -165,9 +165,7 @@ fn simulated_target_routes() -> Vec<TargetRoute> {
 fn calibrate(initial_capacities: [f64; 2], extra: &str, target_routes: &[TargetRoute]) -> Vec<f64> {
     let params: CapacityCalibrationParameters = serde_json::from_str(&format!(
         r#"{{"capacities": {{"A": {}, "B": {}}},
-        "route_choice": {{"max_iterations": 1}},
-        "inner_loop": {{"tolerance": 1e-4, "max_iterations": 20}},
-        "outer_loop": {{"patience": 1}}{extra}}}"#,
+        "stopping": {{"max_days": 200, "window": 5, "tolerance": 1e-6}}{extra}}}"#,
         initial_capacities[0], initial_capacities[1],
     ))
     .unwrap();
@@ -207,14 +205,33 @@ fn calibration_test() {
         assert!((c / t - 1.).abs() < 1e-3, "{capacities:?}");
     }
 
-    // Same with equilibrium days: the days are identical, so the noise of their mean is zero and
-    // they stop after two days.
-    let capacities = calibrate(
-        [0.4, 0.18],
-        r#", "equilibrium_days": {"tolerance": 0.01, "max_iterations": 3}"#,
-        &target_routes,
-    );
+    // Same with the surrogate models of the last 3 days (the agents have a single route, so the days
+    // only differ by their capacities).
+    let capacities = calibrate([0.4, 0.18], r#", "surrogate_days": 3"#, &target_routes);
     for (c, t) in capacities.iter().zip(TRUE_CAPACITIES) {
         assert!((c / t - 1.).abs() < 1e-3, "{capacities:?}");
     }
+
+    // Same after warm-up days (with smaller trust regions, as the learning weight decreases).
+    let capacities = calibrate([0.4, 0.18], r#", "warmup_days": 3"#, &target_routes);
+    for (c, t) in capacities.iter().zip(TRUE_CAPACITIES) {
+        assert!((c / t - 1.).abs() < 1e-3, "{capacities:?}");
+    }
+
+    // With warm-up days and a single other day, the initial capacities are returned.
+    let params: CapacityCalibrationParameters = serde_json::from_str(
+        r#"{"capacities": {"A": 0.4, "B": 0.18}, "warmup_days": 3, "stopping": {"max_days": 4}}"#,
+    )
+    .unwrap();
+    let results = metropolis_core::calibration::calibrate(&params, target_routes.clone()).unwrap();
+    let mut capacities: Vec<_> = results
+        .capacities
+        .iter()
+        .map(|(id, c)| (id.unwrap().to_string(), f64::from(*c)))
+        .collect();
+    capacities.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        capacities,
+        vec![("A".to_owned(), 0.4), ("B".to_owned(), 0.18)]
+    );
 }

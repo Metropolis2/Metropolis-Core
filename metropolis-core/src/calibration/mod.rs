@@ -29,8 +29,7 @@ use num_traits::ConstZero;
 use petgraph::graph::EdgeIndex;
 
 use self::parameters::{
-    Capacities, CapacityCalibrationParameters, CategoryCapacity, EquilibriumDaysParameters,
-    IdValue, OptimizerParameters, RouteChoiceParameters,
+    Capacities, CapacityCalibrationParameters, CategoryCapacity, IdValue, OptimizerParameters,
 };
 use self::surrogate::{MeanSurrogate, RecordingGrid, Surrogate};
 use crate::hash::{HashMap, HashSet};
@@ -41,7 +40,7 @@ use crate::network::road_network::arrival_curve::ArrivalCurves;
 use crate::network::road_network::node_order::NodeOrderCache;
 use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::{BottleneckFlows, OriginalEdgeId, RoadEdge, RoadNetworkState};
-use crate::network::{NetworkSkim, NetworkState, NetworkWeights};
+use crate::network::{NetworkState, NetworkWeights};
 use crate::population::Agent;
 use crate::simulation::results::AgentResults;
 use crate::simulation::{check_ids_exist, format_ids, PreprocessingData};
@@ -73,22 +72,24 @@ pub fn run() -> Result<()> {
 ///
 /// The input of the simulation (parameters, population and network) must be initialized.
 ///
-/// Each outer iteration runs route-choice days with the current capacities, until route choice is
-/// stable, then equilibrium days (the last route-choice day and the following days of the
-/// day-to-day model, with the same capacities), until the noise of their mean predicted delays is
-/// small enough. The outer iteration is scored by the fit of the mean surrogate model of the
-/// equilibrium days at these capacities (RMSE of the mean predicted delays). Then, the inner loop
-/// optimizes the capacities on the mean surrogate model of the equilibrium days (the first time) or
-/// of the last simulated day (afterwards) and simulates a day with the optimized capacities and the
-/// routes of the last equilibrium day, until the fit of the simulated day does not improve any
-/// more. The next outer iteration starts from the expected network conditions of the last
-/// equilibrium day, updated with the network conditions of the last simulated day by the learning
-/// model.
+/// The calibration runs the day-to-day model (pre-day model, within-day model and learning, with
+/// the iteration counter increasing from `init_iteration_counter`). The first `warmup_days` days
+/// are simulated with the initial capacities and are not used otherwise. After each following day:
 ///
-/// The outer loop stops when the best score has not improved for `outer_loop.patience` outer
-/// iterations, or after `outer_loop.max_iterations`. The capacities of the outer iteration with
-/// the best score are returned (the capacities from the inner loop of the last outer iteration have
-/// no route-choice days, so they are not scored).
+/// - the surrogate model of the day (its arrival curves at the edges of the target routes) joins
+///   those of the previous days, up to `surrogate_days` days;
+/// - the day is scored by the fit of the mean delays predicted by these surrogate models at the
+///   capacities of the day (RMSE of the delays);
+/// - the capacities are optimized on these surrogate models, within a trust region equal to
+///   `optimizer.trust_region_scale` times the weight of the day in the expected network conditions
+///   of the next day, so that the capacities move only as fast as the expected network conditions
+///   (and so the routes) can follow;
+/// - the next day is simulated with the optimized capacities.
+///
+/// The calibration stops after `stopping.max_days` days, or when the mean capacities of the last
+/// `stopping.window` days differ by at most `stopping.tolerance` from those of the `window` days
+/// before (see [stable_capacities]). The calibrated capacities are the mean capacities of the last
+/// `window` days (after the warm-up days).
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
@@ -176,130 +177,93 @@ pub fn calibrate(
         preprocess_data: &preprocess_data,
         recorded_edges: &recorded_edges,
     };
-    let fit_at = |surrogate: &mut Surrogate, capacities: &[FlowPerLane]| {
-        let start = Instant::now();
-        let predicted_delays = surrogate.predict(capacities);
-        let fit = log_fit(
-            "Surrogate model at the capacities of the simulated day",
-            &target_delays,
-            &predicted_delays,
-            start.elapsed(),
-        );
-        (fit, predicted_delays)
-    };
+    let surrogate_days = params.surrogate_days as usize;
+    let window = params.stopping.window as usize;
+    let warmup_days = params.warmup_days as usize;
     let mut capacities = categories.initial_capacities.clone();
-    let mut sensitivity_logged = false;
-    // Best score, with its capacities, outer iteration and mean predicted delays.
-    let mut best: Option<(
-        NonNegativeSeconds,
-        Vec<FlowPerLane>,
-        u64,
-        Vec<NonNegativeSeconds>,
-    )> = None;
-    // Mean predicted delays of the equilibrium days of the first outer iteration.
+    // Surrogate models of the last `surrogate_days` simulated days.
+    let mut surrogate: Option<MeanSurrogate> = None;
+    // Predicted delays of the first day, at the initial capacities.
     let mut initial_predicted_delays = None;
-    let mut iterations = Vec::new();
-    let mut since_best = 0;
-    let mut stop_reason = "maximum number of iterations";
-    let mut nb_outer = 0;
-    // Iteration counter of the learning model at the first route-choice day of the next outer
-    // iteration, when it is not reset.
-    let mut next_counter = crate::parameters::init_iteration_counter();
-    for outer in 1..=params.outer_loop.max_iterations {
-        info!("===== Outer iteration {outer} =====");
-        nb_outer = outer;
-        let start_capacities = capacities.clone();
-        let first_counter = if params.route_choice.reset_counter {
-            crate::parameters::init_iteration_counter()
-        } else {
-            next_counter
-        };
-        // Surrogate model, fit and predicted delays (at the capacities of the days) of each
-        // equilibrium day.
-        let mut day_surrogates = Vec::new();
-        let mut day_fits = Vec::new();
-        let mut day_delays = Vec::new();
-        let route_choice = simulator.route_choice(
-            exp_weights,
+    let mut days = Vec::new();
+    let mut previous_results: Option<AgentResults> = None;
+    let mut stop_reason = "maximum number of days";
+    for day in 1..=params.stopping.max_days {
+        info!("===== Day {day} =====");
+        // Iteration counter of the learning model, increasing from `init_iteration_counter`.
+        let iteration_counter = crate::parameters::init_iteration_counter() + (day - 1) as u32;
+        let SimulatedDay {
+            results,
+            curves,
+            weights,
+        } = simulator.day(
+            &exp_weights,
+            previous_results.as_ref(),
+            iteration_counter,
             &capacities,
-            &params.route_choice,
-            first_counter,
             &mut node_orders,
-            |curves| {
-                let mut surrogate = new_surrogate(curves);
-                let (fit, predicted_delays) = fit_at(&mut surrogate, &capacities);
-                day_surrogates.push(surrogate);
-                day_fits.push(fit);
-                day_delays.push(predicted_delays);
-                let nb_days = day_delays.len();
-                let noise = noise_of_mean(&day_delays);
-                match noise {
-                    Some(noise) => info!(
-                        "Equilibrium day {nb_days}: noise of the mean predicted delays {noise:.3} s"
-                    ),
-                    None => info!("Equilibrium day {nb_days}"),
-                }
-                stop_equilibrium_days(&params.equilibrium_days, nb_days as u64, noise)
-            },
         )?;
-        let mut day = route_choice.day;
-        // The outer iteration is scored by the fit of the mean predicted delays of the equilibrium
-        // days, at their capacities.
-        let nb_equilibrium_days = day_delays.len();
-        let score_noise = noise_of_mean(&day_delays).map(NonNegativeSeconds::new_unchecked);
-        // The first re-simulated day of the inner loop is compared to the last equilibrium day
-        // alone, which has the same routes.
-        let mut fit = *day_fits
-            .last()
-            .expect("At least one equilibrium day is run");
-        let (score, predicted_delays) = if nb_equilibrium_days == 1 {
-            (fit, day_delays.pop().unwrap())
+        let conditions_rmse = weights
+            .road_network()
+            .expect("The calibration requires a road network")
+            .rmse(exp_weights.road_network().unwrap());
+        let travel_time_gap = relative_travel_time_gap(&results);
+        info!(
+            "Day {day} (iteration counter {iteration_counter}): RMSE between the expected and \
+            simulated network conditions {:.3} s, relative gap between the expected and simulated \
+            travel times of the road trips {}",
+            f64::from(conditions_rmse),
+            travel_time_gap.map_or_else(|| "-".to_owned(), |g| format!("{:.3}%", 100. * g)),
+        );
+        let learning_weight = crate::simulation::day_to_day_weight(iteration_counter);
+        if day <= params.warmup_days {
+            // Warm-up day: its routes are still far from the equilibrium (e.g., from free-flow
+            // conditions, the first day takes the free-flow routes), so it does not join the
+            // surrogate models.
+            info!("Day {day}: warm-up day, the capacities are not optimized");
+            days.push(DayResults {
+                day,
+                iteration_counter,
+                conditions_rmse,
+                travel_time_gap,
+                learning_weight,
+                trust_region: 0.,
+                nb_surrogate_days: 0,
+                score: None,
+                score_noise: None,
+                capacities: capacities.clone(),
+            });
         } else {
+            let day_surrogate = new_surrogate(curves);
+            if let Some(surrogate) = surrogate.as_mut() {
+                surrogate.push(day_surrogate, surrogate_days);
+            } else {
+                surrogate = Some(MeanSurrogate::new(day_surrogate));
+            }
+            let surrogate = surrogate.as_mut().unwrap();
+            // The day is scored by the fit of the mean predicted delays of the last days, at the
+            // capacities of the day.
+            let nb_surrogate_days = surrogate.len();
             let start = Instant::now();
+            let day_delays = surrogate.predict_days(&capacities);
             let predicted_delays = mean_delays(&day_delays);
             let score = log_fit(
-                &format!("Mean of the {nb_equilibrium_days} equilibrium days"),
+                &format!(
+                    "Day {day}: mean of the surrogate models of the last {nb_surrogate_days} days"
+                ),
                 &target_delays,
                 &predicted_delays,
                 start.elapsed(),
             );
-            (score, predicted_delays)
-        };
-        drop(day_delays);
-        let mut surrogate = MeanSurrogate::new(day_surrogates);
-        iterations.push(OuterIterationResults {
-            outer,
-            conditions_rmse: route_choice.conditions_rmse.clone(),
-            travel_time_gaps: route_choice.travel_time_gaps.clone(),
-            nb_equilibrium_days: nb_equilibrium_days as u64,
-            score,
-            score_noise,
-            nb_optimizations: 0,
-            capacities: capacities.clone(),
-        });
-        if initial_predicted_delays.is_none() {
-            initial_predicted_delays = Some(predicted_delays.clone());
-        }
-        if best.as_ref().is_none_or(|(best_fit, ..)| score < *best_fit) {
-            best = Some((score, capacities.clone(), outer, predicted_delays));
-            since_best = 0;
-        } else {
-            since_best += 1;
-        }
-        let (best_fit, _, best_outer, _) = best.as_ref().unwrap();
-        info!(
-            "Outer iteration {outer}: RMSE of the delays after the route-choice days {:.3} s \
-            (best: {:.3} s, at outer iteration {best_outer})",
-            f64::from(score),
-            f64::from(*best_fit),
-        );
-        if since_best >= params.outer_loop.patience {
-            stop_reason = "no improvement of the best fit";
-            break;
-        }
-        for inner in 1..=params.inner_loop.max_iterations {
-            info!("Inner iteration {inner}");
-            if !sensitivity_logged {
+            let score_noise = noise_of_mean(&day_delays).map(NonNegativeSeconds::new_unchecked);
+            drop(day_delays);
+            if let Some(noise) = score_noise {
+                info!(
+                    "Day {day}: noise of the mean predicted delays {:.3} s",
+                    f64::from(noise)
+                );
+            }
+            if initial_predicted_delays.is_none() {
                 let start = Instant::now();
                 let (predicted_delays, jacobian) = surrogate.predict_with_jacobian(&capacities);
                 log_sensitivity(
@@ -309,59 +273,65 @@ pub fn calibrate(
                     &jacobian,
                     start.elapsed(),
                 );
-                sensitivity_logged = true;
+                initial_predicted_delays = Some(predicted_delays);
+            }
+            let trust_region = params.optimizer.trust_region_scale * learning_weight;
+            days.push(DayResults {
+                day,
+                iteration_counter,
+                conditions_rmse,
+                travel_time_gap,
+                learning_weight,
+                trust_region,
+                nb_surrogate_days: nb_surrogate_days as u64,
+                score: Some(score),
+                score_noise,
+                capacities: capacities.clone(),
+            });
+            // The warm-up days are not part of the stability test.
+            let history: Vec<&[FlowPerLane]> = days[warmup_days..]
+                .iter()
+                .map(|d| d.capacities.as_slice())
+                .collect();
+            if stable_capacities(&history, window, params.stopping.tolerance) {
+                stop_reason = "stable capacities";
+                break;
+            }
+            if day == params.stopping.max_days {
+                // The capacities optimized after the last day would not be simulated.
+                break;
             }
             let optimized = optimizer::optimize_capacities(
-                &mut surrogate,
+                surrogate,
                 &target_delays,
                 &capacities,
+                trust_region,
                 &params.optimizer,
                 &categories,
             );
-            let change = max_relative_change(&capacities, &optimized);
-            capacities = optimized;
-            iterations.last_mut().unwrap().nb_optimizations += 1;
             info!(
-                "Inner iteration {inner}: maximum change of the capacities {:.2}%",
-                100. * change
+                "Day {day}: trust region {:.2}% (weight of the day in the expected network \
+            conditions {:.2}%), maximum change of the capacities {:.2}%",
+                100. * trust_region,
+                100. * learning_weight,
+                100. * max_relative_change(&capacities, &optimized),
             );
-            info!("Simulating a day with the optimized capacities and the same routes");
-            day = simulator.within_day(&route_choice.pre_day, &route_choice.skims, &capacities)?;
-            let mut day_surrogate = new_surrogate(day.curves);
-            let (new_fit, _) = fit_at(&mut day_surrogate, &capacities);
-            surrogate = MeanSurrogate::new(vec![day_surrogate]);
-            if f64::from(new_fit) >= (1. - params.inner_loop.tolerance) * f64::from(fit) {
-                info!("Inner loop stopped: the fit improved by less than the tolerance");
-                break;
-            }
-            fit = new_fit;
+            capacities = optimized;
         }
-        info!(
-            "Outer iteration {outer}: maximum change of the capacities {:.2}%",
-            100. * max_relative_change(&start_capacities, &capacities)
-        );
-        // The next outer iteration starts from the expected network conditions of the last
-        // equilibrium day, updated with the network conditions of the last simulated day by the
-        // learning model.
-        let new_exp_weights = crate::simulation::run_day_to_day_model(
-            &route_choice.exp_weights,
-            &day.weights,
-            route_choice.iteration_counter,
-        );
-        crate::simulation::record_weights_drift(
-            &mut node_orders,
-            &route_choice.exp_weights,
-            &new_exp_weights,
-        );
+        let new_exp_weights =
+            crate::simulation::run_day_to_day_model(&exp_weights, &weights, iteration_counter);
+        crate::simulation::record_weights_drift(&mut node_orders, &exp_weights, &new_exp_weights);
         exp_weights = new_exp_weights;
-        next_counter = route_choice.iteration_counter + 1;
+        previous_results = Some(results);
     }
-    let (best_fit, capacities, best_outer, predicted_delays) =
-        best.expect("At least one outer iteration is run");
+    let nb_days = days.len();
+    // The warm-up days are not averaged (there is at least one day after them).
+    let nb_averaged = window.min(nb_days - warmup_days);
+    let history: Vec<&[FlowPerLane]> = days.iter().map(|d| d.capacities.as_slice()).collect();
+    let capacities = mean_capacities(&history[nb_days - nb_averaged..]);
     info!(
-        "Capacity calibration stopped ({stop_reason}) after {nb_outer} outer iterations; best fit \
-        after the route-choice days at outer iteration {best_outer}: RMSE of the delays {:.3} s",
-        f64::from(best_fit),
+        "Capacity calibration stopped ({stop_reason}) after {nb_days} days ({warmup_days} warm-up \
+        days); calibrated capacities: mean of the capacities of the last {nb_averaged} days"
     );
     for (j, (&capacity, &initial)) in capacities
         .iter()
@@ -377,6 +347,18 @@ pub fn calibrate(
             100. * (f64::from(capacity) / f64::from(initial) - 1.),
         );
     }
+    let surrogate = surrogate.as_mut().expect("At least one day is simulated");
+    let start = Instant::now();
+    let predicted_delays = mean_delays(&surrogate.predict_days(&capacities));
+    log_fit(
+        &format!(
+            "Mean of the surrogate models of the last {} days at the calibrated capacities",
+            surrogate.len()
+        ),
+        &target_delays,
+        &predicted_delays,
+        start.elapsed(),
+    );
     let delays = target_routes
         .iter()
         .zip(initial_predicted_delays.unwrap())
@@ -393,7 +375,7 @@ pub fn calibrate(
         .collect();
     Ok(CalibrationResults {
         capacities: categories.ids.iter().copied().zip(capacities).collect(),
-        iterations,
+        days,
         delays,
         category_ids: categories.ids.clone(),
     })
@@ -405,37 +387,41 @@ pub struct CalibrationResults {
     /// Calibrated capacity of each category, with the id of the category (`None` for the single
     /// category used when no edge has a category).
     pub capacities: Vec<(Option<MetroId>, FlowPerLane)>,
-    /// Diagnostics of each outer iteration.
-    iterations: Vec<OuterIterationResults>,
+    /// Diagnostics of each simulated day.
+    days: Vec<DayResults>,
     /// Target and predicted delay of each target route.
     delays: Vec<TargetDelay>,
     /// Id of each category (`None` for the single category used when no edge has a category).
     category_ids: Vec<Option<MetroId>>,
 }
 
-/// Diagnostics of an outer iteration of the capacity calibration.
+/// Diagnostics of a simulated day of the capacity calibration.
 #[derive(Clone, Debug)]
-struct OuterIterationResults {
-    /// Index of the outer iteration (starting at 1).
-    outer: u64,
-    /// RMSE between the expected and simulated network conditions of each day (route-choice days,
-    /// then the equilibrium days after the last route-choice day).
-    conditions_rmse: Vec<NonNegativeSeconds>,
-    /// Relative gap between the expected and simulated travel times of the road trips of each day
+struct DayResults {
+    /// Index of the day (starting at 1).
+    day: u64,
+    /// Iteration counter of the learning model at the day.
+    iteration_counter: u32,
+    /// RMSE between the expected and simulated network conditions of the day.
+    conditions_rmse: NonNegativeSeconds,
+    /// Relative gap between the expected and simulated travel times of the road trips of the day
     /// (see [relative_travel_time_gap]).
-    travel_time_gaps: Vec<Option<f64>>,
-    /// Number of equilibrium days (including the last route-choice day).
-    nb_equilibrium_days: u64,
-    /// Score of the outer iteration: fit of the mean predicted delays of the equilibrium days
-    /// (RMSE of the delays), at their capacities.
-    score: NonNegativeSeconds,
-    /// Noise of the mean predicted delays of the equilibrium days (`None` with a single day, see
-    /// [noise_of_mean]).
+    travel_time_gap: Option<f64>,
+    /// Weight of the day in the expected network conditions of the next day.
+    learning_weight: f64,
+    /// Trust region of the optimization after the day (maximum relative change of the
+    /// capacities, 0 on a warm-up day).
+    trust_region: f64,
+    /// Number of days whose surrogate models are averaged (the day and the previous ones, 0 on a
+    /// warm-up day).
+    nb_surrogate_days: u64,
+    /// Score of the day: fit of the mean delays predicted by the surrogate models of the last days
+    /// (RMSE of the delays), at the capacities of the day (`None` on a warm-up day).
+    score: Option<NonNegativeSeconds>,
+    /// Noise of the mean predicted delays of the last days (`None` on a warm-up day or with a
+    /// single day, see [noise_of_mean]).
     score_noise: Option<NonNegativeSeconds>,
-    /// Number of optimizations of the capacities in the inner loop.
-    nb_optimizations: u64,
-    /// Capacity of each category during the route-choice and equilibrium days (the scored
-    /// capacities).
+    /// Capacity of each category during the day.
     capacities: Vec<FlowPerLane>,
 }
 
@@ -448,11 +434,10 @@ struct TargetDelay {
     departure_time: NonNegativeSeconds,
     /// Observed delay of the route.
     target_delay: NonNegativeSeconds,
-    /// Mean delay predicted on the equilibrium days of the first outer iteration (at the initial
-    /// capacities).
+    /// Delay predicted on the first day, at the initial capacities.
     initial_predicted_delay: NonNegativeSeconds,
-    /// Mean delay predicted on the equilibrium days of the best outer iteration (at the calibrated
-    /// capacities).
+    /// Mean delay predicted by the surrogate models of the last days, at the calibrated
+    /// capacities.
     predicted_delay: NonNegativeSeconds,
 }
 
@@ -464,48 +449,40 @@ fn max_relative_change(old: &[FlowPerLane], new: &[FlowPerLane]) -> f64 {
         .fold(0., f64::max)
 }
 
-/// Returns `true` if the route-choice days stop, given the RMSE between the expected and simulated
-/// network conditions of each day run: the RMSE of the last day is at most `tolerance`, it has
-/// decreased by less than `min_decrease` (relative) from the previous day, or `max_iterations`
-/// days have been run.
+/// Returns the mean capacity of each category over the given days (capacities of each day).
+fn mean_capacities(capacities: &[&[FlowPerLane]]) -> Vec<FlowPerLane> {
+    let nb_days = capacities.len() as f64;
+    let nb_categories = capacities.first().map_or(0, |c| c.len());
+    (0..nb_categories)
+        .map(|j| {
+            let sum: f64 = capacities.iter().map(|c| f64::from(c[j])).sum();
+            FlowPerLane::new_unchecked(sum / nb_days)
+        })
+        .collect()
+}
+
+/// Returns `true` if the capacities are stable, given the capacities of each simulated day: the
+/// mean capacities of the last `window` days differ by at most `tolerance` (relative) from the
+/// mean capacities of the `window` days before, for all the categories.
 ///
-/// The days do not stop when the RMSE increases: the last day would then be a fluctuation away
-/// from the floor, and the outer iteration would be scored and optimized on it.
-fn stop_route_choice(
-    params: &RouteChoiceParameters,
-    conditions_rmse: &[NonNegativeSeconds],
-) -> bool {
-    let rmse = *conditions_rmse.last().expect("At least one day is run");
-    let reached_floor = |min_decrease: f64| {
-        conditions_rmse.len() >= 2 && {
-            let previous = f64::from(conditions_rmse[conditions_rmse.len() - 2]);
-            let rmse = f64::from(rmse);
-            rmse <= previous && rmse >= (1. - min_decrease) * previous
-        }
+/// Returns `false` without tolerance or with less than `2·window` days.
+fn stable_capacities(capacities: &[&[FlowPerLane]], window: usize, tolerance: Option<f64>) -> bool {
+    let Some(tolerance) = tolerance else {
+        return false;
     };
-    params.tolerance.is_some_and(|tol| rmse <= tol)
-        || params.min_decrease.is_some_and(reached_floor)
-        || conditions_rmse.len() as u64 >= params.max_iterations
+    let nb_days = capacities.len();
+    if window == 0 || nb_days < 2 * window {
+        return false;
+    }
+    let previous = mean_capacities(&capacities[nb_days - 2 * window..nb_days - window]);
+    let last = mean_capacities(&capacities[nb_days - window..]);
+    max_relative_change(&previous, &last) <= tolerance
 }
 
-/// Returns `true` if the equilibrium days stop, given the number of equilibrium days run and the
-/// noise of their mean predicted delays (`None` with a single day): `max_iterations` days have been
-/// run, or the noise is at most `tolerance`.
-fn stop_equilibrium_days(
-    params: &EquilibriumDaysParameters,
-    nb_days: u64,
-    noise: Option<f64>,
-) -> bool {
-    nb_days >= params.max_iterations
-        || params
-            .tolerance
-            .zip(noise)
-            .is_some_and(|(tol, noise)| noise <= f64::from(tol))
-}
-
-/// Returns the noise of the mean of the delays predicted on several days, `√(σ̄²/K)`, where `K` is
-/// the number of days and `σ̄²` is the variance (with `K - 1` degrees of freedom) of the predicted
-/// delay of a target route between the days, averaged over the target routes.
+/// Returns the noise of the mean of the delays predicted on several days (at the same capacities),
+/// `√(σ̄²/K)`, where `K` is the number of days and `σ̄²` is the variance (with `K - 1` degrees of
+/// freedom) of the predicted delay of a target route between the days, averaged over the target
+/// routes.
 ///
 /// Returns `None` with less than two days or without target routes.
 fn noise_of_mean(day_delays: &[Vec<NonNegativeSeconds>]) -> Option<f64> {
@@ -570,41 +547,38 @@ fn relative_gap(travel_times: impl Iterator<Item = (f64, f64)>) -> Option<f64> {
     (sum_simulated > 0.).then(|| sum_diff / sum_simulated)
 }
 
-/// Checks the parameters of the optimization of the capacities and of the loops.
+/// Checks the parameters of the optimization of the capacities, of the surrogate models and of the
+/// stopping criteria.
 fn check_loop_parameters(params: &CapacityCalibrationParameters) -> Result<()> {
     check_optimizer_parameters(&params.optimizer)?;
-    if params.inner_loop.tolerance <= 0. {
-        bail!("The parameter `inner_loop.tolerance` must be positive");
+    if params.surrogate_days == 0 {
+        bail!("The parameter `surrogate_days` must be positive");
     }
-    if params.inner_loop.max_iterations == 0 {
-        bail!("The parameter `inner_loop.max_iterations` must be positive");
+    if params.stopping.max_days == 0 {
+        bail!("The parameter `stopping.max_days` must be positive");
     }
-    if params.outer_loop.patience == 0 {
-        bail!("The parameter `outer_loop.patience` must be positive");
+    if params.stopping.window == 0 {
+        bail!("The parameter `stopping.window` must be positive");
     }
-    if params.outer_loop.max_iterations == 0 {
-        bail!("The parameter `outer_loop.max_iterations` must be positive");
-    }
-    if params.route_choice.max_iterations == 0 {
-        bail!("The parameter `route_choice.max_iterations` must be positive");
-    }
-    if params.equilibrium_days.max_iterations == 0 {
-        bail!("The parameter `equilibrium_days.max_iterations` must be positive");
+    if params.warmup_days >= params.stopping.max_days {
+        bail!("The parameter `warmup_days` must be smaller than `stopping.max_days`");
     }
     if params
-        .route_choice
-        .min_decrease
-        .is_some_and(|d| !(d > 0. && d < 1.))
+        .stopping
+        .tolerance
+        .is_some_and(|t| t.is_nan() || t <= 0.)
     {
-        bail!("The parameter `route_choice.min_decrease` must be between 0 and 1");
+        bail!("The parameter `stopping.tolerance` must be positive");
     }
     Ok(())
 }
 
 /// Checks the parameters of the optimization of the capacities.
 fn check_optimizer_parameters(optimizer: &OptimizerParameters) -> Result<()> {
-    if optimizer.trust_region <= 0. || optimizer.trust_region >= 1. {
-        bail!("The parameter `optimizer.trust_region` must be between 0 and 1");
+    // The weight of a day in the expected network conditions is at most 1, so the trust region is
+    // below 1 (the capacities stay positive).
+    if optimizer.trust_region_scale <= 0. || optimizer.trust_region_scale >= 1. {
+        bail!("The parameter `optimizer.trust_region_scale` must be between 0 and 1");
     }
     if optimizer.step_tolerance <= 0. {
         bail!("The parameter `optimizer.step_tolerance` must be positive");
@@ -735,24 +709,6 @@ struct SimulatedDay {
     weights: NetworkWeights,
 }
 
-/// Last day of the route-choice and equilibrium days of an outer iteration.
-struct RouteChoiceDay {
-    /// Expected network conditions of the day.
-    exp_weights: NetworkWeights,
-    /// Skims computed from the expected network conditions.
-    skims: NetworkSkim,
-    /// Results of the pre-day model (the routes kept for the inner loop).
-    pre_day: AgentResults,
-    /// The simulated day (its arrival curves have been moved to the caller).
-    day: SimulatedDay,
-    /// Iteration counter of the learning model at the day.
-    iteration_counter: u32,
-    /// RMSE between the expected and simulated network conditions of each day.
-    conditions_rmse: Vec<NonNegativeSeconds>,
-    /// Relative gap between the expected and simulated travel times of the road trips of each day.
-    travel_time_gaps: Vec<Option<f64>>,
-}
-
 /// Simulates the days of the calibration.
 struct Simulator<'a> {
     /// Edges of the road network, ordered by `EdgeIndex`.
@@ -764,105 +720,38 @@ struct Simulator<'a> {
 }
 
 impl Simulator<'_> {
-    /// Runs route-choice days (pre-day model, within-day model and day-to-day learning) with the
-    /// given capacities, starting from the given expected network conditions, until one of the
-    /// stopping rules of [stop_route_choice] is met, then equilibrium days: the last route-choice
-    /// day and the following days of the day-to-day model.
-    ///
-    /// The arrival curves of each equilibrium day are given to `equilibrium_day`, which returns
-    /// `true` to stop the days.
-    ///
-    /// The iteration counter of the learning model starts at `first_counter`.
-    fn route_choice(
-        &self,
-        mut exp_weights: NetworkWeights,
-        capacities: &[FlowPerLane],
-        params: &RouteChoiceParameters,
-        first_counter: u32,
-        node_orders: &mut NodeOrderCache,
-        mut equilibrium_day: impl FnMut(ArrivalCurves) -> bool,
-    ) -> Result<RouteChoiceDay> {
-        let mut previous_results: Option<AgentResults> = None;
-        let mut iteration_counter = first_counter;
-        let mut nb_days = 1;
-        let mut conditions_rmse = Vec::new();
-        let mut travel_time_gaps = Vec::new();
-        let mut equilibrium = false;
-        loop {
-            info!("Route-choice day {nb_days}");
-            info!("Computing skims");
-            let skims = crate::network::compute_skims(
-                &exp_weights,
-                &self.preprocess_data.network,
-                node_orders,
-            )?;
-            info!("Running demand model");
-            let pre_day = crate::simulation::run_pre_day_model(
-                &exp_weights,
-                &skims,
-                self.preprocess_data,
-                previous_results.as_ref(),
-                iteration_counter,
-            )?;
-            let mut day = self.within_day(&pre_day, &skims, capacities)?;
-            let rmse = day
-                .weights
-                .road_network()
-                .expect("The calibration requires a road network")
-                .rmse(exp_weights.road_network().unwrap());
-            let gap = relative_travel_time_gap(&day.results);
-            info!(
-                "Route-choice day {nb_days} (iteration counter {iteration_counter}): RMSE between \
-                the expected and simulated network conditions {:.3} s, relative gap between the \
-                expected and simulated travel times of the road trips {}",
-                f64::from(rmse),
-                gap.map_or_else(|| "-".to_owned(), |g| format!("{:.3}%", 100. * g)),
-            );
-            conditions_rmse.push(rmse);
-            travel_time_gaps.push(gap);
-            equilibrium = equilibrium || stop_route_choice(params, &conditions_rmse);
-            if equilibrium && equilibrium_day(std::mem::take(&mut day.curves)) {
-                return Ok(RouteChoiceDay {
-                    exp_weights,
-                    skims,
-                    pre_day,
-                    day,
-                    iteration_counter,
-                    conditions_rmse,
-                    travel_time_gaps,
-                });
-            }
-            let new_exp_weights = crate::simulation::run_day_to_day_model(
-                &exp_weights,
-                &day.weights,
-                iteration_counter,
-            );
-            crate::simulation::record_weights_drift(node_orders, &exp_weights, &new_exp_weights);
-            exp_weights = new_exp_weights;
-            previous_results = Some(day.results);
-            iteration_counter += 1;
-            nb_days += 1;
-        }
-    }
-
-    /// Runs the within-day model on a clone of the given pre-day results, with the given capacities
-    /// (by category), recording the arrival curves at the entry of the edges of the target routes.
+    /// Simulates a day of the day-to-day model with the given capacities (by category): skims and
+    /// pre-day model from the given expected network conditions (and the results of the previous
+    /// day, if any), then within-day model, recording the arrival curves at the entry of the edges
+    /// of the target routes.
     ///
     /// The routes taken are not recorded in the results.
-    fn within_day(
+    fn day(
         &self,
-        pre_day: &AgentResults,
-        skims: &NetworkSkim,
+        exp_weights: &NetworkWeights,
+        previous_results: Option<&AgentResults>,
+        iteration_counter: u32,
         capacities: &[FlowPerLane],
+        node_orders: &mut NodeOrderCache,
     ) -> Result<SimulatedDay> {
+        info!("Computing skims");
+        let skims =
+            crate::network::compute_skims(exp_weights, &self.preprocess_data.network, node_orders)?;
+        info!("Running demand model");
+        let mut results = crate::simulation::run_pre_day_model(
+            exp_weights,
+            &skims,
+            self.preprocess_data,
+            previous_results,
+            iteration_counter,
+        )?;
         let mut rn_state =
             RoadNetworkState::init(&self.categories.bottleneck_flows(self.edges, capacities));
         rn_state.record_arrivals(self.recorded_edges.iter().copied());
         info!("Running supply model");
-        let mut results = pre_day.clone();
         let mut state = crate::simulation::run_within_day_model(
             &mut results,
-            skims,
+            &skims,
             self.preprocess_data,
             NetworkState::new(Some(rn_state)),
             false,
@@ -1519,8 +1408,8 @@ mod tests {
     fn check_optimizer_parameters_test() {
         assert!(check_optimizer_parameters(&OptimizerParameters::default()).is_ok());
         for (optimizer, name) in [
-            (r#"{"trust_region": 0.0}"#, "trust_region"),
-            (r#"{"trust_region": 1.0}"#, "trust_region"),
+            (r#"{"trust_region_scale": 0.0}"#, "trust_region_scale"),
+            (r#"{"trust_region_scale": 1.0}"#, "trust_region_scale"),
             (r#"{"step_tolerance": 0.0}"#, "step_tolerance"),
             (r#"{"max_iterations": 0}"#, "max_iterations"),
             (r#"{"penalty": -0.01}"#, "penalty"),
@@ -1540,38 +1429,17 @@ mod tests {
         assert!(check_loop_parameters(&parse(r#""vehicle_type": 1"#)).is_ok());
         for (json, name) in [
             (
-                r#""optimizer": {"trust_region": 0.0}"#,
-                "optimizer.trust_region",
+                r#""optimizer": {"trust_region_scale": 0.0}"#,
+                "optimizer.trust_region_scale",
             ),
+            (r#""surrogate_days": 0"#, "surrogate_days"),
+            (r#""stopping": {"max_days": 0}"#, "stopping.max_days"),
+            (r#""stopping": {"window": 0}"#, "stopping.window"),
             (
-                r#""inner_loop": {"tolerance": 0.0}"#,
-                "inner_loop.tolerance",
+                r#""warmup_days": 3, "stopping": {"max_days": 3}"#,
+                "warmup_days",
             ),
-            (
-                r#""inner_loop": {"max_iterations": 0}"#,
-                "inner_loop.max_iterations",
-            ),
-            (r#""outer_loop": {"patience": 0}"#, "outer_loop.patience"),
-            (
-                r#""outer_loop": {"max_iterations": 0}"#,
-                "outer_loop.max_iterations",
-            ),
-            (
-                r#""route_choice": {"max_iterations": 0}"#,
-                "route_choice.max_iterations",
-            ),
-            (
-                r#""route_choice": {"min_decrease": 0.0}"#,
-                "route_choice.min_decrease",
-            ),
-            (
-                r#""route_choice": {"min_decrease": 1.0}"#,
-                "route_choice.min_decrease",
-            ),
-            (
-                r#""equilibrium_days": {"max_iterations": 0}"#,
-                "equilibrium_days.max_iterations",
-            ),
+            (r#""stopping": {"tolerance": 0.0}"#, "stopping.tolerance"),
         ] {
             let msg = check_loop_parameters(&parse(json)).unwrap_err().to_string();
             assert!(msg.contains(&format!("`{name}`")), "{msg}");
@@ -1579,58 +1447,25 @@ mod tests {
     }
 
     #[test]
-    fn stop_route_choice_test() {
-        let params = |json: &str| -> RouteChoiceParameters { serde_json::from_str(json).unwrap() };
-        let rmse = |values: &[f64]| -> Vec<NonNegativeSeconds> {
-            values
-                .iter()
-                .map(|&v| NonNegativeSeconds::try_from(v).unwrap())
-                .collect()
+    fn stable_capacities_test() {
+        let days = |values: &[[f64; 2]]| -> Vec<Vec<FlowPerLane>> {
+            values.iter().map(|c| c.map(capacity).to_vec()).collect()
         };
-        // Default: `max_iterations` days (10).
-        let default = params("{}");
-        assert!(!stop_route_choice(&default, &rmse(&[0.0])));
-        assert!(!stop_route_choice(&default, &rmse(&[1.0; 9])));
-        assert!(stop_route_choice(&default, &rmse(&[1.0; 10])));
-        // Tolerance.
-        let tolerance = params(r#"{"tolerance": 1.0}"#);
-        assert!(!stop_route_choice(&tolerance, &rmse(&[1.5])));
-        assert!(stop_route_choice(&tolerance, &rmse(&[1.0])));
-        // Minimum decrease: never on the first day, then when the RMSE decreases by less than 5%,
-        // but not when it increases.
-        let min_decrease = params(r#"{"min_decrease": 0.05}"#);
-        assert!(!stop_route_choice(&min_decrease, &rmse(&[0.5])));
-        assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 0.9])));
-        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 0.96])));
-        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 1.0])));
-        assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2])));
-        assert!(!stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2, 0.9])));
-        assert!(stop_route_choice(&min_decrease, &rmse(&[1.0, 1.2, 1.18])));
-        // The rules combine: the first one met stops the days.
-        let all = params(r#"{"tolerance": 0.5, "min_decrease": 0.05, "max_iterations": 3}"#);
-        assert!(!stop_route_choice(&all, &rmse(&[2.0, 1.0])));
-        assert!(stop_route_choice(&all, &rmse(&[2.0, 0.4])));
-        assert!(stop_route_choice(&all, &rmse(&[2.0, 1.0, 0.6])));
-    }
-
-    #[test]
-    fn stop_equilibrium_days_test() {
-        let params =
-            |json: &str| -> EquilibriumDaysParameters { serde_json::from_str(json).unwrap() };
-        // Default: a single day.
-        assert!(stop_equilibrium_days(&params("{}"), 1, None));
-        // Without tolerance: `max_iterations` days.
-        let max = params(r#"{"max_iterations": 3}"#);
-        assert!(!stop_equilibrium_days(&max, 1, None));
-        assert!(!stop_equilibrium_days(&max, 2, Some(0.)));
-        assert!(stop_equilibrium_days(&max, 3, Some(10.)));
-        // With a tolerance: not on the first day (no noise), then when the noise is at most the
-        // tolerance.
-        let tolerance = params(r#"{"tolerance": 2.0, "max_iterations": 5}"#);
-        assert!(!stop_equilibrium_days(&tolerance, 1, None));
-        assert!(!stop_equilibrium_days(&tolerance, 2, Some(2.5)));
-        assert!(stop_equilibrium_days(&tolerance, 3, Some(2.)));
-        assert!(stop_equilibrium_days(&tolerance, 5, Some(3.)));
+        let history = days(&[[1.0, 2.0], [1.2, 2.0], [1.0, 2.2], [1.0, 2.2]]);
+        let history: Vec<&[FlowPerLane]> = history.iter().map(|c| c.as_slice()).collect();
+        // Mean of the capacities of each category.
+        assert_eq!(
+            mean_capacities(&history[1..]),
+            vec![capacity(3.2 / 3.), capacity(6.4 / 3.)]
+        );
+        // Windows of 2 days: (1.1, 2.0), then (1.0, 2.2), a change of 10%.
+        assert!(stable_capacities(&history, 2, Some(0.1 + 1e-9)));
+        assert!(!stable_capacities(&history, 2, Some(0.09)));
+        // Without tolerance or with less than two windows of days: not stable.
+        assert!(!stable_capacities(&history, 2, None));
+        assert!(!stable_capacities(&history[1..], 2, Some(1.)));
+        // Windows of 1 day: the last two days are equal.
+        assert!(stable_capacities(&history, 1, Some(1e-12)));
     }
 
     #[test]

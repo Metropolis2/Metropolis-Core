@@ -20,7 +20,7 @@ use std::fmt;
 use serde_derive::Deserialize;
 
 use crate::hash::HashMap;
-use crate::units::{FlowPerLane, NonNegativeSeconds};
+use crate::units::FlowPerLane;
 
 /// Set of parameters controlling the road-capacity calibration (`capacity_calibration`).
 ///
@@ -38,142 +38,72 @@ pub struct CapacityCalibrationParameters {
     /// Parameters of the optimization of the capacities.
     #[serde(default)]
     pub optimizer: OptimizerParameters,
-    /// Parameters of the route-choice days, run before the optimization of the capacities, in each
-    /// outer iteration.
-    #[serde(default)]
-    pub route_choice: RouteChoiceParameters,
-    /// Parameters of the equilibrium days, run after the route-choice days, in each outer
-    /// iteration.
-    #[serde(default)]
-    pub equilibrium_days: EquilibriumDaysParameters,
-    /// Parameters of the inner loop: optimization of the capacities, then simulation of a day with
-    /// the optimized capacities and the same routes.
-    #[serde(default)]
-    pub inner_loop: InnerLoopParameters,
-    /// Parameters of the outer loop: route-choice days, then inner loop.
-    #[serde(default)]
-    pub outer_loop: OuterLoopParameters,
-}
-
-/// Parameters of the route-choice days of an outer iteration (day-to-day learning with the current
-/// capacities, until route choice is stable).
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct RouteChoiceParameters {
-    /// The route-choice days stop when the RMSE between the expected and the simulated network
-    /// conditions of a day is at most this value, in seconds (default: no tolerance).
-    pub tolerance: Option<NonNegativeSeconds>,
-    /// The route-choice days stop when the RMSE between the expected and the simulated network
-    /// conditions of a day has decreased by less than this relative amount from the previous day,
-    /// i.e., when it has reached its floor (between 0 and 1, exclusive, default: no minimum
-    /// decrease). They do not stop on a day where the RMSE has increased.
+    /// Number of last simulated days whose surrogate models are averaged to score the capacities
+    /// and to optimize them after each day (default: 1).
     ///
-    /// Unlike `tolerance`, it does not depend on the level of the floor, which is set by the
-    /// congestion and the learning model.
-    pub min_decrease: Option<f64>,
-    /// Maximum number of route-choice days (default: 10).
-    pub max_iterations: u64,
-    /// If `true` (default), the iteration counter of the learning model restarts at
-    /// `init_iteration_counter` in each outer iteration. If `false`, it continues from the last
-    /// route-choice day of the previous outer iteration, as in a simulation: the weight of each
-    /// new day in the expected network conditions keeps decreasing over the calibration.
-    pub reset_counter: bool,
+    /// The days may have been simulated with different capacities: the surrogate model of each
+    /// day evaluates the queues of its arrival curves at any capacities.
+    #[serde(default = "default_surrogate_days")]
+    pub surrogate_days: u64,
+    /// Number of warm-up days, simulated with the initial capacities before the first optimization
+    /// (default: 0).
+    ///
+    /// Their routes are still far from the equilibrium (e.g., from free-flow conditions, the first
+    /// day takes the free-flow routes), so they are not used by the surrogate models, nor in the
+    /// stopping criteria and the calibrated capacities. They count in `stopping.max_days`.
+    #[serde(default)]
+    pub warmup_days: u64,
+    /// Stopping criteria of the calibration.
+    #[serde(default)]
+    pub stopping: StoppingParameters,
 }
 
-impl Default for RouteChoiceParameters {
+const fn default_surrogate_days() -> u64 {
+    1
+}
+
+/// Stopping criteria of the capacity calibration.
+///
+/// The calibrated capacities are the mean of the capacities of the last `window` simulated days.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct StoppingParameters {
+    /// Maximum number of simulated days (default: 100).
+    pub max_days: u64,
+    /// Number of days whose capacities are averaged, for the calibrated capacities and for the
+    /// stability test (default: 10).
+    pub window: u64,
+    /// The calibration stops when the mean capacities of the last `window` days differ by at most
+    /// this relative amount from the mean capacities of the `window` days before, for all the
+    /// categories (default: no tolerance, the calibration runs `max_days` days).
+    pub tolerance: Option<f64>,
+}
+
+impl Default for StoppingParameters {
     fn default() -> Self {
         Self {
+            max_days: 100,
+            window: 10,
             tolerance: None,
-            min_decrease: None,
-            max_iterations: 10,
-            reset_counter: true,
-        }
-    }
-}
-
-/// Parameters of the equilibrium days of an outer iteration: the last route-choice day and the
-/// following days of the day-to-day model, with the same capacities. The outer iteration is scored,
-/// and its first optimization made, on the mean of the delays predicted by the surrogate models of
-/// these days.
-///
-/// The noise of the mean predicted delays is `√(σ̄²/K)`, where `K` is the number of equilibrium
-/// days and `σ̄²` is the variance of the predicted delay of a target route between the days,
-/// averaged over the target routes. At least two days are needed to estimate it.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct EquilibriumDaysParameters {
-    /// The equilibrium days stop when the noise of the mean predicted delays is at most this
-    /// value, in seconds (default: no tolerance).
-    pub tolerance: Option<NonNegativeSeconds>,
-    /// Maximum number of equilibrium days, including the last route-choice day (default: 1, the
-    /// outer iteration is scored on the last route-choice day).
-    pub max_iterations: u64,
-}
-
-impl Default for EquilibriumDaysParameters {
-    fn default() -> Self {
-        Self {
-            tolerance: None,
-            max_iterations: 1,
-        }
-    }
-}
-
-/// Stopping criteria of the inner loop of the capacity calibration.
-///
-/// The first optimization is made on the mean of the equilibrium days; each following one on the
-/// day re-simulated with the routes of the last equilibrium day.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct InnerLoopParameters {
-    /// The loop stops when the fit of the surrogate model (RMSE of the delays) on the simulated day
-    /// improves by less than this relative amount, or gets worse (default: 0.01). The first
-    /// re-simulated day is compared to the last equilibrium day.
-    pub tolerance: f64,
-    /// Maximum number of optimizations (default: 10).
-    pub max_iterations: u64,
-}
-
-impl Default for InnerLoopParameters {
-    fn default() -> Self {
-        Self {
-            tolerance: 0.01,
-            max_iterations: 10,
-        }
-    }
-}
-
-/// Stopping criteria of the outer loop of the capacity calibration.
-///
-/// Each outer iteration is scored by the fit of the mean surrogate model of its equilibrium days
-/// (RMSE of the delays); the capacities with the best score are returned.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct OuterLoopParameters {
-    /// The loop stops when the best score has not improved for this number of outer iterations
-    /// (default: 5).
-    pub patience: u64,
-    /// Maximum number of outer iterations (default: 20).
-    pub max_iterations: u64,
-}
-
-impl Default for OuterLoopParameters {
-    fn default() -> Self {
-        Self {
-            patience: 5,
-            max_iterations: 20,
         }
     }
 }
 
 /// Parameters of the optimization of the capacities (Levenberg–Marquardt algorithm), given the
-/// arrival curves of a simulated day.
+/// arrival curves of the last simulated days.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct OptimizerParameters {
-    /// Maximum relative change of the capacity of each category, compared to its capacity in the
-    /// simulated day (between 0 and 1, default: 0.2).
-    pub trust_region: f64,
+    /// Scale of the trust region (between 0 and 1, default: 0.4): after a day, the capacity of
+    /// each category can change by at most this value times the weight of the day in the expected
+    /// network conditions of the next day (see the learning model), relative to its capacity in
+    /// the day.
+    ///
+    /// The capacities then move only as fast as the expected network conditions, and so the
+    /// routes, can follow. With `Exponential` learning 0.02, the weight of a day is 34% at
+    /// iteration counter 1, 9.3% at counter 10, 3.1% at counter 50 and 2.0% from about counter
+    /// 200, so a scale of 0.4 gives a trust region of 14%, 3.7%, 1.2% and 0.8%.
+    pub trust_region_scale: f64,
     /// Maximum number of iterations (default: 30).
     pub max_iterations: u64,
     /// The optimization stops when no capacity changes by more than this relative amount in an
@@ -192,7 +122,7 @@ pub struct OptimizerParameters {
 impl Default for OptimizerParameters {
     fn default() -> Self {
         Self {
-            trust_region: 0.2,
+            trust_region_scale: 0.4,
             max_iterations: 30,
             step_tolerance: 1e-4,
             penalty: 0.,
@@ -317,20 +247,15 @@ mod tests {
             }
         );
         assert_eq!(params.vehicle_type, None);
-        assert_eq!(params.optimizer.trust_region, 0.2);
+        assert_eq!(params.optimizer.trust_region_scale, 0.4);
         assert_eq!(params.optimizer.max_iterations, 30);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
         assert_eq!(params.optimizer.penalty, 0.);
-        assert_eq!(params.route_choice.tolerance, None);
-        assert_eq!(params.route_choice.min_decrease, None);
-        assert_eq!(params.route_choice.max_iterations, 10);
-        assert!(params.route_choice.reset_counter);
-        assert_eq!(params.equilibrium_days.tolerance, None);
-        assert_eq!(params.equilibrium_days.max_iterations, 1);
-        assert_eq!(params.inner_loop.tolerance, 0.01);
-        assert_eq!(params.inner_loop.max_iterations, 10);
-        assert_eq!(params.outer_loop.patience, 5);
-        assert_eq!(params.outer_loop.max_iterations, 20);
+        assert_eq!(params.surrogate_days, 1);
+        assert_eq!(params.warmup_days, 0);
+        assert_eq!(params.stopping.max_days, 100);
+        assert_eq!(params.stopping.window, 10);
+        assert_eq!(params.stopping.tolerance, None);
 
         let params = parse(r#"{"capacities": {"initial": 0.5, "max": 0.8}}"#).unwrap();
         let Capacities::Uniform(c) = params.capacities else {
@@ -374,38 +299,25 @@ mod tests {
 
         let params = parse(
             r#"{"capacities": 0.5, "vehicle_type": "car",
-            "optimizer": {"trust_region": 0.1, "max_iterations": 5, "penalty": 0.01}}"#,
+            "optimizer": {"trust_region_scale": 0.1, "max_iterations": 5, "penalty": 0.01}}"#,
         )
         .unwrap();
         assert_eq!(params.vehicle_type, Some(IdValue::String("car".to_owned())));
-        assert_eq!(params.optimizer.trust_region, 0.1);
+        assert_eq!(params.optimizer.trust_region_scale, 0.1);
         assert_eq!(params.optimizer.max_iterations, 5);
         assert_eq!(params.optimizer.step_tolerance, 1e-4);
         assert_eq!(params.optimizer.penalty, 0.01);
 
         let params = parse(
-            r#"{"capacities": 0.5,
-            "route_choice": {"tolerance": 2.0, "min_decrease": 0.05, "reset_counter": false},
-            "equilibrium_days": {"tolerance": 3.0, "max_iterations": 10},
-            "inner_loop": {"tolerance": 0.001}, "outer_loop": {"max_iterations": 3}}"#,
+            r#"{"capacities": 0.5, "surrogate_days": 8, "warmup_days": 2,
+            "stopping": {"max_days": 600, "tolerance": 0.01}}"#,
         )
         .unwrap();
-        assert_eq!(
-            params.route_choice.tolerance,
-            Some(NonNegativeSeconds::try_from(2.0).unwrap())
-        );
-        assert_eq!(params.route_choice.min_decrease, Some(0.05));
-        assert!(!params.route_choice.reset_counter);
-        assert_eq!(params.route_choice.max_iterations, 10);
-        assert_eq!(
-            params.equilibrium_days.tolerance,
-            Some(NonNegativeSeconds::try_from(3.0).unwrap())
-        );
-        assert_eq!(params.equilibrium_days.max_iterations, 10);
-        assert_eq!(params.inner_loop.tolerance, 0.001);
-        assert_eq!(params.inner_loop.max_iterations, 10);
-        assert_eq!(params.outer_loop.patience, 5);
-        assert_eq!(params.outer_loop.max_iterations, 3);
+        assert_eq!(params.surrogate_days, 8);
+        assert_eq!(params.warmup_days, 2);
+        assert_eq!(params.stopping.max_days, 600);
+        assert_eq!(params.stopping.window, 10);
+        assert_eq!(params.stopping.tolerance, Some(0.01));
 
         // Capacities must be positive.
         assert!(parse(r#"{"capacities": -0.5}"#).is_err());

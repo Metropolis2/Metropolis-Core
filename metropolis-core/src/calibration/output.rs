@@ -30,7 +30,7 @@ use crate::parameters::SavingFormat;
 ///
 /// - `calibrated_capacities.json`: the calibrated capacities, in the format of the `capacities`
 ///   parameter of the calibration (in PCE per second per lane);
-/// - `calibration_iterations.[ext]`: the diagnostics of each outer iteration;
+/// - `calibration_days.[ext]`: the diagnostics of each simulated day;
 /// - `calibration_delays.[ext]`: the target and predicted delays of each target route.
 pub(super) fn save(results: &CalibrationResults) -> Result<()> {
     let output_dir = crate::parameters::output_directory();
@@ -75,43 +75,41 @@ fn capacities_json(results: &CalibrationResults) -> CapacitiesJson {
 
 impl ToArrow<2> for CalibrationResults {
     fn to_arrow(&self) -> Result<[Option<RecordBatch>; 2]> {
-        Ok([self.iterations_batch()?, self.delays_batch()?])
+        Ok([self.days_batch()?, self.delays_batch()?])
     }
     fn names() -> [&'static str; 2] {
-        ["calibration_iterations", "calibration_delays"]
+        ["calibration_days", "calibration_delays"]
     }
 }
 
 impl CalibrationResults {
-    /// Returns the table of the diagnostics of the outer iterations.
-    fn iterations_batch(&self) -> Result<Option<RecordBatch>> {
-        let mut outer = UInt64Builder::new();
-        let mut nb_days = UInt64Builder::new();
-        let mut first_rmse = Float64Builder::new();
-        let mut last_rmse = Float64Builder::new();
-        let mut first_gap = Float64Builder::new();
-        let mut last_gap = Float64Builder::new();
-        let mut nb_equilibrium_days = UInt64Builder::new();
+    /// Returns the table of the diagnostics of the simulated days.
+    fn days_batch(&self) -> Result<Option<RecordBatch>> {
+        let mut day = UInt64Builder::new();
+        let mut iteration_counter = UInt64Builder::new();
+        let mut conditions_rmse = Float64Builder::new();
+        let mut travel_time_gap = Float64Builder::new();
+        let mut learning_weight = Float64Builder::new();
+        let mut trust_region = Float64Builder::new();
+        let mut nb_surrogate_days = UInt64Builder::new();
         let mut score = Float64Builder::new();
         let mut score_noise = Float64Builder::new();
-        let mut nb_optimizations = UInt64Builder::new();
         let mut capacities: Vec<_> = self
             .category_ids
             .iter()
             .map(|_| Float64Builder::new())
             .collect();
-        for it in self.iterations.iter() {
-            outer.append_value(it.outer);
-            nb_days.append_value(it.conditions_rmse.len() as u64);
-            first_rmse.append_option(it.conditions_rmse.first().map(|&r| f64::from(r)));
-            last_rmse.append_option(it.conditions_rmse.last().map(|&r| f64::from(r)));
-            first_gap.append_option(it.travel_time_gaps.first().copied().flatten());
-            last_gap.append_option(it.travel_time_gaps.last().copied().flatten());
-            nb_equilibrium_days.append_value(it.nb_equilibrium_days);
-            score.append_value(f64::from(it.score));
-            score_noise.append_option(it.score_noise.map(f64::from));
-            nb_optimizations.append_value(it.nb_optimizations);
-            for (builder, &capacity) in capacities.iter_mut().zip(it.capacities.iter()) {
+        for d in self.days.iter() {
+            day.append_value(d.day);
+            iteration_counter.append_value(d.iteration_counter as u64);
+            conditions_rmse.append_value(f64::from(d.conditions_rmse));
+            travel_time_gap.append_option(d.travel_time_gap);
+            learning_weight.append_value(d.learning_weight);
+            trust_region.append_value(d.trust_region);
+            nb_surrogate_days.append_value(d.nb_surrogate_days);
+            score.append_option(d.score.map(f64::from));
+            score_noise.append_option(d.score_noise.map(f64::from));
+            for (builder, &capacity) in capacities.iter_mut().zip(d.capacities.iter()) {
                 builder.append_value(f64::from(capacity));
             }
         }
@@ -121,16 +119,15 @@ impl CalibrationResults {
             .map(|id| id.map_or_else(|| "capacity".to_owned(), |id| format!("capacity_{id}")))
             .collect();
         let mut columns: Vec<(&str, &mut dyn ArrayBuilder, bool)> = vec![
-            ("outer", &mut outer, false),
-            ("nb_route_choice_days", &mut nb_days, false),
-            ("first_day_conditions_rmse", &mut first_rmse, false),
-            ("last_day_conditions_rmse", &mut last_rmse, false),
-            ("first_day_travel_time_gap", &mut first_gap, true),
-            ("last_day_travel_time_gap", &mut last_gap, true),
-            ("nb_equilibrium_days", &mut nb_equilibrium_days, false),
-            ("score", &mut score, false),
+            ("day", &mut day, false),
+            ("iteration_counter", &mut iteration_counter, false),
+            ("conditions_rmse", &mut conditions_rmse, false),
+            ("travel_time_gap", &mut travel_time_gap, true),
+            ("learning_weight", &mut learning_weight, false),
+            ("trust_region", &mut trust_region, false),
+            ("nb_surrogate_days", &mut nb_surrogate_days, false),
+            ("score", &mut score, true),
             ("score_noise", &mut score_noise, true),
-            ("nb_optimizations", &mut nb_optimizations, false),
         ];
         for (name, builder) in capacity_names.iter().zip(capacities.iter_mut()) {
             columns.push((name, builder, false));

@@ -35,13 +35,13 @@ const INITIAL_DAMPING: f64 = 1e-3;
 /// (the partial sums are added in a fixed order, so the results do not depend on the threads).
 const BLOCK_SIZE: usize = 1024;
 
-/// Returns the optimized capacity of each category, starting from the capacities of the simulated
-/// days whose arrival curves are held by the surrogate model (the mean of their predicted delays
-/// is fitted).
+/// Returns the optimized capacity of each category, starting from the given capacities (those of
+/// the last simulated day), on the mean of the delays predicted by the surrogate models of the last
+/// simulated days.
 ///
 /// The capacities are bounded by the minimum and maximum capacities of their category (if any) and
-/// by the trust region around their initial value. The variables of the optimization are the capacities
-/// relative to their initial value.
+/// by the trust region around their initial value (maximum relative change, between 0 and 1). The
+/// variables of the optimization are the capacities relative to their initial value.
 ///
 /// The objective is the mean squared error of the delays plus the penalty `λ·Σₖ (cₖ / cₖ⁰)²`, where
 /// `cₖ⁰` is the initial capacity of category `k` in the parameters (the same in every
@@ -50,10 +50,10 @@ pub(super) fn optimize_capacities(
     surrogate: &mut MeanSurrogate,
     target_delays: &[NonNegativeSeconds],
     capacities: &[FlowPerLane],
+    trust_region: f64,
     params: &OptimizerParameters,
     categories: &EdgeCategories,
 ) -> Vec<FlowPerLane> {
-    let trust_region = params.trust_region;
     // Bounds of the categories relative to the initial capacities.
     let ratios = |bounds: &[Option<FlowPerLane>]| -> Vec<Option<f64>> {
         bounds
