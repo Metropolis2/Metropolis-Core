@@ -61,16 +61,17 @@ pub enum LearningModel {
     /// Exponential model with no adjustment for the initial weights (see
     /// [ExponentialUnadjusted](Self::ExponentialUnadjusted)) for the first `nb_exponential`
     /// iterations, then Exponential model with adjustment for the initial weights (see
-    /// [Exponential](Self::Exponential)) with parameter `final_alpha`, at the same iteration counter
-    /// (it is not restarted).
+    /// [Exponential](Self::Exponential)) with parameter `final_alpha`, restarted from the learned
+    /// values with a counter of 1.
     ///
-    /// The fast exponential phase quickly gets rid of the initial conditions;
-    /// the second phase then keeps a memory of about `1 / final_alpha` iterations.
+    /// The fast exponential phase quickly gets rid of the initial conditions; the second phase then
+    /// keeps a memory of about `1 / final_alpha` iterations. The weight of the second phase starts
+    /// at `final_alpha / (1 - (1 - final_alpha)^2)` and decreases to `final_alpha`.
     ///
     /// With `t` the iteration counter given to the learning model, `x_{t+1} = (1 - alpha) * x_t +
-    /// alpha * y` if `t <= nb_exponential`, and `x_{t+1} = (1 - w_t) * x_t + w_t * y` otherwise,
-    /// where `w_t` is the weight of the update value of the `Exponential` model with parameter
-    /// `final_alpha` at counter `t`.
+    /// alpha * y` if `t <= nb_exponential`, and `x_{t+1} = (1 - w_s) * x_t + w_s * y` otherwise,
+    /// where `w_s` is the weight of the update value of the `Exponential` model with parameter
+    /// `final_alpha` at counter `s = t - nb_exponential`.
     ExponentialThenExponential {
         /// Parameter of the first exponential phase.
         alpha: ZeroOneNum,
@@ -149,7 +150,7 @@ impl LearningModel {
                 if iteration_counter <= nb_exponential {
                     f64::from(alpha)
                 } else {
-                    Self::Exponential(final_alpha).update_weight(iteration_counter)
+                    Self::Exponential(final_alpha).update_weight(iteration_counter - nb_exponential)
                 }
             }
             Self::Linear | Self::Genetic => 1. / (t + 1.),
@@ -348,12 +349,12 @@ mod tests {
                 get_weigths(15.).road_network().unwrap().weights
             );
         }
-        // Second phase: weight of `Exponential` 0.2 at the same counter (not restarted).
+        // Second phase: weight of `Exponential` 0.2, restarted with a counter of 1.
         let exponential = LearningModel::Exponential(ZeroOneNum::new_unchecked(0.2));
         for t in [6, 9, 100] {
-            assert_eq!(model.update_weight(t), exponential.update_weight(t));
+            assert_eq!(model.update_weight(t), exponential.update_weight(t - 5));
         }
-        assert!((model.update_weight(6) - 0.2 / (1. - 0.8f64.powi(7))).abs() < 1e-12);
+        assert!((model.update_weight(6) - 0.2 / (1. - 0.8f64.powi(2))).abs() < 1e-12);
         // Input format.
         let parsed: LearningModel = serde_json::from_str(
             r#"{"type": "ExponentialThenExponential",
@@ -361,7 +362,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(parsed.update_weight(5), 0.5);
-        assert_eq!(parsed.update_weight(6), exponential.update_weight(6));
+        assert_eq!(parsed.update_weight(6), exponential.update_weight(1));
     }
 
     #[test]
