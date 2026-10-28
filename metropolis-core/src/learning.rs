@@ -58,6 +58,27 @@ pub enum LearningModel {
         /// Number of iterations of the exponential phase.
         nb_exponential: u32,
     },
+    /// Exponential model with no adjustment for the initial weights (see
+    /// [ExponentialUnadjusted](Self::ExponentialUnadjusted)) for the first `nb_exponential`
+    /// iterations, then Exponential model with adjustment for the initial weights (see
+    /// [Exponential](Self::Exponential)) with parameter `final_alpha`, at the same iteration counter
+    /// (it is not restarted).
+    ///
+    /// The fast exponential phase quickly gets rid of the initial conditions;
+    /// the second phase then keeps a memory of about `1 / final_alpha` iterations.
+    ///
+    /// With `t` the iteration counter given to the learning model, `x_{t+1} = (1 - alpha) * x_t +
+    /// alpha * y` if `t <= nb_exponential`, and `x_{t+1} = (1 - w_t) * x_t + w_t * y` otherwise,
+    /// where `w_t` is the weight of the update value of the `Exponential` model with parameter
+    /// `final_alpha` at counter `t`.
+    ExponentialThenExponential {
+        /// Parameter of the first exponential phase.
+        alpha: ZeroOneNum,
+        /// Number of iterations of the first exponential phase.
+        nb_exponential: u32,
+        /// Parameter of the second exponential phase.
+        final_alpha: ZeroOneNum,
+    },
     /// Genetic learning model: `x_{t+1} = (x_t^t * y)^(1 / (t + 1))`
     Genetic,
     /// Quadratic learning model: `x_{t+1} = (w / (w + 1)) * x_t + (1 / (w + 1)) * y` where
@@ -118,6 +139,17 @@ impl LearningModel {
                     f64::from(alpha)
                 } else {
                     Self::Linear.update_weight(iteration_counter - nb_exponential)
+                }
+            }
+            &Self::ExponentialThenExponential {
+                alpha,
+                nb_exponential,
+                final_alpha,
+            } => {
+                if iteration_counter <= nb_exponential {
+                    f64::from(alpha)
+                } else {
+                    Self::Exponential(final_alpha).update_weight(iteration_counter)
                 }
             }
             Self::Linear | Self::Genetic => 1. / (t + 1.),
@@ -297,6 +329,42 @@ mod tests {
     }
 
     #[test]
+    fn exponential_then_exponential_learning_test() {
+        let old_weights = get_weigths(10.);
+        let update_weights = get_weigths(20.);
+        let model = LearningModel::ExponentialThenExponential {
+            alpha: ZeroOneNum::new_unchecked(0.5),
+            nb_exponential: 5,
+            final_alpha: ZeroOneNum::new_unchecked(0.2),
+        };
+        // First phase: 0.5 * 10 + 0.5 * 20 = 15.
+        for t in [1, 5] {
+            assert_eq!(
+                model
+                    .learn(&old_weights, &update_weights, t)
+                    .road_network()
+                    .unwrap()
+                    .weights,
+                get_weigths(15.).road_network().unwrap().weights
+            );
+        }
+        // Second phase: weight of `Exponential` 0.2 at the same counter (not restarted).
+        let exponential = LearningModel::Exponential(ZeroOneNum::new_unchecked(0.2));
+        for t in [6, 9, 100] {
+            assert_eq!(model.update_weight(t), exponential.update_weight(t));
+        }
+        assert!((model.update_weight(6) - 0.2 / (1. - 0.8f64.powi(7))).abs() < 1e-12);
+        // Input format.
+        let parsed: LearningModel = serde_json::from_str(
+            r#"{"type": "ExponentialThenExponential",
+            "value": {"alpha": 0.5, "nb_exponential": 5, "final_alpha": 0.2}}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.update_weight(5), 0.5);
+        assert_eq!(parsed.update_weight(6), exponential.update_weight(6));
+    }
+
+    #[test]
     fn update_weight_test() {
         let uid = unique_vehicle_index(0);
         let id = MetroId::Integer(0);
@@ -309,6 +377,11 @@ mod tests {
             LearningModel::ExponentialThenLinear {
                 alpha,
                 nb_exponential: 5,
+            },
+            LearningModel::ExponentialThenExponential {
+                alpha: ZeroOneNum::new_unchecked(0.5),
+                nb_exponential: 5,
+                final_alpha: alpha,
             },
             LearningModel::Linear,
             LearningModel::Quadratic,

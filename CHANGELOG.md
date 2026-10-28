@@ -12,6 +12,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [INPUT] Add the `ExponentialThenLinear` learning model (`ExponentialUnadjusted` for the first
   `nb_exponential` iterations, then `Linear`).
+- [INPUT] Add the `ExponentialThenExponential` learning model (`ExponentialUnadjusted` for the first
+  `nb_exponential` iterations, then `Exponential`).
 
 ### Changed
 
