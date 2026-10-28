@@ -21,12 +21,18 @@ use crate::units::*;
 
 /// Arrival curve at a bottleneck: arrival time and PCE of each vehicle that has reached the
 /// bottleneck, in the order in which the vehicles reached it.
+///
+/// With spillback, it also stores the release time of each vehicle that waited for space on the
+/// edge (the time at which the edge stopped being full for it, or at which it was forced to enter).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ArrivalCurve {
     /// Arrival times, non-decreasing (the vehicles arriving at the same time have one entry each).
     times: Vec<NonNegativeSeconds>,
     /// PCE of the vehicle arrived at `times[i]`.
     pce: Vec<PCE>,
+    /// Index (in the arrival order) and release time of each vehicle that waited for space, by
+    /// increasing index.
+    releases: Vec<(usize, NonNegativeSeconds)>,
 }
 
 impl ArrivalCurve {
@@ -39,6 +45,17 @@ impl ArrivalCurve {
         self.pce.push(pce);
     }
 
+    /// Records the release of the vehicle with the given index (in the arrival order), which waited
+    /// for space on the edge, at the given time.
+    ///
+    /// The releases must be recorded by increasing index.
+    pub(crate) fn push_release(&mut self, index: usize, time: NonNegativeSeconds) {
+        debug_assert!(index < self.times.len());
+        debug_assert!(time >= self.times[index]);
+        debug_assert!(self.releases.last().is_none_or(|&(i, _)| i < index));
+        self.releases.push((index, time));
+    }
+
     /// Returns the arrival times of the curve (non-decreasing).
     pub(crate) fn times(&self) -> &[NonNegativeSeconds] {
         &self.times
@@ -47,6 +64,12 @@ impl ArrivalCurve {
     /// Returns the PCE of the vehicle arrived at each arrival time.
     pub(crate) fn pce(&self) -> &[PCE] {
         &self.pce
+    }
+
+    /// Returns the index (in the arrival order) and release time of each vehicle that waited for
+    /// space on the edge, by increasing index.
+    pub(crate) fn releases(&self) -> &[(usize, NonNegativeSeconds)] {
+        &self.releases
     }
 
     /// Returns the number of points of the curve (i.e., the number of vehicles recorded).
@@ -63,6 +86,7 @@ impl ArrivalCurve {
     pub(crate) fn shrink_to_fit(&mut self) {
         self.times.shrink_to_fit();
         self.pce.shrink_to_fit();
+        self.releases.shrink_to_fit();
     }
 }
 
@@ -86,16 +110,19 @@ impl IntoIterator for ArrivalCurves {
 }
 
 impl ArrivalCurves {
-    /// Logs the number of curves, number of points, total PCE and memory size of the curves.
+    /// Logs the number of curves, number of points, total PCE, number of vehicles that waited for
+    /// space and memory size of the curves.
     pub(crate) fn log_summary(&self) {
         let curves: Vec<_> = self.0.iter().flatten().collect();
         let nb_points: usize = curves.iter().map(|c| c.len()).sum();
+        let nb_releases: usize = curves.iter().map(|c| c.releases.len()).sum();
         let total_pce: f64 = curves.iter().map(|c| f64::from(c.total_pce())).sum();
         let point_size = size_of::<NonNegativeSeconds>() + size_of::<PCE>();
-        let memory = (nb_points * point_size) as f64 / 1e6;
+        let release_size = size_of::<(usize, NonNegativeSeconds)>();
+        let memory = (nb_points * point_size + nb_releases * release_size) as f64 / 1e6;
         info!(
             "Recorded arrival curves at {} edges: {nb_points} arrivals, \
-            {total_pce:.0} PCE, {memory:.1} MB",
+            {total_pce:.0} PCE, {nb_releases} waited for space, {memory:.1} MB",
             curves.len(),
         );
     }
@@ -129,5 +156,9 @@ mod tests {
         assert_eq!(curve.times, vec![s(10.), s(12.), s(12.), s(15.)]);
         assert_eq!(curve.pce, vec![pce(1.), pce(2.), pce(0.5), pce(1.)]);
         assert_eq!(curve.total_pce(), pce(4.5));
+        assert!(curve.releases().is_empty());
+        curve.push_release(1, s(14.));
+        curve.push_release(3, s(15.));
+        assert_eq!(curve.releases(), &[(1, s(14.)), (3, s(15.))]);
     }
 }

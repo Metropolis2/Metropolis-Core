@@ -25,6 +25,15 @@
 //! bottleneck at a given time waits the value of this function at that time, as the target delays
 //! are computed from the recorded functions (the waiting time of the probe is the mean waiting time
 //! of the vehicles arrived around it). It does not add any traffic.
+//!
+//! With spillback, a vehicle can also wait for space on the edge, until a vehicle leaves it (or
+//! until it is forced to enter). Such a vehicle is released when the bottleneck is already open, so
+//! it enters at the latest of its arrival time, the re-opening of the bottleneck and its release
+//! time. The release times are recorded with the arrival curves and held fixed: at the capacities of
+//! the simulated day, the surrogate reproduces the recorded waiting times exactly, and a change of
+//! capacity is propagated through the queue behind a vehicle held by space. The effect of the
+//! capacities on the release times (a larger capacity further on frees space earlier) is not
+//! modeled: the next simulated days include it.
 use std::collections::VecDeque;
 
 use num_traits::ConstZero;
@@ -89,8 +98,9 @@ impl RecordingGrid {
 enum Capacity {
     /// Calibrated edge: the total flow is the capacity of the category times the number of lanes.
     Calibrated { category: usize, lanes: Lanes },
-    /// Edge that is not calibrated, with a constant (finite) input flow.
-    Fixed(Flow),
+    /// Edge that is not calibrated, with a constant input flow (`None` if the flow is infinite, the
+    /// vehicles then only wait for space, with spillback).
+    Fixed(Option<Flow>),
 }
 
 /// Entry bottleneck of an edge of the target routes, with its recorded arrival curve.
@@ -118,10 +128,10 @@ impl Bottleneck {
     }
 
     /// Returns the total flow of the bottleneck, given the capacity of each category.
-    fn flow(&self, capacities: &[FlowPerLane]) -> Flow {
+    fn flow(&self, capacities: &[FlowPerLane]) -> Option<Flow> {
         match self.capacity {
             // Same operation as in `BottleneckFlows::from_capacities`.
-            Capacity::Calibrated { category, lanes } => capacities[category] * lanes,
+            Capacity::Calibrated { category, lanes } => Some(capacities[category] * lanes),
             Capacity::Fixed(flow) => flow,
         }
     }
@@ -162,15 +172,18 @@ impl WaitingTimes {
     }
 }
 
-/// Computes the waiting-time function of a bottleneck with the given flow, from its arrival curve.
+/// Computes the waiting-time function of a bottleneck with the given flow (`None` if infinite), from
+/// its arrival curve.
 ///
-/// A vehicle arriving at `t_k` waits `w_k = max(0, w_{k-1} + p_{k-1} / s - (t_k - t_{k-1}))`, where
-/// `p_{k-1}` is the PCE of the previous vehicle and `s` the flow. In a busy period starting at
-/// vehicle `b` (the last vehicle that did not wait), `w_k = sum_{b <= j < k} p_j / s - (t_k - t_b)`,
-/// so `dw_k / ds = -(w_k + t_k - t_b) / s`.
+/// A vehicle arriving at `t_k` waits `w_k = max(0, w_{k-1} + p_{k-1} / s - (t_k - t_{k-1}), r_k - t_k)`,
+/// where `p_{k-1}` is the PCE of the previous vehicle, `s` the flow and `r_k` the release time of the
+/// vehicle if it waited for space (spillback). In a busy period starting at vehicle `b` (the last
+/// vehicle that did not wait or that was held by space), which entered at `e_b` (`t_b` or `r_b`),
+/// `w_k = e_b + sum_{b <= j < k} p_j / s - t_k`, so `dw_k / ds = -(w_k + t_k - e_b) / s` (zero for
+/// the vehicle `b` itself).
 fn compute_waiting_times(
     curve: &ArrivalCurve,
-    flow: Flow,
+    flow: Option<Flow>,
     grid: &RecordingGrid,
     waiting_times: &mut WaitingTimes,
 ) {
@@ -195,7 +208,9 @@ fn compute_waiting_times(
     values.resize(nb_values, 0.);
     flow_derivatives.resize(nb_values, 0.);
     let mut weights = vec![0.; nb_values];
-    let s = f64::from(flow);
+    let s = flow.map_or(f64::INFINITY, f64::from);
+    let releases = curve.releases();
+    let mut next_release = 0;
     let mut wait = 0.;
     let mut busy_start = f64::from(times[0]);
     for k in 0..nb_arrivals {
@@ -205,6 +220,15 @@ fn compute_waiting_times(
             wait = (wait + f64::from(pce[k - 1]) / s - gap).max(0.);
             if wait == 0. {
                 busy_start = t;
+            }
+        }
+        if releases.get(next_release).is_some_and(|&(i, _)| i == k) {
+            let release = f64::from(releases[next_release].1);
+            next_release += 1;
+            if release - t > wait {
+                // The vehicle is held by space until its release.
+                wait = release - t;
+                busy_start = release;
             }
         }
         let derivative = -(wait + t - busy_start) / s;
@@ -289,7 +313,7 @@ struct ProbeEdge {
     /// Free-flow travel time of the edge, for the vehicle type of the calibration.
     free_flow_tt: NonNegativeSeconds,
     /// Index of the entry bottleneck of the edge in the surrogate model (`None` if the edge has no
-    /// arrival curve, i.e., its flow is infinite).
+    /// arrival curve, i.e., its flow is infinite and spillback is disabled).
     bottleneck: Option<usize>,
 }
 
@@ -377,10 +401,7 @@ impl Surrogate {
                     category,
                     lanes: edge.lanes(),
                 },
-                None => Capacity::Fixed(
-                    edge.constant_bottleneck_flow()
-                        .expect("Arrival curves are only recorded at edges with a finite flow"),
-                ),
+                None => Capacity::Fixed(edge.constant_bottleneck_flow()),
             };
             bottleneck_of[i] = Some(bottlenecks.len());
             bottlenecks.push(Bottleneck::new(curve, capacity, &grid));
@@ -624,7 +645,12 @@ mod tests {
             (35., 1.),
         ]);
         let mut waiting_times = WaitingTimes::default();
-        compute_waiting_times(&curve, Flow::new_unchecked(0.5), &grid, &mut waiting_times);
+        compute_waiting_times(
+            &curve,
+            Some(Flow::new_unchecked(0.5)),
+            &grid,
+            &mut waiting_times,
+        );
         // Waiting times 0, 1, 2, 0 and 0 (the vehicle at 35 is after the end of the period). The
         // busy period started at 0, so the derivatives are -(1 + 1) / 0.5 = -4 and
         // -(2 + 2) / 0.5 = -8. Weights at 0: 1, 0.9 and 0.8; at 10: 0.1, 0.2 and 1; at 20: 1.
@@ -648,7 +674,7 @@ mod tests {
         let mut simultaneous_times = WaitingTimes::default();
         compute_waiting_times(
             &simultaneous,
-            Flow::new_unchecked(0.5),
+            Some(Flow::new_unchecked(0.5)),
             &grid,
             &mut simultaneous_times,
         );
@@ -676,7 +702,12 @@ mod tests {
         // breakpoint, while it is positive.
         let grid = self::grid(50., 10.);
         let curve = self::curve(&[(0., 1.), (1., 1.), (2., 1.), (3., 1.)]);
-        compute_waiting_times(&curve, Flow::new_unchecked(0.1), &grid, &mut waiting_times);
+        compute_waiting_times(
+            &curve,
+            Some(Flow::new_unchecked(0.1)),
+            &grid,
+            &mut waiting_times,
+        );
         assert_eq!(waiting_times.values.len(), 4);
         let margin = <f64 as TTFNum>::MARGIN;
         let derivative = (0.1 * -100. + 0.2 * -200. + 0.3 * -300.) / 0.6;
@@ -693,6 +724,28 @@ mod tests {
             if let Some(derivative) = derivative {
                 assert_close(actual_derivative, derivative);
             }
+        }
+
+        // Spillback: the vehicle arrived at 0 is held by space until 5, so it waits 5 with
+        // derivative 0 and the busy period starts at 5. The next two vehicles wait 7 and 9, with
+        // derivatives -(7 + 0 - 5) / 0.5 = -4 and -8. The vehicle at 10 is released at 10.5, before
+        // the bottleneck re-opens: it waits 5 + 3 * 2 - 10 = 1, with derivative -3 / 0.5^2 = -12.
+        let grid = self::grid(30., 10.);
+        let mut curve = self::curve(&[(0., 1.), (0., 1.), (0., 1.), (10., 1.)]);
+        curve.push_release(0, s(5.));
+        curve.push_release(3, s(10.5));
+        compute_waiting_times(
+            &curve,
+            Some(Flow::new_unchecked(0.5)),
+            &grid,
+            &mut waiting_times,
+        );
+        assert_eq!(waiting_times.values.len(), 3);
+        let expected = [(7., -4.), (1., -12.), (0., 0.), (0., 0.)];
+        for (point, (value, derivative)) in expected.into_iter().enumerate() {
+            let (actual_value, actual_derivative) = waiting_times.at(point);
+            assert_close(actual_value, value);
+            assert_close(actual_derivative, derivative);
         }
     }
 
@@ -729,48 +782,70 @@ mod tests {
     #[test]
     fn entry_brute_force_test() {
         // Vehicles with various PCE, some arriving at the same time, then three vehicles after the
-        // end of the period.
-        let draws = pseudo_random(2 * 300);
+        // end of the period. With spillback, one vehicle in ten is released up to 40 s after its
+        // arrival (binding or not).
+        let draws = pseudo_random(3 * 300);
         let mut arrivals = Vec::with_capacity(303);
+        let mut releases = Vec::new();
         let mut time = 5.0;
-        for d in draws.chunks(2) {
+        for (i, d) in draws.chunks(3).enumerate() {
             arrivals.push((time, [0.5, 1., 2.][(d[1] * 3.) as usize]));
+            if d[2] < 0.1 {
+                releases.push((i, time + 400. * d[2]));
+            }
             if d[0] >= 0.1 {
                 time += 3. * d[0];
             }
         }
         arrivals.extend([(650., 1.), (700., 1.), (720., 1.)]);
         assert!(arrivals.windows(2).any(|w| w[0].0 == w[1].0));
-        let curve = curve(&arrivals);
         let (end, interval) = (600., 30.);
         let grid = grid(end, interval);
         let mut probes: Vec<f64> = (0..=50).map(|i| 15. * i as f64).collect();
         probes.extend(arrivals.iter().map(|&(t, _)| t));
         let mut waiting_times = WaitingTimes::default();
-        for flow in [0.3, 0.7, 1.5] {
-            // Vehicle-by-vehicle FIFO bottleneck, closed for `pce / flow` after each crossing.
-            let mut open_time = 0.0f64;
-            let records: Vec<_> = arrivals
-                .iter()
-                .map(|&(t, pce)| {
-                    let crossing = t.max(open_time);
-                    open_time = crossing + pce / flow;
-                    (t, crossing - t)
-                })
-                .collect();
-            let function = recorded_function(&records, end, interval);
-            compute_waiting_times(&curve, Flow::new_unchecked(flow), &grid, &mut waiting_times);
-            if flow == 0.3 {
-                // The queue does not clear before the end of the period.
-                assert!(waiting_times.at(grid.nb_points - 1).0 > 0.);
+        for spillback in [false, true] {
+            let mut curve = curve(&arrivals);
+            let mut release_of = vec![0.; arrivals.len()];
+            if spillback {
+                for &(i, release) in releases.iter() {
+                    curve.push_release(i, s(release));
+                    release_of[i] = release;
+                }
             }
-            for &t in probes.iter() {
-                let expected = t + function.eval(t);
-                let predicted = f64::from(entry(&waiting_times, &grid, s(t)).time);
-                assert!(
-                    (predicted - expected).abs() < 1e-9 * expected,
-                    "Flow {flow}, probe at {t}: {predicted} != {expected}"
-                );
+            for flow in [Some(0.3), Some(0.7), Some(1.5), None] {
+                // Vehicle-by-vehicle FIFO bottleneck, closed for `pce / flow` after each crossing,
+                // which a vehicle crosses at the earliest at its release.
+                let mut open_time = 0.0f64;
+                let records: Vec<_> = arrivals
+                    .iter()
+                    .zip(release_of.iter())
+                    .map(|(&(t, pce), &release)| {
+                        let crossing = t.max(open_time).max(release);
+                        open_time = crossing + flow.map_or(0., |f| pce / f);
+                        (t, crossing - t)
+                    })
+                    .collect();
+                let function = recorded_function(&records, end, interval);
+                let flow = flow.map(Flow::new_unchecked);
+                compute_waiting_times(&curve, flow, &grid, &mut waiting_times);
+                if flow == Some(Flow::new_unchecked(0.3)) {
+                    // The queue does not clear before the end of the period.
+                    assert!(waiting_times.at(grid.nb_points - 1).0 > 0.);
+                }
+                if spillback && flow.is_none() {
+                    // The vehicles only wait for space.
+                    assert!(waiting_times.values.iter().any(|&w| w > 0.));
+                }
+                for &t in probes.iter() {
+                    let expected = t + function.eval(t);
+                    let predicted = f64::from(entry(&waiting_times, &grid, s(t)).time);
+                    assert!(
+                        (predicted - expected).abs() <= 1e-9 * expected.max(1.),
+                        "Spillback {spillback}, flow {flow:?}, probe at {t}: \
+                        {predicted} != {expected}"
+                    );
+                }
             }
         }
     }
@@ -862,10 +937,12 @@ mod tests {
     /// Returns a surrogate model with 2 categories, pseudo-random arrival curves (about 0.5 PCE/s
     /// at each edge) at 3 edges (edge 0: 1 lane; edge 1: 2 lanes; edge 2: not calibrated) and 60
     /// probes with paths through the 3 edges, given the categories of edges 0 and 1.
-    fn random_surrogate(edge_categories: [usize; 2]) -> Surrogate {
+    /// With spillback, one vehicle in 20 is released 60 s after its arrival and the edge 2 has an
+    /// infinite flow (its vehicles only wait for space).
+    fn random_surrogate(edge_categories: [usize; 2], spillback: bool) -> Surrogate {
         let e0 = edge(0, 20., 1., None);
         let e1 = edge(1, 20., 2., None);
-        let e2 = edge(2, 20., 1., Some(0.5));
+        let e2 = edge(2, 20., 1., if spillback { None } else { Some(0.5) });
         let edges = [&e0, &e1, &e2];
         let categories = EdgeCategories {
             ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
@@ -888,7 +965,13 @@ mod tests {
                         (time, [0.5, 1., 2.][(d[1] * 3.) as usize])
                     })
                     .collect();
-                Some(curve(&arrivals))
+                let mut curve = curve(&arrivals);
+                if spillback {
+                    for (i, &(t, _)) in arrivals.iter().enumerate().step_by(20) {
+                        curve.push_release(i, s(t + 60.));
+                    }
+                }
+                Some(curve)
             })
             .collect();
         let vehicle = Vehicle::new(
@@ -922,7 +1005,13 @@ mod tests {
 
     #[test]
     fn jacobian_test() {
-        let mut surrogate = random_surrogate([0, 1]);
+        for spillback in [false, true] {
+            jacobian_check(random_surrogate([0, 1], spillback));
+        }
+    }
+
+    /// Checks the Jacobian of the surrogate against finite differences.
+    fn jacobian_check(mut surrogate: Surrogate) {
         let delays = |surrogate: &mut Surrogate, capacities: &[f64]| -> Vec<f64> {
             let capacities: Vec<_> = capacities
                 .iter()
@@ -977,7 +1066,7 @@ mod tests {
     fn recover_capacities_test() {
         // The target delays are the predicted delays at some capacities, which the optimization
         // must recover from other initial capacities.
-        let mut day = random_surrogate([0, 1]);
+        let mut day = random_surrogate([0, 1], false);
         let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
         let target_delays = day.predict(&capacities([0.4, 0.3]));
         let mut surrogate = MeanSurrogate::new(day);
@@ -1024,7 +1113,7 @@ mod tests {
     fn uncrossed_category_test() {
         // The edges of category 1 are crossed by no target route: with a penalty, its capacity
         // stays the same (instead of decreasing to the trust-region bound).
-        let mut day = random_surrogate([0, 0]);
+        let mut day = random_surrogate([0, 0], false);
         let start = [0.4, 0.3].map(FlowPerLane::new_unchecked);
         let target_delays = day.predict(&start);
         let mut surrogate = MeanSurrogate::new(day);
@@ -1058,7 +1147,7 @@ mod tests {
             delays.into_iter().map(f64::from).collect()
         };
         // A single day: the mean surrogate model is the surrogate model of the day.
-        let mut day = random_surrogate([0, 1]);
+        let mut day = random_surrogate([0, 1], false);
         let mut single = MeanSurrogate::new(day.clone());
         assert_eq!(
             single.predict_with_jacobian(&capacities),
@@ -1066,7 +1155,7 @@ mod tests {
         );
         // Two days (with different categories, so that their predictions differ): the mean of
         // their delays and Jacobian matrices.
-        let mut other = random_surrogate([1, 0]);
+        let mut other = random_surrogate([1, 0], false);
         let (delays_0, jacobian_0) = day.predict_with_jacobian(&capacities);
         let (delays_1, jacobian_1) = other.predict_with_jacobian(&capacities);
         let (delays_0, delays_1) = (to_f64(delays_0), to_f64(delays_1));
@@ -1103,8 +1192,8 @@ mod tests {
         assert_eq!(one.len(), 1);
         assert_eq!(one.predict_with_jacobian(&capacities).1, jacobian_1);
         // A category is crossed if it is crossed on some day.
-        let mut two = MeanSurrogate::new(random_surrogate([0, 0]));
-        two.push(random_surrogate([1, 1]), 2);
+        let mut two = MeanSurrogate::new(random_surrogate([0, 0], false));
+        two.push(random_surrogate([1, 1], false), 2);
         assert_eq!(two.crossed_categories(), vec![true, true]);
     }
 }

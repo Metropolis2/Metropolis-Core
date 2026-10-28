@@ -415,6 +415,13 @@ impl EdgeEntryState {
         current_time: NonNegativeSeconds,
         phantom: bool,
     ) -> Box<VehicleEvent> {
+        if let Some(arrivals) = self.arrivals.as_mut() {
+            // The vehicles enter in the order in which they arrived and the vehicles which are not
+            // in the queue have already entered, so the index of the released vehicle is the
+            // number of arrivals minus the number of queued vehicles.
+            let index = arrivals.len() - self.bottleneck.queue.len();
+            arrivals.push_release(index, current_time);
+        }
         let queued_vehicle = self
             .bottleneck
             .queue
@@ -741,12 +748,12 @@ impl RoadNetworkState {
 
     /// Enables the recording of the cumulative arrival curves at the entry of the given edges.
     ///
-    /// The edges whose entry bottleneck has an infinite flow are skipped (vehicles are never
-    /// delayed there).
+    /// Without spillback, the edges whose entry bottleneck has an infinite flow are skipped
+    /// (vehicles are never delayed there). With spillback, vehicles can wait for space at any edge.
     pub(crate) fn record_arrivals(&mut self, edges: impl IntoIterator<Item = EdgeIndex>) {
         for edge_index in edges {
             let entry = &mut self.graph[edge_index].entry;
-            if entry.bottleneck.flow.is_some() {
+            if entry.bottleneck.flow.is_some() || entry.available_length.is_some() {
                 entry.arrivals = Some(ArrivalCurve::default());
             }
         }

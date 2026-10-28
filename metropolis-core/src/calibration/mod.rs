@@ -95,6 +95,10 @@ pub fn run() -> Result<()> {
 /// expected network conditions of the next day: a new calibration started from them (as initial
 /// capacities and road-network conditions), with the next iteration counter and no warm-up day,
 /// continues this one (only the surrogate models of the previous days are lost).
+///
+/// With spillback, the surrogate models also hold fixed the times at which the vehicles waiting for
+/// space were released, which depend on the capacities further on: the optimization of a day does
+/// not see how a capacity changes the spillback upstream of it, but the next days do.
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
@@ -135,10 +139,17 @@ pub fn calibrate(
         })
         .count();
     if nb_infinite > 0 {
-        info!(
-            "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
-            arrival curve is recorded)"
-        );
+        if crate::network::road_network::parameters::spillback() {
+            info!(
+                "{nb_infinite} edges of the target routes have an infinite bottleneck flow (the \
+                vehicles only wait for space there)"
+            );
+        } else {
+            info!(
+                "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
+                arrival curve is recorded)"
+            );
+        }
     }
     let mut crossed = vec![false; categories.ids.len()];
     for &e in recorded_edges.iter() {
