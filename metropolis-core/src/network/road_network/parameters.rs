@@ -51,6 +51,10 @@ pub(crate) fn max_pending_duration() -> NonNegativeSeconds {
     read_global().max_pending_duration
 }
 
+pub(crate) fn gridlock_overflow() -> bool {
+    read_global().gridlock_overflow
+}
+
 pub(crate) fn constrain_inflow() -> bool {
     read_global().constrain_inflow
 }
@@ -90,6 +94,15 @@ pub struct RoadNetworkParameters {
     /// Maximum amount of time a vehicle can be pending to enter the next edge.
     #[serde(default)]
     pub max_pending_duration: NonNegativeSeconds,
+    /// If `true`, when a vehicle is forced to enter a full edge (after waiting for
+    /// `max_pending_duration`), all the other vehicles pending to enter the edge at that time can
+    /// also enter it, at the pace of the entry bottleneck, even if the edge is full.
+    /// These vehicles take room on the edge (the available length can become negative).
+    ///
+    /// If `false` (default), only the forced vehicle enters the edge, as a phantom vehicle that
+    /// does not take room on the edge.
+    #[serde(default)]
+    pub gridlock_overflow: bool,
     /// If `true` (default), the inflow of vehicles entering an edge is limiting by the edge's flow
     /// capacity.
     /// If `false`, only the edge's outflow is limited by its capacity.
@@ -130,6 +143,7 @@ impl Default for RoadNetworkParameters {
             spillback: false,
             backward_wave_speed: None,
             max_pending_duration: NonNegativeSeconds::ZERO,
+            gridlock_overflow: false,
             constrain_inflow: true,
             algorithm_type: AlgorithmType::Best,
             node_order_reuse_threshold: NonNegativeSeconds::ZERO,

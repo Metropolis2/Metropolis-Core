@@ -130,9 +130,9 @@ impl VehicleEvent {
     /// The vehicle was released after being pending to enter the edge.
     /// Updates the spillback status of the event.
     ///
-    /// If phantom = true, the vehicle was forced released.
-    pub(crate) fn set_pending_released(&mut self, phantom: bool) {
-        if phantom {
+    /// If forced = true, the vehicle was forced released.
+    pub(crate) fn set_pending_released(&mut self, forced: bool) {
+        if forced {
             self.spillback_status = SpillbackStatus::ForcedRelease;
         } else {
             self.spillback_status = SpillbackStatus::Spillback;

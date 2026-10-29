@@ -14,6 +14,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
   `nb_exponential` iterations, then `Linear`).
 - [INPUT] Add the `ExponentialThenExponential` learning model (`ExponentialUnadjusted` for the first
   `nb_exponential` iterations, then `Exponential`).
+- [INPUT] New road-network parameter `gridlock_overflow` (default: `false`). When `true`, a forced
+  release (after `max_pending_duration`) lets all the vehicles pending at the edge entry enter the
+  full edge, taking room on it, instead of releasing a single phantom vehicle.
 
 ### Changed
 

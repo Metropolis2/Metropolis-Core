@@ -221,6 +221,9 @@ struct EdgeEntryState {
     available_length: Option<AnyMeters>,
     /// Indicates the status of the edge entry (open, closed or pending).
     status: EdgeEntryStatus,
+    /// Number of queued vehicles that can still enter the edge even if it is full (after a forced
+    /// release, when `gridlock_overflow` is enabled).
+    overflow: usize,
     /// Cumulative arrival curve at the edge entry, or `None` if the arrivals are not recorded.
     arrivals: Option<ArrivalCurve>,
 }
@@ -242,6 +245,7 @@ impl EdgeEntryState {
             bottleneck: Bottleneck::new(flow),
             available_length,
             status: EdgeEntryStatus::Open,
+            overflow: 0,
             arrivals: None,
         }
     }
@@ -359,7 +363,7 @@ impl EdgeEntryState {
         current_time: NonNegativeSeconds,
     ) -> Option<Either<Box<VehicleEvent>, AgentIndex>> {
         if let Some(queued_vehicle) = self.bottleneck.queue.pop_front() {
-            if self.is_full() {
+            if self.is_full() && self.overflow == 0 {
                 // The edge is full, put the vehicle back in the queue (at the front).
                 let agent_id = queued_vehicle.event.agent_id();
                 self.status = EdgeEntryStatus::Full;
@@ -367,6 +371,9 @@ impl EdgeEntryState {
                 Some(Either::Right(agent_id))
             } else {
                 // A new vehicle is released, the bottleneck stays closed.
+                // The vehicles are released in FIFO order so this vehicle was part of the
+                // overflow (if any).
+                self.overflow = self.overflow.saturating_sub(1);
                 self.status = EdgeEntryStatus::Closed;
                 self.bottleneck
                     .record(queued_vehicle.entry_time, current_time);
@@ -376,14 +383,24 @@ impl EdgeEntryState {
             }
         } else {
             // The bottleneck is open and there is no vehicle in the queue: the edge can be opened.
+            debug_assert_eq!(self.overflow, 0);
             self.status = EdgeEntryStatus::Open;
             None
         }
     }
 
     /// Forces the release of the next pending vehicle.
+    ///
+    /// With `gridlock_overflow`, the vehicle takes room on the edge and all the other vehicles
+    /// currently in the queue will be able to enter the edge even if it is full. Otherwise, the
+    /// vehicle enters as a phantom.
     fn force_release(&mut self, current_time: NonNegativeSeconds) -> Box<VehicleEvent> {
-        self.release_next_queued_vehicle(current_time, true)
+        if super::parameters::gridlock_overflow() {
+            self.overflow = self.bottleneck.queue.len() - 1;
+            self.release_next_queued_vehicle(current_time, true, false)
+        } else {
+            self.release_next_queued_vehicle(current_time, true, true)
+        }
     }
 
     /// A vehicle has successfully exited the edge.
@@ -402,7 +419,7 @@ impl EdgeEntryState {
         if self.status == EdgeEntryStatus::Full && !self.is_full() {
             // The edge was full but it is not anymore.
             // Release the pending vehicle.
-            Some(self.release_next_queued_vehicle(current_time, false))
+            Some(self.release_next_queued_vehicle(current_time, false, false))
         } else {
             // The bottleneck is either open with no vehicle pending, closed or still full.
             None
@@ -410,9 +427,13 @@ impl EdgeEntryState {
     }
 
     /// Releases the next vehicle in the queue and returns its next event.
+    ///
+    /// `forced` is `true` if the vehicle is forced released (gridlock), `phantom` is `true` if the
+    /// vehicle does not take room on the edge.
     fn release_next_queued_vehicle(
         &mut self,
         current_time: NonNegativeSeconds,
+        forced: bool,
         phantom: bool,
     ) -> Box<VehicleEvent> {
         if let Some(arrivals) = self.arrivals.as_mut() {
@@ -432,7 +453,7 @@ impl EdgeEntryState {
             .record(queued_vehicle.entry_time, current_time);
         let mut event = queued_vehicle.event;
         event.set_time(current_time);
-        event.set_pending_released(phantom);
+        event.set_pending_released(forced);
         if phantom {
             event.set_phantom();
         }
