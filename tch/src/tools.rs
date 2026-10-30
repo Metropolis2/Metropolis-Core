@@ -565,11 +565,11 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                 .collect();
             match parameters.saving_format {
                 SavingFormat::Parquet => {
-                    write_parquet(&NodeOrder(&order_map), &parameters.output_directory)
+                    write_parquet(&NodeOrder(&order_map), &parameters.output_directory, false)
                         .context("Failed to write node order")?;
                 }
                 SavingFormat::CSV => {
-                    write_csv(&NodeOrder(&order_map), &parameters.output_directory)
+                    write_csv(&NodeOrder(&order_map), &parameters.output_directory, false)
                         .context("Failed to write node order")?;
                 }
                 SavingFormat::JSON => {
@@ -732,11 +732,11 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     info!("Saving results");
     match parameters.saving_format {
         SavingFormat::Parquet => {
-            write_parquet(&QueryResults(&results), &parameters.output_directory)
+            write_parquet(&QueryResults(&results), &parameters.output_directory, false)
                 .context("Failed to write results")?;
         }
         SavingFormat::CSV => {
-            write_csv(&QueryResults(&results), &parameters.output_directory)
+            write_csv(&QueryResults(&results), &parameters.output_directory, false)
                 .context("Failed to write results")?;
         }
         SavingFormat::JSON => {

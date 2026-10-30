@@ -56,14 +56,25 @@ pub(super) fn save(results: &CalibrationResults) -> Result<()> {
         output_dir,
         "next_factors",
     )?;
+    let float32 = crate::parameters::float32_output();
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            write_parquet(results, output_dir)?;
-            write_parquet_with_prefix(&results.next_exp_weights, output_dir, "net_cond_next_exp_")
+            write_parquet(results, output_dir, float32)?;
+            write_parquet_with_prefix(
+                &results.next_exp_weights,
+                output_dir,
+                "net_cond_next_exp_",
+                float32,
+            )
         }
         SavingFormat::CSV => {
-            write_csv(results, output_dir)?;
-            write_csv_with_prefix(&results.next_exp_weights, output_dir, "net_cond_next_exp_")
+            write_csv(results, output_dir, float32)?;
+            write_csv_with_prefix(
+                &results.next_exp_weights,
+                output_dir,
+                "net_cond_next_exp_",
+                float32,
+            )
         }
     }
 }

@@ -101,6 +101,10 @@ pub(crate) fn saving_format() -> SavingFormat {
     read_global().saving_format
 }
 
+pub(crate) fn float32_output() -> bool {
+    read_global().float32_output
+}
+
 pub(crate) fn only_compute_decisions() -> bool {
     read_global().only_compute_decisions
 }
@@ -119,6 +123,10 @@ fn default_departure_time_interval() -> PositiveSeconds {
 
 const fn default_update_ratio() -> f64 {
     1.0
+}
+
+const fn default_float32_output() -> bool {
+    true
 }
 
 /// Format to be used when saving files.
@@ -210,6 +218,10 @@ pub struct Parameters {
     /// Format to use for saving the output files.
     #[serde(default)]
     pub saving_format: SavingFormat,
+    /// If `true`, the float values of the output files are saved as 32-bit floats (instead of
+    /// 64-bit floats), to reduce the size of the files.
+    #[serde(default = "default_float32_output")]
+    pub float32_output: bool,
     /// If `true`, the simulation will compute the travel decisions for the first iteration, save
     /// them and stop immediately.
     #[serde(default)]
@@ -234,6 +246,7 @@ impl Default for Parameters {
             random_seed: None,
             nb_threads: 0,
             saving_format: Default::default(),
+            float32_output: true,
             only_compute_decisions: false,
             capacity_calibration: None,
         }

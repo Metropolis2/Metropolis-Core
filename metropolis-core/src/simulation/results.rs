@@ -420,9 +420,12 @@ impl PreDayAgentResults {
 /// The whole file is rewritten at each call so that it remains readable even if the simulation is
 /// interrupted before the last iteration.
 pub(crate) fn save_aggregate_results(sim_results: &SimulationResults) -> Result<()> {
+    let float32 = crate::parameters::float32_output();
     match crate::parameters::saving_format() {
-        SavingFormat::Parquet => write_parquet(sim_results, crate::parameters::output_directory()),
-        SavingFormat::CSV => write_csv(sim_results, crate::parameters::output_directory()),
+        SavingFormat::Parquet => {
+            write_parquet(sim_results, crate::parameters::output_directory(), float32)
+        }
+        SavingFormat::CSV => write_csv(sim_results, crate::parameters::output_directory(), float32),
     }
 }
 
@@ -445,33 +448,48 @@ pub fn save_iteration_results(
     std::fs::create_dir_all(&output_dir)
         .with_context(|| format!("Failed to create output directory `{:?}`", output_dir))?;
 
+    let float32 = crate::parameters::float32_output();
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            write_parquet(&iteration_results.agent_results, &output_dir)?;
+            write_parquet(&iteration_results.agent_results, &output_dir, float32)?;
             write_parquet_with_prefix(
                 &iteration_results.exp_weights,
                 &output_dir,
                 "net_cond_exp_",
+                float32,
             )?;
             write_parquet_with_prefix(
                 &iteration_results.sim_weights,
                 &output_dir,
                 "net_cond_sim_",
+                float32,
             )?;
             write_parquet_with_prefix(
                 &iteration_results.new_exp_weights,
                 &output_dir,
                 "net_cond_next_exp_",
+                float32,
             )?;
         }
         SavingFormat::CSV => {
-            write_csv(&iteration_results.agent_results, &output_dir)?;
-            write_csv_with_prefix(&iteration_results.exp_weights, &output_dir, "net_cond_exp_")?;
-            write_csv_with_prefix(&iteration_results.sim_weights, &output_dir, "net_cond_sim_")?;
+            write_csv(&iteration_results.agent_results, &output_dir, float32)?;
+            write_csv_with_prefix(
+                &iteration_results.exp_weights,
+                &output_dir,
+                "net_cond_exp_",
+                float32,
+            )?;
+            write_csv_with_prefix(
+                &iteration_results.sim_weights,
+                &output_dir,
+                "net_cond_sim_",
+                float32,
+            )?;
             write_csv_with_prefix(
                 &iteration_results.new_exp_weights,
                 &output_dir,
                 "net_cond_next_exp_",
+                float32,
             )?;
         }
     }
@@ -492,12 +510,21 @@ pub fn save_running_times(running_times: RunningTimes) -> Result<()> {
 
 /// Stores [AgentResults] in the given output directory.
 pub fn save_choices(agent_results: &PreDayAgentResults) -> Result<()> {
+    let float32 = crate::parameters::float32_output();
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
-            write_parquet(agent_results, crate::parameters::output_directory())?;
+            write_parquet(
+                agent_results,
+                crate::parameters::output_directory(),
+                float32,
+            )?;
         }
         SavingFormat::CSV => {
-            write_csv(agent_results, crate::parameters::output_directory())?;
+            write_csv(
+                agent_results,
+                crate::parameters::output_directory(),
+                float32,
+            )?;
         }
     }
     Ok(())

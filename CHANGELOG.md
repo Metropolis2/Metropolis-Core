@@ -17,6 +17,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] New road-network parameter `gridlock_overflow` (default: `false`). When `true`, a forced
   release (after `max_pending_duration`) lets all the vehicles pending at the edge entry enter the
   full edge, taking room on it, instead of releasing a single phantom vehicle.
+- [INPUT] [OUTPUT] New parameter `float32_output` (default: `true`). When `true`, the float values
+  of the CSV / Parquet output files are saved as 32-bit floats instead of 64-bit floats, which
+  reduces the size of the files (at the cost of a few milliseconds of precision for times). Set it
+  to `false` to keep 64-bit floats.
 
 ### Changed
 

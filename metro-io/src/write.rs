@@ -59,8 +59,14 @@ pub fn finish_batch(
 }
 
 /// Writes data that can be converted to arrow format as CSV files.
-pub fn write_csv<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
-    write_csv_with_prefix(data, output_dir, "")
+///
+/// If `float32` is `true`, Float64 columns are written as Float32 values.
+pub fn write_csv<D: ToArrow<J>, const J: usize>(
+    data: &D,
+    output_dir: &Path,
+    float32: bool,
+) -> Result<()> {
+    write_csv_with_prefix(data, output_dir, "", float32)
 }
 
 /// Writes data that can be converted to arrow format as CSV files.
@@ -68,18 +74,21 @@ pub fn write_csv<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> 
 /// The given prefix is prepended to the names of the saved files.
 ///
 /// As the CSV format does not support lists, List columns are written as strings.
+///
+/// If `float32` is `true`, Float64 columns are written as Float32 values.
 pub fn write_csv_with_prefix<D: ToArrow<J>, const J: usize>(
     data: &D,
     output_dir: &Path,
     prefix: &str,
+    float32: bool,
 ) -> Result<()> {
     for (name, maybe_batch) in D::names().into_iter().zip(data.to_arrow()?) {
         if let Some(batch) = maybe_batch {
             let filename = output_dir.join(format!("{prefix}{name}.csv"));
             let file = File::create(&filename)
                 .with_context(|| format!("Cannot create file `{filename:?}`"))?;
-            let batch = lists_to_strings(&batch)
-                .with_context(|| format!("Cannot convert lists to strings for `{filename:?}`"))?;
+            let batch = cast_columns(&batch, |dtype| csv_type(dtype, float32))
+                .with_context(|| format!("Cannot cast columns for `{filename:?}`"))?;
             Writer::new(file)
                 .write(&batch)
                 .with_context(|| format!("Cannot write batch to file `{filename:?}`"))?;
@@ -88,21 +97,40 @@ pub fn write_csv_with_prefix<D: ToArrow<J>, const J: usize>(
     Ok(())
 }
 
-/// Returns a copy of the [RecordBatch] where all the List columns are cast to strings.
-fn lists_to_strings(batch: &RecordBatch) -> Result<RecordBatch> {
+/// Returns the data type to which a column of the given data type is cast before being written as
+/// CSV (`None` if the column is written as is).
+///
+/// List columns are cast to strings and, if `float32` is `true`, Float64 columns are cast to
+/// Float32.
+fn csv_type(dtype: &DataType, float32: bool) -> Option<DataType> {
+    match dtype {
+        DataType::List(_) | DataType::LargeList(_) => Some(DataType::Utf8),
+        _ => float32_type(dtype, float32),
+    }
+}
+
+/// Returns `Some(DataType::Float32)` if `float32` is `true` and the given data type is Float64,
+/// `None` otherwise.
+fn float32_type(dtype: &DataType, float32: bool) -> Option<DataType> {
+    (float32 && dtype == &DataType::Float64).then_some(DataType::Float32)
+}
+
+/// Returns a copy of the [RecordBatch] where each column is cast to the data type returned by
+/// `to_type` (columns for which `to_type` returns `None` are left unchanged).
+fn cast_columns(
+    batch: &RecordBatch,
+    to_type: impl Fn(&DataType) -> Option<DataType>,
+) -> Result<RecordBatch> {
     let schema = batch.schema();
     let columns = schema
         .fields()
         .iter()
         .zip(batch.columns())
         .map(|(field, column)| {
-            let column = if matches!(
-                field.data_type(),
-                DataType::List(_) | DataType::LargeList(_)
-            ) {
+            let column = if let Some(dtype) = to_type(field.data_type()) {
                 cast_with_options(
                     column,
-                    &DataType::Utf8,
+                    &dtype,
                     &CastOptions {
                         safe: false,
                         ..Default::default()
@@ -118,23 +146,38 @@ fn lists_to_strings(batch: &RecordBatch) -> Result<RecordBatch> {
 }
 
 /// Writes data that can be converted to arrow format as Parquet files.
-pub fn write_parquet<D: ToArrow<J>, const J: usize>(data: &D, output_dir: &Path) -> Result<()> {
-    write_parquet_with_prefix(data, output_dir, "")
+///
+/// If `float32` is `true`, Float64 columns are written as Float32 columns.
+pub fn write_parquet<D: ToArrow<J>, const J: usize>(
+    data: &D,
+    output_dir: &Path,
+    float32: bool,
+) -> Result<()> {
+    write_parquet_with_prefix(data, output_dir, "", float32)
 }
 
 /// Writes data that can be converted to arrow format as Parquet files.
 ///
 /// The given prefix is prepended to the names of the saved files.
+///
+/// If `float32` is `true`, Float64 columns are written as Float32 columns.
 pub fn write_parquet_with_prefix<D: ToArrow<J>, const J: usize>(
     data: &D,
     output_dir: &Path,
     prefix: &str,
+    float32: bool,
 ) -> Result<()> {
     for (name, maybe_batch) in D::names().into_iter().zip(data.to_arrow()?) {
         if let Some(batch) = maybe_batch {
             let filename = output_dir.join(format!("{prefix}{name}.parquet"));
             let file = File::create(&filename)
                 .with_context(|| format!("Cannot create file `{filename:?}`"))?;
+            let batch = if float32 {
+                cast_columns(&batch, |dtype| float32_type(dtype, true))
+                    .with_context(|| format!("Cannot cast columns for `{filename:?}`"))?
+            } else {
+                batch
+            };
             let props = parquet_writer_properties(&batch.schema());
             let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))
                 .with_context(|| format!("Cannot create writer for file `{filename:?}`"))?;
@@ -305,8 +348,14 @@ mod tests {
             schema.field(2).data_type(),
             &DataType::new_list(DataType::Int64, true)
         );
-        let batch = lists_to_strings(&batch).unwrap();
-        assert_eq!(batch.schema().field(2).data_type(), &DataType::Utf8);
-        assert_eq!(batch.column(2).as_string::<i32>().value(0), "[-1, 2]");
+        let csv_batch = cast_columns(&batch, |dtype| csv_type(dtype, false)).unwrap();
+        assert_eq!(csv_batch.schema().field(1).data_type(), &DataType::Float64);
+        assert_eq!(csv_batch.schema().field(2).data_type(), &DataType::Utf8);
+        assert_eq!(csv_batch.column(2).as_string::<i32>().value(0), "[-1, 2]");
+        let csv_batch = cast_columns(&batch, |dtype| csv_type(dtype, true)).unwrap();
+        assert_eq!(csv_batch.schema().field(0).data_type(), &DataType::Utf8);
+        assert_eq!(csv_batch.schema().field(1).data_type(), &DataType::Float32);
+        assert!(csv_batch.schema().field(1).is_nullable());
+        assert_eq!(csv_batch.schema().field(2).data_type(), &DataType::Utf8);
     }
 }
