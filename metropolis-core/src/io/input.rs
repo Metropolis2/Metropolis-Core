@@ -23,7 +23,7 @@ use arrow::record_batch::RecordBatch;
 use log::info;
 use metro_io::read::{read_batch, required, Columns, GetValue};
 
-use crate::calibration::TargetRoute;
+use crate::calibration::{EdgeFactor, TargetRoute};
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::Leg;
 use crate::mode::Mode;
@@ -92,6 +92,13 @@ pub(crate) fn get_target_routes_from_file(path: &Path) -> Result<Vec<TargetRoute
     info!("Reading target routes");
     let batch = read_batch(path)?;
     read_target_routes(batch).context("Cannot parse target routes")
+}
+
+/// Reads the [EdgeFactor]s of the capacity calibration from a filename.
+pub(crate) fn get_capacity_factors_from_file(path: &Path) -> Result<Vec<EdgeFactor>> {
+    info!("Reading capacity factors");
+    let batch = read_batch(path)?;
+    read_capacity_factors(batch).context("Cannot parse capacity factors")
 }
 
 type LegMap = HashMap<(MetroId, MetroId), Vec<Leg>>;
@@ -307,7 +314,6 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
     let bottleneck_times = columns.list_f64(&["bottleneck_times"])?;
     let constant_travel_time = columns.f64(&["constant_travel_time"])?;
     let overtaking = columns.bool(&["overtaking"])?;
-    let edge_category = columns.id(&["edge_category"])?;
     columns.warn_unused();
     let n = columns.len();
     let mut edges = Vec::with_capacity(n);
@@ -332,7 +338,6 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
             bottleneck_times.get(i),
             constant_travel_time.get(i),
             overtaking.get(i),
-            edge_category.get(i),
         )
         .with_context(|| format!("Failed to parse edge {edge_id}"))?;
         if !unique_ids.insert(edge_id) {
@@ -440,4 +445,20 @@ fn read_target_routes(batch: RecordBatch) -> Result<Vec<TargetRoute>> {
         routes.push(route);
     }
     Ok(routes)
+}
+
+/// Reads an arrow `RecordBatch` with capacity-factors data and returns a `Vec` of [EdgeFactor].
+fn read_capacity_factors(batch: RecordBatch) -> Result<Vec<EdgeFactor>> {
+    let mut columns = Columns::new(batch);
+    let edge_id = columns.id(&["edge_id"])?;
+    let factor = columns.id(&["factor"])?;
+    columns.warn_unused();
+    (0..columns.len())
+        .map(|i| {
+            Ok(EdgeFactor {
+                edge_id: required(edge_id.get(i), "edge_id")?,
+                factor: required(factor.get(i), "factor")?,
+            })
+        })
+        .collect()
 }

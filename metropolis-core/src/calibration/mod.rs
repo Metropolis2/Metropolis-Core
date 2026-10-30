@@ -14,8 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Road-capacity calibration: bottleneck capacities are calibrated by edge category so that the
-//! queueing delays of target routes match observed delays.
+//! Road-capacity calibration: the bottleneck capacities of the edges are the product of a fixed
+//! capacity and of calibrated factors, so that the queueing delays of target routes match observed
+//! delays.
 mod optimizer;
 mod output;
 pub mod parameters;
@@ -28,9 +29,7 @@ use log::{info, warn};
 use num_traits::ConstZero;
 use petgraph::graph::EdgeIndex;
 
-use self::parameters::{
-    Capacities, CapacityCalibrationParameters, CategoryCapacity, IdValue, OptimizerParameters,
-};
+use self::parameters::{CapacityCalibrationParameters, Factor, IdValue, OptimizerParameters};
 use self::surrogate::{MeanSurrogate, RecordingGrid, Surrogate};
 use crate::hash::{HashMap, HashSet};
 use crate::mode::trip::results::LegTypeResults;
@@ -57,18 +56,25 @@ pub fn run() -> Result<()> {
         .as_ref()
         .expect("The target-routes file is not set");
     let target_routes = crate::io::read_target_routes(path)?;
-    let results = calibrate(params, target_routes)?;
+    let path = crate::parameters::input_files()
+        .capacity_factors
+        .as_ref()
+        .expect("The capacity-factors file is not set");
+    let edge_factors = crate::io::read_capacity_factors(path)?;
+    let results = calibrate(params, target_routes, &edge_factors)?;
     info!("Saving the results of the capacity calibration");
     output::save(&results)?;
     info!("Capacity calibration done");
     Ok(())
 }
 
-/// Calibrates the capacity of the edge categories, so that the queueing delays of the target
-/// routes reproduce their target delays.
+/// Calibrates the capacity factors, so that the queueing delays of the target routes reproduce
+/// their target delays.
 ///
-/// Returns the calibrated capacity of each category, with the id of the category (`None` for the
-/// single category used when no edge has a category), and the diagnostics of the calibration.
+/// The capacity per lane of an edge with factors (`edge_factors`) is the parameter `capacity` times
+/// the product of the values of its factors; the edges without a factor keep their input
+/// bottleneck flow. Returns the calibrated value of each factor, the resulting capacities of the
+/// edges, and the diagnostics of the calibration.
 ///
 /// The input of the simulation (parameters, population and network) must be initialized.
 ///
@@ -80,20 +86,20 @@ pub fn run() -> Result<()> {
 ///   those of the previous days, up to `surrogate_days` days;
 /// - the day is scored by the fit of the mean delays predicted by these surrogate models at the
 ///   capacities of the day (RMSE of the delays);
-/// - the capacities are optimized on these surrogate models, within a trust region equal to
+/// - the factors are optimized on these surrogate models, within a trust region equal to
 ///   `optimizer.trust_region_scale` times the weight of the day in the expected network conditions
 ///   of the next day, so that the capacities move only as fast as the expected network conditions
 ///   (and so the routes) can follow;
 /// - the next day is simulated with the optimized capacities.
 ///
-/// The calibration stops after `stopping.max_days` days, or when the mean capacities of the last
+/// The calibration stops after `stopping.max_days` days, or when the mean factors of the last
 /// `stopping.window` days differ by at most `stopping.tolerance` from those of the `window` days
-/// before (see [stable_capacities]). The calibrated capacities are the mean capacities of the last
-/// `window` days (after the warm-up days).
+/// before (see [stable_factors]). The calibrated factors are the mean factors of the last `window`
+/// days (after the warm-up days).
 ///
-/// The capacities are also optimized after the last day, and the results include them with the
+/// The factors are also optimized after the last day, and the results include them with the
 /// expected network conditions of the next day: a new calibration started from them (as initial
-/// capacities and road-network conditions), with the next iteration counter and no warm-up day,
+/// factors and road-network conditions), with the next iteration counter and no warm-up day,
 /// continues this one (only the surrogate models of the previous days are lost).
 ///
 /// With spillback, the surrogate models also hold fixed the times at which the vehicles waiting for
@@ -102,10 +108,11 @@ pub fn run() -> Result<()> {
 pub fn calibrate(
     params: &CapacityCalibrationParameters,
     target_routes: Vec<TargetRoute>,
+    edge_factors: &[EdgeFactor],
 ) -> Result<CalibrationResults> {
     check_population(crate::population::agents())?;
     let edges: Vec<_> = crate::network::road_network::iter_edges().collect();
-    let categories = EdgeCategories::new(&edges, &params.capacities)?;
+    let factors = CapacityFactors::new(&edges, params.capacity, &params.factors, edge_factors)?;
     check_loop_parameters(params)?;
     check_bottleneck_model(
         &edges,
@@ -121,7 +128,7 @@ pub fn calibrate(
         target_routes.len(),
         vehicle.id
     );
-    categories.log_summary();
+    factors.log_summary();
     let paths: Vec<Vec<EdgeIndex>> = target_routes
         .iter()
         .map(|r| {
@@ -135,7 +142,7 @@ pub fn calibrate(
     let nb_infinite = recorded_edges
         .iter()
         .filter(|&&e| {
-            categories.category_of(e).is_none() && !edges[e.index()].has_bottleneck_flow()
+            factors.combination_of(e).is_none() && !edges[e.index()].has_bottleneck_flow()
         })
         .count();
     if nb_infinite > 0 {
@@ -151,20 +158,22 @@ pub fn calibrate(
             );
         }
     }
-    let mut crossed = vec![false; categories.ids.len()];
+    let mut crossed = vec![false; factors.ids.len()];
     for &e in recorded_edges.iter() {
-        if let Some(cat) = categories.category_of(e) {
-            crossed[cat] = true;
+        if let Some(c) = factors.combination_of(e) {
+            factors.combinations[c]
+                .iter()
+                .for_each(|&j| crossed[j] = true);
         }
     }
     let uncrossed: Vec<_> = (0..crossed.len())
         .filter(|&j| !crossed[j])
-        .map(|j| categories.name(j))
+        .map(|j| factors.name(j))
         .collect();
     if !uncrossed.is_empty() {
         warn!(
-            "{} categories are crossed by no target route: their capacity is not calibrated (it \
-            keeps its initial value): {}",
+            "{} factors have no edge crossed by a target route: they are not calibrated (they \
+            keep their initial value): {}",
             uncrossed.len(),
             uncrossed.join(", ")
         );
@@ -174,7 +183,7 @@ pub fn calibrate(
         Surrogate::new(
             curves,
             &edges,
-            &categories,
+            &factors,
             vehicle,
             target_routes
                 .iter()
@@ -189,14 +198,14 @@ pub fn calibrate(
     let (preprocess_data, mut exp_weights, mut node_orders) = crate::simulation::prepare()?;
     let simulator = Simulator {
         edges: &edges,
-        categories: &categories,
+        factors: &factors,
         preprocess_data: &preprocess_data,
         recorded_edges: &recorded_edges,
     };
     let surrogate_days = params.surrogate_days as usize;
     let window = params.stopping.window as usize;
     let warmup_days = params.warmup_days as usize;
-    let mut capacities = categories.initial_capacities.clone();
+    let mut values = factors.initial.clone();
     // Surrogate models of the last `surrogate_days` simulated days.
     let mut surrogate: Option<MeanSurrogate> = None;
     // Predicted delays of the first day, at the initial capacities.
@@ -217,7 +226,7 @@ pub fn calibrate(
             &exp_weights,
             previous_results.as_ref(),
             iteration_counter,
-            &capacities,
+            &values,
             &mut node_orders,
         )?;
         let conditions_rmse = weights
@@ -237,7 +246,7 @@ pub fn calibrate(
             // Warm-up day: its routes are still far from the equilibrium (e.g., from free-flow
             // conditions, the first day takes the free-flow routes), so it does not join the
             // surrogate models.
-            info!("Day {day}: warm-up day, the capacities are not optimized");
+            info!("Day {day}: warm-up day, the factors are not optimized");
             days.push(DayResults {
                 day,
                 iteration_counter,
@@ -248,7 +257,7 @@ pub fn calibrate(
                 nb_surrogate_days: 0,
                 score: None,
                 score_noise: None,
-                capacities: capacities.clone(),
+                factors: values.clone(),
             });
         } else {
             let day_surrogate = new_surrogate(curves);
@@ -259,10 +268,10 @@ pub fn calibrate(
             }
             let surrogate = surrogate.as_mut().unwrap();
             // The day is scored by the fit of the mean predicted delays of the last days, at the
-            // capacities of the day.
+            // factors of the day.
             let nb_surrogate_days = surrogate.len();
             let start = Instant::now();
-            let day_delays = surrogate.predict_days(&capacities);
+            let day_delays = surrogate.predict_days(&values);
             let predicted_delays = mean_delays(&day_delays);
             let score = log_fit(
                 &format!(
@@ -282,9 +291,10 @@ pub fn calibrate(
             }
             if initial_predicted_delays.is_none() {
                 let start = Instant::now();
-                let (predicted_delays, jacobian) = surrogate.predict_with_jacobian(&capacities);
+                let (predicted_delays, jacobian) = surrogate.predict_with_jacobian(&values);
                 log_sensitivity(
-                    &categories,
+                    &factors,
+                    &values,
                     &target_delays,
                     &predicted_delays,
                     &jacobian,
@@ -303,35 +313,35 @@ pub fn calibrate(
                 nb_surrogate_days: nb_surrogate_days as u64,
                 score: Some(score),
                 score_noise,
-                capacities: capacities.clone(),
+                factors: values.clone(),
             });
             // The warm-up days are not part of the stability test.
-            let history: Vec<&[FlowPerLane]> = days[warmup_days..]
+            let history: Vec<&[f64]> = days[warmup_days..]
                 .iter()
-                .map(|d| d.capacities.as_slice())
+                .map(|d| d.factors.as_slice())
                 .collect();
-            if stable_capacities(&history, window, params.stopping.tolerance) {
-                stop_reason = "stable capacities";
+            if stable_factors(&history, window, params.stopping.tolerance) {
+                stop_reason = "stable factors";
                 stop = true;
             }
-            // The capacities are also optimized after the last day, so that the calibration can be
-            // resumed from its output (see [CalibrationResults::next_capacities]).
-            let optimized = optimizer::optimize_capacities(
+            // The factors are also optimized after the last day, so that the calibration can be
+            // resumed from its output (see [CalibrationResults::next_factors]).
+            let optimized = optimizer::optimize_factors(
                 surrogate,
                 &target_delays,
-                &capacities,
+                &values,
                 trust_region,
                 &params.optimizer,
-                &categories,
+                &factors,
             );
             info!(
                 "Day {day}: trust region {:.2}% (weight of the day in the expected network \
-            conditions {:.2}%), maximum change of the capacities {:.2}%",
+            conditions {:.2}%), maximum change of the factors {:.2}%",
                 100. * trust_region,
                 100. * learning_weight,
-                100. * max_relative_change(&capacities, &optimized),
+                100. * max_relative_change(&values, &optimized),
             );
-            capacities = optimized;
+            values = optimized;
         }
         let new_exp_weights =
             crate::simulation::run_day_to_day_model(&exp_weights, &weights, iteration_counter);
@@ -342,36 +352,30 @@ pub fn calibrate(
             break;
         }
     }
-    let next_capacities = capacities;
+    let next_values = values;
     let nb_days = days.len();
     // The warm-up days are not averaged (there is at least one day after them).
     let nb_averaged = window.min(nb_days - warmup_days);
-    let history: Vec<&[FlowPerLane]> = days.iter().map(|d| d.capacities.as_slice()).collect();
-    let capacities = mean_capacities(&history[nb_days - nb_averaged..]);
+    let history: Vec<&[f64]> = days.iter().map(|d| d.factors.as_slice()).collect();
+    let values = mean_factors(&history[nb_days - nb_averaged..]);
     info!(
         "Capacity calibration stopped ({stop_reason}) after {nb_days} days ({warmup_days} warm-up \
-        days); calibrated capacities: mean of the capacities of the last {nb_averaged} days"
+        days); calibrated factors: mean of the factors of the last {nb_averaged} days"
     );
-    for (j, (&capacity, &initial)) in capacities
-        .iter()
-        .zip(categories.initial_capacities.iter())
-        .enumerate()
-    {
+    for (j, (&value, &initial)) in values.iter().zip(factors.initial.iter()).enumerate() {
         info!(
-            "Category {}: calibrated capacity of {:.5} PCE/s per lane ({:.0} PCE/h per lane), \
-            {:+.2}% from the initial capacity",
-            categories.name(j),
-            f64::from(capacity),
-            3600. * f64::from(capacity),
-            100. * (f64::from(capacity) / f64::from(initial) - 1.),
+            "Factor {}: calibrated value {value:.5}, {:+.2}% from the initial value",
+            factors.name(j),
+            100. * (value / initial - 1.),
         );
     }
+    factors.log_capacity_range("Calibrated", &values);
     let surrogate = surrogate.as_mut().expect("At least one day is simulated");
     let start = Instant::now();
-    let predicted_delays = mean_delays(&surrogate.predict_days(&capacities));
+    let predicted_delays = mean_delays(&surrogate.predict_days(&values));
     log_fit(
         &format!(
-            "Mean of the surrogate models of the last {} days at the calibrated capacities",
+            "Mean of the surrogate models of the last {} days at the calibrated factors",
             surrogate.len()
         ),
         &target_delays,
@@ -392,38 +396,41 @@ pub fn calibrate(
             },
         )
         .collect();
+    let edge_capacities = edges
+        .iter()
+        .zip(factors.edge_capacities(&values))
+        .filter_map(|(e, c)| c.map(|c| (e.id(), c, c * e.lanes())))
+        .collect();
     Ok(CalibrationResults {
-        capacities: categories.ids.iter().copied().zip(capacities).collect(),
-        next_capacities: categories
-            .ids
-            .iter()
-            .copied()
-            .zip(next_capacities)
-            .collect(),
+        capacity: params.capacity,
+        factors: factors.ids.iter().copied().zip(values).collect(),
+        next_factors: factors.ids.iter().copied().zip(next_values).collect(),
+        edge_capacities,
         next_exp_weights: exp_weights,
         days,
         delays,
-        category_ids: categories.ids.clone(),
     })
 }
 
 /// Results of the capacity calibration.
 #[derive(Clone, Debug)]
 pub struct CalibrationResults {
-    /// Calibrated capacity of each category, with the id of the category (`None` for the single
-    /// category used when no edge has a category).
-    pub capacities: Vec<(Option<MetroId>, FlowPerLane)>,
-    /// Capacity of each category optimized after the last day, i.e., the capacities of the next
-    /// day if the calibration were continued (same format as `capacities`).
-    pub next_capacities: Vec<(Option<MetroId>, FlowPerLane)>,
+    /// Capacity per lane of an edge whose factors are all equal to 1 (parameter `capacity`).
+    pub capacity: FlowPerLane,
+    /// Calibrated value of each factor, with the id of the factor.
+    pub factors: Vec<(MetroId, f64)>,
+    /// Value of each factor optimized after the last day, i.e., the factors of the next day if the
+    /// calibration were continued (same format as `factors`).
+    pub next_factors: Vec<(MetroId, f64)>,
+    /// Calibrated capacity per lane and bottleneck flow (over all the lanes) of each edge with
+    /// factors, with the id of the edge.
+    pub edge_capacities: Vec<(OriginalEdgeId, FlowPerLane, Flow)>,
     /// Expected network conditions of the next day (learned from the last day).
     next_exp_weights: NetworkWeights,
     /// Diagnostics of each simulated day.
     days: Vec<DayResults>,
     /// Target and predicted delay of each target route.
     delays: Vec<TargetDelay>,
-    /// Id of each category (`None` for the single category used when no edge has a category).
-    category_ids: Vec<Option<MetroId>>,
 }
 
 /// Diagnostics of a simulated day of the capacity calibration.
@@ -440,20 +447,20 @@ struct DayResults {
     travel_time_gap: Option<f64>,
     /// Weight of the day in the expected network conditions of the next day.
     learning_weight: f64,
-    /// Trust region of the optimization after the day (maximum relative change of the
-    /// capacities, 0 on a warm-up day).
+    /// Trust region of the optimization after the day (maximum relative change of the factors, 0
+    /// on a warm-up day).
     trust_region: f64,
     /// Number of days whose surrogate models are averaged (the day and the previous ones, 0 on a
     /// warm-up day).
     nb_surrogate_days: u64,
     /// Score of the day: fit of the mean delays predicted by the surrogate models of the last days
-    /// (RMSE of the delays), at the capacities of the day (`None` on a warm-up day).
+    /// (RMSE of the delays), at the factors of the day (`None` on a warm-up day).
     score: Option<NonNegativeSeconds>,
     /// Noise of the mean predicted delays of the last days (`None` on a warm-up day or with a
     /// single day, see [noise_of_mean]).
     score_noise: Option<NonNegativeSeconds>,
-    /// Capacity of each category during the day.
-    capacities: Vec<FlowPerLane>,
+    /// Value of each factor during the day.
+    factors: Vec<f64>,
 }
 
 /// Target and predicted delays of a target route.
@@ -467,50 +474,46 @@ struct TargetDelay {
     target_delay: NonNegativeSeconds,
     /// Delay predicted on the first day, at the initial capacities.
     initial_predicted_delay: NonNegativeSeconds,
-    /// Mean delay predicted by the surrogate models of the last days, at the calibrated
-    /// capacities.
+    /// Mean delay predicted by the surrogate models of the last days, at the calibrated factors.
     predicted_delay: NonNegativeSeconds,
 }
 
-/// Returns the largest relative change from `old` to `new` capacities.
-fn max_relative_change(old: &[FlowPerLane], new: &[FlowPerLane]) -> f64 {
+/// Returns the largest relative change from `old` to `new` factors.
+fn max_relative_change(old: &[f64], new: &[f64]) -> f64 {
     old.iter()
         .zip(new)
-        .map(|(&o, &n)| (f64::from(n) / f64::from(o) - 1.).abs())
+        .map(|(&o, &n)| (n / o - 1.).abs())
         .fold(0., f64::max)
 }
 
-/// Returns the mean capacity of each category over the given days (capacities of each day).
-fn mean_capacities(capacities: &[&[FlowPerLane]]) -> Vec<FlowPerLane> {
-    let nb_days = capacities.len() as f64;
-    let nb_categories = capacities.first().map_or(0, |c| c.len());
-    (0..nb_categories)
-        .map(|j| {
-            let sum: f64 = capacities.iter().map(|c| f64::from(c[j])).sum();
-            FlowPerLane::new_unchecked(sum / nb_days)
-        })
+/// Returns the mean value of each factor over the given days (factors of each day).
+fn mean_factors(factors: &[&[f64]]) -> Vec<f64> {
+    let nb_days = factors.len() as f64;
+    let nb_factors = factors.first().map_or(0, |f| f.len());
+    (0..nb_factors)
+        .map(|j| factors.iter().map(|f| f[j]).sum::<f64>() / nb_days)
         .collect()
 }
 
-/// Returns `true` if the capacities are stable, given the capacities of each simulated day: the
-/// mean capacities of the last `window` days differ by at most `tolerance` (relative) from the
-/// mean capacities of the `window` days before, for all the categories.
+/// Returns `true` if the factors are stable, given the factors of each simulated day: the mean
+/// factors of the last `window` days differ by at most `tolerance` (relative) from the mean factors
+/// of the `window` days before, for all the factors.
 ///
 /// Returns `false` without tolerance or with less than `2·window` days.
-fn stable_capacities(capacities: &[&[FlowPerLane]], window: usize, tolerance: Option<f64>) -> bool {
+fn stable_factors(factors: &[&[f64]], window: usize, tolerance: Option<f64>) -> bool {
     let Some(tolerance) = tolerance else {
         return false;
     };
-    let nb_days = capacities.len();
+    let nb_days = factors.len();
     if window == 0 || nb_days < 2 * window {
         return false;
     }
-    let previous = mean_capacities(&capacities[nb_days - 2 * window..nb_days - window]);
-    let last = mean_capacities(&capacities[nb_days - window..]);
+    let previous = mean_factors(&factors[nb_days - 2 * window..nb_days - window]);
+    let last = mean_factors(&factors[nb_days - window..]);
     max_relative_change(&previous, &last) <= tolerance
 }
 
-/// Returns the noise of the mean of the delays predicted on several days (at the same capacities),
+/// Returns the noise of the mean of the delays predicted on several days (at the same factors),
 /// `√(σ̄²/K)`, where `K` is the number of days and `σ̄²` is the variance (with `K - 1` degrees of
 /// freedom) of the predicted delay of a target route between the days, averaged over the target
 /// routes.
@@ -681,20 +684,20 @@ fn log_fit(
     NonNegativeSeconds::new_unchecked(rmse)
 }
 
-/// Logs, for each category, the number of target routes whose predicted delay depends on its
-/// capacity and the change of the RMSE of the delays for a capacity 1% lower or higher, predicted
-/// by the linearized delays (from the Jacobian matrix of the predicted delays at the initial
-/// capacities), and the time taken by the surrogate model to compute the predicted delays and the
-/// Jacobian.
+/// Logs, for each factor, the number of target routes whose predicted delay depends on it and the
+/// change of the RMSE of the delays for a factor 1% lower or higher, predicted by the linearized
+/// delays (from the Jacobian matrix of the predicted delays at the given factors), and the time
+/// taken by the surrogate model to compute the predicted delays and the Jacobian.
 fn log_sensitivity(
-    categories: &EdgeCategories,
+    factors: &CapacityFactors,
+    values: &[f64],
     target_delays: &[NonNegativeSeconds],
     predicted_delays: &[NonNegativeSeconds],
     jacobian: &[f64],
     duration: Duration,
 ) {
-    let nb_categories = categories.initial_capacities.len();
-    debug_assert_eq!(jacobian.len(), target_delays.len() * nb_categories);
+    let nb_factors = values.len();
+    debug_assert_eq!(jacobian.len(), target_delays.len() * nb_factors);
     if target_delays.is_empty() {
         return;
     }
@@ -708,18 +711,18 @@ fn log_sensitivity(
         optimizer::rmse(optimizer::half_sum_of_squares(&shifted), shifted.len())
     };
     let initial_rmse = rmse(&mut std::iter::repeat(0.));
-    for (j, &capacity) in categories.initial_capacities.iter().enumerate() {
-        let column = || jacobian.iter().skip(j).step_by(nb_categories);
+    for (j, &value) in values.iter().enumerate() {
+        let column = || jacobian.iter().skip(j).step_by(nb_factors);
         let nb_routes = column().filter(|&&d| d != 0.).count();
-        // Change of the RMSE with the linearized delays d_n + J_nj * dc.
+        // Change of the RMSE with the linearized delays d_n + J_nj * df.
         let change = |relative_change: f64| {
-            let dc = relative_change * f64::from(capacity);
-            rmse(&mut column().map(|d| d * dc)) - initial_rmse
+            let df = relative_change * value;
+            rmse(&mut column().map(|d| d * df)) - initial_rmse
         };
         info!(
-            "Category {}: the delay of {nb_routes} target routes depends on its capacity; \
-            change of the RMSE (linearized) for a 1% lower / higher capacity: {:+.3} s / {:+.3} s",
-            categories.name(j),
+            "Factor {}: the delay of {nb_routes} target routes depends on it; change of the RMSE \
+            (linearized) for a 1% lower / higher factor: {:+.3} s / {:+.3} s",
+            factors.name(j),
             change(-0.01),
             change(0.01),
         );
@@ -744,14 +747,14 @@ struct SimulatedDay {
 struct Simulator<'a> {
     /// Edges of the road network, ordered by `EdgeIndex`.
     edges: &'a [&'a RoadEdge],
-    categories: &'a EdgeCategories,
+    factors: &'a CapacityFactors,
     preprocess_data: &'a PreprocessingData,
     /// Edges whose arrival curves are recorded (the edges of the target routes).
     recorded_edges: &'a HashSet<EdgeIndex>,
 }
 
 impl Simulator<'_> {
-    /// Simulates a day of the day-to-day model with the given capacities (by category): skims and
+    /// Simulates a day of the day-to-day model with the given factors: skims and
     /// pre-day model from the given expected network conditions (and the results of the previous
     /// day, if any), then within-day model, recording the arrival curves at the entry of the edges
     /// of the target routes.
@@ -762,7 +765,7 @@ impl Simulator<'_> {
         exp_weights: &NetworkWeights,
         previous_results: Option<&AgentResults>,
         iteration_counter: u32,
-        capacities: &[FlowPerLane],
+        values: &[f64],
         node_orders: &mut NodeOrderCache,
     ) -> Result<SimulatedDay> {
         info!("Computing skims");
@@ -777,7 +780,7 @@ impl Simulator<'_> {
             iteration_counter,
         )?;
         let mut rn_state =
-            RoadNetworkState::init(&self.categories.bottleneck_flows(self.edges, capacities));
+            RoadNetworkState::init(&self.factors.bottleneck_flows(self.edges, values));
         rn_state.record_arrivals(self.recorded_edges.iter().copied());
         info!("Running supply model");
         let mut state = crate::simulation::run_within_day_model(
@@ -843,6 +846,15 @@ impl TargetRoute {
     }
 }
 
+/// A factor of the capacity of an edge (a row of the input file `capacity_factors`).
+#[derive(Clone, Debug)]
+pub struct EdgeFactor {
+    /// Id of the edge.
+    pub edge_id: OriginalEdgeId,
+    /// Id of the factor.
+    pub factor: MetroId,
+}
+
 /// Returns an error if some agents cannot be used in the capacity calibration.
 ///
 /// The calibration requires agents with a single alternative and, for trips with road legs, an
@@ -891,30 +903,41 @@ fn check_population(agents: &[Agent]) -> Result<()> {
     Ok(())
 }
 
-/// Edge categories of the capacity calibration: all the edges in a category have the same
-/// capacity per lane.
+/// Capacity factors of the capacity calibration: the capacity per lane of an edge with factors is
+/// the fixed capacity `C` times the product of the values of its factors.
+///
+/// The edges with the same set of factors (a combination) have the same capacity per lane.
 #[derive(Clone, Debug)]
-struct EdgeCategories {
-    /// Id of each category (`None` for the single category used when no edge has a category).
-    ids: Vec<Option<MetroId>>,
-    /// Initial capacity of each category.
-    initial_capacities: Vec<FlowPerLane>,
-    /// Minimum capacity of each category (`None` if there is no minimum).
-    min_capacities: Vec<Option<FlowPerLane>>,
-    /// Maximum capacity of each category (`None` if there is no maximum).
-    max_capacities: Vec<Option<FlowPerLane>>,
-    /// Category index of each edge (`None` if the edge is not calibrated), indexed by `EdgeIndex`.
-    edge_categories: Vec<Option<usize>>,
+struct CapacityFactors {
+    /// Capacity per lane of an edge whose factors are all equal to 1.
+    capacity: FlowPerLane,
+    /// Id of each factor.
+    ids: Vec<MetroId>,
+    /// Initial value of each factor.
+    initial: Vec<f64>,
+    /// Minimum value of each factor (`None` if there is no minimum).
+    min: Vec<Option<f64>>,
+    /// Maximum value of each factor (`None` if there is no maximum).
+    max: Vec<Option<f64>>,
+    /// Factor indices of each combination (in increasing order, each combination is distinct).
+    combinations: Vec<Vec<usize>>,
+    /// Combination index of each edge (`None` if the edge has no factor and is not calibrated),
+    /// indexed by `EdgeIndex`.
+    edge_combinations: Vec<Option<usize>>,
 }
 
-impl EdgeCategories {
-    /// Creates the [EdgeCategories] from the edges of the road network (ordered by `EdgeIndex`)
-    /// and the capacities of the parameters (initial values and bounds).
+impl CapacityFactors {
+    /// Creates the [CapacityFactors] from the edges of the road network (ordered by `EdgeIndex`),
+    /// the parameters `capacity` and `factors` (initial values and bounds by factor id, 1 without
+    /// bounds for the factors that are not given) and the factors of the edges.
     ///
-    /// If no edge has a category, all the edges form a single category.
-    /// Otherwise, the edges without a category are not calibrated and keep their input bottleneck
-    /// flow.
-    fn new(edges: &[&RoadEdge], capacities: &Capacities) -> Result<Self> {
+    /// The edges without a factor are not calibrated and keep their input bottleneck flow.
+    fn new(
+        edges: &[&RoadEdge],
+        capacity: FlowPerLane,
+        params: &HashMap<String, Factor>,
+        edge_factors: &[EdgeFactor],
+    ) -> Result<Self> {
         let non_free_flow: Vec<_> = edges
             .iter()
             .filter(|e| !e.has_free_flow_speed())
@@ -928,21 +951,109 @@ impl EdgeCategories {
                 format_ids(non_free_flow),
             );
         }
-        let categories = if edges.iter().any(|e| e.category().is_some()) {
-            Self::from_edge_categories(edges, capacities)?
-        } else {
-            let &Capacities::Uniform(capacity) = capacities else {
-                bail!(
-                    "The parameter `capacities` must be a single value when no edge has a \
-                    category"
-                );
-            };
-            Self::from_capacities(vec![None], vec![capacity], vec![Some(0); edges.len()])?
+        if edge_factors.is_empty() {
+            bail!("The capacity calibration requires at least one capacity factor");
+        }
+        let edge_index: HashMap<OriginalEdgeId, usize> =
+            edges.iter().enumerate().map(|(i, e)| (e.id(), i)).collect();
+        let used_edges: HashSet<OriginalEdgeId> = edge_factors.iter().map(|f| f.edge_id).collect();
+        check_ids_exist(
+            &used_edges,
+            &edge_index.keys().copied().collect(),
+            "The following edge ids have capacity factors but are not part of the road network",
+        )?;
+        // Factors in order of first appearance, and factor indices of each edge.
+        let mut ids = Vec::new();
+        let mut index_of: HashMap<MetroId, usize> = HashMap::default();
+        let mut factors_of_edge: Vec<Vec<usize>> = vec![Vec::new(); edges.len()];
+        let mut duplicates = Vec::new();
+        for f in edge_factors {
+            let j = *index_of.entry(f.factor).or_insert_with(|| {
+                ids.push(f.factor);
+                ids.len() - 1
+            });
+            let factors = &mut factors_of_edge[edge_index[&f.edge_id]];
+            if factors.contains(&j) {
+                duplicates.push(format!("({}, {})", f.edge_id, f.factor));
+            } else {
+                factors.push(j);
+            }
+        }
+        if !duplicates.is_empty() {
+            bail!(
+                "{} capacity factors are given several times for the same edge: {}",
+                duplicates.len(),
+                format_ids(duplicates),
+            );
+        }
+        // The factors of the parameters are compared to the factors of the edges through their
+        // string representation.
+        let names: HashSet<String> = ids.iter().map(|id| id.to_string()).collect();
+        let keys: HashSet<String> = params.keys().cloned().collect();
+        check_ids_exist(
+            &keys,
+            &names,
+            "The following factors of the parameter `factors` are not the factor of any edge",
+        )?;
+        let values: Vec<Factor> = ids
+            .iter()
+            .map(|id| params.get(&id.to_string()).copied().unwrap_or_default())
+            .collect();
+        let outside: Vec<_> = ids
+            .iter()
+            .zip(values.iter())
+            .filter(|(_, f)| !f.is_within_bounds())
+            .map(|(id, _)| format!("`{id}`"))
+            .collect();
+        if !outside.is_empty() {
+            bail!(
+                "The initial value of {} factors is not between their minimum and maximum: {}",
+                outside.len(),
+                outside.join(", "),
+            );
+        }
+        let mut combinations = Vec::new();
+        let mut combination_index: HashMap<Vec<usize>, usize> = HashMap::default();
+        let mut time_dependent = Vec::new();
+        let edge_combinations: Vec<_> = factors_of_edge
+            .into_iter()
+            .zip(edges)
+            .map(|(mut factors, e)| {
+                if factors.is_empty() {
+                    if e.has_time_dependent_flow() {
+                        time_dependent.push(e.id());
+                    }
+                    return None;
+                }
+                factors.sort_unstable();
+                Some(*combination_index.entry(factors).or_insert_with_key(|f| {
+                    combinations.push(f.clone());
+                    combinations.len() - 1
+                }))
+            })
+            .collect();
+        if !time_dependent.is_empty() {
+            bail!(
+                "The capacity calibration does not support time-dependent bottleneck flows on \
+                edges without a capacity factor, but {} edges have one: {}",
+                time_dependent.len(),
+                format_ids(time_dependent),
+            );
+        }
+        let factors = Self {
+            capacity,
+            ids,
+            initial: values.iter().map(|f| f64::from(f.initial)).collect(),
+            min: values.iter().map(|f| f.min.map(f64::from)).collect(),
+            max: values.iter().map(|f| f.max.map(f64::from)).collect(),
+            combinations,
+            edge_combinations,
         };
+        factors.warn_identical_factors();
         let nb_ignored_flows = edges
             .iter()
-            .zip(categories.edge_categories.iter())
-            .filter(|(e, cat)| cat.is_some() && e.has_bottleneck_flow())
+            .zip(factors.edge_combinations.iter())
+            .filter(|(e, c)| c.is_some() && e.has_bottleneck_flow())
             .count();
         if nb_ignored_flows > 0 {
             warn!(
@@ -950,152 +1061,125 @@ impl EdgeCategories {
                 capacity is calibrated"
             );
         }
-        Ok(categories)
+        Ok(factors)
     }
 
-    /// Creates the [EdgeCategories] when some edges have a category.
-    fn from_edge_categories(edges: &[&RoadEdge], capacities: &Capacities) -> Result<Self> {
-        let mut ids = Vec::new();
-        let mut index_of: HashMap<MetroId, usize> = HashMap::default();
-        let mut time_dependent = Vec::new();
-        let edge_categories: Vec<_> = edges
-            .iter()
-            .map(|e| {
-                if let Some(cat) = e.category() {
-                    Some(*index_of.entry(cat).or_insert_with(|| {
-                        ids.push(Some(cat));
-                        ids.len() - 1
-                    }))
-                } else {
-                    if e.has_time_dependent_flow() {
-                        time_dependent.push(e.id());
-                    }
-                    None
-                }
-            })
-            .collect();
-        if !time_dependent.is_empty() {
-            bail!(
-                "The capacity calibration does not support time-dependent bottleneck flows on \
-                edges without a category, but {} edges have one: {}",
-                time_dependent.len(),
-                format_ids(time_dependent),
-            );
-        }
-        let capacities = match capacities {
-            &Capacities::Uniform(capacity) => vec![capacity; ids.len()],
-            Capacities::ByCategory(capacities) => {
-                // The categories of the parameters are compared to the categories of the edges
-                // through their string representation.
-                let names: HashSet<String> = ids.iter().map(|id| id.unwrap().to_string()).collect();
-                let keys: HashSet<String> = capacities.keys().cloned().collect();
-                check_ids_exist(
-                    &names,
-                    &keys,
-                    "The following edge categories have no value in the parameter `capacities`",
-                )?;
-                check_ids_exist(
-                    &keys,
-                    &names,
-                    "The following categories of the parameter `capacities` are not the category \
-                    of any edge",
-                )?;
-                ids.iter()
-                    .map(|id| capacities[&id.unwrap().to_string()])
-                    .collect()
+    /// Warns about the factors that are on exactly the same edges (only their product is
+    /// identified).
+    fn warn_identical_factors(&self) {
+        let mut edges_of_factor: Vec<Vec<usize>> = vec![Vec::new(); self.ids.len()];
+        for (i, c) in self.edge_combinations.iter().enumerate() {
+            if let &Some(c) = c {
+                self.combinations[c]
+                    .iter()
+                    .for_each(|&j| edges_of_factor[j].push(i));
             }
-        };
-        Self::from_capacities(ids, capacities, edge_categories)
-    }
-
-    /// Creates the [EdgeCategories] from the id and the capacity of each category and the
-    /// category index of each edge.
-    ///
-    /// Returns an error if an initial capacity is not between the bounds of its category.
-    fn from_capacities(
-        ids: Vec<Option<MetroId>>,
-        capacities: Vec<CategoryCapacity>,
-        edge_categories: Vec<Option<usize>>,
-    ) -> Result<Self> {
-        let categories = Self {
-            ids,
-            initial_capacities: capacities.iter().map(|c| c.initial).collect(),
-            min_capacities: capacities.iter().map(|c| c.min).collect(),
-            max_capacities: capacities.iter().map(|c| c.max).collect(),
-            edge_categories,
-        };
-        let outside: Vec<_> = capacities
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| !c.is_within_bounds())
-            .map(|(i, _)| categories.name(i))
-            .collect();
-        if !outside.is_empty() {
-            bail!(
-                "The initial capacity of {} categories is not between their minimum and maximum \
-                capacities: {}",
-                outside.len(),
-                outside.join(", "),
+        }
+        let mut groups: HashMap<&[usize], Vec<String>> = HashMap::default();
+        for (j, edges) in edges_of_factor.iter().enumerate() {
+            groups
+                .entry(edges.as_slice())
+                .or_default()
+                .push(self.name(j));
+        }
+        let mut groups: Vec<_> = groups.into_values().filter(|g| g.len() > 1).collect();
+        groups.sort();
+        for group in groups {
+            warn!(
+                "The factors {} are on the same edges: only their product is identified",
+                group.join(", ")
             );
         }
-        Ok(categories)
+    }
+
+    /// Returns the capacity per lane of each combination, given the value of each factor.
+    fn combination_capacities(&self, values: &[f64]) -> Vec<FlowPerLane> {
+        debug_assert_eq!(values.len(), self.ids.len());
+        let capacity = f64::from(self.capacity);
+        self.combinations
+            .iter()
+            .map(|c| {
+                FlowPerLane::new_unchecked(capacity * c.iter().map(|&j| values[j]).product::<f64>())
+            })
+            .collect()
     }
 
     /// Returns the capacity per lane of each edge (`None` if the edge is not calibrated), given
-    /// the capacity of each category.
-    fn edge_capacities<'a>(
-        &'a self,
-        capacities: &'a [FlowPerLane],
-    ) -> impl Iterator<Item = Option<FlowPerLane>> + 'a {
-        debug_assert_eq!(capacities.len(), self.ids.len());
-        self.edge_categories
+    /// the value of each factor.
+    fn edge_capacities(&self, values: &[f64]) -> impl Iterator<Item = Option<FlowPerLane>> + '_ {
+        let capacities = self.combination_capacities(values);
+        self.edge_combinations
             .iter()
-            .map(|cat| cat.map(|i| capacities[i]))
+            .map(move |c| c.map(|c| capacities[c]))
     }
 
-    /// Returns the category index of the given edge (`None` if the edge is not calibrated).
-    fn category_of(&self, edge: EdgeIndex) -> Option<usize> {
-        self.edge_categories[edge.index()]
+    /// Returns the combination index of the given edge (`None` if the edge is not calibrated).
+    fn combination_of(&self, edge: EdgeIndex) -> Option<usize> {
+        self.edge_combinations[edge.index()]
     }
 
-    /// Returns the bottleneck flows of the edges (ordered by `EdgeIndex`), given the capacity of
-    /// each category (the edges that are not calibrated keep their input flow).
-    fn bottleneck_flows(&self, edges: &[&RoadEdge], capacities: &[FlowPerLane]) -> BottleneckFlows {
-        BottleneckFlows::from_capacities(edges, self.edge_capacities(capacities))
+    /// Returns the bottleneck flows of the edges (ordered by `EdgeIndex`), given the value of each
+    /// factor (the edges that are not calibrated keep their input flow).
+    fn bottleneck_flows(&self, edges: &[&RoadEdge], values: &[f64]) -> BottleneckFlows {
+        BottleneckFlows::from_capacities(edges, self.edge_capacities(values))
     }
 
-    /// Returns the name of the given category, for the logs (its id, or "all edges" for the single
-    /// category used when no edge has a category).
-    fn name(&self, category: usize) -> String {
-        self.ids[category].map_or_else(|| "all edges".to_owned(), |id| format!("`{id}`"))
+    /// Returns the name of the given factor, for the logs.
+    fn name(&self, factor: usize) -> String {
+        format!("`{}`", self.ids[factor])
     }
 
-    /// Logs the number of edges, the initial capacity and the bounds of each category.
+    /// Logs the range of the capacities per lane of the calibrated edges, given the value of each
+    /// factor, with the given description of the values.
+    fn log_capacity_range(&self, description: &str, values: &[f64]) {
+        let (min, max) = self
+            .combination_capacities(values)
+            .iter()
+            .fold((f64::INFINITY, 0.0f64), |(min, max), &c| {
+                (min.min(f64::from(c)), max.max(f64::from(c)))
+            });
+        info!(
+            "{description} capacities of the calibrated edges: from {:.0} to {:.0} PCE/h per lane",
+            3600. * min,
+            3600. * max,
+        );
+    }
+
+    /// Logs the number of edges, the initial value and the bounds of each factor, the number of
+    /// combinations and the range of the initial capacities.
     fn log_summary(&self) {
         let mut nb_edges = vec![0; self.ids.len()];
         let mut nb_uncalibrated_edges = 0;
-        for &cat in self.edge_categories.iter() {
-            if let Some(i) = cat {
-                nb_edges[i] += 1;
+        for &c in self.edge_combinations.iter() {
+            if let Some(c) = c {
+                self.combinations[c].iter().for_each(|&j| nb_edges[j] += 1);
             } else {
                 nb_uncalibrated_edges += 1;
             }
         }
-        for (i, (capacity, n)) in self.initial_capacities.iter().zip(nb_edges).enumerate() {
-            let bound = |name: &str, value: Option<FlowPerLane>| {
-                value.map_or_else(String::new, |v| format!(", {name} {}", f64::from(v)))
+        info!(
+            "Capacity of {} PCE/s per lane ({:.0} PCE/h per lane) times the factors of the edges",
+            f64::from(self.capacity),
+            3600. * f64::from(self.capacity),
+        );
+        for (j, n) in nb_edges.into_iter().enumerate() {
+            let bound = |name: &str, value: Option<f64>| {
+                value.map_or_else(String::new, |v| format!(", {name} {v}"))
             };
             info!(
-                "Category {}: {n} edges, initial capacity of {} PCE/s per lane{}{}",
-                self.name(i),
-                f64::from(capacity),
-                bound("minimum", self.min_capacities[i]),
-                bound("maximum", self.max_capacities[i]),
+                "Factor {}: {n} edges, initial value {}{}{}",
+                self.name(j),
+                self.initial[j],
+                bound("minimum", self.min[j]),
+                bound("maximum", self.max[j]),
             );
         }
+        info!("{} combinations of factors", self.combinations.len());
+        self.log_capacity_range("Initial", &self.initial);
         if nb_uncalibrated_edges > 0 {
             info!(
-                "{nb_uncalibrated_edges} edges without a category keep their input bottleneck flow"
+                "{nb_uncalibrated_edges} edges without a capacity factor keep their input \
+                bottleneck flow"
             );
         }
     }
@@ -1247,14 +1331,12 @@ mod tests {
         assert!(msg.contains("`pre_compute_route = false`: 0"), "{msg}");
     }
 
-    /// Creates an edge with the given id, speed-density function, (per-lane) bottleneck flows and
-    /// category.
+    /// Creates an edge with the given id, speed-density function and (per-lane) bottleneck flows.
     fn edge(
         id: i64,
         speed_density_type: &str,
         bottleneck_flow: Option<f64>,
         time_dependent_flows: bool,
-        category: Option<&str>,
     ) -> RoadEdge {
         let (times, flows) = if time_dependent_flows {
             (Some(vec![0.0, 10.0]), Some(vec![1.0, 2.0]))
@@ -1277,7 +1359,6 @@ mod tests {
             times,
             None,
             None,
-            category.map(MetroId::from),
         )
         .unwrap()
     }
@@ -1286,152 +1367,149 @@ mod tests {
         FlowPerLane::try_from(value).unwrap()
     }
 
-    fn category_capacity(value: f64) -> CategoryCapacity {
-        CategoryCapacity {
-            initial: capacity(value),
-            min: None,
-            max: None,
-        }
+    /// Returns the factors of the edges, from `(edge id, factor id)` pairs.
+    fn edge_factors(pairs: &[(i64, &str)]) -> Vec<EdgeFactor> {
+        pairs
+            .iter()
+            .map(|&(edge_id, factor)| EdgeFactor {
+                edge_id: MetroId::from(edge_id),
+                factor: MetroId::from(factor),
+            })
+            .collect()
     }
 
-    fn uniform(value: f64) -> Capacities {
-        Capacities::Uniform(category_capacity(value))
-    }
-
-    fn by_category(values: &[(&str, f64)]) -> Capacities {
-        Capacities::ByCategory(
-            values
-                .iter()
-                .map(|&(name, value)| (name.to_owned(), category_capacity(value)))
-                .collect(),
-        )
+    /// Returns the `factors` parameter from `(factor id, initial, min, max)` values.
+    fn params(values: &[(&str, f64, Option<f64>, Option<f64>)]) -> HashMap<String, Factor> {
+        let num = |v: f64| PositiveNum::try_from(v).unwrap();
+        values
+            .iter()
+            .map(|&(id, initial, min, max)| {
+                (
+                    id.to_owned(),
+                    Factor {
+                        initial: num(initial),
+                        min: min.map(num),
+                        max: max.map(num),
+                    },
+                )
+            })
+            .collect()
     }
 
     #[test]
-    fn edge_categories_test() {
-        // No category: all the edges form a single category.
-        let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
-        let e1 = edge(1, "FreeFlow", None, true, None);
-        let edges = [&e0, &e1];
-        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
-        assert_eq!(categories.ids, vec![None]);
-        assert_eq!(categories.initial_capacities, vec![capacity(0.5)]);
-        assert_eq!(categories.edge_categories, vec![Some(0), Some(0)]);
-        // Capacities by category are not allowed when no edge has a category.
-        assert!(EdgeCategories::new(&edges, &by_category(&[("a", 0.5)])).is_err());
-
-        // With categories (in order of first appearance); edges without a category are not
-        // calibrated.
-        let e0 = edge(0, "FreeFlow", Some(1.0), false, Some("b"));
-        let e1 = edge(1, "FreeFlow", None, false, None);
-        let e2 = edge(2, "FreeFlow", None, true, Some("a"));
-        let e3 = edge(3, "FreeFlow", Some(1.0), false, Some("b"));
+    fn capacity_factors_test() {
+        let e0 = edge(0, "FreeFlow", Some(1.0), false);
+        let e1 = edge(1, "FreeFlow", None, false);
+        let e2 = edge(2, "FreeFlow", None, true);
+        let e3 = edge(3, "FreeFlow", Some(1.0), false);
         let edges = [&e0, &e1, &e2, &e3];
-        let categories =
-            EdgeCategories::new(&edges, &by_category(&[("a", 0.5), ("b", 0.6)])).unwrap();
+        let rows = edge_factors(&[(0, "b"), (2, "a"), (3, "b"), (2, "c"), (0, "a")]);
+        let new = |params: &HashMap<String, Factor>, rows: &[EdgeFactor]| {
+            CapacityFactors::new(&edges, capacity(0.5), params, rows)
+        };
+        // Factors in order of first appearance, default value 1; edges without a factor are not
+        // calibrated; edges with the same factors share a combination (whatever the order).
+        let factors = new(&HashMap::default(), &rows).unwrap();
+        assert_eq!(factors.capacity, capacity(0.5));
         assert_eq!(
-            categories.ids,
-            vec![Some(MetroId::from("b")), Some(MetroId::from("a"))]
+            factors.ids,
+            vec![MetroId::from("b"), MetroId::from("a"), MetroId::from("c")]
         );
+        assert_eq!(factors.initial, vec![1.; 3]);
+        assert_eq!(factors.min, vec![None; 3]);
+        assert_eq!(factors.max, vec![None; 3]);
+        assert_eq!(factors.combinations, vec![vec![0, 1], vec![1, 2], vec![0]]);
         assert_eq!(
-            categories.initial_capacities,
-            vec![capacity(0.6), capacity(0.5)]
+            factors.edge_combinations,
+            vec![Some(0), None, Some(1), Some(2)]
         );
+        // Same combination for edge 3 as for edge 0.
+        let rows_ba = edge_factors(&[(0, "b"), (0, "a"), (2, "c"), (3, "a"), (3, "b")]);
+        let factors = new(&HashMap::default(), &rows_ba).unwrap();
+        assert_eq!(factors.combinations, vec![vec![0, 1], vec![2]]);
         assert_eq!(
-            categories.edge_categories,
+            factors.edge_combinations,
             vec![Some(0), None, Some(1), Some(0)]
         );
-        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
-        assert_eq!(categories.initial_capacities, vec![capacity(0.5); 2]);
-        assert_eq!(categories.min_capacities, vec![None; 2]);
-        assert_eq!(categories.max_capacities, vec![None; 2]);
 
-        // Bounds by category.
-        let bounded = |initial: f64, min: Option<f64>, max: Option<f64>| CategoryCapacity {
-            initial: capacity(initial),
-            min: min.map(capacity),
-            max: max.map(capacity),
-        };
-        let capacities = |a: CategoryCapacity, b: CategoryCapacity| {
-            Capacities::ByCategory(
-                [("a".to_owned(), a), ("b".to_owned(), b)]
-                    .into_iter()
-                    .collect(),
-            )
-        };
-        let categories = EdgeCategories::new(
-            &edges,
-            &capacities(bounded(0.5, Some(0.1), None), bounded(0.6, None, Some(0.8))),
+        // Initial values and bounds from the parameters.
+        let factors = new(
+            &params(&[("a", 0.5, Some(0.1), None), ("c", 0.8, None, Some(1.0))]),
+            &rows,
         )
         .unwrap();
-        assert_eq!(categories.min_capacities, vec![None, Some(capacity(0.1))]);
-        assert_eq!(categories.max_capacities, vec![Some(capacity(0.8)), None]);
-        // The initial capacities must be within the bounds.
-        let msg = EdgeCategories::new(
-            &edges,
-            &capacities(bounded(0.5, Some(0.6), None), bounded(0.6, None, Some(0.5))),
+        assert_eq!(factors.initial, vec![1., 0.5, 0.8]);
+        assert_eq!(factors.min, vec![None, Some(0.1), None]);
+        assert_eq!(factors.max, vec![None, None, Some(1.0)]);
+        // The initial values must be within the bounds.
+        let msg = new(
+            &params(&[("a", 0.5, Some(0.6), None), ("b", 0.6, None, Some(0.5))]),
+            &rows,
         )
         .unwrap_err()
         .to_string();
         assert!(
-            msg.ends_with(
-                "2 categories is not between their minimum and maximum capacities: `b`, `a`"
-            ),
+            msg.ends_with("2 factors is not between their minimum and maximum: `b`, `a`"),
             "{msg}"
         );
-
-        // Missing or extra category in the parameters.
-        let msg = EdgeCategories::new(&edges, &by_category(&[("a", 0.5)]))
+        // A factor of the parameters must be the factor of some edge.
+        let msg = new(&params(&[("d", 0.5, None, None)]), &rows)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.ends_with("not the factor of any edge: d"), "{msg}");
+        // The edges must exist, a factor is given once per edge and there is at least one factor.
+        let msg = new(&HashMap::default(), &edge_factors(&[(0, "a"), (9, "a")]))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.ends_with("not part of the road network: 9"), "{msg}");
+        let msg = new(&HashMap::default(), &edge_factors(&[(0, "a"), (0, "a")]))
             .unwrap_err()
             .to_string();
         assert!(
-            msg.ends_with("no value in the parameter `capacities`: b"),
+            msg.ends_with("several times for the same edge: (0, a)"),
             "{msg}"
         );
-        let msg = EdgeCategories::new(&edges, &by_category(&[("a", 0.5), ("b", 0.6), ("c", 0.7)]))
-            .unwrap_err()
-            .to_string();
-        assert!(msg.ends_with("not the category of any edge: c"), "{msg}");
+        assert!(new(&HashMap::default(), &[]).is_err());
 
-        // Time-dependent flows are not allowed on the edges without a category.
-        let e1 = edge(1, "FreeFlow", None, true, None);
-        let edges = [&e0, &e1];
-        let msg = EdgeCategories::new(&edges, &uniform(0.5))
+        // Time-dependent flows are not allowed on the edges without a factor.
+        let msg = new(&HashMap::default(), &edge_factors(&[(0, "a")]))
             .unwrap_err()
             .to_string();
-        assert!(msg.contains("1 edges have one: 1"), "{msg}");
+        assert!(msg.contains("1 edges have one: 2"), "{msg}");
 
         // All the edges must have a `FreeFlow` speed-density function.
-        let e1 = edge(1, "Bottleneck", None, false, Some("b"));
+        let e1 = edge(1, "Bottleneck", None, false);
         let edges = [&e0, &e1];
-        let msg = EdgeCategories::new(&edges, &uniform(0.5))
-            .unwrap_err()
-            .to_string();
+        let msg = CapacityFactors::new(
+            &edges,
+            capacity(0.5),
+            &HashMap::default(),
+            &edge_factors(&[(0, "a")]),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(msg.contains("1 edges have another function: 1"), "{msg}");
     }
 
     #[test]
     fn edge_capacities_test() {
-        // Single category.
-        let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
-        let e1 = edge(1, "FreeFlow", None, false, None);
-        let edges = [&e0, &e1];
-        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
-        let capacities: Vec<_> = categories.edge_capacities(&[capacity(0.3)]).collect();
-        assert_eq!(capacities, vec![Some(capacity(0.3)); 2]);
-
-        // With categories: the edges without a category are not calibrated.
-        let e0 = edge(0, "FreeFlow", Some(1.0), false, Some("b"));
-        let e1 = edge(1, "FreeFlow", Some(1.0), false, None);
-        let e2 = edge(2, "FreeFlow", None, false, Some("a"));
+        // Capacity 0.5 times the product of the factors; the edges without a factor are not
+        // calibrated.
+        let e0 = edge(0, "FreeFlow", Some(1.0), false);
+        let e1 = edge(1, "FreeFlow", Some(1.0), false);
+        let e2 = edge(2, "FreeFlow", None, false);
         let edges = [&e0, &e1, &e2];
-        let categories = EdgeCategories::new(&edges, &uniform(0.5)).unwrap();
-        let capacities: Vec<_> = categories
-            .edge_capacities(&[capacity(0.3), capacity(0.4)])
-            .collect();
+        let factors = CapacityFactors::new(
+            &edges,
+            capacity(0.5),
+            &HashMap::default(),
+            &edge_factors(&[(0, "a"), (2, "a"), (2, "b")]),
+        )
+        .unwrap();
+        let capacities: Vec<_> = factors.edge_capacities(&[0.8, 0.5]).collect();
         assert_eq!(
             capacities,
-            vec![Some(capacity(0.3)), None, Some(capacity(0.4))]
+            vec![Some(capacity(0.4)), None, Some(capacity(0.2))]
         );
     }
 
@@ -1455,7 +1533,7 @@ mod tests {
     #[test]
     fn check_loop_parameters_test() {
         let parse = |json: &str| -> CapacityCalibrationParameters {
-            serde_json::from_str(&format!(r#"{{"capacities": 0.5, {json}}}"#)).unwrap()
+            serde_json::from_str(&format!(r#"{{"capacity": 0.5, {json}}}"#)).unwrap()
         };
         assert!(check_loop_parameters(&parse(r#""vehicle_type": 1"#)).is_ok());
         for (json, name) in [
@@ -1478,25 +1556,19 @@ mod tests {
     }
 
     #[test]
-    fn stable_capacities_test() {
-        let days = |values: &[[f64; 2]]| -> Vec<Vec<FlowPerLane>> {
-            values.iter().map(|c| c.map(capacity).to_vec()).collect()
-        };
-        let history = days(&[[1.0, 2.0], [1.2, 2.0], [1.0, 2.2], [1.0, 2.2]]);
-        let history: Vec<&[FlowPerLane]> = history.iter().map(|c| c.as_slice()).collect();
-        // Mean of the capacities of each category.
-        assert_eq!(
-            mean_capacities(&history[1..]),
-            vec![capacity(3.2 / 3.), capacity(6.4 / 3.)]
-        );
+    fn stable_factors_test() {
+        let history = [[1.0, 2.0], [1.2, 2.0], [1.0, 2.2], [1.0, 2.2]];
+        let history: Vec<&[f64]> = history.iter().map(|f| f.as_slice()).collect();
+        // Mean of each factor.
+        assert_eq!(mean_factors(&history[1..]), vec![3.2 / 3., 6.4 / 3.]);
         // Windows of 2 days: (1.1, 2.0), then (1.0, 2.2), a change of 10%.
-        assert!(stable_capacities(&history, 2, Some(0.1 + 1e-9)));
-        assert!(!stable_capacities(&history, 2, Some(0.09)));
+        assert!(stable_factors(&history, 2, Some(0.1 + 1e-9)));
+        assert!(!stable_factors(&history, 2, Some(0.09)));
         // Without tolerance or with less than two windows of days: not stable.
-        assert!(!stable_capacities(&history, 2, None));
-        assert!(!stable_capacities(&history[1..], 2, Some(1.)));
+        assert!(!stable_factors(&history, 2, None));
+        assert!(!stable_factors(&history[1..], 2, Some(1.)));
         // Windows of 1 day: the last two days are equal.
-        assert!(stable_capacities(&history, 1, Some(1e-12)));
+        assert!(stable_factors(&history, 1, Some(1e-12)));
     }
 
     #[test]
@@ -1535,16 +1607,14 @@ mod tests {
 
     #[test]
     fn max_relative_change_test() {
-        let c =
-            |values: &[f64]| -> Vec<FlowPerLane> { values.iter().map(|&v| capacity(v)).collect() };
-        assert_eq!(max_relative_change(&c(&[0.5, 0.2]), &c(&[0.5, 0.2])), 0.);
-        let change = max_relative_change(&c(&[0.5, 0.2]), &c(&[0.45, 0.21]));
+        assert_eq!(max_relative_change(&[0.5, 0.2], &[0.5, 0.2]), 0.);
+        let change = max_relative_change(&[0.5, 0.2], &[0.45, 0.21]);
         assert!((change - 0.1).abs() < 1e-12, "{change}");
     }
 
     #[test]
     fn check_bottleneck_model_test() {
-        let e0 = edge(0, "FreeFlow", Some(1.0), false, None);
+        let e0 = edge(0, "FreeFlow", Some(1.0), false);
         assert!(check_bottleneck_model(&[&e0], true).is_ok());
         let msg = check_bottleneck_model(&[&e0], false)
             .unwrap_err()

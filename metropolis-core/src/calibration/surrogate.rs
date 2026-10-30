@@ -41,7 +41,7 @@ use petgraph::graph::EdgeIndex;
 use rayon::prelude::*;
 use ttf::TTFNum;
 
-use super::EdgeCategories;
+use super::CapacityFactors;
 use crate::network::road_network::arrival_curve::{ArrivalCurve, ArrivalCurves};
 use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::RoadEdge;
@@ -96,8 +96,9 @@ impl RecordingGrid {
 /// Total flow of a bottleneck of the surrogate model.
 #[derive(Clone, Copy, Debug)]
 enum Capacity {
-    /// Calibrated edge: the total flow is the capacity of the category times the number of lanes.
-    Calibrated { category: usize, lanes: Lanes },
+    /// Calibrated edge: the total flow is the capacity of its combination of factors times the
+    /// number of lanes.
+    Calibrated { combination: usize, lanes: Lanes },
     /// Edge that is not calibrated, with a constant input flow (`None` if the flow is infinite, the
     /// vehicles then only wait for space, with spillback).
     Fixed(Option<Flow>),
@@ -127,17 +128,17 @@ impl Bottleneck {
         bottleneck
     }
 
-    /// Returns the total flow of the bottleneck, given the capacity of each category.
+    /// Returns the total flow of the bottleneck, given the capacity of each combination.
     fn flow(&self, capacities: &[FlowPerLane]) -> Option<Flow> {
         match self.capacity {
             // Same operation as in `BottleneckFlows::from_capacities`.
-            Capacity::Calibrated { category, lanes } => Some(capacities[category] * lanes),
+            Capacity::Calibrated { combination, lanes } => Some(capacities[combination] * lanes),
             Capacity::Fixed(flow) => flow,
         }
     }
 
     /// Updates the waiting times of a [Capacity::Calibrated] bottleneck for the given capacity of
-    /// each category.
+    /// each combination.
     fn update(&mut self, capacities: &[FlowPerLane], grid: &RecordingGrid) {
         if matches!(self.capacity, Capacity::Calibrated { .. }) {
             let flow = self.flow(capacities);
@@ -330,13 +331,13 @@ impl Probe {
     ///
     /// A delay at a bottleneck shifts the time at which the probe reaches all the next ones.
     ///
-    /// If `gradient` is given (with one value per category, initially zero), it receives the
-    /// derivative of the delay with respect to the capacity of each category.
+    /// If `gradient` is given (with one value per factor, initially zero), it receives the
+    /// derivative of the delay with respect to each factor, given the [Evaluation] of the factors.
     fn delay(
         &self,
         bottlenecks: &[Bottleneck],
         grid: &RecordingGrid,
-        mut gradient: Option<&mut [f64]>,
+        mut gradient: Option<(&mut [f64], &Evaluation<'_>)>,
     ) -> NonNegativeSeconds {
         let mut time = self.departure_time;
         let mut delay = NonNegativeSeconds::ZERO;
@@ -344,7 +345,7 @@ impl Probe {
             if let Some(i) = edge.bottleneck {
                 let bottleneck = &bottlenecks[i];
                 let entry = entry(&bottleneck.waiting_times, grid, time);
-                if let Some(gradient) = gradient.as_deref_mut() {
+                if let Some((gradient, evaluation)) = gradient.as_mut() {
                     // The derivatives of the arrival time at the bottleneck are carried to the
                     // crossing time, plus the effect of the flow of the bottleneck.
                     if entry.time_derivative != 1. {
@@ -352,8 +353,13 @@ impl Probe {
                             .iter_mut()
                             .for_each(|g| *g *= entry.time_derivative);
                     }
-                    if let Capacity::Calibrated { category, lanes } = bottleneck.capacity {
-                        gradient[category] += entry.flow_derivative * f64::from(lanes);
+                    if let Capacity::Calibrated { combination, lanes } = bottleneck.capacity {
+                        // The flow is `C·Πₖ fₖ·lanes`: its derivative with respect to a factor
+                        // `fⱼ` of the combination is the flow divided by `fⱼ`.
+                        let flow = f64::from(evaluation.capacities[combination]) * f64::from(lanes);
+                        for &j in evaluation.combinations[combination].iter() {
+                            gradient[j] += entry.flow_derivative * flow / evaluation.values[j];
+                        }
                     }
                 }
                 delay += entry.time.sub_unchecked(time);
@@ -365,6 +371,16 @@ impl Probe {
     }
 }
 
+/// Factors at which the surrogate model is evaluated, with the resulting capacities.
+struct Evaluation<'a> {
+    /// Value of each factor.
+    values: &'a [f64],
+    /// Capacity per lane of each combination of factors.
+    capacities: Vec<FlowPerLane>,
+    /// Factor indices of each combination.
+    combinations: &'a [Vec<usize>],
+}
+
 /// Surrogate model predicting the queueing delays of the target routes for any capacities, from
 /// the arrival curves recorded during a simulated day.
 #[derive(Clone, Debug)]
@@ -372,23 +388,24 @@ pub(crate) struct Surrogate {
     bottlenecks: Vec<Bottleneck>,
     probes: Vec<Probe>,
     grid: RecordingGrid,
-    nb_categories: usize,
+    /// Capacity factors (the capacities of the combinations are computed from them).
+    factors: CapacityFactors,
 }
 
 impl Surrogate {
     /// Creates the [Surrogate] from the arrival curves (indexed by `EdgeIndex`), the edges of the
-    /// road network (ordered by `EdgeIndex`), the edge categories, the vehicle type of the
+    /// road network (ordered by `EdgeIndex`), the capacity factors, the vehicle type of the
     /// calibration, the target routes (departure time and path) and the breakpoints of the
     /// recorded waiting-time functions.
     pub(crate) fn new(
         curves: ArrivalCurves,
         edges: &[&RoadEdge],
-        categories: &EdgeCategories,
+        factors: &CapacityFactors,
         vehicle: &Vehicle,
         routes: impl IntoIterator<Item = (NonNegativeSeconds, Vec<EdgeIndex>)>,
         grid: RecordingGrid,
     ) -> Self {
-        debug_assert!(!categories.initial_capacities.is_empty());
+        debug_assert!(!factors.ids.is_empty());
         let mut bottleneck_of = vec![None; edges.len()];
         let mut bottlenecks = Vec::new();
         for (i, curve) in curves.into_iter().enumerate() {
@@ -396,9 +413,9 @@ impl Surrogate {
                 continue;
             };
             let edge = edges[i];
-            let capacity = match categories.category_of(EdgeIndex::new(i)) {
-                Some(category) => Capacity::Calibrated {
-                    category,
+            let capacity = match factors.combination_of(EdgeIndex::new(i)) {
+                Some(combination) => Capacity::Calibrated {
+                    combination,
                     lanes: edge.lanes(),
                 },
                 None => Capacity::Fixed(edge.constant_bottleneck_flow()),
@@ -423,14 +440,19 @@ impl Surrogate {
             bottlenecks,
             probes,
             grid,
-            nb_categories: categories.initial_capacities.len(),
+            factors: factors.clone(),
         }
     }
 
+    /// Returns the number of factors.
+    fn nb_factors(&self) -> usize {
+        self.factors.ids.len()
+    }
+
     /// Returns the predicted queueing delay of each target route (in the order of the routes),
-    /// given the capacity of each category.
-    pub(crate) fn predict(&mut self, capacities: &[FlowPerLane]) -> Vec<NonNegativeSeconds> {
-        self.update(capacities);
+    /// given the value of each factor.
+    pub(crate) fn predict(&mut self, values: &[f64]) -> Vec<NonNegativeSeconds> {
+        self.update(values);
         let bottlenecks = &self.bottlenecks;
         let grid = &self.grid;
         self.probes
@@ -440,48 +462,56 @@ impl Surrogate {
     }
 
     /// Returns the predicted queueing delay of each target route (in the order of the routes) and
-    /// the Jacobian matrix of the delays with respect to the capacities (row-major, one row per
-    /// target route and one column per category, in seconds per PCE/s per lane), given the
-    /// capacity of each category.
+    /// the Jacobian matrix of the delays with respect to the factors (row-major, one row per
+    /// target route and one column per factor, in seconds), given the value of each factor.
     pub(crate) fn predict_with_jacobian(
         &mut self,
-        capacities: &[FlowPerLane],
+        values: &[f64],
     ) -> (Vec<NonNegativeSeconds>, Vec<f64>) {
-        self.update(capacities);
+        let evaluation = Evaluation {
+            values,
+            capacities: self.update(values),
+            combinations: &self.factors.combinations,
+        };
         let bottlenecks = &self.bottlenecks;
         let grid = &self.grid;
-        let mut jacobian = vec![0.; self.probes.len() * self.nb_categories];
+        let nb_factors = self.factors.ids.len();
+        let mut jacobian = vec![0.; self.probes.len() * nb_factors];
         let delays = self
             .probes
             .par_iter()
-            .zip(jacobian.par_chunks_mut(self.nb_categories))
-            .map(|(p, gradient)| p.delay(bottlenecks, grid, Some(gradient)))
+            .zip(jacobian.par_chunks_mut(nb_factors))
+            .map(|(p, gradient)| p.delay(bottlenecks, grid, Some((gradient, &evaluation))))
             .collect();
         (delays, jacobian)
     }
 
-    /// Returns, for each category, whether some target route crosses one of its edges (otherwise,
-    /// the predicted delays do not depend on its capacity).
-    pub(crate) fn crossed_categories(&self) -> Vec<bool> {
-        let mut crossed = vec![false; self.nb_categories];
+    /// Returns, for each factor, whether some target route crosses one of its edges (otherwise,
+    /// the predicted delays do not depend on it).
+    pub(crate) fn crossed_factors(&self) -> Vec<bool> {
+        let mut crossed = vec![false; self.nb_factors()];
         for edge in self.probes.iter().flat_map(|p| p.path.iter()) {
             if let Some(i) = edge.bottleneck {
-                if let Capacity::Calibrated { category, .. } = self.bottlenecks[i].capacity {
-                    crossed[category] = true;
+                if let Capacity::Calibrated { combination, .. } = self.bottlenecks[i].capacity {
+                    self.factors.combinations[combination]
+                        .iter()
+                        .for_each(|&j| crossed[j] = true);
                 }
             }
         }
         crossed
     }
 
-    /// Updates the waiting times of the calibrated bottlenecks for the given capacity of each
-    /// category.
-    fn update(&mut self, capacities: &[FlowPerLane]) {
-        debug_assert_eq!(capacities.len(), self.nb_categories);
+    /// Updates the waiting times of the calibrated bottlenecks for the given value of each
+    /// factor, and returns the capacity per lane of each combination.
+    fn update(&mut self, values: &[f64]) -> Vec<FlowPerLane> {
+        debug_assert_eq!(values.len(), self.nb_factors());
+        let capacities = self.factors.combination_capacities(values);
         let grid = &self.grid;
         self.bottlenecks
             .par_iter_mut()
-            .for_each(|b| b.update(capacities, grid));
+            .for_each(|b| b.update(&capacities, grid));
+        capacities
     }
 }
 
@@ -519,29 +549,26 @@ impl MeanSurrogate {
     }
 
     /// Returns the predicted queueing delay of each target route on each day (from the oldest to
-    /// the newest), given the capacity of each category.
-    pub(crate) fn predict_days(
-        &mut self,
-        capacities: &[FlowPerLane],
-    ) -> Vec<Vec<NonNegativeSeconds>> {
+    /// the newest), given the value of each factor.
+    pub(crate) fn predict_days(&mut self, values: &[f64]) -> Vec<Vec<NonNegativeSeconds>> {
         self.days
             .iter_mut()
-            .map(|day| day.predict(capacities))
+            .map(|day| day.predict(values))
             .collect()
     }
 
     /// Returns the mean predicted queueing delay of each target route (in the order of the routes)
-    /// and the mean Jacobian matrix of the delays with respect to the capacities (see
-    /// [Surrogate::predict_with_jacobian]), given the capacity of each category.
+    /// and the mean Jacobian matrix of the delays with respect to the factors (see
+    /// [Surrogate::predict_with_jacobian]), given the value of each factor.
     pub(crate) fn predict_with_jacobian(
         &mut self,
-        capacities: &[FlowPerLane],
+        values: &[f64],
     ) -> (Vec<NonNegativeSeconds>, Vec<f64>) {
         let (delays, jacobians): (Vec<Vec<f64>>, Vec<Vec<f64>>) = self
             .days
             .iter_mut()
             .map(|day| {
-                let (delays, jacobian) = day.predict_with_jacobian(capacities);
+                let (delays, jacobian) = day.predict_with_jacobian(values);
                 (delays.into_iter().map(f64::from).collect(), jacobian)
             })
             .unzip();
@@ -552,12 +579,12 @@ impl MeanSurrogate {
         (delays, mean(jacobians.into_iter()))
     }
 
-    /// Returns, for each category, whether some target route crosses one of its edges on some day
-    /// (otherwise, the predicted delays do not depend on its capacity).
-    pub(crate) fn crossed_categories(&self) -> Vec<bool> {
+    /// Returns, for each factor, whether some target route crosses one of its edges on some day
+    /// (otherwise, the predicted delays do not depend on it).
+    pub(crate) fn crossed_factors(&self) -> Vec<bool> {
         self.days
             .iter()
-            .map(Surrogate::crossed_categories)
+            .map(Surrogate::crossed_factors)
             .reduce(|a, b| a.iter().zip(b).map(|(&a, b)| a || b).collect())
             .expect("There is at least one day")
     }
@@ -585,7 +612,7 @@ mod tests {
     use ttf::PwlTTF;
 
     use super::*;
-    use crate::calibration::optimizer::optimize_capacities;
+    use crate::calibration::optimizer::optimize_factors;
     use crate::calibration::parameters::OptimizerParameters;
     use crate::hash::HashSet;
     use crate::network::road_network::vehicle::SpeedFunction;
@@ -872,13 +899,8 @@ mod tests {
         let e1 = edge(1, 5., 2., Some(0.25));
         let e2 = edge(2, 3., 1., None);
         let edges = [&e0, &e1, &e2];
-        let categories = EdgeCategories {
-            ids: vec![Some(MetroId::from("a"))],
-            initial_capacities: vec![FlowPerLane::new_unchecked(0.25)],
-            min_capacities: vec![None],
-            max_capacities: vec![None],
-            edge_categories: vec![Some(0), None, None],
-        };
+        // Capacity 1, so that the factor is the capacity of edge 0.
+        let factors = test_factors(1, &[Some(&[0]), None, None]);
         // Arrivals at breakpoints only (every 10 s), so each waiting time has a single weight.
         // Edge 1: waiting times 0 at 20 and 6 * 2 - 10 = 2 at 30.
         let curves: ArrivalCurves = vec![
@@ -902,15 +924,9 @@ mod tests {
             (s(30.), path(&[1, 2])),
             (s(0.), path(&[2])),
         ];
-        let mut surrogate = Surrogate::new(
-            curves,
-            &edges,
-            &categories,
-            &vehicle,
-            routes,
-            grid(100., 10.),
-        );
-        let capacity = |c: f64| [FlowPerLane::new_unchecked(c)];
+        let mut surrogate =
+            Surrogate::new(curves, &edges, &factors, &vehicle, routes, grid(100., 10.));
+        let capacity = |c: f64| [c];
         let assert_delays = |delays: Vec<NonNegativeSeconds>, expected: [f64; 3]| {
             for (d, e) in delays.into_iter().zip(expected) {
                 assert_close(f64::from(d), e);
@@ -934,23 +950,57 @@ mod tests {
         assert_delays(surrogate.predict(&capacity(0.5)), [1., 2., 0.]);
     }
 
-    /// Returns a surrogate model with 2 categories, pseudo-random arrival curves (about 0.5 PCE/s
-    /// at each edge) at 3 edges (edge 0: 1 lane; edge 1: 2 lanes; edge 2: not calibrated) and 60
-    /// probes with paths through the 3 edges, given the categories of edges 0 and 1.
+    /// Returns [CapacityFactors] with a capacity of 1 PCE/s per lane, `nb_factors` factors
+    /// (initial value 1, no bounds) and the given factors of each edge (`None` if the edge is not
+    /// calibrated).
+    fn test_factors(nb_factors: usize, edge_factors: &[Option<&[usize]>]) -> CapacityFactors {
+        let mut combinations: Vec<Vec<usize>> = Vec::new();
+        let edge_combinations = edge_factors
+            .iter()
+            .map(|factors| {
+                factors.map(|factors| {
+                    combinations
+                        .iter()
+                        .position(|c| c == factors)
+                        .unwrap_or_else(|| {
+                            combinations.push(factors.to_vec());
+                            combinations.len() - 1
+                        })
+                })
+            })
+            .collect();
+        CapacityFactors {
+            capacity: FlowPerLane::new_unchecked(1.),
+            ids: (0..nb_factors)
+                .map(|j| MetroId::from(format!("f{j}").as_str()))
+                .collect(),
+            initial: vec![1.; nb_factors],
+            min: vec![None; nb_factors],
+            max: vec![None; nb_factors],
+            combinations,
+            edge_combinations,
+        }
+    }
+
+    /// Returns a surrogate model with pseudo-random arrival curves (about 0.5 PCE/s at each edge)
+    /// at 3 edges (edge 0: 1 lane; edge 1: 2 lanes; edge 2: not calibrated) and 60 probes with
+    /// paths through the 3 edges, given the number of factors and the factors of edges 0 and 1
+    /// (with a capacity of 1 PCE/s per lane).
     /// With spillback, one vehicle in 20 is released 60 s after its arrival and the edge 2 has an
     /// infinite flow (its vehicles only wait for space).
-    fn random_surrogate(edge_categories: [usize; 2], spillback: bool) -> Surrogate {
+    fn random_surrogate(
+        nb_factors: usize,
+        edge_factors: [&[usize]; 2],
+        spillback: bool,
+    ) -> Surrogate {
         let e0 = edge(0, 20., 1., None);
         let e1 = edge(1, 20., 2., None);
         let e2 = edge(2, 20., 1., if spillback { None } else { Some(0.5) });
         let edges = [&e0, &e1, &e2];
-        let categories = EdgeCategories {
-            ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
-            initial_capacities: vec![FlowPerLane::new_unchecked(0.5); 2],
-            min_capacities: vec![None; 2],
-            max_capacities: vec![None; 2],
-            edge_categories: vec![Some(edge_categories[0]), Some(edge_categories[1]), None],
-        };
+        let factors = test_factors(
+            nb_factors,
+            &[Some(edge_factors[0]), Some(edge_factors[1]), None],
+        );
         // Random arrivals of about 0.5 PCE/s at each edge.
         let draws = pseudo_random(3 * 2 * 1000 + 2 * 60);
         let (curve_draws, probe_draws) = draws.split_at(3 * 2 * 1000);
@@ -993,46 +1043,45 @@ mod tests {
                 (s(1800. * d[0]), path)
             })
             .collect();
-        Surrogate::new(
-            curves,
-            &edges,
-            &categories,
-            &vehicle,
-            routes,
-            grid(3600., 60.),
-        )
+        Surrogate::new(curves, &edges, &factors, &vehicle, routes, grid(3600., 60.))
     }
 
     #[test]
     fn jacobian_test() {
         for spillback in [false, true] {
-            jacobian_check(random_surrogate([0, 1], spillback));
+            // One factor per edge: the factors are the capacities.
+            jacobian_check(
+                random_surrogate(2, [&[0], &[1]], spillback),
+                &[[0.5, 0.25], [0.4, 0.3], [0.6, 0.2]],
+            );
+            // A factor shared by the two edges and a factor of edge 1 only (capacity of edge 1:
+            // 0.25, 0.3 and 0.24).
+            jacobian_check(
+                random_surrogate(2, [&[0], &[0, 1]], spillback),
+                &[[0.5, 0.5], [0.4, 0.75], [0.6, 0.4]],
+            );
         }
     }
 
-    /// Checks the Jacobian of the surrogate against finite differences.
-    fn jacobian_check(mut surrogate: Surrogate) {
-        let delays = |surrogate: &mut Surrogate, capacities: &[f64]| -> Vec<f64> {
-            let capacities: Vec<_> = capacities
-                .iter()
-                .map(|&c| FlowPerLane::new_unchecked(c))
-                .collect();
+    /// Checks the Jacobian of the surrogate (with 2 factors) against finite differences, at the
+    /// given values of the factors.
+    fn jacobian_check(mut surrogate: Surrogate, values: &[[f64; 2]]) {
+        let delays = |surrogate: &mut Surrogate, values: &[f64]| -> Vec<f64> {
             surrogate
-                .predict(&capacities)
+                .predict(values)
                 .into_iter()
                 .map(f64::from)
                 .collect()
         };
-        for capacities in [[0.5, 0.25], [0.4, 0.3], [0.6, 0.2]] {
-            let (predicted, jacobian) =
-                surrogate.predict_with_jacobian(&capacities.map(FlowPerLane::new_unchecked));
+        for &values in values {
+            let (predicted, jacobian) = surrogate.predict_with_jacobian(&values);
             let predicted: Vec<f64> = predicted.into_iter().map(f64::from).collect();
-            assert_eq!(predicted, delays(&mut surrogate, &capacities));
+            assert_eq!(predicted, delays(&mut surrogate, &values));
             let mut nb_checked = 0;
             let mut nb_non_zero = 0;
             for j in 0..2 {
-                let h = 1e-6 * capacities[j];
-                let mut shifted = capacities;
+                let h = 1e-6 * values[j];
+                let mut shifted = values;
                 shifted[j] += h;
                 let up = delays(&mut surrogate, &shifted);
                 shifted[j] -= 2. * h;
@@ -1052,8 +1101,7 @@ mod tests {
                     }
                     assert!(
                         (analytic - central).abs() <= 1e-4 * central.abs() + 1e-3,
-                        "Capacities {capacities:?}, route {n}, category {j}: \
-                        {analytic} != {central}"
+                        "Factors {values:?}, route {n}, factor {j}: {analytic} != {central}"
                     );
                 }
             }
@@ -1063,99 +1111,102 @@ mod tests {
     }
 
     #[test]
-    fn recover_capacities_test() {
-        // The target delays are the predicted delays at some capacities, which the optimization
-        // must recover from other initial capacities.
-        let mut day = random_surrogate([0, 1], false);
-        let capacities = |c: [f64; 2]| c.map(FlowPerLane::new_unchecked);
-        let target_delays = day.predict(&capacities([0.4, 0.3]));
+    fn recover_factors_test() {
+        // The target delays are the predicted delays at some factors, which the optimization must
+        // recover from other initial factors, with one factor per edge or with a shared factor.
+        for (edge_factors, truth, start) in [
+            ([&[0][..], &[1][..]], [0.4, 0.3], [0.44, 0.27]),
+            ([&[0][..], &[0, 1][..]], [0.4, 0.75], [0.44, 0.65]),
+        ] {
+            let mut day = random_surrogate(2, edge_factors, false);
+            let target_delays = day.predict(&truth);
+            let mut surrogate = MeanSurrogate::new(day);
+            let mut factors = test_factors(2, &[Some(edge_factors[0]), Some(edge_factors[1])]);
+            factors.initial = start.to_vec();
+            let optimized = optimize_factors(
+                &mut surrogate,
+                &target_delays,
+                &start,
+                0.2,
+                &OptimizerParameters::default(),
+                &factors,
+            );
+            for (&f, expected) in optimized.iter().zip(truth) {
+                assert!((f / expected - 1.).abs() < 1e-3, "{f} != {expected}");
+            }
+        }
+        let mut day = random_surrogate(2, [&[0], &[1]], false);
+        let target_delays = day.predict(&[0.4, 0.3]);
         let mut surrogate = MeanSurrogate::new(day);
-        let mut categories = EdgeCategories {
-            ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
-            initial_capacities: capacities([0.44, 0.27]).to_vec(),
-            min_capacities: vec![None; 2],
-            max_capacities: vec![None; 2],
-            edge_categories: vec![Some(0), Some(1), None],
-        };
-        let mut optimize = |start: &[FlowPerLane], categories: &EdgeCategories| {
-            optimize_capacities(
+        let mut factors = test_factors(2, &[Some(&[0]), Some(&[1])]);
+        factors.initial = vec![0.44, 0.27];
+        let mut optimize = |start: &[f64], factors: &CapacityFactors| {
+            optimize_factors(
                 &mut surrogate,
                 &target_delays,
                 start,
                 0.2,
                 &OptimizerParameters::default(),
-                categories,
+                factors,
             )
         };
-        let optimized = optimize(&categories.initial_capacities, &categories);
-        for (&c, expected) in optimized.iter().zip([0.4, 0.3]) {
-            let c = f64::from(c);
-            assert!((c / expected - 1.).abs() < 1e-3, "{c} != {expected}");
-        }
-        // With a maximum capacity of 0.28 for category 1, it stops exactly at that bound, also when
-        // the optimization starts from that bound.
-        let max = FlowPerLane::new_unchecked(0.28);
-        categories.max_capacities[1] = Some(max);
-        let optimized = optimize(&categories.initial_capacities, &categories);
-        assert_eq!(optimized[1], max);
-        let optimized = optimize(&optimized, &categories);
-        assert_eq!(optimized[1], max);
-        // Same with a minimum capacity of 0.42 for category 0.
-        let min = FlowPerLane::new_unchecked(0.42);
-        categories.min_capacities[0] = Some(min);
-        let optimized = optimize(&categories.initial_capacities, &categories);
-        assert_eq!(optimized[0], min);
-        let optimized = optimize(&optimized, &categories);
-        assert_eq!(optimized[0], min);
+        // With a maximum of 0.28 for factor 1, it stops exactly at that bound, also when the
+        // optimization starts from that bound.
+        factors.max[1] = Some(0.28);
+        let optimized = optimize(&factors.initial, &factors);
+        assert_eq!(optimized[1], 0.28);
+        let optimized = optimize(&optimized, &factors);
+        assert_eq!(optimized[1], 0.28);
+        // Same with a minimum of 0.42 for factor 0.
+        factors.min[0] = Some(0.42);
+        let optimized = optimize(&factors.initial, &factors);
+        assert_eq!(optimized[0], 0.42);
+        let optimized = optimize(&optimized, &factors);
+        assert_eq!(optimized[0], 0.42);
     }
 
     #[test]
-    fn uncrossed_category_test() {
-        // The edges of category 1 are crossed by no target route: with a penalty, its capacity
-        // stays the same (instead of decreasing to the trust-region bound).
-        let mut day = random_surrogate([0, 0], false);
-        let start = [0.4, 0.3].map(FlowPerLane::new_unchecked);
+    fn uncrossed_factor_test() {
+        // The edges of factor 1 are crossed by no target route: with a penalty, it stays the same
+        // (instead of decreasing to the trust-region bound).
+        let mut day = random_surrogate(2, [&[0], &[0]], false);
+        let start = [0.4, 0.3];
         let target_delays = day.predict(&start);
         let mut surrogate = MeanSurrogate::new(day);
-        assert_eq!(surrogate.crossed_categories(), vec![true, false]);
-        let categories = EdgeCategories {
-            ids: vec![Some(MetroId::from("a")), Some(MetroId::from("b"))],
-            initial_capacities: start.to_vec(),
-            min_capacities: vec![None; 2],
-            max_capacities: vec![None; 2],
-            edge_categories: vec![Some(0), Some(0), None],
-        };
+        assert_eq!(surrogate.crossed_factors(), vec![true, false]);
+        let mut factors = test_factors(2, &[Some(&[0]), Some(&[0])]);
+        factors.initial = start.to_vec();
         let params = OptimizerParameters {
             penalty: 0.01,
             ..Default::default()
         };
-        let optimized = optimize_capacities(
+        let optimized = optimize_factors(
             &mut surrogate,
             &target_delays,
             &start,
             0.2,
             &params,
-            &categories,
+            &factors,
         );
         assert_eq!(optimized[1], start[1]);
     }
 
     #[test]
     fn mean_surrogate_test() {
-        let capacities = [0.4, 0.3].map(FlowPerLane::new_unchecked);
+        let capacities = [0.4, 0.3];
         let to_f64 = |delays: Vec<NonNegativeSeconds>| -> Vec<f64> {
             delays.into_iter().map(f64::from).collect()
         };
         // A single day: the mean surrogate model is the surrogate model of the day.
-        let mut day = random_surrogate([0, 1], false);
+        let mut day = random_surrogate(2, [&[0], &[1]], false);
         let mut single = MeanSurrogate::new(day.clone());
         assert_eq!(
             single.predict_with_jacobian(&capacities),
             day.predict_with_jacobian(&capacities)
         );
-        // Two days (with different categories, so that their predictions differ): the mean of
-        // their delays and Jacobian matrices.
-        let mut other = random_surrogate([1, 0], false);
+        // Two days (with different factors, so that their predictions differ): the mean of their
+        // delays and Jacobian matrices.
+        let mut other = random_surrogate(2, [&[1], &[0]], false);
         let (delays_0, jacobian_0) = day.predict_with_jacobian(&capacities);
         let (delays_1, jacobian_1) = other.predict_with_jacobian(&capacities);
         let (delays_0, delays_1) = (to_f64(delays_0), to_f64(delays_1));
@@ -1191,9 +1242,9 @@ mod tests {
         one.push(other, 1);
         assert_eq!(one.len(), 1);
         assert_eq!(one.predict_with_jacobian(&capacities).1, jacobian_1);
-        // A category is crossed if it is crossed on some day.
-        let mut two = MeanSurrogate::new(random_surrogate([0, 0], false));
-        two.push(random_surrogate([1, 1], false), 2);
-        assert_eq!(two.crossed_categories(), vec![true, true]);
+        // A factor is crossed if it is crossed on some day.
+        let mut two = MeanSurrogate::new(random_surrogate(2, [&[0], &[0]], false));
+        two.push(random_surrogate(2, [&[1], &[1]], false), 2);
+        assert_eq!(two.crossed_factors(), vec![true, true]);
     }
 }

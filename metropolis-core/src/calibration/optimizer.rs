@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Optimization of the capacities of the categories: least squares of the predicted delays of the
-//! target routes (surrogate model) minus their target delays, plus an optional penalty on the
-//! capacities, with the Levenberg–Marquardt algorithm, within bounds.
+//! Optimization of the capacity factors: least squares of the predicted delays of the target
+//! routes (surrogate model) minus their target delays, plus an optional penalty on the factors,
+//! with the Levenberg–Marquardt algorithm, within bounds.
 use std::time::Instant;
 
 use log::info;
@@ -24,7 +24,7 @@ use rayon::prelude::*;
 
 use super::parameters::OptimizerParameters;
 use super::surrogate::MeanSurrogate;
-use super::EdgeCategories;
+use super::CapacityFactors;
 use crate::units::*;
 
 /// Initial damping factor of the Levenberg–Marquardt algorithm (the damping matrix is this factor
@@ -35,35 +35,35 @@ const INITIAL_DAMPING: f64 = 1e-3;
 /// (the partial sums are added in a fixed order, so the results do not depend on the threads).
 const BLOCK_SIZE: usize = 1024;
 
-/// Returns the optimized capacity of each category, starting from the given capacities (those of
-/// the last simulated day), on the mean of the delays predicted by the surrogate models of the last
+/// Returns the optimized value of each factor, starting from the given values (those of the last
+/// simulated day), on the mean of the delays predicted by the surrogate models of the last
 /// simulated days.
 ///
-/// The capacities are bounded by the minimum and maximum capacities of their category (if any) and
-/// by the trust region around their initial value (maximum relative change, between 0 and 1). The
-/// variables of the optimization are the capacities relative to their initial value.
+/// The factors are bounded by their minimum and maximum values (if any) and by the trust region
+/// around their starting value (maximum relative change, between 0 and 1). The variables of the
+/// optimization are the factors relative to their starting value.
 ///
-/// The objective is the mean squared error of the delays plus the penalty `λ·Σₖ (cₖ / cₖ⁰)²`, where
-/// `cₖ⁰` is the initial capacity of category `k` in the parameters (the same in every
-/// optimization). The penalty is one residual per category, linear in the variables.
-pub(super) fn optimize_capacities(
+/// The objective is the mean squared error of the delays plus the penalty `λ·Σⱼ (fⱼ / fⱼ⁰)²`, where
+/// `fⱼ⁰` is the initial value of factor `j` in the parameters (the same in every optimization). The
+/// penalty is one residual per factor, linear in the variables.
+pub(super) fn optimize_factors(
     surrogate: &mut MeanSurrogate,
     target_delays: &[NonNegativeSeconds],
-    capacities: &[FlowPerLane],
+    values: &[f64],
     trust_region: f64,
     params: &OptimizerParameters,
-    categories: &EdgeCategories,
-) -> Vec<FlowPerLane> {
-    // Bounds of the categories relative to the initial capacities.
-    let ratios = |bounds: &[Option<FlowPerLane>]| -> Vec<Option<f64>> {
+    factors: &CapacityFactors,
+) -> Vec<f64> {
+    // Bounds of the factors relative to their starting values.
+    let ratios = |bounds: &[Option<f64>]| -> Vec<Option<f64>> {
         bounds
             .iter()
-            .zip(capacities)
-            .map(|(b, &c)| b.map(|b| f64::from(b) / f64::from(c)))
+            .zip(values)
+            .map(|(b, &v)| b.map(|b| b / v))
             .collect()
     };
-    let min_ratios = ratios(&categories.min_capacities);
-    let max_ratios = ratios(&categories.max_capacities);
+    let min_ratios = ratios(&factors.min);
+    let max_ratios = ratios(&factors.max);
     let lower: Vec<f64> = min_ratios
         .iter()
         .map(|r| r.map_or(1. - trust_region, |r| r.max(1. - trust_region)))
@@ -72,62 +72,56 @@ pub(super) fn optimize_capacities(
         .iter()
         .map(|r| r.map_or(1. + trust_region, |r| r.min(1. + trust_region)))
         .collect();
-    // The capacities are clamped to the bounds of their category, so that a capacity at a bound is
-    // exactly the bound (and stays within the bounds in the next optimization), despite rounding.
-    let to_capacities = |x: &[f64]| -> Vec<FlowPerLane> {
+    // The factors are clamped to their bounds, so that a factor at a bound is exactly the bound
+    // (and stays within the bounds in the next optimization), despite rounding.
+    let to_values = |x: &[f64]| -> Vec<f64> {
         x.iter()
-            .zip(capacities)
-            .zip(
-                categories
-                    .min_capacities
-                    .iter()
-                    .zip(&categories.max_capacities),
-            )
-            .map(|((&x, &c), (min, max))| {
-                let mut c = x * f64::from(c);
+            .zip(values)
+            .zip(factors.min.iter().zip(&factors.max))
+            .map(|((&x, &v), (min, max))| {
+                let mut v = x * v;
                 if let Some(min) = min {
-                    c = c.max(f64::from(*min));
+                    v = v.max(*min);
                 }
                 if let Some(max) = max {
-                    c = c.min(f64::from(*max));
+                    v = v.min(*max);
                 }
-                FlowPerLane::new_unchecked(c)
+                v
             })
             .collect()
     };
-    let scales: Vec<f64> = capacities.iter().map(|&c| f64::from(c)).collect();
     let weights = penalty_weights(
         params.penalty,
         target_delays.len(),
-        capacities,
-        &categories.initial_capacities,
-        &surrogate.crossed_categories(),
+        values,
+        &factors.initial,
+        &surrogate.crossed_factors(),
     );
-    let nb_categories = capacities.len();
+    let nb_factors = values.len();
     let evaluate = |x: &[f64]| {
-        let (delays, mut jacobian) = surrogate.predict_with_jacobian(&to_capacities(x));
+        let (delays, mut jacobian) = surrogate.predict_with_jacobian(&to_values(x));
         let mut residuals: Vec<f64> = delays
             .iter()
             .zip(target_delays)
             .map(|(&p, &t)| f64::from(p) - f64::from(t))
             .collect();
-        // Derivatives with respect to the relative capacities.
-        jacobian.par_chunks_mut(scales.len()).for_each(|row| {
-            row.iter_mut().zip(&scales).for_each(|(d, s)| *d *= s);
+        // Derivatives with respect to the relative factors.
+        jacobian.par_chunks_mut(nb_factors).for_each(|row| {
+            row.iter_mut().zip(values).for_each(|(d, v)| *d *= v);
         });
         for (j, (&w, &x)) in weights.iter().zip(x).enumerate() {
             residuals.push(w * x);
-            jacobian.extend((0..nb_categories).map(|i| if i == j { w } else { 0. }));
+            jacobian.extend((0..nb_factors).map(|i| if i == j { w } else { 0. }));
         }
         (residuals, jacobian)
     };
-    info!("Optimizing the capacities");
+    info!("Optimizing the factors");
     let start = Instant::now();
     let solution = levenberg_marquardt(
         evaluate,
         &lower,
         &upper,
-        vec![1.; capacities.len()],
+        vec![1.; nb_factors],
         params.max_iterations,
         params.step_tolerance,
     );
@@ -147,24 +141,24 @@ pub(super) fn optimize_capacities(
         Termination::MaxIterations => "maximum number of iterations",
     };
     info!(
-        "Optimization of the capacities stopped ({termination}) after {} iterations ({:.1} s): \
+        "Optimization of the factors stopped ({termination}) after {} iterations ({:.1} s): \
         RMSE of the delays {:.3} s{penalty}",
         solution.nb_iterations,
         start.elapsed().as_secs_f64(),
         rmse(half_sum_of_squares(delay_residuals), delay_residuals.len()),
     );
-    let optimized = to_capacities(&solution.x);
-    for (j, &capacity) in optimized.iter().enumerate() {
+    let optimized = to_values(&solution.x);
+    for (j, &value) in optimized.iter().enumerate() {
         let x = solution.x[j];
         let bound = if x <= lower[j] {
             if min_ratios[j].is_some_and(|r| r >= 1. - trust_region) {
-                " (minimum capacity)"
+                " (minimum value)"
             } else {
                 " (trust-region bound)"
             }
         } else if x >= upper[j] {
             if max_ratios[j].is_some_and(|r| r <= 1. + trust_region) {
-                " (maximum capacity)"
+                " (maximum value)"
             } else {
                 " (trust-region bound)"
             }
@@ -172,49 +166,41 @@ pub(super) fn optimize_capacities(
             ""
         };
         info!(
-            "Category {}: optimized capacity of {:.5} PCE/s per lane ({:.0} PCE/h per lane), \
-            {:+.2}%{bound}",
-            categories.name(j),
-            f64::from(capacity),
-            3600. * f64::from(capacity),
+            "Factor {}: optimized value {value:.5}, {:+.2}%{bound}",
+            factors.name(j),
             100. * (x - 1.),
         );
     }
+    factors.log_capacity_range("Optimized", &optimized);
     optimized
 }
 
-/// Returns the weight `wₖ` of the penalty residual `wₖ·xₖ` of each category (empty if there is no
-/// penalty), where `xₖ` is the capacity relative to its value at the start of the optimization.
+/// Returns the weight `wⱼ` of the penalty residual `wⱼ·xⱼ` of each factor (empty if there is no
+/// penalty), where `xⱼ` is the factor relative to its value at the start of the optimization.
 ///
-/// With `wₖ = √(N·λ)·cₖ/cₖ⁰` (`N` target routes, capacity `cₖ` at the start of the optimization,
-/// initial capacity `cₖ⁰`), half the sum of the squared residuals is `N/2` times the mean squared
-/// error of the delays plus `λ·Σₖ (cₖ / cₖ⁰)²`.
+/// With `wⱼ = √(N·λ)·fⱼ/fⱼ⁰` (`N` target routes, value `fⱼ` at the start of the optimization,
+/// initial value `fⱼ⁰`), half the sum of the squared residuals is `N/2` times the mean squared
+/// error of the delays plus `λ·Σⱼ (fⱼ / fⱼ⁰)²`.
 ///
-/// The weight is zero for the categories crossed by no target route: the delays do not depend on
-/// their capacity, so the penalty alone would decrease it in every optimization. With a zero
-/// column of the Jacobian matrix, their capacity is fixed.
+/// The weight is zero for the factors whose edges are crossed by no target route: the delays do
+/// not depend on them, so the penalty alone would decrease them in every optimization. With a zero
+/// column of the Jacobian matrix, they are fixed.
 fn penalty_weights(
     penalty: f64,
     nb_targets: usize,
-    capacities: &[FlowPerLane],
-    initial_capacities: &[FlowPerLane],
+    values: &[f64],
+    initial_values: &[f64],
     crossed: &[bool],
 ) -> Vec<f64> {
     if penalty == 0. {
         return Vec::new();
     }
     let factor = (nb_targets as f64 * penalty).sqrt();
-    capacities
+    values
         .iter()
-        .zip(initial_capacities)
+        .zip(initial_values)
         .zip(crossed)
-        .map(|((&c, &c0), &crossed)| {
-            if crossed {
-                factor * f64::from(c) / f64::from(c0)
-            } else {
-                0.
-            }
-        })
+        .map(|((&f, &f0), &crossed)| if crossed { factor * f / f0 } else { 0. })
         .collect()
 }
 
@@ -564,7 +550,7 @@ mod tests {
 
     #[test]
     fn penalty_test() {
-        // Residual flat above 0.9 (no queue), as for a category without queues.
+        // Residual flat above 0.9 (no queue), as for a factor without queues.
         let hinge = |x: &[f64]| {
             if x[0] < 0.9 {
                 (vec![10. * (0.9 - x[0])], vec![-10.])
@@ -611,25 +597,19 @@ mod tests {
 
     #[test]
     fn penalty_weights_test() {
-        let capacities = [
-            FlowPerLane::new_unchecked(0.4),
-            FlowPerLane::new_unchecked(0.2),
-        ];
-        let initial = [
-            FlowPerLane::new_unchecked(0.2),
-            FlowPerLane::new_unchecked(0.2),
-        ];
+        let values = [0.4, 0.2];
+        let initial = [0.2, 0.2];
         let crossed = [true, true];
-        assert!(penalty_weights(0., 100, &capacities, &initial, &crossed).is_empty());
+        assert!(penalty_weights(0., 100, &values, &initial, &crossed).is_empty());
         // √(100 × 0.01) = 1.
         assert_close(
-            &penalty_weights(0.01, 100, &capacities, &initial, &crossed),
+            &penalty_weights(0.01, 100, &values, &initial, &crossed),
             &[2., 1.],
             1e-12,
         );
-        // No penalty for a category crossed by no target route.
+        // No penalty for a factor crossed by no target route.
         assert_close(
-            &penalty_weights(0.01, 100, &capacities, &initial, &[true, false]),
+            &penalty_weights(0.01, 100, &values, &initial, &[true, false]),
             &[2., 0.],
             1e-12,
         );

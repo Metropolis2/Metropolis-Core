@@ -555,9 +555,6 @@ pub struct RoadEdge {
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
     overtaking: bool,
-    /// Category of the edge, used by the capacity calibration (`None` if the edge has no
-    /// category).
-    category: Option<MetroId>,
 }
 
 impl RoadEdge {
@@ -586,14 +583,7 @@ impl RoadEdge {
             },
             bottleneck_flow: bottleneck_flow.map(|f| EdgeFlow::from(f * lanes)),
             overtaking,
-            category: None,
         }
-    }
-
-    /// Returns the RoadEdge with the given category (used by the capacity calibration).
-    pub fn with_category(mut self, category: MetroId) -> Self {
-        self.category = Some(category);
-        self
     }
 
     /// Creates a new RoadEdge from deserialied values.
@@ -614,7 +604,6 @@ impl RoadEdge {
         bottleneck_times: Option<Vec<f64>>,
         constant_travel_time: Option<f64>,
         overtaking: Option<bool>,
-        category: Option<MetroId>,
     ) -> Result<Self> {
         let base_speed =
             MetersPerSecond::try_from(speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
@@ -668,18 +657,12 @@ impl RoadEdge {
             },
             bottleneck_flow,
             overtaking,
-            category,
         })
     }
 
     /// Returns the original id of the edge.
     pub(crate) const fn id(&self) -> OriginalEdgeId {
         self.id
-    }
-
-    /// Returns the category of the edge (`None` if the edge has no category).
-    pub(crate) const fn category(&self) -> Option<MetroId> {
-        self.category
     }
 
     /// Returns `true` if the running part of the edge always has free-flow speed (i.e., the
@@ -1053,7 +1036,6 @@ mod tests {
             },
             bottleneck_flow: None,
             overtaking: false,
-            category: None,
         };
         let vehicle = Vehicle::new(
             1,

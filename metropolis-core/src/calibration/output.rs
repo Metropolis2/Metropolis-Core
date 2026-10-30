@@ -32,26 +32,29 @@ use crate::units::{FlowPerLane, MetroId};
 
 /// Saves the results of the capacity calibration in the output directory:
 ///
-/// - `calibrated_capacities.json`: the calibrated capacities, in the format of the `capacities`
-///   parameter of the calibration (in PCE per second per lane);
-/// - `next_capacities.json`: the capacities optimized after the last day, in the same format;
+/// - `calibrated_factors.json`: the capacity and the calibrated factors, in the format of the
+///   `capacity` and `factors` parameters of the calibration;
+/// - `next_factors.json`: the capacity and the factors optimized after the last day, in the same
+///   format;
 /// - `net_cond_next_exp_edge_ttfs.[ext]`: the expected network conditions of the next day, in the
 ///   format of the `road_network_conditions` input file.
 ///
 /// The last two files allow to resume the calibration (see [super::calibrate]).
+/// - `calibrated_edges.[ext]`: the calibrated capacity per lane and bottleneck flow of each edge
+///   with factors;
 /// - `calibration_days.[ext]`: the diagnostics of each simulated day;
 /// - `calibration_delays.[ext]`: the target and predicted delays of each target route.
 pub(super) fn save(results: &CalibrationResults) -> Result<()> {
     let output_dir = crate::parameters::output_directory();
     write_json(
-        capacities_json(&results.capacities),
+        factors_json(results.capacity, &results.factors),
         output_dir,
-        "calibrated_capacities",
+        "calibrated_factors",
     )?;
     write_json(
-        capacities_json(&results.next_capacities),
+        factors_json(results.capacity, &results.next_factors),
         output_dir,
-        "next_capacities",
+        "next_factors",
     )?;
     match crate::parameters::saving_format() {
         SavingFormat::Parquet => {
@@ -65,44 +68,59 @@ pub(super) fn save(results: &CalibrationResults) -> Result<()> {
     }
 }
 
-/// Calibrated capacities in the format of the `capacities` parameter of the calibration, in PCE
-/// per second per lane.
-#[derive(Serialize)]
-#[serde(untagged)]
-enum CapacitiesJson {
-    /// A single capacity, when no edge has a category.
-    Uniform(f64),
-    /// The capacity of each category, by category id.
-    ByCategory(BTreeMap<String, f64>),
-}
-
-/// Returns the capacity of each category in the format of the `capacities` parameter of the
+/// Capacity and factors in the format of the `capacity` and `factors` parameters of the
 /// calibration.
-fn capacities_json(capacities: &[(Option<MetroId>, FlowPerLane)]) -> CapacitiesJson {
-    match capacities {
-        [(None, capacity)] => CapacitiesJson::Uniform(f64::from(*capacity)),
-        capacities => CapacitiesJson::ByCategory(
-            capacities
-                .iter()
-                .map(|(id, capacity)| {
-                    let id = id.expect("Categories have an id when there are several of them");
-                    (id.to_string(), f64::from(*capacity))
-                })
-                .collect(),
-        ),
+#[derive(Serialize)]
+struct FactorsJson {
+    /// Capacity per lane of an edge whose factors are all equal to 1, in PCE per second per lane.
+    capacity: f64,
+    /// Value of each factor, by factor id.
+    factors: BTreeMap<String, f64>,
+}
+
+/// Returns the capacity and the value of each factor in the format of the `capacity` and `factors`
+/// parameters of the calibration.
+fn factors_json(capacity: FlowPerLane, factors: &[(MetroId, f64)]) -> FactorsJson {
+    FactorsJson {
+        capacity: f64::from(capacity),
+        factors: factors
+            .iter()
+            .map(|(id, value)| (id.to_string(), *value))
+            .collect(),
     }
 }
 
-impl ToArrow<2> for CalibrationResults {
-    fn to_arrow(&self) -> Result<[Option<RecordBatch>; 2]> {
-        Ok([self.days_batch()?, self.delays_batch()?])
+impl ToArrow<3> for CalibrationResults {
+    fn to_arrow(&self) -> Result<[Option<RecordBatch>; 3]> {
+        Ok([
+            self.edges_batch()?,
+            self.days_batch()?,
+            self.delays_batch()?,
+        ])
     }
-    fn names() -> [&'static str; 2] {
-        ["calibration_days", "calibration_delays"]
+    fn names() -> [&'static str; 3] {
+        ["calibrated_edges", "calibration_days", "calibration_delays"]
     }
 }
 
 impl CalibrationResults {
+    /// Returns the table of the calibrated capacities of the edges with factors.
+    fn edges_batch(&self) -> Result<Option<RecordBatch>> {
+        let mut edge_id = IdBuilder::default();
+        let mut capacity = Float64Builder::new();
+        let mut bottleneck_flow = Float64Builder::new();
+        for &(id, c, flow) in self.edge_capacities.iter() {
+            edge_id.append_value(id);
+            capacity.append_value(f64::from(c));
+            bottleneck_flow.append_value(f64::from(flow));
+        }
+        finish_batch(vec![
+            ("edge_id", &mut edge_id, false),
+            ("capacity", &mut capacity, false),
+            ("bottleneck_flow", &mut bottleneck_flow, false),
+        ])
+    }
+
     /// Returns the table of the diagnostics of the simulated days.
     fn days_batch(&self) -> Result<Option<RecordBatch>> {
         let mut day = UInt64Builder::new();
@@ -114,11 +132,7 @@ impl CalibrationResults {
         let mut nb_surrogate_days = UInt64Builder::new();
         let mut score = Float64Builder::new();
         let mut score_noise = Float64Builder::new();
-        let mut capacities: Vec<_> = self
-            .category_ids
-            .iter()
-            .map(|_| Float64Builder::new())
-            .collect();
+        let mut factors: Vec<_> = self.factors.iter().map(|_| Float64Builder::new()).collect();
         for d in self.days.iter() {
             day.append_value(d.day);
             iteration_counter.append_value(d.iteration_counter as u64);
@@ -129,14 +143,14 @@ impl CalibrationResults {
             nb_surrogate_days.append_value(d.nb_surrogate_days);
             score.append_option(d.score.map(f64::from));
             score_noise.append_option(d.score_noise.map(f64::from));
-            for (builder, &capacity) in capacities.iter_mut().zip(d.capacities.iter()) {
-                builder.append_value(f64::from(capacity));
+            for (builder, &value) in factors.iter_mut().zip(d.factors.iter()) {
+                builder.append_value(value);
             }
         }
-        let capacity_names: Vec<String> = self
-            .category_ids
+        let factor_names: Vec<String> = self
+            .factors
             .iter()
-            .map(|id| id.map_or_else(|| "capacity".to_owned(), |id| format!("capacity_{id}")))
+            .map(|(id, _)| format!("factor_{id}"))
             .collect();
         let mut columns: Vec<(&str, &mut dyn ArrayBuilder, bool)> = vec![
             ("day", &mut day, false),
@@ -149,7 +163,7 @@ impl CalibrationResults {
             ("score", &mut score, true),
             ("score_noise", &mut score_noise, true),
         ];
-        for (name, builder) in capacity_names.iter().zip(capacities.iter_mut()) {
+        for (name, builder) in factor_names.iter().zip(factors.iter_mut()) {
             columns.push((name, builder, false));
         }
         finish_batch(columns)

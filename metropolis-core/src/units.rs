@@ -479,7 +479,8 @@ impl TryFrom<AnyNum> for NonNegativeNum {
 
 /// Representation of a positive number.
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Serialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[serde(try_from = "f64")]
 pub struct PositiveNum(f64);
 
 impl PositiveNum {

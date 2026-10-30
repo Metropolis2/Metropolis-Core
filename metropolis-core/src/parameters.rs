@@ -155,6 +155,8 @@ pub struct InputFiles {
     pub(crate) road_network_conditions: Option<PathBuf>,
     #[serde(default)]
     pub(crate) target_routes: Option<PathBuf>,
+    #[serde(default)]
+    pub(crate) capacity_factors: Option<PathBuf>,
 }
 
 /// Set of parameters used to control how a [Simulation](crate::simulation::Simulation) is run.
@@ -252,11 +254,21 @@ pub(crate) fn check_validity() -> Result<()> {
         if input_files().target_routes.is_none() {
             bail!("The input file `target_routes` is mandatory for the capacity calibration.");
         }
-    } else if input_files().target_routes.is_some() {
-        warn!(
-            "The input file `target_routes` is ignored because the parameter \
-            `capacity_calibration` is not defined"
-        );
+        if input_files().capacity_factors.is_none() {
+            bail!("The input file `capacity_factors` is mandatory for the capacity calibration.");
+        }
+    } else {
+        for (name, file) in [
+            ("target_routes", &input_files().target_routes),
+            ("capacity_factors", &input_files().capacity_factors),
+        ] {
+            if file.is_some() {
+                warn!(
+                    "The input file `{name}` is ignored because the parameter \
+                    `capacity_calibration` is not defined"
+                );
+            }
+        }
     }
     Ok(())
 }

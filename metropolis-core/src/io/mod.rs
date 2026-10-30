@@ -24,7 +24,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
-use crate::calibration::TargetRoute;
+use crate::calibration::{EdgeFactor, TargetRoute};
 use crate::network::road_network::preprocess::UniqueVehicles;
 use crate::network::road_network::RoadNetworkWeights;
 use crate::network::Network;
@@ -69,4 +69,8 @@ pub(crate) fn read_rn_weights(
 
 pub(crate) fn read_target_routes(filename: &Path) -> Result<Vec<TargetRoute>> {
     input::get_target_routes_from_file(filename).context("Failed to read target routes")
+}
+
+pub(crate) fn read_capacity_factors(filename: &Path) -> Result<Vec<EdgeFactor>> {
+    input::get_capacity_factors_from_file(filename).context("Failed to read capacity factors")
 }
