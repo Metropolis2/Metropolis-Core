@@ -26,10 +26,11 @@ use arrow::array::{
 };
 use arrow::compute::{cast_with_options, CastOptions};
 use arrow::csv::Writer;
-use arrow::datatypes::DataType;
+use arrow::datatypes::{DataType, Schema};
 use parquet::arrow::ArrowWriter;
-use parquet::basic::Compression;
+use parquet::basic::{Compression, Encoding, ZstdLevel};
 use parquet::file::properties::WriterProperties;
+use parquet::schema::types::ColumnPath;
 
 use crate::MetroId;
 
@@ -134,9 +135,7 @@ pub fn write_parquet_with_prefix<D: ToArrow<J>, const J: usize>(
             let filename = output_dir.join(format!("{prefix}{name}.parquet"));
             let file = File::create(&filename)
                 .with_context(|| format!("Cannot create file `{filename:?}`"))?;
-            let props = WriterProperties::builder()
-                .set_compression(Compression::SNAPPY)
-                .build();
+            let props = parquet_writer_properties(&batch.schema());
             let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))
                 .with_context(|| format!("Cannot create writer for file `{filename:?}`"))?;
             writer
@@ -148,6 +147,24 @@ pub fn write_parquet_with_prefix<D: ToArrow<J>, const J: usize>(
         }
     }
     Ok(())
+}
+
+/// Returns the properties used to write Parquet files with the given schema.
+///
+/// Columns are compressed with ZSTD. Float columns are written with the `BYTE_STREAM_SPLIT`
+/// encoding (instead of dictionary encoding), which makes them much more compressible.
+fn parquet_writer_properties(schema: &Schema) -> WriterProperties {
+    let mut builder =
+        WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default()));
+    for field in schema.fields() {
+        if matches!(field.data_type(), DataType::Float32 | DataType::Float64) {
+            let path = ColumnPath::from(field.name().as_str());
+            builder = builder
+                .set_column_dictionary_enabled(path.clone(), false)
+                .set_column_encoding(path, Encoding::BYTE_STREAM_SPLIT);
+        }
+    }
+    builder.build()
 }
 
 /// Arrow builder for [MetroId] values.
