@@ -32,6 +32,10 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] Refactor road network structs and functions in preparation for capacity calibration.
 - [DEV] Refactor simulation runs in preparation for capacity calibration.
 
+ ### Fixed
+
+- [USER] Fix the headway being wrongly freed for phantom force-released vehicles.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

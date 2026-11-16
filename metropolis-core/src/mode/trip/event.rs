@@ -257,8 +257,6 @@ impl VehicleEvent {
     /// Consumes the event and returns a [VehicleEvent] for the next step of the trip.
     fn as_next_step(&mut self, travel_time: Option<NonNegativeSeconds>, trip: &TravelingMode) {
         self.last_timing = Some(self.at_time);
-        self.was_phantom = self.is_phantom;
-        self.is_phantom = false;
         match self.event_type {
             VehicleEventType::TripStarts => {
                 // Increase the event time according to the delay at origin.
@@ -288,6 +286,9 @@ impl VehicleEvent {
             VehicleEventType::EntersEdge => {
                 // Next event is to reach the end of the edge.
                 self.event_type = VehicleEventType::ReachesEdgeExit;
+                // New edge: shift the phantom characteristics.
+                self.was_phantom = self.is_phantom;
+                self.is_phantom = false;
                 self.at_time += travel_time.unwrap();
             }
             VehicleEventType::ReachesEdgeExit => {
@@ -550,7 +551,7 @@ impl VehicleEvent {
                         previous_edge,
                         self.at_time,
                         self.vehicle.expect("Vehicle should be set at this point"),
-                        self.is_phantom,
+                        self.was_phantom,
                         input,
                         alloc,
                         events,
