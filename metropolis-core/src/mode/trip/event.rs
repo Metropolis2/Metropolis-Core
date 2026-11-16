@@ -371,6 +371,11 @@ impl VehicleEvent {
     ///
     /// The event is taken (and given back to the queue) as a `Box` so that the same allocation is
     /// re-used for all the steps of a trip, instead of being freed and re-allocated at each step.
+    ///
+    /// When the next step occurs at the same time (e.g., entering an edge whose entry is open),
+    /// it is executed immediately instead of going through the event queue. The `TripEnds` step
+    /// always goes through the queue, so that the arrival of the agent is reported to the main
+    /// loop.
     pub(crate) fn execute<'sim: 'event, 'event>(
         mut self: Box<Self>,
         input: &'event mut EventInput<'sim>,
@@ -387,12 +392,45 @@ impl VehicleEvent {
                 .save_results(self.at_time, self.trip());
             return Ok(true);
         }
+        loop {
+            let current_time = self.at_time;
+            match self.execute_step(input, road_network_state, alloc, events)? {
+                Some(next_event)
+                    if next_event.at_time == current_time
+                        && next_event.event_type != VehicleEventType::TripEnds =>
+                {
+                    // Zero-delay step: execute it immediately.
+                    self = next_event;
+                }
+                Some(next_event) => {
+                    debug_assert!(next_event.at_time >= current_time);
+                    // Push next event to the queue.
+                    events.push(next_event);
+                    return Ok(false);
+                }
+                None => {
+                    // The vehicle is waiting at a bottleneck: its next event will be executed when
+                    // it is released.
+                    return Ok(false);
+                }
+            }
+        }
+    }
 
+    /// Executes one step of the [VehicleEvent] (any step except `TripEnds`) and returns the event
+    /// for the next step, or `None` if the vehicle is waiting at a bottleneck.
+    fn execute_step<'sim: 'event, 'event>(
+        mut self: Box<Self>,
+        input: &'event mut EventInput<'sim>,
+        road_network_state: &'event mut RoadNetworkState,
+        alloc: &'event mut EventAlloc,
+        events: &'event mut EventQueue,
+    ) -> Result<Option<Box<Self>>> {
         let current_time = self.at_time;
 
         self.record_event(input.record_routes);
 
-        if let Some(next_event) = match self.event_type {
+        let next_event = match self.event_type {
             VehicleEventType::TripStarts => {
                 self.as_next_step(None);
                 Some(self)
@@ -569,12 +607,8 @@ impl VehicleEvent {
             VehicleEventType::TripEnds => {
                 unreachable!();
             }
-        } {
-            debug_assert!(next_event.at_time >= current_time);
-            // Push next event to the queue.
-            events.push(next_event);
-        }
-        Ok(false)
+        };
+        Ok(next_event)
     }
 }
 
