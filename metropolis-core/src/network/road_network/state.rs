@@ -103,6 +103,11 @@ enum EdgeEntryStatus {
     Open,
     /// The bottleneck is closed.
     Closed,
+    /// The bottleneck is closed until the given time and no vehicle is waiting.
+    ///
+    /// No [BottleneckEvent] is created to re-open the bottleneck: the status is updated when the
+    /// next vehicle reaches the entry (see [EdgeEntryState::resolve_reopening]).
+    ClosedUntil(NonNegativeSeconds),
     /// The edge is full.
     Full,
 }
@@ -113,6 +118,11 @@ enum EdgeExitStatus {
     Open,
     /// The bottleneck is closed.
     Closed,
+    /// The bottleneck is closed until the given time and no vehicle is waiting.
+    ///
+    /// No [BottleneckEvent] is created to re-open the bottleneck: the status is updated when the
+    /// next vehicle reaches the exit (see [EdgeExitState::resolve_reopening]).
+    ClosedUntil(NonNegativeSeconds),
 }
 
 /// Enum representing the position of a bottleneck.
@@ -254,6 +264,43 @@ impl EdgeEntryState {
     /// is not full.
     fn is_open(&self) -> bool {
         self.status == EdgeEntryStatus::Open
+    }
+
+    /// Closes the entry bottleneck until the given time.
+    ///
+    /// If no vehicle is waiting, the re-opening is lazy (see [EdgeEntryStatus::ClosedUntil]) and
+    /// `false` is returned. Otherwise, `true` is returned and a [BottleneckEvent] must be created to
+    /// re-open the bottleneck at the given time.
+    fn close_until(&mut self, open_time: NonNegativeSeconds) -> bool {
+        if self.bottleneck.queue.is_empty() {
+            self.status = EdgeEntryStatus::ClosedUntil(open_time);
+            false
+        } else {
+            self.status = EdgeEntryStatus::Closed;
+            true
+        }
+    }
+
+    /// Updates the status of a lazily closed entry bottleneck when a vehicle reaches it.
+    ///
+    /// If the re-opening time has passed, the bottleneck is open. Otherwise, it is closed and the
+    /// re-opening time is returned: a [BottleneckEvent] must be created to re-open the bottleneck
+    /// at that time.
+    fn resolve_reopening(
+        &mut self,
+        current_time: NonNegativeSeconds,
+    ) -> Option<NonNegativeSeconds> {
+        let EdgeEntryStatus::ClosedUntil(open_time) = self.status else {
+            return None;
+        };
+        debug_assert!(self.bottleneck.queue.is_empty());
+        if current_time >= open_time {
+            self.status = EdgeEntryStatus::Open;
+            None
+        } else {
+            self.status = EdgeEntryStatus::Closed;
+            Some(open_time)
+        }
     }
 
     /// Returns `true` if the edge is full, i.e., there is more vehicle occupying the length than
@@ -485,6 +532,43 @@ impl EdgeExitState {
     /// Returns `true` if the edge exit is open.
     fn is_open(&self) -> bool {
         self.status == EdgeExitStatus::Open
+    }
+
+    /// Closes the exit bottleneck until the given time.
+    ///
+    /// If no vehicle is waiting, the re-opening is lazy (see [EdgeExitStatus::ClosedUntil]) and
+    /// `false` is returned. Otherwise, `true` is returned and a [BottleneckEvent] must be created to
+    /// re-open the bottleneck at the given time.
+    fn close_until(&mut self, open_time: NonNegativeSeconds) -> bool {
+        if self.bottleneck.queue.is_empty() {
+            self.status = EdgeExitStatus::ClosedUntil(open_time);
+            false
+        } else {
+            self.status = EdgeExitStatus::Closed;
+            true
+        }
+    }
+
+    /// Updates the status of a lazily closed exit bottleneck when a vehicle reaches it.
+    ///
+    /// If the re-opening time has passed, the bottleneck is open. Otherwise, it is closed and the
+    /// re-opening time is returned: a [BottleneckEvent] must be created to re-open the bottleneck
+    /// at that time.
+    fn resolve_reopening(
+        &mut self,
+        current_time: NonNegativeSeconds,
+    ) -> Option<NonNegativeSeconds> {
+        let EdgeExitStatus::ClosedUntil(open_time) = self.status else {
+            return None;
+        };
+        debug_assert!(self.bottleneck.queue.is_empty());
+        if current_time >= open_time {
+            self.status = EdgeExitStatus::Open;
+            None
+        } else {
+            self.status = EdgeExitStatus::Closed;
+            Some(open_time)
+        }
     }
 
     /// A vehicle is reaching the end of the edge.
@@ -871,6 +955,15 @@ impl RoadNetworkState {
         event_queue: &mut EventQueue,
     ) -> Option<Box<VehicleEvent>> {
         let edge = &mut self.graph[edge_index];
+        if let Some(open_time) = edge.entry.resolve_reopening(current_time) {
+            // The entry is still closed: the vehicle will wait so an event is needed to re-open
+            // it.
+            event_queue.push(Box::new(BottleneckEvent {
+                at_time: open_time,
+                edge_index,
+                position: BottleneckPosition::Entry,
+            }));
+        }
         match edge.vehicle_reaches_entry(current_time, vehicle.pce, next_event) {
             Some(Either::Left(event)) => {
                 // Next event can be executed immediately.
@@ -908,15 +1001,26 @@ impl RoadNetworkState {
         event_queue: &mut EventQueue,
     ) -> Option<Box<VehicleEvent>> {
         let edge = &mut self.graph[edge_index];
+        if let Some(open_time) = edge.exit.resolve_reopening(current_time) {
+            // The exit is still closed: the vehicle will wait so an event is needed to re-open it.
+            event_queue.push(Box::new(BottleneckEvent {
+                at_time: open_time,
+                edge_index,
+                position: BottleneckPosition::Exit,
+            }));
+        }
         if let Some((next_event, closing_time_opt)) =
             edge.vehicle_reaches_exit(current_time, vehicle.pce, next_event)
         {
             if let Some(closing_time) = closing_time_opt {
-                event_queue.push(Box::new(BottleneckEvent {
-                    at_time: current_time + closing_time,
-                    edge_index,
-                    position: BottleneckPosition::Exit,
-                }));
+                let open_time = current_time + closing_time;
+                if edge.exit.close_until(open_time) {
+                    event_queue.push(Box::new(BottleneckEvent {
+                        at_time: open_time,
+                        edge_index,
+                        position: BottleneckPosition::Exit,
+                    }));
+                }
             }
             Some(next_event)
         } else {
@@ -974,12 +1078,16 @@ impl RoadNetworkState {
                 None => (),
             }
         } else {
-            // Push an event to open the edge's entry bottleneck later.
-            event_queue.push(Box::new(BottleneckEvent {
-                at_time: current_time + closing_time,
-                edge_index,
-                position: BottleneckPosition::Entry,
-            }));
+            // The edge's entry bottleneck re-opens later (an event is needed only if some vehicles
+            // are waiting).
+            let open_time = current_time + closing_time;
+            if edge_state.entry.close_until(open_time) {
+                event_queue.push(Box::new(BottleneckEvent {
+                    at_time: open_time,
+                    edge_index,
+                    position: BottleneckPosition::Entry,
+                }));
+            }
         }
         if let Some(previous_edge_index) = from {
             debug_assert_ne!(previous_edge_index, edge_index);
@@ -1030,12 +1138,16 @@ impl RoadNetworkState {
                     debug_assert!(closing_time_opt.is_none());
                 }
             } else {
-                // Push an event to open the edge's exit bottleneck later.
-                event_queue.push(Box::new(BottleneckEvent {
-                    at_time: current_time + closing_time,
-                    edge_index,
-                    position: BottleneckPosition::Exit,
-                }));
+                // The edge's exit bottleneck re-opens later (an event is needed only if some
+                // vehicles are waiting).
+                let open_time = current_time + closing_time;
+                if edge.exit.close_until(open_time) {
+                    event_queue.push(Box::new(BottleneckEvent {
+                        at_time: open_time,
+                        edge_index,
+                        position: BottleneckPosition::Exit,
+                    }));
+                }
             }
         }
         let mut release_event = Box::new(ReleaseVehicleEvent {
@@ -1198,8 +1310,20 @@ impl Event for BottleneckEvent {
                     edge_state.open_exit_bottleneck(self.at_time)
                 {
                     debug_assert_eq!(self.at_time, event.get_time());
+                    // With a non-zero closing time, the status of the bottleneck is set before the
+                    // event of the released vehicle is executed, so that it is consistent during
+                    // the execution. The re-opening is lazy if no other vehicle is waiting.
+                    let needs_event = closing_time_opt
+                        .filter(|closing_time| !closing_time.is_zero())
+                        .is_some_and(|closing_time| {
+                            edge_state.exit.close_until(self.at_time + closing_time)
+                        });
                     let is_arrived = event.execute(input, road_network_state, alloc, events)?;
                     if let Some(closing_time) = closing_time_opt {
+                        if !closing_time.is_zero() && !needs_event {
+                            // Lazy re-opening.
+                            return Ok(is_arrived);
+                        }
                         let bottleneck_event = Box::new(BottleneckEvent {
                             at_time: self.at_time + closing_time,
                             edge_index: self.edge_index,
