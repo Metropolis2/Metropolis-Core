@@ -111,7 +111,7 @@ pub(crate) fn edge_by_index(edge_id: EdgeIndex) -> &'static RoadEdge {
 
 /// Returns the original id of an edge given its simulation id.
 pub(crate) fn original_edge_id_of(edge_id: EdgeIndex) -> OriginalEdgeId {
-    *graph().rev_edge_map.get(&edge_id).expect("Invalid edge id")
+    edge_by_index(edge_id).id()
 }
 
 /// Returns the EdgeIndex of an edge given its original id.
@@ -733,8 +733,6 @@ pub(crate) struct RoadGraph {
     node_map: FxHashMap<OriginalNodeId, NodeIndex>,
     /// Mapping from original edge id to simulation EdgeIndex.
     edge_map: FxHashMap<OriginalEdgeId, EdgeIndex>,
-    /// Mapping from simulation EdgeIndex to original edge id.
-    rev_edge_map: FxHashMap<EdgeIndex, OriginalEdgeId>,
 }
 
 impl RoadGraph {
@@ -775,19 +773,12 @@ impl RoadGraph {
             .enumerate()
             .map(|(i, id)| (id, edge_index(i)))
             .collect();
-        let rev_edge_map: FxHashMap<_, _> = edges
-            .iter()
-            .map(|(_, _, e)| e.id)
-            .enumerate()
-            .map(|(i, id)| (edge_index(i), id))
-            .collect();
         assert_eq!(edge_map.len(), edges.len(), "The edge ids are not unique");
         let graph = DiGraph::from_edges(edges);
         RoadGraph {
             graph,
             node_map,
             edge_map,
-            rev_edge_map,
         }
     }
 }
