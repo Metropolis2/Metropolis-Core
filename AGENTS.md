@@ -115,8 +115,8 @@ top-level loop):
    travel; trip-level results and events are in `mode/trip/results.rs` and
    `mode/trip/event.rs`.
 4. **Events** (`event.rs`): the within-day simulation is event-driven, using a
-   multi-queue `BinaryHeap`-based priority queue (`Q = 256` sub-queues) of objects
-   implementing the event trait.
+   multi-queue `BinaryHeap`-based priority queue (one sub-queue per second of the period,
+   ties popped first-in first-out) of objects implementing the event trait.
 5. **Utility models**: `travel_utility.rs` (utility as a function of travel time) and
    `schedule_utility/` (utility as a function of departure/arrival time, e.g. the
    alpha-beta-gamma model in `schedule_utility/alpha_beta_gamma.rs`) feed into `choice`

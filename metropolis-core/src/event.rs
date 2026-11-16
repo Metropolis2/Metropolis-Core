@@ -29,9 +29,6 @@ use crate::simulation::results::AgentResults;
 use crate::simulation::PreprocessingData;
 use crate::units::*;
 
-// Number of BinaryHeap in the equent queue.
-const Q: usize = 256;
-
 /// Variables required to execute an event.
 #[derive(Debug)]
 pub(crate) struct EventInput<'a> {
@@ -115,7 +112,11 @@ impl Eq for EventEntry {}
 /// Events with the same time are executed in the order in which they were pushed.
 #[derive(Debug)]
 pub(crate) struct EventQueue {
-    queues: [BinaryHeap<EventEntry>; Q],
+    /// One [BinaryHeap] per second of the period: the events occurring in second `i` (counted
+    /// from the start of the period) are stored in `queues[i]`, and the events occurring after the
+    /// end of the period are stored in the last heap.
+    queues: Vec<BinaryHeap<EventEntry>>,
+    /// Index of the current heap, i.e., the first heap that is not empty.
     index: usize,
     period: Interval,
     /// Sequence number of the next pushed event.
@@ -133,7 +134,9 @@ impl EventQueue {
         I: IntoIterator<Item = Box<dyn Event>>,
     {
         let mut instance = Self {
-            queues: std::array::from_fn(|_| BinaryHeap::new()),
+            queues: std::iter::repeat_with(BinaryHeap::new)
+                .take(period.length().to_usize_unchecked() + 1)
+                .collect(),
             index: 0,
             period,
             next_seq: 0,
@@ -146,14 +149,14 @@ impl EventQueue {
 
     /// Pops the next event in the queue, i.e., the event with the earliest execution time.
     pub(crate) fn pop(&mut self) -> Option<Box<dyn Event>> {
-        if let Some(entry) = self.queues[self.index].pop() {
-            Some(entry.event)
-        } else {
-            self.index += 1;
-            if self.index >= Q {
+        loop {
+            if let Some(entry) = self.queues[self.index].pop() {
+                return Some(entry.event);
+            }
+            if self.index + 1 >= self.queues.len() {
                 return None;
             }
-            self.pop()
+            self.index += 1;
         }
     }
 
@@ -170,11 +173,11 @@ impl EventQueue {
         self.next_seq += 1;
     }
 
+    /// Returns the index of the heap where an event occurring at the given time is stored.
     fn index_of(&self, time: NonNegativeSeconds) -> usize {
         debug_assert!(time >= self.period.start());
-        let share = time.sub_unchecked(self.period.start()) / self.period.length();
-        let index = (share * Q).to_usize_unchecked();
-        index.min(Q - 1)
+        let index = time.sub_unchecked(self.period.start()).to_usize_unchecked();
+        index.min(self.queues.len() - 1)
     }
 }
 
