@@ -19,8 +19,8 @@
 use anyhow::Result;
 use petgraph::graph::EdgeIndex;
 
-use super::results::RoadLegResults;
-use super::TravelingMode;
+use super::results::{RoadLegResults, TripResults};
+use super::{Leg, TravelingMode};
 use crate::event::{Event, EventAlloc, EventInput, EventQueue};
 use crate::mode::trip::results::LegTypeResults;
 use crate::mode::trip::LegType;
@@ -28,6 +28,7 @@ use crate::mode::ModeIndex;
 use crate::network::road_network::vehicle::Vehicle;
 use crate::network::road_network::{OriginalEdgeId, RoadNetworkState};
 use crate::population::AgentIndex;
+use crate::simulation::results::AgentResults;
 use crate::units::*;
 
 /// Types of [VehicleEvent].
@@ -254,19 +255,36 @@ impl VehicleEvent {
         }
     }
 
+    /// Returns the [TravelingMode] of the agent associated with the event.
+    fn trip(&self) -> &'static TravelingMode {
+        crate::population::agent_alternative(self.agent.index(), self.mode)
+            .as_trip()
+            .expect("Got a vehicle event for an agent which did not choose a Trip mode")
+    }
+
+    /// Returns the [Leg] of the trip associated with the event.
+    fn leg(&self) -> &'static Leg {
+        let trip = self.trip();
+        debug_assert!(self.leg_position < trip.legs.len());
+        trip.legs
+            .get(self.leg_position)
+            .expect("Invalid trip: Incompatible number of legs.")
+    }
+
     /// Consumes the event and returns a [VehicleEvent] for the next step of the trip.
-    fn as_next_step(&mut self, travel_time: Option<NonNegativeSeconds>, trip: &TravelingMode) {
+    fn as_next_step(&mut self, travel_time: Option<NonNegativeSeconds>) {
         self.last_timing = Some(self.at_time);
         match self.event_type {
             VehicleEventType::TripStarts => {
                 // Increase the event time according to the delay at origin.
+                let trip = self.trip();
                 self.at_time += trip.origin_delay;
                 self.as_next_leg(trip, true)
             }
             VehicleEventType::BeginsVirtualLeg => {
                 // Increase the event time according to the travel time and leg stopping time.
                 self.at_time += travel_time.unwrap();
-                self.as_next_leg(trip, false)
+                self.as_next_leg(self.trip(), false)
             }
             VehicleEventType::BeginsRoadLeg => {
                 self.edge_position = 0;
@@ -303,7 +321,7 @@ impl VehicleEvent {
             VehicleEventType::EndsRoadLeg => {
                 // Increase the event time according to the leg stopping time.
                 self.at_time += travel_time.unwrap();
-                self.as_next_leg(trip, false)
+                self.as_next_leg(self.trip(), false)
             }
             VehicleEventType::TripEnds => {
                 panic!("The `TripEnds` event does not have a next step");
@@ -360,38 +378,15 @@ impl VehicleEvent {
         alloc: &'event mut EventAlloc,
         events: &'event mut EventQueue,
     ) -> Result<bool> {
-        // Unwrap the network, skims and preprocess data into network variables.
-        let preprocess_data = input
-            .preprocess_data
-            .network
-            .get_road_network()
-            .expect("Got a vehicle event but there is no road network preprocess data.");
-        let skims = input
-            .skims
-            .get_road_network()
-            .expect("Got a vehicle event but there is no road network skims.");
-
-        // Load the trip input and the trip results.
-        let trip = crate::population::agent_alternative(self.agent.index(), self.mode)
-            .as_trip()
-            .expect("Got a vehicle event for an agent which did not choose a Trip mode");
-        let trip_results = &mut input.agent_results[self.agent]
-            .mode_results
-            .as_trip_mut()
-            .expect("Got a vehicle event without trip results.");
-
         if self.event_type == VehicleEventType::TripEnds {
             // The trip is finished.
-            trip_results.save_results(self.at_time, trip);
+            input.agent_results[self.agent]
+                .mode_results
+                .as_trip_mut()
+                .expect("Got a vehicle event without trip results.")
+                .save_results(self.at_time, self.trip());
             return Ok(true);
         }
-
-        // Load the leg input and the leg results.
-        debug_assert!(self.leg_position < trip.legs.len());
-        let leg = trip
-            .legs
-            .get(self.leg_position)
-            .expect("Invalid trip: Incompatible number of legs.");
 
         let current_time = self.at_time;
 
@@ -399,11 +394,12 @@ impl VehicleEvent {
 
         if let Some(next_event) = match self.event_type {
             VehicleEventType::TripStarts => {
-                self.as_next_step(None, trip);
+                self.as_next_step(None);
                 Some(self)
             }
             VehicleEventType::BeginsVirtualLeg => {
-                let leg_results = trip_results
+                let leg = self.leg();
+                let leg_results = trip_results(input.agent_results, self.agent)
                     .legs
                     .get_mut(self.leg_position)
                     .expect("Invalid leg results: Incompatible number of legs.");
@@ -417,39 +413,47 @@ impl VehicleEvent {
                     .assume_non_negative_unchecked();
                 // Store the travel time and arrival time.
                 leg_results.save_results(travel_time, leg);
-                self.as_next_step(Some(travel_time + leg.stopping_time), trip);
+                self.as_next_step(Some(travel_time + leg.stopping_time));
                 Some(self)
             }
             VehicleEventType::BeginsRoadLeg => {
-                let road_leg = leg.class.as_road().expect("Not a road leg");
-                let leg_results = trip_results
+                let road_leg = self.leg().class.as_road().expect("Not a road leg");
+                let leg_results = trip_results(input.agent_results, self.agent)
                     .legs
                     .get_mut(self.leg_position)
                     .expect("Invalid leg results: Incompatible number of legs.");
                 let mut road_leg_results = std::mem::take(&mut leg_results.class)
                     .into_road()
                     .expect("Invalid leg results: Incompatible leg type.");
-                let (exp_arrival_time, route) =
-                    if let Some(route) = std::mem::take(&mut road_leg_results.expected_route) {
-                        let exp_travel_time = road_leg_results
-                            .pre_exp_arrival_time
-                            .sub_unchecked(road_leg_results.pre_exp_departure_time);
-                        let exp_arrival_time = current_time + exp_travel_time;
-                        (exp_arrival_time, route)
-                    } else {
-                        // Compute the route between origin and destination of the current leg.
-                        let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
-                        let vehicle_skims = skims[uvehicle]
-                            .as_ref()
-                            .expect("Road network skims are empty.");
-                        super::get_arrival_time_and_route(
-                            road_leg,
-                            self.at_time,
-                            vehicle_skims,
-                            &input.progress_bar,
-                            &mut alloc.ea_alloc,
-                        )?
-                    };
+                let (exp_arrival_time, route) = if let Some(route) =
+                    std::mem::take(&mut road_leg_results.expected_route)
+                {
+                    let exp_travel_time = road_leg_results
+                        .pre_exp_arrival_time
+                        .sub_unchecked(road_leg_results.pre_exp_departure_time);
+                    let exp_arrival_time = current_time + exp_travel_time;
+                    (exp_arrival_time, route)
+                } else {
+                    // Compute the route between origin and destination of the current leg.
+                    let preprocess_data = input.preprocess_data.network.get_road_network().expect(
+                        "Got a vehicle event but there is no road network preprocess data.",
+                    );
+                    let skims = input
+                        .skims
+                        .get_road_network()
+                        .expect("Got a vehicle event but there is no road network skims.");
+                    let uvehicle = preprocess_data.get_unique_vehicle_index(road_leg.vehicle);
+                    let vehicle_skims = skims[uvehicle]
+                        .as_ref()
+                        .expect("Road network skims are empty.");
+                    super::get_arrival_time_and_route(
+                        road_leg,
+                        self.at_time,
+                        vehicle_skims,
+                        &input.progress_bar,
+                        &mut alloc.ea_alloc,
+                    )?
+                };
                 // Set the departure time of the leg.
                 debug_assert!(leg_results.departure_time.is_nan());
                 leg_results.departure_time = self.at_time;
@@ -472,14 +476,14 @@ impl VehicleEvent {
                 self.add_route(route);
                 self.add_vehicle(vehicle);
                 self.add_road_leg_results(road_leg_results);
-                self.as_next_step(None, trip);
+                self.as_next_step(None);
                 Some(self)
             }
 
             VehicleEventType::ReachesEdgeEntry => {
                 // Try to enter the edge.
                 let current_edge = self.current_edge();
-                self.as_next_step(None, trip);
+                self.as_next_step(None);
                 road_network_state.try_enter_edge(
                     current_edge,
                     self.at_time,
@@ -503,14 +507,14 @@ impl VehicleEvent {
                     alloc,
                     events,
                 )?;
-                self.as_next_step(Some(travel_time), trip);
+                self.as_next_step(Some(travel_time));
                 Some(self)
             }
 
             VehicleEventType::ReachesEdgeExit => {
                 // Try to cross the bottleneck.
                 let current_edge = self.current_edge();
-                self.as_next_step(None, trip);
+                self.as_next_step(None);
                 road_network_state.try_exit_edge(
                     current_edge,
                     self.at_time,
@@ -538,7 +542,8 @@ impl VehicleEvent {
                 let travel_time = road_leg_results.road_time
                     + road_leg_results.in_bottleneck_time
                     + road_leg_results.out_bottleneck_time;
-                let leg_results = trip_results
+                let leg = self.leg();
+                let leg_results = trip_results(input.agent_results, self.agent)
                     .legs
                     .get_mut(self.leg_position)
                     .expect("Invalid leg results: Incompatible number of legs.");
@@ -557,7 +562,7 @@ impl VehicleEvent {
                         events,
                     )?;
                 }
-                self.as_next_step(Some(leg.stopping_time), trip);
+                self.as_next_step(Some(leg.stopping_time));
                 Some(self)
             }
 
@@ -571,6 +576,14 @@ impl VehicleEvent {
         }
         Ok(false)
     }
+}
+
+/// Returns the [TripResults] of the given agent.
+fn trip_results(agent_results: &mut AgentResults, agent: AgentIndex) -> &mut TripResults {
+    agent_results[agent]
+        .mode_results
+        .as_trip_mut()
+        .expect("Got a vehicle event without trip results.")
 }
 
 impl Event for VehicleEvent {
