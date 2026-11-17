@@ -1228,9 +1228,10 @@ where
         v_data: &mut NodeDataWithExtra<O::Data, u8>,
         query: impl Query<Node = Self::Node>,
     ) {
-        // Update the number of hop for v.
-        let nb_hop = u_data.extra + 1;
+        // Update the number of hops for v (saturating: a hop limit of 255 means no limit).
+        let nb_hop = u_data.extra.saturating_add(1);
         if v_data.extra == 0 {
+            // The node has not been explored yet.
             v_data.extra = nb_hop;
         } else {
             v_data.extra = std::cmp::min(v_data.extra, nb_hop);

@@ -365,10 +365,6 @@ pub fn intersect_earliest_arrival_query<T: TTFNum>(
         for candidate in candidates.iter() {
             let source_ttf = &source_space[candidate];
             let target_ttf = &target_space[candidate];
-            use log::debug;
-            debug!("Candidate: {}", candidate.index());
-            debug!("Source TTF: {:?}", source_ttf);
-            debug!("Target TTF: {:?}", target_ttf);
             if (departure_time + source_ttf.get_min() + target_ttf.get_min()) >= earliest_arrival {
                 continue;
             }

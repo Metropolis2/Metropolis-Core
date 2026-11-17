@@ -421,10 +421,10 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     path: &Path,
     writer: Option<W>,
 ) -> Result<()> {
+    initialize_logging(writer).expect("Failed to initialize logging");
+
     info!("Reading parameters");
     let mut parameters: Parameters = crate::io::get_parameters_from_json(path)?;
-
-    initialize_logging(writer).expect("Failed to initialize logging");
 
     let t0 = Instant::now();
 
