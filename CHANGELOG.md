@@ -41,6 +41,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [USER] The arrival time returned by TCH earliest-arrival queries could be a few seconds earlier
   than the arrival time of the returned route, when the route took an original edge merged with a
   shortcut. The travel time of such edges is now computed with their own travel-time function.
+- [DEV] In `tch`, `ScalarBidirectionalDijkstra` could return a path that is not the shortest one,
+  as it stopped at the first node settled in both directions. It now keeps the best path found and
+  stops when no shorter path is possible.
 
 ## [1.5.0] - 2026-09-18
 

@@ -51,6 +51,10 @@ pub trait BidirectionalDijkstraOps {
     fn forward_ops(&mut self) -> &mut Self::FOps;
     /// Returns a mutable reference to the backward search [DijkstraOps].
     fn backward_ops(&mut self) -> &mut Self::BOps;
+    /// Resets the state of the ops for a new query.
+    ///
+    /// It is called by [BidirectionalDijkstraSearch::init_query](crate::BidirectionalDijkstraSearch::init_query).
+    fn reset(&mut self) {}
     /// Function called each time the forward and backward search meet, i.e., when the next node to
     /// be settled in one direction has already been explored in the other direction.
     ///
@@ -91,11 +95,14 @@ pub trait BidirectionalDijkstraOps {
 ///
 /// This means that the labels are [Copy] and thus many simplifications can be done.
 ///
-/// The algorithm stops as soon as the next node to be settled in one direction has already been
-/// settled in the other direction.
+/// Each time a node is settled in one direction while it has a label in the other direction, the
+/// sum of its two labels is the cost of a path from the source to the target.
+/// The algorithm keeps the best of these paths and stops when the sum of the smallest keys of the
+/// two priority queues is not smaller than its cost (or when one of the queues is empty), as no
+/// path through the nodes not settled yet can then be shorter.
 ///
 /// The graph should implement [petgraph::visit::IntoEdgesDirected] and should not have
-/// negative-weight loops.
+/// negative-weight edges.
 ///
 /// # Example
 ///
@@ -112,7 +119,7 @@ pub trait BidirectionalDijkstraOps {
 /// let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
 /// let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
 /// let graph = DiGraph::<(), f32>::from_edges(&[(0, 1, 1.), (1, 2, 2.), (0, 2, 4.)]);
-/// let mut ops = ScalarBidirectionalDijkstra::new(&graph, |e: EdgeReference<_>| *e.weight());
+/// let mut ops = ScalarBidirectionalDijkstra::new(&graph, |e: EdgeReference<'_, _>| *e.weight());
 /// let query = BidirectionalPointToPointQuery::from_default(node_index(0), node_index(2));
 /// search.solve_query(&query, &mut ops);
 /// assert_eq!(ops.get_score(), Some(3.));
@@ -186,6 +193,10 @@ where
     fn backward_ops(&mut self) -> &mut Self::BOps {
         &mut self.back_ops
     }
+    fn reset(&mut self) {
+        self.meeting_node = None;
+        self.score = None;
+    }
     fn pre_settle_check(
         &mut self,
         node: N,
@@ -195,17 +206,20 @@ where
         back_key: Option<T>,
         _query: impl BidirectionalQuery<Node = N, Label = T, RevLabel = T>,
     ) -> bool {
-        // The two searches met but we need to check that the meeting node has been settled in both
-        // direction and thus that no further improvement is possible.
-        if (forw_key.is_none() || forw_label <= forw_key.unwrap())
-            && (back_key.is_none() || back_label <= back_key.unwrap())
-        {
-            let score = forw_label + back_label;
+        // The two searches met: the path through `node` is a candidate shortest path.
+        let score = forw_label + back_label;
+        if self.score.is_none_or(|best| score < best) {
             self.meeting_node = Some(node);
             self.score = Some(score);
-            return true;
         }
-        false
+        // A shorter path would have to go through nodes that are not settled in any direction, so
+        // its cost would be at least the sum of the smallest keys of the two queues. When a queue
+        // is empty, that search has settled all the nodes it can reach, so the best path has
+        // already been found.
+        match (forw_key, back_key) {
+            (Some(forw_key), Some(back_key)) => Some(forw_key + back_key) >= self.score,
+            _ => true,
+        }
     }
 }
 
@@ -918,7 +932,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::hash::HashMap;
-    use petgraph::graph::{node_index, DiGraph};
+    use petgraph::graph::{node_index, DiGraph, EdgeReference, NodeIndex};
     use priority_queue::PriorityQueue;
 
     use super::*;
@@ -940,5 +954,100 @@ mod tests {
         search.solve_query(&query, &mut ops);
         assert_eq!(ops.get_score(), None);
         assert_eq!(ops.get_meeting_node(), None);
+    }
+
+    /// Returns the cost of a path, given as a sequence of nodes.
+    fn path_cost(graph: &DiGraph<(), f64>, path: &[NodeIndex]) -> f64 {
+        path.windows(2)
+            .map(|w| graph[graph.find_edge(w[0], w[1]).unwrap()])
+            .sum()
+    }
+
+    #[test]
+    fn shortest_path_through_edge_between_frontiers_test() {
+        // The first node settled in both directions is `x` (path s -> x -> t, cost 10) but the
+        // shortest path is s -> a -> b -> t (cost 9.5), which crosses the edge a -> b between a
+        // node settled forward and a node settled backward.
+        let (s, x, a, b, t) = (0u32, 1, 2, 3, 4);
+        let graph = DiGraph::<(), f64>::from_edges([
+            (s, x, 5.),
+            (x, t, 5.),
+            (s, a, 4.),
+            (a, b, 1.5),
+            (b, t, 4.),
+        ]);
+        let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+        let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+        let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+        let mut ops =
+            ScalarBidirectionalDijkstra::new(&graph, |e: EdgeReference<'_, _>| *e.weight());
+        let query = BidirectionalPointToPointQuery::from_default(
+            node_index(s as usize),
+            node_index(t as usize),
+        );
+        search.solve_query(&query, &mut ops);
+        assert_eq!(ops.get_score(), Some(9.5));
+        let path = search.get_path(ops.get_meeting_node().unwrap()).unwrap();
+        assert_eq!(
+            path,
+            [s, a, b, t].map(|i| node_index(i as usize)).to_vec(),
+            "Wrong shortest path"
+        );
+    }
+
+    #[test]
+    fn random_graphs_match_dijkstra_test() {
+        // Compare with a plain Dijkstra on random graphs, reusing the same ops for all the queries
+        // so that the state of a query cannot leak into the next one.
+        let mut seed: u64 = 42;
+        let mut next = move || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            seed >> 33
+        };
+        for _ in 0..20 {
+            let n = 30;
+            let mut graph = DiGraph::<(), f64>::with_capacity(n, 4 * n);
+            for _ in 0..n {
+                graph.add_node(());
+            }
+            for _ in 0..4 * n {
+                let u = (next() % n as u64) as usize;
+                let v = (next() % n as u64) as usize;
+                if u != v && graph.find_edge(node_index(u), node_index(v)).is_none() {
+                    let w = (1 + next() % 20) as f64 / 2.;
+                    graph.add_edge(node_index(u), node_index(v), w);
+                }
+            }
+            let forw_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+            let back_search = DijkstraSearch::new(HashMap::default(), PriorityQueue::new());
+            let mut search = BidirectionalDijkstraSearch::new(forw_search, back_search);
+            let mut ops =
+                ScalarBidirectionalDijkstra::new(&graph, |e: EdgeReference<'_, _>| *e.weight());
+            for source in 0..n {
+                let expected =
+                    petgraph::algo::dijkstra(&graph, node_index(source), None, |e| *e.weight());
+                for target in 0..n {
+                    let query = BidirectionalPointToPointQuery::from_default(
+                        node_index(source),
+                        node_index(target),
+                    );
+                    search.solve_query(&query, &mut ops);
+                    let expected = expected.get(&node_index(target)).copied();
+                    assert_eq!(
+                        ops.get_score(),
+                        expected,
+                        "Wrong score from {source} to {target}"
+                    );
+                    if let Some(score) = expected {
+                        let path = search.get_path(ops.get_meeting_node().unwrap()).unwrap();
+                        assert_eq!(path.first(), Some(&node_index(source)));
+                        assert_eq!(path.last(), Some(&node_index(target)));
+                        assert_eq!(path_cost(&graph, &path), score);
+                    }
+                }
+            }
+        }
     }
 }

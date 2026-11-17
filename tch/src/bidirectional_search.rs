@@ -107,6 +107,7 @@ where
         BData: NodeData<Label = BLabel> + Default,
     {
         self.reset();
+        ops.reset();
         self.forward_search.init_query(query, ops.forward_ops());
         self.backward_search
             .init_query(query.reverse(), ops.backward_ops());
