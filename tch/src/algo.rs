@@ -437,7 +437,7 @@ pub fn intersect_profile_query<T: TTFNum>(
         for candidate in candidates.iter().filter(|n| *n != min_candidate) {
             let source_ttf = &source_space[candidate];
             let target_ttf = &target_space[candidate];
-            if (source_ttf.get_min() + target_ttf.get_min()) >= upper_bound {
+            if (source_ttf.get_min() + target_ttf.get_min()) > upper_bound {
                 continue;
             }
             let ttf = source_ttf.link(target_ttf);

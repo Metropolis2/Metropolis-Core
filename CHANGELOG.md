@@ -36,6 +36,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
  ### Fixed
 
 - [USER] Fix the headway being wrongly freed for phantom force-released vehicles.
+- [USER] Fix a bug in `intersect_profile_query` where a candidate could be wrongly skipped.
 
 ## [1.5.0] - 2026-09-18
 
