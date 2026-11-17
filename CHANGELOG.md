@@ -38,6 +38,9 @@ The tag [OUTPUT] indicates changes affecting the output files.
 
 - [USER] Fix the headway being wrongly freed for phantom force-released vehicles.
 - [USER] Fix a bug in `intersect_profile_query` where a candidate could be wrongly skipped.
+- [USER] The arrival time returned by TCH earliest-arrival queries could be a few seconds earlier
+  than the arrival time of the returned route, when the route took an original edge merged with a
+  shortcut. The travel time of such edges is now computed with their own travel-time function.
 
 ## [1.5.0] - 2026-09-18
 

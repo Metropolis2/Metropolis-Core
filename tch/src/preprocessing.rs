@@ -230,9 +230,18 @@ impl<T> ToContractEdge<T> {
         ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::ShortcutThrough(node))
     }
 
-    /// Creates a new shortcut edge.
-    fn new_packed(ttf: TTF<T>, nb_packed: usize, pack: EdgePack<T>) -> Self {
-        ToContractEdge::new(ttf, nb_packed, HierarchyEdgeClass::PackedShortcut(pack))
+    /// Creates a new packed shortcut edge.
+    fn new_packed(
+        ttf: TTF<T>,
+        nb_packed: usize,
+        pack: EdgePack<T>,
+        original_ttf: Option<Box<TTF<T>>>,
+    ) -> Self {
+        ToContractEdge::new(
+            ttf,
+            nb_packed,
+            HierarchyEdgeClass::PackedShortcut { pack, original_ttf },
+        )
     }
 }
 
@@ -546,8 +555,8 @@ impl<T: TTFNum> ContractionGraph<T> {
                     HierarchyEdgeClass::ShortcutThrough(node) => {
                         HierarchyEdge::new_shortcut(edge.weight.ttf, dir, node)
                     }
-                    HierarchyEdgeClass::PackedShortcut(pack) => {
-                        HierarchyEdge::new_packed(edge.weight.ttf, dir, pack)
+                    HierarchyEdgeClass::PackedShortcut { pack, original_ttf } => {
+                        HierarchyEdge::new_packed(edge.weight.ttf, dir, pack, original_ttf)
                     }
                 };
                 self.edges.push((source_id, target_id, hierarchy_edge));
@@ -972,7 +981,7 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
             }
             merged_pack
         }
-        HierarchyEdgeClass::PackedShortcut(old_pack) => {
+        HierarchyEdgeClass::PackedShortcut { pack: old_pack, .. } => {
             let mut i = 0;
             let mut j = 0;
             let mut merged_pack =
@@ -1048,9 +1057,23 @@ fn merge_edges<T: TTFNum>(new_edge: ToContractEdge<T>, old_edge: &mut ToContract
 
     let (merged_ttf, _) = old_edge.ttf.merge(&new_edge.ttf);
 
+    // The TTF of the original edge must be kept to compute its travel time when unpacking, as the
+    // merged TTF is the minimum over all the packed paths.
+    let has_original = merged_pack
+        .iter()
+        .any(|(_, p)| matches!(p, Packed::OriginalEdge(_)));
+    let original_ttf = match &mut old_edge.class {
+        HierarchyEdgeClass::Original(_) if has_original => Some(Box::new(old_edge.ttf.clone())),
+        HierarchyEdgeClass::PackedShortcut { original_ttf, .. } if has_original => {
+            original_ttf.take()
+        }
+        _ => None,
+    };
+
     // NOTE: The number of packed edge is not exact, this is a lower bound (the same thing is done
     // in KaTCH.
-    *old_edge = ToContractEdge::new_packed(merged_ttf, old_edge.nb_packed, merged_pack);
+    *old_edge =
+        ToContractEdge::new_packed(merged_ttf, old_edge.nb_packed, merged_pack, original_ttf);
 }
 
 #[cfg(test)]

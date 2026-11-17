@@ -58,11 +58,11 @@ pub enum HierarchyDirection {
 
 /// Vector representing the edges packed in a shortcut edge.
 ///
-/// Each tuple `(t, Some(n))` indicates that, starting at time `t`, the fastest path from the
-/// source to the target of the shortcut edge goes through node `n`.
+/// Each tuple `(t, Packed::IntermediateNode(n))` indicates that, starting at time `t`, the fastest
+/// path from the source to the target of the shortcut edge goes through node `n`.
 ///
-/// A tuple `(t, None)` indicates that, starting at time `t`, the fastest path from the source to
-/// the target of the shortcut edge takes the shortcut edge as an original edge.
+/// A tuple `(t, Packed::OriginalEdge(e))` indicates that, starting at time `t`, the fastest path
+/// from the source to the target of the shortcut edge is the original edge `e`.
 pub(crate) type EdgePack<T> = Vec<(T, Packed)>;
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
@@ -73,13 +73,26 @@ pub enum Packed {
 
 /// Indicate the type of a [HierarchyEdge].
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(bound(serialize = "T: Serialize"))]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
 pub enum HierarchyEdgeClass<T> {
     /// An edge that exists in the original graph.
     Original(EdgeIndex),
     /// A virtual edge that represents a shortcut, going through a single node.
     ShortcutThrough(NodeIndex),
     /// A virtual edge that represents a shortcut, going through multiple nodes.
-    PackedShortcut(EdgePack<T>),
+    PackedShortcut {
+        /// Fastest path from the source to the target, by departure-time interval.
+        pack: EdgePack<T>,
+        /// TTF of the original edge, if the pack contains an original edge.
+        ///
+        /// It is boxed because few packed shortcuts have one, and an unboxed TTF would make every
+        /// [HierarchyEdge] larger.
+        ///
+        /// The TTF of the [HierarchyEdge] is the minimum over all the packed paths so it cannot be
+        /// used to compute the travel time of the original edge itself.
+        original_ttf: Option<Box<TTF<T>>>,
+    },
 }
 
 type HierarchyEdgeReference<'a, T> = EdgeReference<'a, HierarchyEdge<T>>;
@@ -118,11 +131,18 @@ impl<T> HierarchyEdge<T> {
     }
 
     /// Creates a new packed edge.
-    pub fn new_packed(ttf: TTF<T>, direction: HierarchyDirection, pack: EdgePack<T>) -> Self {
+    ///
+    /// `original_ttf` is the TTF of the original edge packed in the shortcut, if any.
+    pub fn new_packed(
+        ttf: TTF<T>,
+        direction: HierarchyDirection,
+        pack: EdgePack<T>,
+        original_ttf: Option<Box<TTF<T>>>,
+    ) -> Self {
         HierarchyEdge {
             ttf,
             direction,
-            class: HierarchyEdgeClass::PackedShortcut(pack),
+            class: HierarchyEdgeClass::PackedShortcut { pack, original_ttf },
         }
     }
 }
@@ -328,7 +348,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                     self.unpack_edge(source, inter_node, current_time, path)?;
                     self.unpack_edge(inter_node, target, current_time, path)?;
                 }
-                HierarchyEdgeClass::PackedShortcut(pack) => {
+                HierarchyEdgeClass::PackedShortcut { pack, original_ttf } => {
                     assert!(*current_time >= pack[0].0);
                     let pack_id = match pack
                         .binary_search_by(|(t, _)| t.partial_cmp(current_time).unwrap())
@@ -342,9 +362,13 @@ impl<T: TTFNum> HierarchyOverlay<T> {
                             self.unpack_edge(inter_node, target, current_time, path)?;
                         }
                         Packed::OriginalEdge(id) => {
+                            // The TTF of the edge is the minimum over all the packed paths: the
+                            // travel time of the original edge must be computed with its own TTF.
+                            let ttf = original_ttf.as_ref().ok_or_else(|| {
+                                anyhow!("Packed shortcut has no TTF for original edge {id:?}")
+                            })?;
                             path.push(id, source, *current_time);
-                            *current_time =
-                                *current_time + self.graph[edge].ttf.eval(*current_time);
+                            *current_time = *current_time + ttf.eval(*current_time);
                         }
                     }
                 }
