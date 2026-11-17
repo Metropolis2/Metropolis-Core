@@ -174,6 +174,15 @@ impl Graph {
         if raw_edges.iter().any(|e| e.source == e.target) {
             bail!("Self-loop edges are not supported");
         }
+        // Check if there is any parallel edges.
+        let node_pairs: HashSet<(MetroId, MetroId)> =
+            raw_edges.iter().map(|e| (e.source, e.target)).collect();
+        if node_pairs.len() < raw_edges.len() {
+            warn!(
+                "Found {} parallel edges (they are not supported)",
+                raw_edges.len() - node_pairs.len()
+            );
+        }
         let edges: Vec<_> = raw_edges
             .into_iter()
             .map(|e| (node_map[&e.source], node_map[&e.target], e.travel_time))

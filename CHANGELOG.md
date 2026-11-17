@@ -21,6 +21,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
   of the CSV / Parquet output files are saved as 32-bit floats instead of 64-bit floats, which
   reduces the size of the files (at the cost of a few milliseconds of precision for times). Set it
   to `false` to keep 64-bit floats.
+- [INPUT] Warn on parallel edges in `routing_cli`.
 
 ### Changed
 
