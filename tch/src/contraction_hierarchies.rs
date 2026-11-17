@@ -95,8 +95,6 @@ pub enum HierarchyEdgeClass<T> {
     },
 }
 
-type HierarchyEdgeReference<'a, T> = EdgeReference<'a, HierarchyEdge<T>>;
-
 /// Structure for edges in a [HierarchyOverlay].
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(bound(serialize = "T: Serialize"))]
@@ -151,12 +149,61 @@ impl<T> HierarchyEdge<T> {
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
 #[serde(bound(serialize = "T: Serialize"))]
 #[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
+#[serde(from = "RawHierarchyOverlay<T>")]
 pub struct HierarchyOverlay<T> {
     graph: DiGraph<(), HierarchyEdge<T>>,
     order: Vec<usize>,
+    /// Graph with only the upward edges of `graph`, whose weights are the edge indices in `graph`.
+    ///
+    /// The upward and downward edges are stored in separate graphs so that the searches only scan
+    /// the edges of the right direction, without reading the (large) [HierarchyEdge] of each
+    /// edge.
+    #[serde(skip_serializing)]
+    upward_graph: DiGraph<(), EdgeIndex>,
+    /// Graph with only the downward edges of `graph`, whose weights are the edge indices in
+    /// `graph`.
+    #[serde(skip_serializing)]
+    downward_graph: DiGraph<(), EdgeIndex>,
     /// Cached value of [HierarchyOverlay::min_start_x], computed on first use.
     #[serde(skip)]
     min_start_x: OnceLock<Option<T>>,
+}
+
+/// Serialized representation of a [HierarchyOverlay], without the adjacency graphs that can be
+/// rebuilt from the main graph.
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "T: TTFNum + DeserializeOwned"))]
+struct RawHierarchyOverlay<T> {
+    graph: DiGraph<(), HierarchyEdge<T>>,
+    order: Vec<usize>,
+}
+
+impl<T> From<RawHierarchyOverlay<T>> for HierarchyOverlay<T> {
+    fn from(raw: RawHierarchyOverlay<T>) -> Self {
+        HierarchyOverlay::new_raw(raw.graph, raw.order)
+    }
+}
+
+/// Returns a graph with the same nodes as `graph` and only its edges with the given direction,
+/// whose weights are the indices of the edges in `graph`.
+///
+/// The edges are added in the order of their index so that the adjacency lists are iterated in
+/// the same order as in `graph`.
+fn directed_adjacency<T>(
+    graph: &DiGraph<(), HierarchyEdge<T>>,
+    direction: HierarchyDirection,
+) -> DiGraph<(), EdgeIndex> {
+    let n = graph.node_count();
+    let mut adjacency = DiGraph::with_capacity(n, 0);
+    for _ in 0..n {
+        adjacency.add_node(());
+    }
+    for edge in graph.edge_references() {
+        if edge.weight().direction == direction {
+            adjacency.add_edge(edge.source(), edge.target(), edge.id());
+        }
+    }
+    adjacency
 }
 
 impl<T> HierarchyOverlay<T> {
@@ -166,9 +213,13 @@ impl<T> HierarchyOverlay<T> {
     /// In particular, the [HierarchyDirection] of the edges must match the order of the source and
     /// target in the hierarchy.
     pub fn new_raw(graph: DiGraph<(), HierarchyEdge<T>>, order: Vec<usize>) -> Self {
+        let upward_graph = directed_adjacency(&graph, HierarchyDirection::Upward);
+        let downward_graph = directed_adjacency(&graph, HierarchyDirection::Downward);
         HierarchyOverlay {
             graph,
             order,
+            upward_graph,
+            downward_graph,
             min_start_x: OnceLock::new(),
         }
     }
@@ -189,28 +240,23 @@ impl<T> HierarchyOverlay<T> {
 
     /// Returns the upward graph of the [HierarchyOverlay], i.e., the graph with all edges that go
     /// upward in the hierarchy.
-    fn get_upward_graph<'a>(
-        &'a self,
-    ) -> EdgeFiltered<
-        &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
-    > {
-        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
-            e.weight().direction == HierarchyDirection::Upward
-        })
+    ///
+    /// The edge weights are the indices of the edges in the main graph.
+    fn get_upward_graph(&self) -> &DiGraph<(), EdgeIndex> {
+        &self.upward_graph
     }
 
     /// Returns the downward graph of the [HierarchyOverlay], i.e., the graph with all edges that
     /// go downward in the hierarchy.
-    fn get_downward_graph<'a>(
-        &'a self,
-    ) -> EdgeFiltered<
-        &'a DiGraph<(), HierarchyEdge<T>>,
-        impl Fn(HierarchyEdgeReference<'a, T>) -> bool,
-    > {
-        EdgeFiltered::from_fn(&self.graph, |e: HierarchyEdgeReference<'a, T>| {
-            e.weight().direction == HierarchyDirection::Downward
-        })
+    ///
+    /// The edge weights are the indices of the edges in the main graph.
+    fn get_downward_graph(&self) -> &DiGraph<(), EdgeIndex> {
+        &self.downward_graph
+    }
+
+    /// Returns the [TTF] of an edge of the upward or downward graph.
+    fn adjacency_ttf(&self, edge: EdgeReference<'_, EdgeIndex>) -> &TTF<T> {
+        &self.graph[*edge.weight()].ttf
     }
 
     /// Returns the number of nodes in the overlay graph.
@@ -422,9 +468,9 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         let zero = T::ZERO;
         let query =
             BidirectionalPointToPointQuery::new(source, target, departure_time, [zero, zero]);
-        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
-        let upward_graph = &self.get_upward_graph();
-        let downward_graph = &self.get_downward_graph();
+        let edge_label = |e: EdgeReference<'_, EdgeIndex>| self.adjacency_ttf(e);
+        let upward_graph = self.get_upward_graph();
+        let downward_graph = self.get_downward_graph();
         let mut ops = BidirectionalTCHEA::new_raw(
             upward_graph,
             edge_label,
@@ -436,7 +482,7 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             alloc,
             &query,
             &mut ops,
-            &self.get_downward_graph(),
+            self.get_downward_graph(),
             edge_label,
         )
         .context("Failed to run the TCHEA query")?
@@ -487,9 +533,9 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         interval_search.reset();
         candidate_map.reset();
         let query = BidirectionalPointToPointQuery::from_default(source, target);
-        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
-        let upward_graph = &self.get_upward_graph();
-        let downward_graph = &self.get_downward_graph();
+        let edge_label = |e: EdgeReference<'_, EdgeIndex>| self.adjacency_ttf(e);
+        let upward_graph = self.get_upward_graph();
+        let downward_graph = self.get_downward_graph();
         let mut ops = BidirectionalTCHProfileInterval::new_raw(
             upward_graph,
             edge_label,
@@ -513,9 +559,9 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         candidate_map.reset();
         let query = BidirectionalPointToPointQuery::from_default(source, target);
         let upward_graph = self.get_upward_graph();
-        let upward_cone = NodeFiltered(&upward_graph, forw_cone);
+        let upward_cone = NodeFiltered(upward_graph, forw_cone);
         let downward_graph = self.get_downward_graph();
-        let downward_cone = NodeFiltered(&downward_graph, back_cone);
+        let downward_cone = NodeFiltered(downward_graph, back_cone);
         let mut ops = BidirectionalProfileDijkstra::new_raw(
             &upward_cone,
             edge_label,
@@ -603,14 +649,14 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         alloc.profile_search.reset();
         let interval_query = SingleSourceQuery::from_default(node);
         let profile_query = SingleSourceQuery::from_default(node);
-        let edge_label = |e: EdgeReference<'_, _>| &self.graph[e.id()].ttf;
+        let edge_label = |e: EdgeReference<'_, EdgeIndex>| self.adjacency_ttf(e);
         match direction {
             Direction::Outgoing => {
                 let graph = self.get_upward_graph();
                 let mut ops =
-                    ProfileIntervalDijkstra::new_forward_with_stall_on_demand(&graph, edge_label);
+                    ProfileIntervalDijkstra::new_forward_with_stall_on_demand(graph, edge_label);
                 alloc.interval_search.solve_query(&interval_query, &mut ops);
-                let cone = EdgeFiltered::from_fn(&graph, |edge| {
+                let cone = EdgeFiltered::from_fn(graph, |edge| {
                     alloc
                         .interval_search
                         .get_predecessor(&edge.target())
@@ -623,9 +669,9 @@ impl<T: TTFNum> HierarchyOverlay<T> {
             Direction::Incoming => {
                 let graph = self.get_downward_graph();
                 let mut ops =
-                    ProfileIntervalDijkstra::new_backward_with_stall_on_demand(&graph, edge_label);
+                    ProfileIntervalDijkstra::new_backward_with_stall_on_demand(graph, edge_label);
                 alloc.interval_search.solve_query(&interval_query, &mut ops);
-                let cone = EdgeFiltered::from_fn(&graph, |edge| {
+                let cone = EdgeFiltered::from_fn(graph, |edge| {
                     alloc
                         .interval_search
                         .get_predecessor(&edge.source())
@@ -926,5 +972,41 @@ mod tests {
         ];
         assert_eq!(p.into_route(), exp_route);
         assert_eq!(time, 5.0);
+    }
+
+    #[test]
+    fn serde_rebuilds_adjacency_test() {
+        // 0 -> 1 -> 2, with node 1 contracted first.
+        let graph = DiGraph::<(), f64>::from_edges([(0, 1, 1.0), (1, 2, 2.0), (2, 0, 3.0)]);
+        let order = [1, 0, 2];
+        let overlay = HierarchyOverlay::construct(
+            &graph,
+            |e| TTF::Constant(graph[e]),
+            |n| order[n.index()],
+            ContractionParameters::default(),
+        );
+        let json = serde_json::to_string(&overlay).unwrap();
+        let de: HierarchyOverlay<f64> = serde_json::from_str(&json).unwrap();
+        for (a, b) in [
+            (&overlay.upward_graph, &de.upward_graph),
+            (&overlay.downward_graph, &de.downward_graph),
+        ] {
+            assert_eq!(a.node_count(), b.node_count());
+            let ea: Vec<_> = a
+                .edge_references()
+                .map(|e| (e.source(), e.target(), *e.weight()))
+                .collect();
+            let eb: Vec<_> = b
+                .edge_references()
+                .map(|e| (e.source(), e.target(), *e.weight()))
+                .collect();
+            assert_eq!(ea, eb);
+        }
+        assert_eq!(
+            overlay.upward_graph.edge_count() + overlay.downward_graph.edge_count(),
+            overlay.graph.edge_count()
+        );
+        assert!(overlay.upward_graph.edge_count() > 0);
+        assert!(overlay.downward_graph.edge_count() > 0);
     }
 }
