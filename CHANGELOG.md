@@ -44,6 +44,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] In `tch`, `ScalarBidirectionalDijkstra` could return a path that is not the shortest one,
   as it stopped at the first node settled in both directions. It now keeps the best path found and
   stops when no shorter path is possible.
+- [USER] In the `ttf` crate, `ensure_fifo` did not update the cached minimum of the function after
+  raising points.
 
 ## [1.5.0] - 2026-09-18
 

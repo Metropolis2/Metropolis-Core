@@ -379,12 +379,7 @@ where
             interval_x
         );
         debug_assert!(y.iter().all(|v| !v.is_nan()));
-        // `TTFNum::min` / `TTFNum::max` are used instead of a comparison-based scan (e.g.
-        // `Itertools::minmax`) because they lower to branchless instructions that the compiler can
-        // vectorize; the values are known not to be NaN, so both give the same result.
-        let (min, max) = y[1..].iter().fold((y[0], y[0]), |(min, max), &value| {
-            (TTFNum::min(min, value), TTFNum::max(max, value))
-        });
+        let (min, max) = min_max(&y);
         PwlXYF {
             points: y,
             min,
@@ -423,15 +418,34 @@ impl<T: TTFNum> PwlTTF<T> {
 
     /// Modifies `self` inplace to ensure that it is a FIFO function (with some margin).
     pub fn ensure_fifo(&mut self) {
+        let mut raised = false;
         for i in 1..self.points.len() {
             let diff =
                 self.x_at_index(i) + self.points[i] - self.x_at_index(i - 1) - self.points[i - 1];
             if diff < T::MARGIN {
                 self.points[i] += T::MARGIN - diff;
+                raised = true;
             }
+        }
+        if raised {
+            // Raising points can change the minimum (the raised point was the minimum) and the
+            // maximum (when the interval is smaller than the margin).
+            (self.min, self.max) = min_max(&self.points);
         }
         debug_assert!(self.is_fifo());
     }
+}
+
+/// Returns the minimum and maximum of a non-empty slice of values that are not NaN.
+fn min_max<Y: TTFNum>(values: &[Y]) -> (Y, Y) {
+    // `TTFNum::min` / `TTFNum::max` are used instead of a comparison-based scan (e.g.
+    // `Itertools::minmax`) because they lower to branchless instructions that the compiler can
+    // vectorize; the values are known not to be NaN, so both give the same result.
+    values[1..]
+        .iter()
+        .fold((values[0], values[0]), |(min, max), &value| {
+            (TTFNum::min(min, value), TTFNum::max(max, value))
+        })
 }
 
 pub(crate) fn link<T: TTFNum>(f: &PwlTTF<T>, g: &PwlTTF<T>) -> PwlTTF<T> {
@@ -924,6 +938,29 @@ pub(crate) fn analyze_relative_position_to_cst<T: TTFNum>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ensure_fifo_updates_min_test() {
+        // The second and third points are raised: the minimum is no longer 100.
+        let mut f = PwlTTF::from_values(vec![900., 100., 150., 150.], 0., 300.);
+        f.ensure_fifo();
+        assert_eq!(f.points, vec![900., 600.01, 300.02, 150.]);
+        assert_eq!(f.min, 150.);
+        assert_eq!(f.max, 900.);
+        assert_eq!(f.min(), 150.);
+        assert_eq!(f.max(), 900.);
+    }
+
+    #[test]
+    fn ensure_fifo_updates_max_test() {
+        // With an interval smaller than the margin, raised points exceed the previous maximum.
+        let mut f = PwlTTF::from_values(vec![0., 0., 0.], 0., 0.005);
+        f.ensure_fifo();
+        assert_eq!(f.min, 0.);
+        assert_eq!(f.max, *f.points.last().unwrap());
+        assert!(f.max > 0.);
+        assert_eq!(f.max(), f.max);
+    }
 
     #[test]
     fn map_non_monotone_test() {
