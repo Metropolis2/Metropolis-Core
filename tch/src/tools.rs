@@ -355,6 +355,55 @@ pub fn initialize_logging<W: std::io::Write + Send + 'static>(
     CombinedLogger::init(loggers).context("Failed to initialize logging")
 }
 
+/// Checks that the origin and the destination of every query are nodes of the graph.
+fn check_query_nodes(graph: &Graph, queries: &[Query]) -> Result<()> {
+    let unknown_node = |q: &Query| {
+        [q.source, q.target]
+            .into_iter()
+            .find(|id| !graph.node_map.contains_key(id))
+    };
+    let mut invalid = queries
+        .iter()
+        .filter_map(|q| unknown_node(q).map(|id| (q, id)));
+    if let Some((first, node_id)) = invalid.next() {
+        bail!(
+            "{} queries have an origin or a destination that is not a node of the graph, \
+            e.g., query `{}` with node `{node_id}`",
+            1 + invalid.count(),
+            first.id,
+        );
+    }
+    Ok(())
+}
+
+/// Checks that no query departs before the start of the TTFs of the graph.
+///
+/// Evaluating a TTF before its start extrapolates it backward, which gives wrong (possibly
+/// negative) travel times.
+fn check_departure_times(graph: &Graph, queries: &[Query]) -> Result<()> {
+    // All the piecewise TTFs have the same start (checked when reading the graph).
+    let Some(start_x) = graph.graph.edge_weights().find_map(|ttf| match ttf {
+        TTF::Piecewise(pwl_ttf) => Some(pwl_ttf.x_at_index(0)),
+        TTF::Constant(_) => None,
+    }) else {
+        // With constant TTFs, any departure time is valid.
+        return Ok(());
+    };
+    let mut invalid = queries
+        .iter()
+        .filter(|q| q.departure_time.is_some_and(|td| td < start_x));
+    if let Some(first) = invalid.next() {
+        bail!(
+            "{} queries depart before the start of the travel-time functions ({start_x}), \
+            e.g., query `{}` departs at {}",
+            1 + invalid.count(),
+            first.id,
+            first.departure_time.unwrap()
+        );
+    }
+    Ok(())
+}
+
 /// Reads [Parameters] from a filename and runs the corresponding queries.
 pub fn run_queries(path: &Path) -> Result<()> {
     run_queries_imp(path, None::<std::io::Empty>)
@@ -413,6 +462,9 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
         warn!("No query to execute");
         return Ok(());
     }
+
+    check_query_nodes(&graph, &queries)?;
+    check_departure_times(&graph, &queries)?;
 
     // Initialize the global rayon thread pool.
     rayon::ThreadPoolBuilder::new()
@@ -756,4 +808,79 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
     write_json(details, &parameters.output_directory, "details")
         .context("Failed to write details")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use ttf::PwlTTF;
+
+    use super::*;
+
+    fn graph(ttf: TTF<f64>) -> Graph {
+        Graph::from_edges(vec![Edge {
+            edge_id: MetroId::from(0u64),
+            source: MetroId::from(0u64),
+            target: MetroId::from(1u64),
+            travel_time: ttf,
+        }])
+        .unwrap()
+    }
+
+    fn query(id: u64, departure_time: Option<f64>) -> Query {
+        Query {
+            id: MetroId::from(id),
+            source: MetroId::from(0u64),
+            target: MetroId::from(1u64),
+            departure_time,
+        }
+    }
+
+    #[test]
+    fn departure_before_start_is_rejected_test() {
+        let graph = graph(TTF::Piecewise(PwlTTF::from_values(
+            vec![1.0, 2.0],
+            100.0,
+            10.0,
+        )));
+        let queries = [
+            query(1, Some(100.0)),
+            query(2, Some(50.0)),
+            query(3, None),
+            query(4, Some(99.0)),
+        ];
+        let error = check_departure_times(&graph, &queries).unwrap_err();
+        let message = format!("{error}");
+        assert!(message.starts_with("2 queries"), "{message}");
+        assert!(message.contains("query `2` departs at 50"), "{message}");
+        assert!(check_departure_times(&graph, &queries[..1]).is_ok());
+        // Profile queries have no departure time.
+        assert!(check_departure_times(&graph, &queries[2..3]).is_ok());
+    }
+
+    #[test]
+    fn unknown_nodes_are_rejected_test() {
+        let graph = graph(TTF::Constant(1.0));
+        let unknown_source = Query {
+            source: MetroId::from(5u64),
+            ..query(2, None)
+        };
+        let unknown_target = Query {
+            target: MetroId::from(6u64),
+            ..query(3, Some(0.0))
+        };
+        assert!(check_query_nodes(&graph, &[query(1, None)]).is_ok());
+        let error = check_query_nodes(&graph, &[query(1, None), unknown_source, unknown_target])
+            .unwrap_err();
+        let message = format!("{error}");
+        assert!(message.starts_with("2 queries"), "{message}");
+        assert!(message.contains("query `2` with node `5`"), "{message}");
+        let error = check_query_nodes(&graph, &[unknown_target]).unwrap_err();
+        assert!(format!("{error}").contains("query `3` with node `6`"));
+    }
+
+    #[test]
+    fn constant_ttfs_accept_any_departure_time_test() {
+        let graph = graph(TTF::Constant(1.0));
+        assert!(check_departure_times(&graph, &[query(1, Some(-1000.0))]).is_ok());
+    }
 }

@@ -46,6 +46,14 @@ The tag [OUTPUT] indicates changes affecting the output files.
   stops when no shorter path is possible.
 - [USER] In the `ttf` crate, `ensure_fifo` did not update the cached minimum of the function after
   raising points.
+- [INPUT] `routing_cli` rejects edge travel-time functions with a different number of departure
+  times and functions with duplicate departure times.
+- [INPUT] `routing_cli` accepts evenly spaced departure times whose interval is not exactly
+  representable as a float (e.g., 0, 0.1, 0.2, 0.3), which were rejected as not evenly spaced.
+- [INPUT] `routing_cli` returns an error before running any query when an earliest-arrival query
+  departs before the start of the travel-time functions.
+- [INPUT] `routing_cli` returns an error before running any query when the origin or the
+  destination of a query is not a node of the graph.
 
 ## [1.5.0] - 2026-09-18
 

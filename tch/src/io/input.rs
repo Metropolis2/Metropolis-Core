@@ -18,7 +18,7 @@
 
 use std::path::Path;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use arrow::record_batch::RecordBatch;
 use metro_io::read::{read_batch, required, Columns, GetValue};
 use ttf::{PwlTTF, TTF};
@@ -43,7 +43,7 @@ pub fn get_graph_from_files(edges_path: &Path, ttfs_path: Option<&Path>) -> Resu
                 .with_context(|| format!("Failed to build TTF for edge id `{eid}`"))?;
             ttf_map.insert(eid, ttf);
         }
-        check_same_start_and_interval(&ttf_map)?;
+        check_same_departure_times(&ttf_map)?;
         ttf_map
     } else {
         HashMap::default()
@@ -65,17 +65,24 @@ fn build_ttf(mut xy_vec: Vec<(f64, f64)>) -> Result<TTF<f64>> {
     }
     xy_vec.sort_by(|(x0, _), (x1, _)| x0.partial_cmp(x1).unwrap());
     let start_x = xy_vec[0].0;
-    let interval_x = xy_vec[1].0 - start_x;
-    if !xy_vec
+    let end_x = xy_vec[xy_vec.len() - 1].0;
+    // Computing the interval from the two extreme values (instead of the first two) and comparing
+    // each value with `start_x + i * interval_x` (instead of a running sum) avoids accumulating
+    // rounding errors, e.g., with departure times 0, 0.1, 0.2, 0.3.
+    let interval_x = (end_x - start_x) / (xy_vec.len() - 1) as f64;
+    if interval_x <= 0.0 {
+        bail!("The departure time values must be distinct, got {start_x} multiple times");
+    }
+    let tolerance = SPACING_TOLERANCE * interval_x;
+    if let Some((i, &(x, _))) = xy_vec
         .iter()
-        .zip(std::iter::successors(Some(start_x), |&t| {
-            Some(t + interval_x)
-        }))
-        .all(|(xy, xp_td)| xy.0 == xp_td)
+        .enumerate()
+        .find(|&(i, &(x, _))| (x - (start_x + i as f64 * interval_x)).abs() > tolerance)
     {
         bail!(
-            "The departure time values are not evenly spaced with interval {}",
-            interval_x
+            "The departure time values are not evenly spaced with interval {interval_x}: \
+            value {i} is {x}, expected {}",
+            start_x + i as f64 * interval_x
         );
     }
     let ttf = if xy_vec.iter().all(|xy| xy.1 == xy_vec[0].1) {
@@ -90,38 +97,46 @@ fn build_ttf(mut xy_vec: Vec<(f64, f64)>) -> Result<TTF<f64>> {
     Ok(ttf)
 }
 
-fn check_same_start_and_interval(ttf_map: &HashMap<MetroId, TTF<f64>>) -> Result<()> {
-    if let Some((start, interval)) = ttf_map
-        .values()
-        .filter_map(get_ttf_start_and_interval)
-        .next()
-    {
-        if ttf_map
-            .values()
-            .filter_map(get_ttf_start_and_interval)
-            .all(|(start_x, interval_x)| start_x == start && interval_x == interval)
-        {
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "All the TTFs must have the same departure-time intervals"
-            ))
-        }
-    } else {
+/// Relative tolerance, as a share of the interval, when checking that departure times are evenly
+/// spaced or identical between edges.
+const SPACING_TOLERANCE: f64 = 1e-6;
+
+/// Checks that all the piecewise TTFs have the same departure times (same start, same interval
+/// and same number of values).
+///
+/// Operations between TTFs (e.g., [TTF::merge]) assume that their breakpoints coincide.
+fn check_same_departure_times(ttf_map: &HashMap<MetroId, TTF<f64>>) -> Result<()> {
+    let mut iter = ttf_map.iter().filter_map(|(id, ttf)| match ttf {
+        TTF::Piecewise(pwl_ttf) => Some((id, get_departure_times(pwl_ttf))),
+        TTF::Constant(_) => None,
+    });
+    let Some((ref_id, (ref_start, ref_interval, ref_len))) = iter.next() else {
         // All TTFs are constant.
-        Ok(())
+        return Ok(());
+    };
+    let tolerance = SPACING_TOLERANCE * ref_interval;
+    for (id, (start, interval, len)) in iter {
+        if len != ref_len
+            || (start - ref_start).abs() > tolerance
+            || ((interval - ref_interval) * (len - 1) as f64).abs() > tolerance
+        {
+            bail!(
+                "All the TTFs must have the same departure times: edge `{ref_id}` has {ref_len} \
+                values from {ref_start} with interval {ref_interval}, edge `{id}` has {len} values \
+                from {start} with interval {interval}"
+            );
+        }
     }
+    Ok(())
 }
 
-fn get_ttf_start_and_interval(ttf: &TTF<f64>) -> Option<(f64, f64)> {
-    if let TTF::Piecewise(pwl_ttf) = ttf {
-        Some((
-            pwl_ttf.x_at_index(0),
-            pwl_ttf.x_at_index(1) - pwl_ttf.x_at_index(0),
-        ))
-    } else {
-        None
-    }
+/// Returns the start, the interval and the number of departure times of a piecewise TTF.
+fn get_departure_times(pwl_ttf: &PwlTTF<f64>) -> (f64, f64, usize) {
+    (
+        pwl_ttf.x_at_index(0),
+        pwl_ttf.x_at_index(1) - pwl_ttf.x_at_index(0),
+        pwl_ttf.len(),
+    )
 }
 
 /// Reads node ordering from a filename.
@@ -229,4 +244,70 @@ pub fn read_queries(batch: RecordBatch) -> Result<Vec<Query>> {
         });
     }
     Ok(queries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ttf_map(ttfs: Vec<(&str, TTF<f64>)>) -> HashMap<MetroId, TTF<f64>> {
+        ttfs.into_iter()
+            .map(|(id, ttf)| (MetroId::from(id), ttf))
+            .collect()
+    }
+
+    #[test]
+    fn build_ttf_accepts_inexact_spacing_test() {
+        // 0.1 + 0.1 + 0.1 != 0.3 in floating point.
+        let ttf = build_ttf(vec![(0.0, 1.0), (0.1, 2.0), (0.2, 1.0), (0.3, 3.0)]).unwrap();
+        let TTF::Piecewise(pwl_ttf) = ttf else {
+            panic!("The TTF must be piecewise");
+        };
+        assert_eq!(pwl_ttf.len(), 4);
+        assert!((pwl_ttf.x_at_index(3) - 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn build_ttf_rejects_uneven_spacing_test() {
+        let result = build_ttf(vec![(0.0, 1.0), (10.0, 2.0), (25.0, 1.0)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_ttf_rejects_duplicate_departure_times_test() {
+        // This used to panic in `PwlTTF::from_values` (interval of zero).
+        let result = build_ttf(vec![(5.0, 1.0), (5.0, 2.0)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn different_lengths_are_rejected_test() {
+        let map = ttf_map(vec![
+            (
+                "a",
+                build_ttf(vec![(0.0, 1.0), (1.0, 2.0), (2.0, 1.0), (3.0, 2.0)]).unwrap(),
+            ),
+            ("b", build_ttf(vec![(0.0, 1.0), (1.0, 2.0)]).unwrap()),
+        ]);
+        let error = check_same_departure_times(&map).unwrap_err();
+        assert!(format!("{error}").contains("same departure times"));
+    }
+
+    #[test]
+    fn same_departure_times_are_accepted_test() {
+        let map = ttf_map(vec![
+            (
+                "a",
+                build_ttf(vec![(0.0, 1.0), (0.1, 2.0), (0.2, 1.0), (0.3, 2.0)]).unwrap(),
+            ),
+            (
+                "b",
+                build_ttf(vec![(0.0, 3.0), (0.1, 2.0), (0.2, 1.0), (0.3, 1.0)]).unwrap(),
+            ),
+            // Constant TTFs are valid at any time.
+            ("c", build_ttf(vec![(5.0, 1.0)]).unwrap()),
+            ("d", build_ttf(vec![(0.0, 1.0), (10.0, 1.0)]).unwrap()),
+        ]);
+        assert!(check_same_departure_times(&map).is_ok());
+    }
 }
