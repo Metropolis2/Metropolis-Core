@@ -31,6 +31,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [DEV] Columns of the input files are read through typed functions instead of macros.
 - [DEV] Refactor road network structs and functions in preparation for capacity calibration.
 - [DEV] Refactor simulation runs in preparation for capacity calibration.
+- [DEV] Various optimization to the supply model.
 
  ### Fixed
 
