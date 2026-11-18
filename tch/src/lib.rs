@@ -42,6 +42,11 @@ pub use preprocessing::ContractionParameters;
 pub use search::DijkstraSearch;
 pub use tools::{run_queries, run_queries_with_writer};
 
+/// Baseline [DijkstraSearch] for a forward time-dependent Dijkstra search (earliest-arrival query
+/// with [TimeDependentDijkstra](ops::TimeDependentDijkstra)).
+pub type DefaultEarliestArrivalSearch<T> =
+    DijkstraSearch<node_data::ScalarData<T>, min_queue::MinPQ<NodeIndex, T>>;
+
 /// Baseline allocation for the [EarliestArrivalAllocation](algo::EarliestArrivalAllocation).
 pub type DefaultEarliestArrivalAllocation<T> = algo::EarliestArrivalAllocation<
     node_data::ScalarData<T>,

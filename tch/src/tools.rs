@@ -43,18 +43,16 @@ use simplelog::{
 };
 use ttf::TTF;
 
-use crate::algo::{
-    earliest_arrival_query, intersect_earliest_arrival_query, intersect_profile_query,
-    profile_query,
-};
-use crate::bidirectional_ops::{BidirectionalProfileDijkstra, BidirectionalTCHEA};
+use crate::algo::{intersect_earliest_arrival_query, intersect_profile_query, profile_query};
+use crate::bidirectional_ops::BidirectionalProfileDijkstra;
 use crate::hash::{HashMap, HashSet};
 use crate::io::{NodeOrder, QueryResults};
-use crate::query::BidirectionalPointToPointQuery;
+use crate::ops::TimeDependentDijkstra;
+use crate::query::{BidirectionalPointToPointQuery, PointToPointQuery};
 use crate::HierarchyOverlay;
 use crate::{
     ContractionParameters, DefaultBidirectionalProfileSearch, DefaultEarliestArrivalAllocation,
-    DefaultTCHProfileAllocation,
+    DefaultEarliestArrivalSearch, DefaultTCHProfileAllocation,
 };
 
 /// Set of parameters.
@@ -299,7 +297,7 @@ pub struct Output {
 #[derive(Clone, Debug, Default)]
 pub struct DijkstraAllocation {
     /// Memory allocation for an earliest-arrival query.
-    pub ea_alloc: DefaultEarliestArrivalAllocation<f64>,
+    pub ea_search: DefaultEarliestArrivalSearch<f64>,
     /// Memory allocation for a profile query.
     pub profile_search: DefaultBidirectionalProfileSearch<f64>,
 }
@@ -531,25 +529,20 @@ fn run_queries_imp<W: std::io::Write + Send + 'static>(
                 || pool.pull(Default::default),
                 |alloc, query| {
                     if let Some(td) = query.departure_time {
-                        let bidir_query = BidirectionalPointToPointQuery::new(
-                            graph.get_node_id(query.source),
-                            graph.get_node_id(query.target),
-                            td,
-                            Default::default(),
-                        );
-                        let mut ops = BidirectionalTCHEA::new(
-                            &graph.graph,
-                            ttf_func_edge,
-                            HashMap::default(),
-                        );
-                        let result = earliest_arrival_query(
-                            &mut alloc.ea_alloc,
-                            &bidir_query,
-                            &mut ops,
-                            &graph.graph,
-                            ttf_func_edge,
-                        )
-                        .unwrap();
+                        // On a graph without hierarchy, a bidirectional search would only add
+                        // overhead: the forward search has to reach the target anyway.
+                        let source = graph.get_node_id(query.source);
+                        let target = graph.get_node_id(query.target);
+                        let ea_query = PointToPointQuery::new(source, target, td);
+                        let mut ops = TimeDependentDijkstra::new(&graph.graph, ttf_func_edge);
+                        alloc.ea_search.solve_query(&ea_query, &mut ops);
+                        let result = alloc.ea_search.get_label(&target).map(|&ta| {
+                            let route = alloc
+                                .ea_search
+                                .get_path(&target)
+                                .expect("Invalid Dijkstra route output");
+                            (ta, route)
+                        });
                         bp.inc(1);
                         if let Some((ta, route)) = result {
                             if parameters.output_route {
