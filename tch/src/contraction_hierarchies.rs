@@ -650,40 +650,60 @@ impl<T: TTFNum> HierarchyOverlay<T> {
         let interval_query = SingleSourceQuery::from_default(node);
         let profile_query = SingleSourceQuery::from_default(node);
         let edge_label = |e: EdgeReference<'_, EdgeIndex>| self.adjacency_ttf(e);
-        match direction {
-            Direction::Outgoing => {
-                let graph = self.get_upward_graph();
-                let mut ops =
-                    ProfileIntervalDijkstra::new_forward_with_stall_on_demand(graph, edge_label);
-                alloc.interval_search.solve_query(&interval_query, &mut ops);
-                let cone = EdgeFiltered::from_fn(graph, |edge| {
-                    alloc
-                        .interval_search
-                        .get_predecessor(&edge.target())
-                        .map(|p| p.contains(&edge.source()))
-                        .unwrap_or(false)
-                });
-                let mut ops = ProfileDijkstra::new_forward(&cone, edge_label);
-                alloc.profile_search.solve_query(&profile_query, &mut ops);
-            }
-            Direction::Incoming => {
-                let graph = self.get_downward_graph();
-                let mut ops =
-                    ProfileIntervalDijkstra::new_backward_with_stall_on_demand(graph, edge_label);
-                alloc.interval_search.solve_query(&interval_query, &mut ops);
-                let cone = EdgeFiltered::from_fn(graph, |edge| {
-                    alloc
-                        .interval_search
-                        .get_predecessor(&edge.source())
-                        .map(|p| p.contains(&edge.target()))
-                        .unwrap_or(false)
-                });
-                let mut ops = ProfileDijkstra::new_backward(&cone, edge_label);
-                alloc.profile_search.solve_query(&profile_query, &mut ops);
-            }
-        }
+        // The search goes upward in the hierarchy. Stall-on-demand uses the edges coming from
+        // higher nodes, i.e., the edges of the opposite direction (Batz et al., 2013, Section 5.4).
+        let (graph, stall_graph) = match direction {
+            Direction::Outgoing => (self.get_upward_graph(), self.get_downward_graph()),
+            Direction::Incoming => (self.get_downward_graph(), self.get_upward_graph()),
+        };
+        let mut interval_ops = match direction {
+            Direction::Outgoing => ProfileIntervalDijkstra::new_forward_with_stall_on_demand(
+                graph,
+                stall_graph,
+                edge_label,
+            ),
+            Direction::Incoming => ProfileIntervalDijkstra::new_backward_with_stall_on_demand(
+                graph,
+                stall_graph,
+                edge_label,
+            ),
+        };
+        alloc
+            .interval_search
+            .solve_query(&interval_query, &mut interval_ops);
+        // Nodes that can be stalled with the final labels are reached suboptimally: they cannot be
+        // a candidate node of a fastest path so they are not stored in the search space
+        // (Geisberger & Sanders, 2010, Section 3).
+        // They are still part of the cone so that the profiles of the other nodes are unchanged.
+        let interval_data = alloc.interval_search.node_map();
+        let stalled: HashSet<NodeIndex> = interval_data
+            .iter()
+            .filter(|&(&n, d)| interval_ops.can_be_stalled(n, d, interval_data))
+            .map(|(&n, _)| n)
+            .collect();
+        let cone = EdgeFiltered::from_fn(graph, |edge| {
+            // `prev` is the node from which `next` is reached by the search.
+            let (prev, next) = match direction {
+                Direction::Outgoing => (edge.source(), edge.target()),
+                Direction::Incoming => (edge.target(), edge.source()),
+            };
+            alloc
+                .interval_search
+                .get_predecessor(&next)
+                .is_some_and(|p| p.contains(&prev))
+        });
+        let mut profile_ops = match direction {
+            Direction::Outgoing => ProfileDijkstra::new_forward(&cone, edge_label),
+            Direction::Incoming => ProfileDijkstra::new_backward(&cone, edge_label),
+        };
+        alloc
+            .profile_search
+            .solve_query(&profile_query, &mut profile_ops);
         let map = std::mem::take(alloc.profile_search.node_map_mut());
-        map.into_iter().map(|(k, d)| (k, d.0)).collect()
+        map.into_iter()
+            .filter(|(k, _)| !stalled.contains(k))
+            .map(|(k, d)| (k, d.0))
+            .collect()
     }
 }
 

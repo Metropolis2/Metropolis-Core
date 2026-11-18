@@ -688,79 +688,77 @@ pub struct ProfileIntervalDijkstra<G, F, T> {
     edge_label: F,
     direction: Direction,
     bound: Bound<T>,
-    stalling: bool,
+    /// Graph used for stall-on-demand, if enabled.
+    ///
+    /// The search scans the edges of this graph that enter (forward search) or leave (backward
+    /// search) the node being settled. For an upward search in a hierarchy, this is the graph of
+    /// the opposite direction, i.e., the edges coming from higher nodes.
+    stall_graph: Option<G>,
 }
 
 impl<G, F, T> ProfileIntervalDijkstra<G, F, T> {
     /// Initializes a new ProfileIntervalDijkstra instance of a given direction.
-    fn new(graph: G, edge_label: F, direction: Direction, stalling: bool) -> Self {
+    fn new(graph: G, edge_label: F, direction: Direction, stall_graph: Option<G>) -> Self {
         ProfileIntervalDijkstra {
             graph,
             edge_label,
             direction,
             bound: Bound::new(),
-            stalling,
+            stall_graph,
         }
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a forward search.
     pub fn new_forward(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, false)
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, None)
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a backward search.
     pub fn new_backward(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, false)
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, None)
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance of a given direction with a bound.
-    fn new_with_bound(
-        graph: G,
-        edge_label: F,
-        direction: Direction,
-        bound: T,
-        stalling: bool,
-    ) -> Self {
+    fn new_with_bound(graph: G, edge_label: F, direction: Direction, bound: T) -> Self {
         ProfileIntervalDijkstra {
             graph,
             edge_label,
             direction,
             bound: Bound::from_value(bound),
-            stalling,
+            stall_graph: None,
         }
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a forward search with a bound.
     pub fn new_forward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
-        ProfileIntervalDijkstra::new_with_bound(
-            graph,
-            edge_label,
-            Direction::Outgoing,
-            bound,
-            false,
-        )
+        ProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Outgoing, bound)
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a backward search with a bound.
     pub fn new_backward_with_bound(graph: G, edge_label: F, bound: T) -> Self {
-        ProfileIntervalDijkstra::new_with_bound(
-            graph,
-            edge_label,
-            Direction::Incoming,
-            bound,
-            false,
-        )
+        ProfileIntervalDijkstra::new_with_bound(graph, edge_label, Direction::Incoming, bound)
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a forward search with stall-on-demand.
-    pub fn new_forward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, true)
+    ///
+    /// A node `v` is stalled when an edge `u -> v` of `stall_graph`, from a node `u` already
+    /// reached, proves that the minimum travel time to `v` is not optimal. In an upward search of
+    /// a hierarchy, `stall_graph` must be the downward graph (see Section 5.4 of Batz et al.,
+    /// 2013).
+    ///
+    /// The edge weights of `stall_graph` are given by `edge_label`.
+    pub fn new_forward_with_stall_on_demand(graph: G, stall_graph: G, edge_label: F) -> Self {
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Outgoing, Some(stall_graph))
     }
 
     /// Initializes a new ProfileIntervalDijkstra instance for a backward search with
     /// stall-on-demand.
-    pub fn new_backward_with_stall_on_demand(graph: G, edge_label: F) -> Self {
-        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, true)
+    ///
+    /// A node `v` is stalled when an edge `v -> u` of `stall_graph`, to a node `u` already
+    /// reached, proves that the minimum travel time from `v` is not optimal. In a backward upward
+    /// search of a hierarchy, `stall_graph` must be the upward graph.
+    pub fn new_backward_with_stall_on_demand(graph: G, stall_graph: G, edge_label: F) -> Self {
+        ProfileIntervalDijkstra::new(graph, edge_label, Direction::Incoming, Some(stall_graph))
     }
 
     /// Returns a reference to the current bound of the ops.
@@ -783,13 +781,20 @@ where
     T: TTFNum + 'a,
     G::NodeId: Eq + Hash,
 {
-    fn can_be_stalled<D: NodeData<Label = [T; 2]>>(
+    /// Returns `true` if the label of `node` can be proven not to be optimal, through an edge of
+    /// the stall graph from (or to) a node already reached in `data`.
+    ///
+    /// Returns `false` if stall-on-demand is disabled.
+    pub(crate) fn can_be_stalled<D: NodeData<Label = [T; 2]>>(
         &self,
         node: G::NodeId,
         node_data: &([T; 2], Option<HashSet<G::NodeId>>),
         data: &HashMap<G::NodeId, D>,
     ) -> bool {
-        for edge in self.graph.edges_directed(node, self.direction.opposite()) {
+        let Some(stall_graph) = self.stall_graph else {
+            return false;
+        };
+        for edge in stall_graph.edges_directed(node, self.direction.opposite()) {
             let other_node = match self.direction {
                 Direction::Outgoing => edge.source(),
                 Direction::Incoming => edge.target(),
@@ -925,7 +930,7 @@ where
         node_data: &Self::Data,
         data: &HashMap<G::NodeId, D>,
     ) -> bool {
-        self.stalling && self.can_be_stalled(node, node_data, data)
+        self.can_be_stalled(node, node_data, data)
     }
 }
 
