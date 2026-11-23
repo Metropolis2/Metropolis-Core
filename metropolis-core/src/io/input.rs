@@ -314,6 +314,7 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
     let bottleneck_times = columns.list_f64(&["bottleneck_times"])?;
     let constant_travel_time = columns.f64(&["constant_travel_time"])?;
     let overtaking = columns.bool(&["overtaking"])?;
+    let spillback = columns.bool(&["spillback"])?;
     columns.warn_unused();
     let n = columns.len();
     let mut edges = Vec::with_capacity(n);
@@ -338,6 +339,7 @@ fn read_edges(batch: RecordBatch) -> Result<(EdgeVec, HashSet<MetroId>)> {
             bottleneck_times.get(i),
             constant_travel_time.get(i),
             overtaking.get(i),
+            spillback.get(i),
         )
         .with_context(|| format!("Failed to parse edge {edge_id}"))?;
         if !unique_ids.insert(edge_id) {

@@ -100,7 +100,7 @@ enum Capacity {
     /// number of lanes.
     Calibrated { combination: usize, lanes: Lanes },
     /// Edge that is not calibrated, with a constant input flow (`None` if the flow is infinite, the
-    /// vehicles then only wait for space, with spillback).
+    /// vehicles then only wait for space, with spillback on the edge).
     Fixed(Option<Flow>),
 }
 
@@ -314,7 +314,7 @@ struct ProbeEdge {
     /// Free-flow travel time of the edge, for the vehicle type of the calibration.
     free_flow_tt: NonNegativeSeconds,
     /// Index of the entry bottleneck of the edge in the surrogate model (`None` if the edge has no
-    /// arrival curve, i.e., its flow is infinite and spillback is disabled).
+    /// arrival curve, i.e., its flow is infinite and spillback is disabled on the edge).
     bottleneck: Option<usize>,
 }
 

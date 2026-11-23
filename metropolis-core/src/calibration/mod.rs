@@ -139,24 +139,29 @@ pub fn calibrate(
         })
         .collect();
     let recorded_edges: HashSet<EdgeIndex> = paths.iter().flatten().copied().collect();
-    let nb_infinite = recorded_edges
+    let (nb_infinite_spillback, nb_infinite_no_spillback) = recorded_edges
         .iter()
         .filter(|&&e| {
             factors.combination_of(e).is_none() && !edges[e.index()].has_bottleneck_flow()
         })
-        .count();
-    if nb_infinite > 0 {
-        if crate::network::road_network::parameters::spillback() {
-            info!(
-                "{nb_infinite} edges of the target routes have an infinite bottleneck flow (the \
-                vehicles only wait for space there)"
-            );
-        } else {
-            info!(
-                "{nb_infinite} edges of the target routes have an infinite bottleneck flow (no \
-                arrival curve is recorded)"
-            );
-        }
+        .fold((0, 0), |(with, without), &e| {
+            if edges[e.index()].spillback_is_enabled() {
+                (with + 1, without)
+            } else {
+                (with, without + 1)
+            }
+        });
+    if nb_infinite_spillback > 0 {
+        info!(
+            "{nb_infinite_spillback} edges of the target routes have an infinite bottleneck flow \
+            (the vehicles only wait for space there)"
+        );
+    }
+    if nb_infinite_no_spillback > 0 {
+        info!(
+            "{nb_infinite_no_spillback} edges of the target routes have an infinite bottleneck \
+            flow and no spillback (no arrival curve is recorded)"
+        );
     }
     let mut crossed = vec![false; factors.ids.len()];
     for &e in recorded_edges.iter() {
@@ -1357,6 +1362,7 @@ mod tests {
             bottleneck_flow,
             flows,
             times,
+            None,
             None,
             None,
         )

@@ -22,6 +22,8 @@ The tag [OUTPUT] indicates changes affecting the output files.
   reduces the size of the files (at the cost of a few milliseconds of precision for times). Set it
   to `false` to keep 64-bit floats.
 - [INPUT] Warn on parallel edges in `routing_cli`.
+- [INPUT] New optional edge column `spillback` (boolean, default `true`). Spillback is enabled on
+  an edge if and only if this value is `true` and the road-network parameter `spillback` is `true`.
 
 ### Changed
 

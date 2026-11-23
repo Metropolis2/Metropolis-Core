@@ -555,6 +555,9 @@ pub struct RoadEdge {
     /// If `true`, vehicles can overtaking each other at the exit bottleneck (if they have a
     /// different outgoing edge).
     overtaking: bool,
+    /// If `false`, vehicles never wait for space on the edge, even if spillback is enabled at the
+    /// simulation level.
+    spillback: bool,
 }
 
 impl RoadEdge {
@@ -583,7 +586,16 @@ impl RoadEdge {
             },
             bottleneck_flow: bottleneck_flow.map(|f| EdgeFlow::from(f * lanes)),
             overtaking,
+            spillback: true,
         }
+    }
+
+    /// Sets whether spillback is allowed on the edge (default is `true`).
+    ///
+    /// Spillback is enabled on the edge only if it is also enabled at the simulation level.
+    pub fn with_spillback(mut self, spillback: bool) -> Self {
+        self.spillback = spillback;
+        self
     }
 
     /// Creates a new RoadEdge from deserialied values.
@@ -604,6 +616,7 @@ impl RoadEdge {
         bottleneck_times: Option<Vec<f64>>,
         constant_travel_time: Option<f64>,
         overtaking: Option<bool>,
+        spillback: Option<bool>,
     ) -> Result<Self> {
         let base_speed =
             MetersPerSecond::try_from(speed.ok_or_else(|| anyhow!("Value `speed` is mandatory"))?)
@@ -646,6 +659,7 @@ impl RoadEdge {
             NonNegativeSeconds::try_from(constant_travel_time.unwrap_or(0.0))
                 .context("Value `constant_travel_time` does not satisfy the constraints")?;
         let overtaking = overtaking.unwrap_or(true);
+        let spillback = spillback.unwrap_or(true);
         Ok(RoadEdge {
             id,
             segment: RoadSegmentAttributes {
@@ -657,6 +671,7 @@ impl RoadEdge {
             },
             bottleneck_flow,
             overtaking,
+            spillback,
         })
     }
 
@@ -701,6 +716,12 @@ impl RoadEdge {
     /// bottleneck.
     pub(crate) fn overtaking_is_allowed(&self) -> bool {
         self.overtaking
+    }
+
+    /// Returns `true` if spillback is enabled on the edge, i.e., if it is enabled both for the
+    /// edge and at the simulation level.
+    pub(crate) fn spillback_is_enabled(&self) -> bool {
+        self.spillback && parameters::spillback()
     }
 
     /// Return the travel time for the running part of the edge for a given vehicle, given the
@@ -1027,6 +1048,7 @@ mod tests {
             },
             bottleneck_flow: None,
             overtaking: false,
+            spillback: true,
         };
         let vehicle = Vehicle::new(
             1,

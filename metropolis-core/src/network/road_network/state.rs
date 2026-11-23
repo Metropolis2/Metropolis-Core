@@ -227,7 +227,7 @@ struct EdgeEntryState {
     bottleneck: Bottleneck,
     /// Current length available for vehicles on the edge, i.e., total length of the edge minus the
     /// total headway length of vehicles currently on the edge.
-    /// Or `None` if spillback is disabled.
+    /// Or `None` if spillback is disabled on the edge.
     available_length: Option<AnyMeters>,
     /// Indicates the status of the edge entry (open, closed or pending).
     status: EdgeEntryStatus,
@@ -241,7 +241,7 @@ struct EdgeEntryState {
 impl EdgeEntryState {
     /// Initializes a new [EdgeEntryState] for a given edge, with the given bottleneck flow.
     fn new(edge: &RoadEdge, flow: Option<&EdgeFlow>) -> Self {
-        let available_length = if super::parameters::spillback() {
+        let available_length = if edge.spillback_is_enabled() {
             Some(edge.segment.total_length().into())
         } else {
             None
@@ -853,8 +853,8 @@ impl RoadNetworkState {
 
     /// Enables the recording of the cumulative arrival curves at the entry of the given edges.
     ///
-    /// Without spillback, the edges whose entry bottleneck has an infinite flow are skipped
-    /// (vehicles are never delayed there). With spillback, vehicles can wait for space at any edge.
+    /// The edges without spillback and whose entry bottleneck has an infinite flow are skipped
+    /// (vehicles are never delayed there). With spillback, vehicles can wait for space at the edge.
     pub(crate) fn record_arrivals(&mut self, edges: impl IntoIterator<Item = EdgeIndex>) {
         for edge_index in edges {
             let entry = &mut self.graph[edge_index].entry;
