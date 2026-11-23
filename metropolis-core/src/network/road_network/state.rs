@@ -831,8 +831,8 @@ pub(crate) struct RoadNetworkState {
     ///
     /// `None` if the holes propagate backward instantaneously.
     backward_wave_speed: Option<MetersPerSecond>,
-    /// Record the number of warnings sent to the user.
-    warnings: usize,
+    /// Number of forced releases of pending vehicles so far.
+    nb_forced_releases: usize,
 }
 
 impl RoadNetworkState {
@@ -846,9 +846,14 @@ impl RoadNetworkState {
             graph,
             pending_edges: HashMap::default(),
             max_pending_duration: super::parameters::max_pending_duration(),
-            warnings: 0,
+            nb_forced_releases: 0,
             backward_wave_speed: super::parameters::backward_wave_speed(),
         }
+    }
+
+    /// Returns the number of forced releases of pending vehicles so far.
+    pub(crate) const fn nb_forced_releases(&self) -> usize {
+        self.nb_forced_releases
     }
 
     /// Enables the recording of the cumulative arrival curves at the entry of the given edges.
@@ -1198,7 +1203,7 @@ impl Event for ForceVehicleRelease {
         let edge = &mut road_network_state.graph[self.edge];
         let event = edge.force_release(self.at_time);
         debug_assert_eq!(event.agent_id(), self.agent);
-        if road_network_state.warnings <= MAX_WARNINGS {
+        if road_network_state.nb_forced_releases <= MAX_WARNINGS {
             input.progress_bar.suspend(|| {
                 warn!(
                     "Forcing the release of agent {} from edge {} at time {}",
@@ -1207,13 +1212,13 @@ impl Event for ForceVehicleRelease {
                     self.at_time
                 );
             });
-            if road_network_state.warnings == MAX_WARNINGS {
+            if road_network_state.nb_forced_releases == MAX_WARNINGS {
                 input.progress_bar.suspend(|| {
                     warn!("Ignoring further warnings...");
                 });
             }
-            road_network_state.warnings += 1;
         }
+        road_network_state.nb_forced_releases += 1;
         event.execute(input, road_network_state, alloc, events)
     }
     fn get_time(&self) -> NonNegativeSeconds {

@@ -24,6 +24,7 @@ The tag [OUTPUT] indicates changes affecting the output files.
 - [INPUT] Warn on parallel edges in `routing_cli`.
 - [INPUT] New optional edge column `spillback` (boolean, default `true`). Spillback is enabled on
   an edge if and only if this value is `true` and the road-network parameter `spillback` is `true`.
+- [USER] Warn with the number of forced releases (when positive) at the end of the supply model.
 
 ### Changed
 

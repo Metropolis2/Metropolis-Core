@@ -385,6 +385,12 @@ pub fn run_within_day_model(
         }
     }
     bp.finish();
+    if let Some(rn_state) = state.get_mut_road_network() {
+        let nb_forced_releases = rn_state.nb_forced_releases();
+        if nb_forced_releases > 0 {
+            warn!("Number of forced releases: {nb_forced_releases}");
+        }
+    }
     debug_assert_eq!(agent_results.len(), agent_results.nb_agents_arrived());
     debug!("Successfully executed {} events", nb_events);
     Ok(state)
